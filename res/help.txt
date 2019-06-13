@@ -1,0 +1,22 @@
+=== General
+
+Ctrl + Q   exit immediatly
+Ctrl + R   reload shaders
+Ctrl + D   toggle show debug info
+`          toggle console
+
+=== Console
+
+Insert     replace string with one from clipboard
+Ctrl + V   put string from clipboard
+Ctrl + C   copy input to clipboard
+Ctrl + U   clear input string after cursor
+Down       clear whole input string
+Left\Right move input cursor
+Home       move cursor to the beginning
+Page Up    go to older log page
+Page Down  go to newer log page
+End        go to current page
+Ctrl + <=  shift output to left
+Ctrl + =>  shift output to right
+Ctrl + ^   reset output shift

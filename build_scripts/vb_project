@@ -1,0 +1,20 @@
+ProName=rodent
+IsLibrary=0
+
+Source=(
+	../core/*.cpp
+	../render/*.cpp
+	../utils/*.cpp
+	../vaslib/*.cpp
+	../*.cpp
+)
+Flags=(
+	-I..
+	-Icommon
+	-std=c++17
+	-fexceptions
+	-Wextra
+
+	-Wno-unused-local-typedefs
+)
+LnkFlags=()

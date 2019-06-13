@@ -1,0 +1,16 @@
+Compiler=g++
+CompilerLnk=ar
+Platform=linux
+
+Pkgs=( glew fmt freetype2 sdl2 )
+
+for (( i=0; i<${#Pkgs[@]}; i++ )) {
+	Flags+=( $(pkg-config --cflags ${Pkgs[i]}) )
+	LnkFlags+=( $(pkg-config --libs ${Pkgs[i]}) )
+}
+
+FlagsDbg+=(
+	-fsanitize=address
+	-fsanitize=undefined
+	-fsanitize=leak
+)

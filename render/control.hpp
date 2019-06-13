@@ -1,0 +1,65 @@
+#ifndef REN_CTL_HPP
+#define REN_CTL_HPP
+
+#include <functional>
+#include "vaslib/vas_math.hpp"
+#include "vaslib/vas_time.hpp"
+
+class  Camera;
+struct GLA_SingleVAO;
+union  SDL_Event;
+struct SDL_Window;
+class  Shader;
+
+
+
+class RenderControl
+{
+public:
+	bool shader_fail = false; ///< If true, fails if load_shader fails
+	
+	
+	static bool init(); ///< Initialize singleton (including all other rendering singletons)
+	static RenderControl& get(); ///< Returns singleton
+	virtual ~RenderControl() = default; ///< Also destroys all related singletons
+	
+	
+	static vec2i get_size(); ///< Returns window width & height in pixels
+	virtual int get_max_tex() = 0; ///< Returns maximum texture dimension possible
+	
+	virtual Camera* get_world_camera() = 0;
+	virtual Camera* get_ui_camera()    = 0; ///< Always reset before rendering
+	
+	virtual bool    is_visible()       = 0; ///< Returns true if window is visible on screen
+	virtual SDL_Window* get_wnd() = 0;
+	
+	
+	/// Render everything to screen. 
+	/// Returns false if some unrecoverable error occured
+	virtual bool render( TimeSpan passed ) = 0;
+	
+	/// Performs rendering-related processing
+	virtual void on_event( SDL_Event& ev ) = 0;
+	
+	
+	/// Sets vertical synchronization
+	virtual void set_vsync( bool on ) = 0;
+	
+	/// Returns true if vsync is enabled
+	virtual bool has_vsync() = 0;
+	
+	
+	/// Loads shader and stores it internally. Never returns null. 
+	/// Reload callback is called every time when shader is loaded, including first. 
+	/// Shader is already bound before calling callback. 
+	/// If is_crit is false, shader treated as optional and doesn't cause internal renderer errors
+	virtual Shader* load_shader( const char *name, std::function <void(Shader*)> reload_cb = {}, bool is_crit = true ) = 0;
+	
+	/// Reloads and recompiles all shaders
+	virtual void reload_shaders() = 0;
+	
+	/// Returns internal VAO representing full screen in NDC as two triangles - 6 vertices of vec2
+	virtual GLA_SingleVAO* ndc_screen2() = 0;
+};
+
+#endif // REN_CTL_HPP

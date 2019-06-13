@@ -1,0 +1,29 @@
+External dependecies (C/C++ libraries, normally linked dynamically):
+
+* fmt
+  https://fmt.dev/
+  https://github.com/fmtlib/fmt
+  https://github.com/fmtlib/fmt/blob/master/LICENSE.rst
+  2-clause BSD license
+
+* FreeType
+  https://www.freetype.org/
+  https://git.savannah.gnu.org/cgit/freetype/freetype2.git/tree/docs/FTL.TXT
+  FreeType License (BSD-style)
+
+* GLEW
+  http://glew.sourceforge.net/
+  https://github.com/nigels-com/glew
+  https://github.com/nigels-com/glew/blob/master/LICENSE.txt
+  3-clause BSD license, Mesa 3-D License (MIT) and the Khronos License (MIT)
+
+* SDL2
+  https://www.libsdl.org/
+  zlib license
+
+
+Static dependecies (linked into app):
+
+* stb_image, stb_image_write
+  https://github.com/nothings/stb
+  Public Domain

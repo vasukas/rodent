@@ -1,0 +1,35 @@
+Compiler=i686-w64-mingw32-g++
+CompilerLnk=i686-w64-mingw32-ar
+Platform=win
+
+Source+=(
+	../build_libs/src/*.c*
+)
+Flags+=(
+	-I../build_libs/mingw/include
+	-I../build_libs/include
+
+	-mconsole
+	-mwindows
+	-DWINVER=0x0601
+	-D__GNUWIN32__
+	-DSTRICT
+	-DHAVE_W32API_H
+	-D__WINDOWS__
+	-D_USE_MATH_DEFINES
+)
+LnkFlags+=(
+	-L../build_libs/mingw/lib32
+
+	-mconsole
+	-mwindows
+	-static-libgcc -static-libstdc++
+
+	-lopengl32
+	-l:glew32.lib
+	-lSDL2
+	-l:freetype271.lib
+)
+FlagsDbg+=(
+	-ggdb
+)
