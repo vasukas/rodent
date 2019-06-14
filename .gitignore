@@ -1,0 +1,7 @@
+build/
+build_libs
+stuff/
+rodent.*.user
+rod.*
+rodent
+*.sh

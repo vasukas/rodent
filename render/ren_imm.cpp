@@ -7,9 +7,6 @@
 #include "shader.hpp"
 #include "texture.hpp"
 
-class RenImm_Impl;
-static RenImm_Impl* rni;
-
 
 
 static const size_t INVIX = (size_t) -1;
@@ -65,7 +62,7 @@ public:
 		size_t last_shad = SHAD_INITIAL; // last set shader
 	};
 	
-	GLA_SingleVAO vao; ///< Buffer
+	GLA_VertexArray vao; ///< Buffer
 	std::vector <float> data; ///< Buffer data to send
 	size_t objs_off = 0; ///< Last vertices offset (same as data.size() / 4)
 	
@@ -78,6 +75,8 @@ public:
 	
 	GLuint white_tex; ///< White rectangle texture
 	Rectfp white_tc; ///< White rectangle texcoord
+	
+	GLint vp[4]; // for restoring after clip rects
 	
 	
 	
@@ -241,49 +240,49 @@ public:
 		n.rot90cw();
 		n *= width * 0.5f / n.fastlen();
 		
-		add_rect(p0.x - n.x, p0.y - n.y,
-		         p1.x + n.x, p0.y - n.y,
-		         p0.x - n.x, p1.y + n.y,
+		add_rect(p0.x + n.x, p0.y + n.y,
 		         p1.x + n.x, p1.y + n.y,
+		         p0.x - n.x, p0.y - n.y,
+		         p1.x - n.x, p1.y - n.y,
 		         white_tc);
 	}
 	
 #define IS_TEXT_WHITE true
 	
 	
-	RenImm_Impl(bool& ok)
+	RenImm_Impl()
 	{
 		auto w = RenText::get().get_white_rect();
 		white_tex = w.get_obj();
 		white_tc = w.tc;
-		vao.set_attrib(0, 4);
 		
-		ok = true;
+		vao.set_buffers({ std::make_shared<GLA_Buffer>(4) });
+		vao.bufs[0]->usage = GL_STREAM_DRAW;
+		
+		ctxs.resize(DEFCTX_NONE);
+		Context* cx;
+		
+		cx = &ctxs[DEFCTX_WORLD].ctx;
+		cx->sh      = RenderControl::get().load_shader("imm");
+		cx->sh_text = RenderControl::get().load_shader("imm_text");
+		cx->cam = RenderControl::get().get_world_camera();
+		
+		cx = &ctxs[DEFCTX_UI].ctx;
+		cx->sh      = RenderControl::get().load_shader("imm");
+		cx->sh_text = RenderControl::get().load_shader("imm_text");
+		cx->cam = RenderControl::get().get_ui_camera();
 	}
-	~RenImm_Impl()
+	Context& get_context (CtxIndex id)
 	{
-		rni = nullptr;
+		if (id == DEFCTX_NONE) LOG_THROW_X("RenImm::get_context() invalid id");
+		return ctxs[id].ctx;
 	}
-	size_t add_context (Context ctx)
-	{
-		size_t id = ctxs.size();
-		ctxs.emplace_back();
-		ctxs[id].ctx = ctx;
-		return id + 1;
-	}
-	Context* get_context (size_t id)
-	{
-		if (!id || id > ctxs.size()) return nullptr;
-		return &ctxs[id-1].ctx;
-	}
-	void set_context (size_t id)
+	void set_context (CtxIndex id)
 	{
 		ctx_cur = id;
 		
-		if (!ctx_cur || id > ctxs.size()) ctx_ok = false; // and it doesn't matter that index is invalid
-		else
-		{
-			--ctx_cur;
+		if (id == DEFCTX_NONE) ctx_ok = false; // and it doesn't matter that index is invalid
+		else {
 			auto &c = ctxs[ ctx_cur ].ctx;
 			ctx_ok = ( c.cam && c.sh && c.sh->get_obj() );
 		}
@@ -536,91 +535,75 @@ public:
 		reserve_more_block( cx.cmds, 256 );
 		cx.cmds.push_back({ Cmd::T_ECMD, cmd });
 	}
-	void render()
+	void render_pre()
 	{
-		dbg_buffer_size = data.capacity() * sizeof(float);
-		dbg_buffer_usage = data.size() * sizeof(float);
-		
-		vao.bind_buf();
-		glBufferData( GL_ARRAY_BUFFER, data.size() * sizeof(float), data.data(), GL_STREAM_DRAW );
-		
-		vao.bind();
+		vao.bufs[0]->update( data.size(), data.data() );
+//		vao.bind();
 		glActiveTexture( GL_TEXTURE0 );
 		
-		GLint vp[4]; // for restoring after clip rects
 		glGetIntegerv( GL_VIEWPORT, vp );
+	}
+	void render(CtxIndex cx_id)
+	{
+		auto& cx = ctxs[cx_id];
+		if (cx.cmds.empty()) return;
+		auto& ps = cx.ctx;
 		
-		for (auto& cx : ctxs)
+		Shader* sh = nullptr;
+		const float *mx = ps.cam->get_full_matrix();
+		
+		vao.bind();
+		
+		for (auto& cmd : cx.cmds)
 		{
-			if (cx.cmds.empty()) continue;
-			auto& ps = cx.ctx;
-			
-			if (ps.cb_check) {
-				if (!ps.cb_check(cx.ctx)) continue;
-				if (!ps.sh || !ps.cam) {
-					VLOGD("RenImm::render() context check passed but values are null");
-					debugbreak();
-					continue;
-				}
-			}
-			
-			Shader* sh = nullptr;
-			const float *mx = ps.cam->get_full_matrix();
-			if (ps.cb_pp_begin) ps.cb_pp_begin();
-			
-			for (auto& cmd : cx.cmds)
+			switch (cmd.type)
 			{
-				switch (cmd.type)
+			case Cmd::T_OBJ:
+				{	auto& obj = objs[ cmd.index ];
+					glDrawArrays( GL_TRIANGLES, obj.off, obj.count );
+				}
+				break;
+				
+			case Cmd::T_CLIP:
+				if (cmd.index == INVIX) glScissor( vp[0], vp[1], vp[2], vp[3] );
+				else
+				{	auto& r = clips[ cmd.index ];
+					int y = RenderControl::get().get_size().y - (r.lower().y + r.size().y);
+					glScissor( r.lower().x, y, r.size().x, r.size().y );
+				}
+				break;
+				
+			case Cmd::T_CLR:
+				sh->set_rgba( "clr", cmd.index );
+				break;
+				
+			case Cmd::T_TEX:
+				glBindTexture( GL_TEXTURE_2D, cmd.index );
+				break;
+				
+			case Cmd::T_SHAD:
+				sh = (cmd.index == SHAD_MAIN ? ps.sh : ps.sh_text);
+				sh->bind();
+				sh->set4mx( "proj", mx );
+				break;
+				
+			case Cmd::T_ECMD:
+				switch (static_cast< EffectCmd >( cmd.index ))
 				{
-				case Cmd::T_OBJ:
-					{	auto& obj = objs[ cmd.index ];
-						glDrawArrays( GL_TRIANGLES, obj.off, obj.count );
-					}
+				case EFF_POP:
+					glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 					break;
 					
-				case Cmd::T_CLIP:
-					if (cmd.index == INVIX) glScissor( vp[0], vp[1], vp[2], vp[3] );
-					else
-					{	auto& r = clips[ cmd.index ];
-						int y = RenderControl::get().get_size().y - (r.lower().y + r.size().y);
-						glScissor( r.lower().x, y, r.size().x, r.size().y );
-					}
-					break;
-					
-				case Cmd::T_CLR:
-					sh->set_rgba( "clr", cmd.index );
-					break;
-					
-				case Cmd::T_TEX:
-					glBindTexture( GL_TEXTURE_2D, cmd.index );
-					break;
-					
-				case Cmd::T_SHAD:
-					sh = (cmd.index == SHAD_MAIN ? ps.sh : ps.sh_text);
-					sh->bind();
-					sh->set4mx( "proj", mx );
-					break;
-					
-				case Cmd::T_ECMD:
-					switch (static_cast< EffectCmd >( cmd.index ))
-					{
-					case EFF_POP:
-						glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-						break;
-						
-					case EFF_ADDITIVE_BLEND:
-						glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
-						break;
-					}
+				case EFF_ADDITIVE_BLEND:
+					glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
 					break;
 				}
+				break;
 			}
-			
-			if (ps.cb_pp_end) ps.cb_pp_end();
 		}
-		
-		// reset state
-		
+	}
+	void render_post()
+	{
 		glScissor( vp[0], vp[1], vp[2], vp[3] );
 		
 		data.clear();
@@ -646,24 +629,13 @@ public:
 		ctx_ok = false;
 	}
 };
-bool RenImm::init()
-{
-	if (!rni)
-	{
-		bool ok = false;
-		rni = new RenImm_Impl (ok);
-		if (!ok)
-		{
-			VLOGE("RenImm::init() failed");
-			delete rni;
-			return false;
-		}
-		VLOGI("RenImm::init() ok");
-	}
-	return true;
-}
-RenImm& RenImm::get()
-{
+
+
+
+static RenImm_Impl* rni;
+RenImm& RenImm::get() {
 	if (!rni) LOG_THROW_X("RenImm::get() null");
 	return *rni;
 }
+RenImm* RenImm::init() {return rni = new RenImm_Impl;}
+RenImm::~RenImm() {rni = nullptr;}

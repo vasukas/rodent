@@ -2,6 +2,8 @@
 #include "core/res_image.hpp"
 #include "core/tui_layer.hpp"
 #include "render/control.hpp"
+#include "render/gl_utils.hpp" // debug stats
+#include "render/ren_aal.hpp" // test
 #include "render/ren_imm.hpp"
 #include "render/ren_text.hpp"
 #include "render/texture.hpp" // debug stats
@@ -14,6 +16,8 @@
 #ifndef GAME_VERSION
 #define GAME_VERSION "unspecified (alpha)"
 #endif
+
+// #define USE_RELEASE_PATHS 1
 
 
 
@@ -60,7 +64,7 @@ enum GamePath
 };
 static std::string get_game_path(GamePath path)
 {
-#ifndef USE_RELEASE_PATHS
+#if !USE_RELEASE_PATHS
 	switch (path)
 	{
 	case GAME_PATH_LOG:
@@ -256,6 +260,66 @@ int main( int argc, char *argv[] )
 	TimeSpan passed = loop_length; // render time
 	TimeSpan last_time = loop_length; // processing time (for info)
 	
+	class L : public TUI_Layer
+	{
+	public:
+		struct Head {
+			int x, y, clr;
+			TimeSpan cou, per;
+		};
+		std::array<Head, 20> hs;
+		TimeSpan prev;
+		
+		L() {
+			for (auto& h : hs) init(h);
+			
+			auto t = TimeSpan::seconds(80);
+			size_t n = 100;
+			for (size_t i=0; i<n; ++i) proc(t*(1.f/n));
+			
+			prev = TimeSpan::since_start();
+		}
+		void on_event(const SDL_Event& ev) {
+			if (ev.type == SDL_MOUSEBUTTONDOWN)
+				delete this;
+		}
+		void render() {
+			auto next = TimeSpan::since_start();
+			TimeSpan passed = next - prev;
+			prev = next;
+			proc(passed * 2);
+		}
+		void proc(TimeSpan passed)
+		{
+			sur.upd_any = true;
+			for (auto& c : sur.cs) {
+				if (c.alpha > 0.2f)
+					c.alpha -= 0.2 * passed.seconds();
+			}
+			
+			for (auto& h : hs) {
+				h.cou += passed;
+				while (h.cou >= h.per) {
+					if (++h.y == sur.size.y) {
+						init(h);
+						continue;
+					}
+					h.cou -= h.per;
+					char32_t sym = 33 + rand() % (126 - 33);
+					sur.set({h.x, h.y}, {sym, h.clr});
+				}
+			}
+		}
+		void init(Head& h) {
+			h.x = rand() % sur.size.x;
+			h.y = -1;
+			h.clr = rand() % 8;
+			h.cou = {};
+			h.per = TimeSpan::seconds( 0.1f * (1 + rand() % 8) );
+		}
+	};
+	(new L)->bring_to_top();
+	
 	
 	
 	auto& cons = Console::get();
@@ -282,6 +346,7 @@ int main( int argc, char *argv[] )
 					if		(ks.scancode == SDL_SCANCODE_Q) run = false;
 					else if (ks.scancode == SDL_SCANCODE_R) RenderControl::get().reload_shaders();
 					else if (ks.scancode == SDL_SCANCODE_D) dbg_show = !dbg_show;
+					else if (ks.scancode == SDL_SCANCODE_P) {auto& f = RenderControl::get().use_pp_glow; f = !f;}
 				}
 				else if (ks.scancode == SDL_SCANCODE_GRAVE) cons_shown = !cons_shown;
 			}
@@ -328,10 +393,13 @@ int main( int argc, char *argv[] )
 		if (dbg_show)
 		{
 			auto& imm = RenImm::get();
-			auto str = FMT_FORMAT("RenImm : total {:4} KB, usage {:4} KB\n"
-			                      "Texture : {:4} KB\n",
-			                      imm.dbg_buffer_size >>10, imm.dbg_buffer_usage >>10,
-			                      Texture::dbg_total_size >>10);
+			auto str = FMT_FORMAT("Buffer : max {:4} KB, current {:4} KB\n"
+			                      "Texture : {:4} KB\n"
+								  "Glow: {}",
+			                      GLA_Buffer::dbg_size_max >>10, GLA_Buffer::dbg_size_now >>10,
+			                      Texture::dbg_total_size >>10,
+			                      RenderControl::get().use_pp_glow);
+			
 			TextRenderInfo tri;
 			tri.str_a = str.data();
 			tri.length = str.length();
@@ -342,6 +410,10 @@ int main( int argc, char *argv[] )
 		}
 		
 		if (cons_shown) cons.render();
+		
+		RenImm::get().set_context(RenImm::DEFCTX_WORLD);
+		RenImm::get().draw_frame({-200, -200, 400, 400}, 0xff0000ff, 3);
+		RenAAL::get().draw_line({-200, -200}, {200, 200}, 0x00ff80ff, 5.f, 12.f);
 		
 		last_time = TimeSpan::since_start() - loop_0;
 		if (!RenderControl::get().render( passed ))

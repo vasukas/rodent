@@ -1,3 +1,4 @@
+#include <unordered_map>
 #include "vaslib/vas_log.hpp"
 #include "gl_utils.hpp"
 
@@ -32,51 +33,142 @@ size_t gl_type_size( GLenum t )
 
 
 
-GLA_SingleVAO::GLA_SingleVAO()
+size_t GLA_Buffer::dbg_size_now;
+size_t GLA_Buffer::dbg_size_max;
+
+GLA_Buffer::GLA_Buffer(int comp, int type, bool normalized, int usage):
+    usage(usage), comp(comp), type(type), normalized(normalized)
 {
-	glGenVertexArrays( 1, &vao );
 	glGenBuffers( 1, &vbo );
 }
-GLA_SingleVAO::~GLA_SingleVAO()
+GLA_Buffer::GLA_Buffer()
 {
-	glDeleteVertexArrays( 1, &vao );
+	glGenBuffers( 1, &vbo );
+}
+GLA_Buffer::~GLA_Buffer()
+{
 	glDeleteBuffers( 1, &vbo );
+	dbg_size_now -= size_bytes();
 }
-GLA_SingleVAO::GLA_SingleVAO( GLA_SingleVAO&& obj )
+GLA_Buffer::GLA_Buffer( GLA_Buffer&& obj )
 {
-	std::swap( vao, obj.vao );
 	std::swap( vbo, obj.vbo );
 }
-void GLA_SingleVAO::operator =( GLA_SingleVAO&& obj )
+void GLA_Buffer::operator =( GLA_Buffer&& obj )
 {
-	std::swap( vao, obj.vao );
 	std::swap( vbo, obj.vbo );
 }
-void GLA_SingleVAO::bind()
+void GLA_Buffer::bind( GLenum target )
 {
-	glBindVertexArray( vao );
-}
-void GLA_SingleVAO::bind_buf( GLenum target ) {
 	glBindBuffer( target, vbo );
 }
-void GLA_SingleVAO::set_attrib( size_t index, size_t el_count, GLenum el_type, size_t stride, size_t offset )
+void GLA_Buffer::update( size_t el_num_new, const void *data )
+{
+	dbg_size_now -= size_bytes();
+	
+	bind();
+	el_num = el_num_new;
+	glBufferData( GL_ARRAY_BUFFER, size_bytes(), data, usage );
+	
+	dbg_size_now += size_bytes();
+	dbg_size_max = std::max(dbg_size_max, dbg_size_now);
+}
+size_t GLA_Buffer::size_bytes() const
+{
+	return gl_type_size(type) * el_num;
+}
+
+
+
+GLA_VertexArray::GLA_VertexArray()
+{
+	glGenVertexArrays( 1, &vao );
+}
+GLA_VertexArray::~GLA_VertexArray()
+{
+	glDeleteVertexArrays( 1, &vao );
+}
+GLA_VertexArray::GLA_VertexArray( GLA_VertexArray&& obj )
+{
+	std::swap( vao, obj.vao );
+}
+void GLA_VertexArray::operator =( GLA_VertexArray&& obj )
+{
+	std::swap( vao, obj.vao );
+}
+void GLA_VertexArray::bind()
 {
 	glBindVertexArray( vao );
-	glBindBuffer( GL_ARRAY_BUFFER, vbo );
-	glEnableVertexAttribArray( index );
-	glVertexAttribPointer( index, el_count, el_type, GL_FALSE, stride, reinterpret_cast< void* >(offset) );
 }
-void GLA_SingleVAO::set_attribs( const std::vector< Attrib >& attrs )
+void GLA_VertexArray::set_attrib( size_t index, std::shared_ptr<GLA_Buffer> buf, size_t stride, size_t offset )
 {
-	size_t stride = 0;
-	for (auto &a : attrs)
-		stride += a.el_count * gl_type_size( a.el_type );
+	if (!buf) return;
+	bufs.emplace_back(std::move(buf));
 	
-	size_t i = 0, offset = 0;
+	glBindVertexArray( vao );
+	buf->bind();
+	glEnableVertexAttribArray( index );
+	glVertexAttribPointer( index, buf->comp, buf->type, buf->normalized, stride, reinterpret_cast< void* >(offset) );
+}
+void GLA_VertexArray::set_buffers( std::vector< std::shared_ptr<GLA_Buffer> > new_bufs )
+{
+	bufs = std::move(new_bufs);
+	for (size_t i = 0; i < bufs.size(); ) {
+		if (bufs[i]) {
+			// actually, not neccesary an error
+			for (size_t j = 0; j < i; ++j) if (bufs[j] == bufs[i])
+				VLOGW("GLA_VertexArray::set_buffers() same buffers: {} and {}", i, j);
+			++i;
+		}
+		else bufs.erase( bufs.begin() + i );
+	}
+	
+	glBindVertexArray( vao );
+	
+	size_t i = 0;
+	for (auto &b : bufs)
+	{
+		b->bind();
+		glEnableVertexAttribArray( i );
+		glVertexAttribPointer( i, b->comp, b->type, b->normalized, 0, 0 );
+		++i;
+	}
+}
+void GLA_VertexArray::set_attribs( std::vector< Attrib > attrs )
+{
+	struct Str {size_t off = 0, str = 0, cou = 0;};
+	std::unordered_map<GLA_Buffer*, Str> ss;
+	ss.reserve( attrs.size() );
+	
+	for (auto& a : attrs)
+	{
+		auto b = a.buf.get();
+		if (!b) LOG_THROW_X("GLA_VertexArray::set_attribs() null");
+		
+		auto& s = ss[b];
+		s.str += a.comp * gl_type_size( b->type );
+		++s.cou;
+	}
+	
+	glBindVertexArray( vao );
+	bufs.clear();
+	bufs.reserve( attrs.size() );
+	
+	size_t i = 0;
 	for (auto &a : attrs)
 	{
-		set_attrib( i, a.el_count, a.el_type, stride, offset );
-		offset += a.el_count * gl_type_size( a.el_type );
+		bufs.emplace_back(a.buf);
+		auto b = a.buf.get();
+		
+		b->bind();
+		glEnableVertexAttribArray( i );
+		
+		auto& s = ss[b];
+		if (!s.cou) glVertexAttribPointer( i, a.comp, b->type, b->normalized, 0, 0 );
+		else {
+			glVertexAttribPointer( i, a.comp, b->type, b->normalized, s.str, reinterpret_cast< void* >(s.off) );
+			s.off += a.comp * gl_type_size( b->type );
+		}
 		++i;
 	}
 }

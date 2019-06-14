@@ -1,7 +1,7 @@
 #ifndef REN_IMM_HPP
 #define REN_IMM_HPP
 
-#include <cinttypes>
+#include <memory>
 #include <functional>
 #include "vaslib/vas_math.hpp"
 #include "texture.hpp"
@@ -24,11 +24,12 @@ public:
 	*/
 	
 	/// Default context IDs
-	enum DefCtxIx
+	enum CtxIndex
 	{
-		DEFCTX_NONE,  ///< Doesn't draw anything
 		DEFCTX_WORLD, ///< Draws with RenderControl world camera to default framebuffer with imm* shaders
-		DEFCTX_UI     ///< Same as DEFCTX_WORLD, but using RenderControl UI camera
+		DEFCTX_UI,    ///< Same as DEFCTX_WORLD, but using RenderControl UI camera
+		
+		DEFCTX_NONE   ///< Doesn't draw anything
 	};
 	
 	/// Effect command
@@ -41,33 +42,20 @@ public:
 	///
 	struct Context
 	{
-		Camera* cam     = nullptr; ///< Camera pointer; if null context isn't used
-		Shader* sh      = nullptr; ///< Main shader; if null context isn't used
-		Shader* sh_text = nullptr; ///< Text drawing shader, may be null
-		
-		/// Callback called before rendering with context, may change values in it. 
-		/// If returns false, context won't be rendered
-		std::function<bool(Context&)> cb_check;
-		
-		std::function<void()> cb_pp_begin; ///< Called before rendering with context (after check)
-		std::function<void()> cb_pp_end; ///< Called after rendering with context finished
+		Camera* cam = nullptr; ///< Camera pointer; if null context isn't used
+		Shader* sh  = nullptr; ///< Main shader; if null context isn't used
+		Shader* sh_text = nullptr; ///< Required for draw_text(), may be null
 	};
-	
-	size_t dbg_buffer_size = 0; ///< Shows current size of internal buffer, in bytes
-	size_t dbg_buffer_usage = 0; ///< Shows how much of buffer used last frame, in bytes
 	
 	static RenImm& get(); ///< Returns singleton
 	
 	
 	
-	/// Returns ID
-	virtual size_t add_context (Context ctx) = 0;
+	/// Sets drawing context
+	virtual void set_context (CtxIndex id) = 0;
 	
-	/// Returns context or null if it doesn't exist
-	virtual Context* get_context (size_t id) = 0;
-	
-	/// Sets drawing mode by ID. If ID is zero, doesn't render anything.
-	virtual void set_context (size_t id) = 0;
+	/// Throws if called with DEFCTX_NONE
+	virtual Context& get_context (CtxIndex id) = 0;
 	
 	
 	
@@ -121,7 +109,7 @@ public:
 	
 	/// Returns size of non-null ASCII string
 	static vec2i text_size (std::string_view str);
-	
+
 	
 	
 	/// Clips viewport at intersection of this and previous clip rect
@@ -136,9 +124,12 @@ public:
 	
 protected:
 	friend class RenderControl_Impl;
-	static bool init(); ///< Initializes singleton
-	virtual ~RenImm() = default;
-	virtual void render() = 0;
+	static RenImm* init();
+	virtual ~RenImm();
+	
+	virtual void render_pre() = 0;
+	virtual void render(CtxIndex id) = 0;
+	virtual void render_post() = 0;
 };
 
 #endif // REN_IMM_HPP

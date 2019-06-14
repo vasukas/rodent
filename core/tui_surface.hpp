@@ -30,6 +30,7 @@ struct TUI_Char
 	char32_t sym = 0;
 	int fore = TUI_SET_TEXT;
 	int back = TUI_SET_BACK;
+	float alpha = 1.f;
 	
 	static TUI_Char none() {return {static_cast<char32_t>(-1), -1, -1};} ///< All values set to -1	
 };

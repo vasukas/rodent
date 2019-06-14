@@ -30,6 +30,7 @@ public:
 	TUI_Layer(); ///< Initializes fullscreen transparent surface
 	virtual ~TUI_Layer(); ///< Removes layer from stack
 	
+	static vec2i screen_size(); ///< Returns screen size in chars
 	static TUI_Layer* get_stack_top(); ///< May return null
 	static bool render_all(TUI_Surface& dst); ///< Returns false if nothing changed
 	

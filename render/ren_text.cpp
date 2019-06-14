@@ -50,7 +50,7 @@ public:
 	
 	
 	
-	RenText_Impl(bool& ok)
+	RenText_Impl()
 	{
 		TimeSpan is_t0 = TimeSpan::since_start();
 		
@@ -60,7 +60,7 @@ public:
 		fonts[0] = load_font( sets.font_path.c_str(), sets.font_pt );
 		if (!fonts[0]) {
 			VLOGE("Can't load primary font");
-			return;
+			throw std::runtime_error("see log for details");
 		}
 		
 		if (sets.font_path == sets.font_ui_path && sets.font_pt == sets.font_ui_pt) {
@@ -98,12 +98,11 @@ public:
 			}
 			else {
 				VLOGE("Only monowide font can be used for UI");
-				return;
+				throw std::runtime_error("see log for details");
 			}
 		}
 		
 		VLOGI("Fonts loaded in {:6.3} seconds", (TimeSpan::since_start() - is_t0).seconds());
-		ok = true;
 	}
 	void build (TextRenderInfo& b)
 	{
@@ -204,6 +203,13 @@ public:
 			if (i == ar.size())
 				VLOGW("RenText::add_alts() failed for {:#x}", (uint32_t) ar.front());
 		}
+	}
+	TextRenderInfo::GlyphInfo get_glyph(char32_t cp, FontIndex font)
+	{
+		auto& ft = gf(font);
+		auto it = ft.glyphs.find(cp);
+		auto& g = (it != ft.glyphs.end()) ? it->second : ft.miss;
+		return {{g.off, g.size, true}, g.tex};
 	}
 	
 	
@@ -329,28 +335,10 @@ public:
 
 
 
-static RenText_Impl* rti;
-bool RenText::init()
-{
-	if (!rti)
-	{
-		bool ok = false;
-		rti = new RenText_Impl (ok);
-		if (!ok)
-		{
-			VLOGE("RenText::init() failed");
-			delete rti;
-			return false;
-		}
-		VLOGI("RenText::init() ok");
-	}
-	return true;
+static RenText_Impl* rni;
+RenText& RenText::get() {
+	if (!rni) LOG_THROW_X("RenText::get() null");
+	return *rni;
 }
-RenText& RenText::get()
-{
-	if (!rti) LOG_THROW_X("RenText::get() null");
-	return *rti;
-}
-RenText::~RenText() {
-	rti = nullptr;
-}
+RenText* RenText::init() {return rni = new RenText_Impl;}
+RenText::~RenText() {rni = nullptr;}

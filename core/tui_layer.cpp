@@ -5,14 +5,6 @@
 
 
 
-static vec2i get_screen_size()
-{
-	vec2i cz = RenText::get().mxc_size(FontIndex::TUI);
-	return RenderControl::get_size() / cz;
-}
-
-
-
 void TUI_Layer::Field::set(TUI_Char* s, size_t n)
 {
 	vec2i at = {};
@@ -66,10 +58,16 @@ static bool stack_was_empty = true;
 
 
 
-TUI_Layer::TUI_Layer(): sur(get_screen_size()) {}
+TUI_Layer::TUI_Layer(): sur(screen_size())
+{}
 TUI_Layer::~TUI_Layer()
 {
 	hide();
+}
+vec2i TUI_Layer::screen_size()
+{
+	vec2i cz = RenText::get().mxc_size(FontIndex::TUI);
+	return RenderControl::get_size() / cz;
 }
 TUI_Layer* TUI_Layer::get_stack_top()
 {

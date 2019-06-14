@@ -67,9 +67,12 @@ public:
 	/// Adds alternate symbols for all fonts
 	virtual void add_alts(std::vector<std::vector<char32_t>> alts) = 0;
 	
+	/// Returns glyph info as if it would be rendered at {0,0}
+	virtual TextRenderInfo::GlyphInfo get_glyph(char32_t cp, FontIndex font) = 0;
+	
 protected:
 	friend class RenderControl_Impl;
-	static bool init(); ///< Initializes singleton
+	static RenText* init();
 	virtual ~RenText();
 };
 

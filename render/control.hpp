@@ -6,7 +6,7 @@
 #include "vaslib/vas_time.hpp"
 
 class  Camera;
-struct GLA_SingleVAO;
+struct GLA_VertexArray;
 union  SDL_Event;
 struct SDL_Window;
 class  Shader;
@@ -17,6 +17,9 @@ class RenderControl
 {
 public:
 	bool shader_fail = false; ///< If true, fails if load_shader fails
+	
+	bool use_pp_glow = false;
+	
 	
 	
 	static bool init(); ///< Initialize singleton (including all other rendering singletons)
@@ -53,13 +56,13 @@ public:
 	/// Reload callback is called every time when shader is loaded, including first. 
 	/// Shader is already bound before calling callback. 
 	/// If is_crit is false, shader treated as optional and doesn't cause internal renderer errors
-	virtual Shader* load_shader( const char *name, std::function <void(Shader*)> reload_cb = {}, bool is_crit = true ) = 0;
+	virtual Shader* load_shader( const char *name, std::function <void(Shader&)> reload_cb = {}, bool is_crit = true ) = 0;
 	
 	/// Reloads and recompiles all shaders
 	virtual void reload_shaders() = 0;
 	
 	/// Returns internal VAO representing full screen in NDC as two triangles - 6 vertices of vec2
-	virtual GLA_SingleVAO* ndc_screen2() = 0;
+	virtual GLA_VertexArray& ndc_screen2() = 0;
 };
 
 #endif // REN_CTL_HPP

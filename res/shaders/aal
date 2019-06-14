@@ -1,0 +1,44 @@
+// ==================
+#vert
+#version 330 core
+
+uniform mat4 proj;
+
+layout(location = 0) in vec4 data;
+layout(location = 1) in vec3 norm_in;
+
+out vec3 norm;
+out float wpar;
+out float endk;
+
+void main()
+{
+	norm = norm_in;
+	wpar = data.z;
+	endk = data.w;
+
+	gl_Position = proj * vec4(data.xy, 0, 1);
+}
+
+#end
+// ==================
+#frag
+#version 330 core
+
+uniform vec4 clr;
+
+in vec3 norm;
+in float wpar;
+in float endk;
+out vec4 res;
+
+void main()
+{
+	float a = wpar * (1 - length(norm.xy));
+	float b = endk * (1 - abs(norm.z));
+	a *= clamp(b, 0, 1);
+	a = clamp(a, 0, 1);
+	res = vec4(clr.rgb, clr.a * a);
+}
+
+#end

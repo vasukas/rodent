@@ -5,8 +5,11 @@
 #include "camera.hpp"
 #include "control.hpp"
 #include "gl_utils.hpp"
+#include "postproc.hpp"
+#include "ren_aal.hpp"
 #include "ren_imm.hpp"
 #include "ren_text.hpp"
+#include "ren_tui.hpp"
 #include "shader.hpp"
 
 class RenderControl_Impl;
@@ -45,15 +48,19 @@ public:
 	struct ShaderInfo
 	{
 		std::unique_ptr <Shader> sh;
-		std::function <void(Shader*)> reload_cb;
+		std::function <void(Shader&)> reload_cb;
 		bool is_crit;
 	};
 	std::unordered_map <std::string, ShaderInfo> shads;
 	
-	GLA_SingleVAO* ndc_screen2_obj = nullptr;
+	GLA_VertexArray* ndc_screen2_obj = nullptr;
 	
+	RenAAL* r_aal = nullptr;
 	RenImm* r_imm = nullptr;
 	RenText* r_text = nullptr;
+	RenTUI* r_tui = nullptr;
+	
+	Postproc* pp_main = nullptr;
 	
 	
 	
@@ -165,46 +172,44 @@ public:
 		
 		
 		
-		ndc_screen2_obj = new GLA_SingleVAO;
-		ndc_screen2_obj->set_attrib(0, 2);
-		ndc_screen2_obj->bind_buf();
+		ndc_screen2_obj = new GLA_VertexArray;
+		ndc_screen2_obj->set_buffers({ std::make_shared<GLA_Buffer>(2) });
 		
 		const float ps[] = {
 		    -1, -1,   1, -1,   -1, 1,
 		              1, -1,   -1, 1,   1, 1
 		};
-		glBufferData( GL_ARRAY_BUFFER, 12 * sizeof(float), ps, GL_STATIC_DRAW );
+		ndc_screen2_obj->bufs[0]->usage = GL_STATIC_DRAW;
+		ndc_screen2_obj->bufs[0]->update(6, ps);
 		
 		
 		
 		rct = this; // may be needed in these classes
 		
-		if (!RenText::init()) return;
-		r_text = &RenText::get();
+#define INIT(VAR, NAME) \
+	try {VAR = NAME::init(); VLOGI(#NAME " initialized");} \
+	catch (std::exception& e) {VLOGE(#NAME " initialization failed"); return;}
 		
-		if (!RenImm::init()) return;
-		r_imm = &RenImm::get();
+		INIT(r_text, RenText);
+		INIT(r_imm, RenImm);
+		INIT(r_aal, RenAAL);
+		INIT(r_tui, RenTUI);
 		
-		{
-			RenImm::Context cx;
-			size_t cx_id;
-			
-			cx.cam = &cam;
-			cx.sh      = load_shader("imm",      {}, true);
-			cx.sh_text = load_shader("imm_text", {}, true);
-			cx_id = RenImm::get().add_context(cx);
-			
-			cx.cam = &cam_ui;
-			cx_id = RenImm::get().add_context(cx);
-			
-			ASSERT( cx_id == RenImm::DEFCTX_UI, "RenderControl::() code error" );
+		try {pp_main = Postproc::create_main_chain();}
+		catch (std::exception& e) {
+			VLOGE("Postproc::create_main_chain() failed");
 		}
 		
 		ok = true;
 	}
 	~RenderControl_Impl()
 	{
+		delete pp_main;
+		
+		delete r_aal;
 		delete r_imm;
+		delete r_tui;
+		
 		delete r_text;
 		
 		shads.clear();
@@ -226,20 +231,18 @@ public:
 	bool render( TimeSpan passed )
 	{
 		if (crit_error) return false;
+		if (!visib) return true;
+		
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glViewport(0, 0, get_size().x, get_size().y);
+		
 		if (reload_fail)
 		{
 			glClearColor(1, 0, 0, 1);
 			glClear(GL_COLOR_BUFFER_BIT);
-			SDL_GL_SwapWindow(wnd);
-			return true;
 		}
-		if (visib)
+		else
 		{
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-			glViewport(0, 0, get_size().x, get_size().y);
-			
-//			glClearColor(0.965, 0.937, 0.816, 0); // 247 239 208
-//			glClearColor(0.863, 0.835, 0.725, 0); // 220 213 185
 			glClearColor(0.0, 0.03, 0.07, 0);
 			glClear(GL_COLOR_BUFFER_BIT);
 			
@@ -247,11 +250,22 @@ public:
 			cam_ui.set_vport_full();
 			cam_ui.set_pos( cam_ui.get_vport().size() / 2 );
 			
-			RenImm::get().render();
+			if (pp_main && use_pp_glow) pp_main->start(passed);
+			RenAAL::get().render();
 			
-			SDL_GL_SwapWindow(wnd);
+			RenImm::get().render_pre();
+			RenImm::get().render(RenImm::DEFCTX_WORLD);
+			if (pp_main && use_pp_glow) pp_main->finish();
+			
+			RenImm::get().render(RenImm::DEFCTX_UI);
+			RenImm::get().render_post();
+			
+			RenTUI::get().render();
+			
+			cam.step(passed);
 		}
-		cam.step( passed );
+		
+		SDL_GL_SwapWindow(wnd);
 		return true;
 	}
 	void on_event( SDL_Event& ev )
@@ -282,7 +296,7 @@ public:
 	{
 		return 0 != SDL_GL_GetSwapInterval();
 	}
-	Shader* load_shader( const char *name, std::function <void(Shader*)> reload_cb, bool is_crit )
+	Shader* load_shader( const char *name, std::function <void(Shader&)> reload_cb, bool is_crit )
 	{
 		std::string n = name;
 		
@@ -304,7 +318,7 @@ public:
 			else if (reload_cb)
 			{
 				glUseProgram( s->get_obj() );
-				reload_cb( s.get() );
+				reload_cb( *s );
 			}
 		}
 		return it->second.sh.get();
@@ -327,12 +341,13 @@ public:
 				if (p.second.reload_cb)
 				{
 					glUseProgram( s->get_obj() );
-					p.second.reload_cb( s.get() );
+					p.second.reload_cb( *s );
 				}
 			}
-			else if (s->get_obj())
+			else
 			{
-				*s = Shader( 0 );
+				if (s->get_obj())
+					*s = Shader( 0 );
 				
 				if (p.second.is_crit)
 					reload_fail = true;
@@ -341,9 +356,9 @@ public:
 		
 		if (reload_fail) VLOGW("Reload failed, renderer disabled");
 	}
-	GLA_SingleVAO* ndc_screen2()
+	GLA_VertexArray& ndc_screen2()
 	{
-		return ndc_screen2_obj;
+		return *ndc_screen2_obj;
 	}
 };
 bool RenderControl::init()

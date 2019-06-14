@@ -15,8 +15,11 @@ SOURCES += \
 	render/camera.cpp \
 	render/control.cpp \
 	render/gl_utils.cpp \
+	render/postproc.cpp \
+	render/ren_aal.cpp \
 	render/ren_imm.cpp \
 	render/ren_text.cpp \
+	render/ren_tui.cpp \
 	render/shader.cpp \
 	render/texture.cpp \
 	settings.cpp \
@@ -39,8 +42,11 @@ HEADERS += \
 	render/camera.hpp \
 	render/control.hpp \
 	render/gl_utils.hpp \
+	render/postproc.hpp \
+	render/ren_aal.hpp \
 	render/ren_imm.hpp \
 	render/ren_text.hpp \
+	render/ren_tui.hpp \
 	render/shader.hpp \
 	render/texture.hpp \
 	settings.hpp \
