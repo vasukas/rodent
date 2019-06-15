@@ -6,6 +6,7 @@
 #include "vaslib/vas_math.hpp"
 #include "texture.hpp"
 
+enum class FontIndex;
 class  Camera;
 class  Shader;
 struct TextRenderInfo;
@@ -101,10 +102,10 @@ public:
 	
 	
 	
-	/// Draw non-null ASCII string starting at specified coordinates
-	virtual void draw_text (vec2fp at, std::string_view str, uint32_t clr, bool centered = false, float size_k = 1.f) = 0;
+	/// Draw ASCII string starting at specified coordinates
+	virtual void draw_text (vec2fp at, std::string_view str, uint32_t clr, bool centered = false, float size_k = 1.f, FontIndex font = static_cast<FontIndex>(0)) = 0;
 	
-	/// Draw non-null unicode string starting at specified coordinates
+	/// Draw unicode string starting at specified coordinates
 	virtual void draw_text (vec2fp at, std::u32string_view str, uint32_t clr, bool centered = false, float size_k = 1.f) = 0;
 	
 	/// Returns size of non-null ASCII string

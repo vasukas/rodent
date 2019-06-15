@@ -478,13 +478,14 @@ public:
 		}
 		add_obj( prev->get_obj(), clr, true );
 	}
-	void draw_text (vec2fp at, std::string_view str, uint32_t clr, bool center, float size_k)
+	void draw_text (vec2fp at, std::string_view str, uint32_t clr, bool center, float size_k, FontIndex font)
 	{
 		if (!can_add( true )) return;
 
 		TextRenderInfo tri;
 		tri.str_a = str.data();
 		tri.length = str.length();
+		tri.font = font;
 		tri.build();
 		draw_text( at, tri, clr, center, size_k );
 	}

@@ -7,11 +7,13 @@ CONFIG += gcc_sanitize
 
 SOURCES += \
 	console.cpp \
+	core/dbg_menu.cpp \
 	core/noise.cpp \
 	core/res_image.cpp \
 	core/tui_layer.cpp \
 	core/tui_surface.cpp \
 	main.cpp \
+	main_loop.cpp \
 	render/camera.cpp \
 	render/control.cpp \
 	render/gl_utils.cpp \
@@ -36,10 +38,12 @@ SOURCES += \
 
 HEADERS += \
 	console.hpp \
+	core/dbg_menu.hpp \
 	core/noise.hpp \
 	core/res_image.hpp \
 	core/tui_layer.hpp \
 	core/tui_surface.hpp \
+	main_loop.hpp \
 	render/camera.hpp \
 	render/control.hpp \
 	render/gl_utils.hpp \
