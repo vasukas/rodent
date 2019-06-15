@@ -198,10 +198,7 @@ public:
 		INIT(r_tui, RenTUI);
 		INIT(r_part, ParticleRenderer);
 		
-		try {pp_main = Postproc::create_main_chain();}
-		catch (std::exception& e) {
-			VLOGE("Postproc::create_main_chain() failed");
-		}
+		reload_pp();
 		
 		ok = true;
 	}
@@ -361,6 +358,17 @@ public:
 		}
 		
 		if (reload_fail) VLOGW("Reload failed, renderer disabled");
+	}
+	void reload_pp()
+	{
+		delete pp_main;
+		try {
+			pp_main = Postproc::create_main_chain();
+		}
+		catch (std::exception& e) {
+			VLOGE("Postproc::create_main_chain() failed");
+			pp_main = nullptr;
+		}
 	}
 	GLA_VertexArray& ndc_screen2()
 	{

@@ -1,3 +1,5 @@
+// RenImm - simple textured triangles
+
 // ==================
 #vert
 #version 330 core

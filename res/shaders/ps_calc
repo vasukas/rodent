@@ -1,3 +1,5 @@
+// For transform feedback in ParticleRenderer
+
 #version 330 core
 
 uniform float passed;

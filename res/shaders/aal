@@ -1,3 +1,5 @@
+// RenAAL - "glowing" anti-aliased lines
+
 // ==================
 #vert
 #version 330 core

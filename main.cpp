@@ -346,6 +346,7 @@ int main( int argc, char *argv[] )
 					else if (ks.scancode == SDL_SCANCODE_R) RenderControl::get().reload_shaders();
 					else if (ks.scancode == SDL_SCANCODE_D) dbg_show = !dbg_show;
 					else if (ks.scancode == SDL_SCANCODE_P) {auto& f = RenderControl::get().use_pp; f = !f;}
+					else if (ks.scancode == SDL_SCANCODE_RIGHTBRACKET) RenderControl::get().reload_pp();
 				}
 				else if (ks.scancode == SDL_SCANCODE_GRAVE) cons_shown = !cons_shown;
 				

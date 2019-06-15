@@ -1,0 +1,80 @@
+// directional Kuwahara filter
+// based on https://habr.com/post/358262/
+// https://www.raywenderlich.com/100-unreal-engine-4-paint-filter-tutorial
+
+// ==================
+#vert_texel
+#frag
+#version 330 core
+
+uniform sampler2D tex;
+uniform int x_radius;	// filter radius (separate for x and y)
+uniform int y_radius;
+uniform float samp_mul;	// 1 / ((x_radius + 1) * (y_radius + 1))
+
+in vec2 tc;
+out vec4 out_clr;
+
+// returns pixel orientation using Sobel's operator
+vec2 pixel_angle() {
+	const float SobelX[9] = float[](-1, -2, -1, 0, 0, 0, 1, 2, 1);
+	const float SobelY[9] = float[](-1, 0, 1, -2, 0, 2, -1, 0, 1);
+	
+	float grad_x = 0, grad_y = 0;
+	int i=0;
+	
+	for (int x = -1; x <= 1; x++) {
+		for (int y = -1; y <= 1; y++) {
+			vec3 clr = texelFetch(tex, ivec2(tc) + ivec2(x, y), 0).rgb;
+			float pixval = dot(clr, vec3(0.3, 0.59, 0.11));
+			
+			grad_x += pixval * SobelX[i];
+			grad_y += pixval * SobelY[i];
+			i++;
+		}
+	}
+
+//	return atan(grad_y, grad_x);
+	float D = sqrt(grad_x*grad_x + grad_y*grad_y);
+	return vec2(grad_x/D, grad_y/D);
+}
+
+// calculate mean (average) and variance for kernel
+vec4 calc_kernel(int x0, int x1, int y0, int y1, mat2 rot) {
+	vec3 mean = vec3(0, 0, 0);
+	vec3 var = vec3(0, 0, 0);
+	for (int x = x0; x <= x1; x++) {
+		for (int y = y0; y <= y1; y++) {
+			vec3 clr = texelFetch(tex, ivec2(tc) + ivec2(x, y), 0).rgb;
+			mean += clr;
+			var += clr * clr;
+		}
+	}
+	mean *= samp_mul;
+	var = var * samp_mul - mean * mean;
+	return vec4(mean, var.x + var.y + var.z);
+}
+
+void main() {
+	vec2 A = pixel_angle();
+	mat2 rot = mat2(A.x, -A.y, A.y, A.x);
+
+	// calculate all four kernels (left-top, right-top, left-bottom, right-bottom)
+	vec4 mav[4];
+	mav[0] = calc_kernel(-x_radius, 0, -y_radius, 0, rot);
+	mav[1] = calc_kernel(0, x_radius, -y_radius, 0, rot);
+	mav[2] = calc_kernel(-x_radius, 0, 0, y_radius, rot);
+	mav[3] = calc_kernel(0, x_radius, 0, y_radius, rot);
+
+	// find kernel with minimal variance
+	int s = 0;
+	for (int i=1; i<4; i++) {
+		if (mav[i].a < mav[s].a)
+			s = i;
+	}
+	
+//	out_clr = vec4(mav[s].rgb, 1);
+	out_clr = vec4(mix( mav[s].rgb, texelFetch(tex, ivec2(tc), 0).rgb , 0.2 ), 1);
+}
+
+#end

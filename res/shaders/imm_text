@@ -1,3 +1,5 @@
+// RenImm - simple texture triangles (for R8 texture)
+
 // ==================
 #vert
 #version 330 core

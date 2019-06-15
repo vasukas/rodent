@@ -1,0 +1,51 @@
+// Kuwahara filter
+// based on https://habr.com/post/358262/
+// https://www.raywenderlich.com/100-unreal-engine-4-paint-filter-tutorial
+
+// ==================
+#vert_texel
+#frag
+#version 330 core
+
+uniform sampler2D tex;
+uniform int x_radius;	// filter radius (separate for x and y)
+uniform int y_radius;
+uniform float samp_mul;	// 1 / ((x_radius + 1) * (y_radius + 1))
+
+in vec2 tc;
+out vec4 out_clr;
+
+// calculate mean (average) and variance for kernel
+vec4 calc_kernel(int x0, int x1, int y0, int y1) {
+	vec3 mean = vec3(0, 0, 0);
+	vec3 var = vec3(0, 0, 0);
+	for (int x = x0; x <= x1; x++) {
+		for (int y = y0; y <= y1; y++) {
+			vec3 clr = texelFetch(tex, ivec2(tc) + ivec2(x, y), 0).rgb;
+			mean += clr;
+			var += clr * clr;
+		}
+	}
+	mean *= samp_mul;
+	var = var * samp_mul - mean * mean;
+	return vec4(mean, var.x + var.y + var.z);
+}
+
+void main() {
+	// calculate all four kernels (left-top, right-top, left-bottom, right-bottom)
+	vec4 mav[4];
+	mav[0] = calc_kernel(  -x_radius, 0,    -y_radius, 0);
+	mav[1] = calc_kernel(0, x_radius,       -y_radius, 0);
+	mav[2] = calc_kernel(  -x_radius, 0,  0, y_radius);
+	mav[3] = calc_kernel(0, x_radius,     0, y_radius);
+	
+	// find kernel with minimal variance
+	int s = 0;
+	for (int i=1; i<4; i++) {
+		if (mav[i].a < mav[s].a)
+			s = i;
+	}
+	
+	out_clr = vec4(mav[s].rgb, 1);
+}
+#end

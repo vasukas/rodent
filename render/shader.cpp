@@ -121,6 +121,18 @@ Shader* Shader::make(const char *dbg_name, const std::vector <std::pair<GLenum, 
 		return nullptr;
 	}
 	
+	std::string type_dbg;
+	type_dbg.reserve(shaders.size());
+	for (auto& s : shaders) {
+		switch (s.first) {
+		case GL_VERTEX_SHADER:   type_dbg.push_back('V'); break;
+		case GL_FRAGMENT_SHADER: type_dbg.push_back('F'); break;
+		case GL_GEOMETRY_SHADER: type_dbg.push_back('G'); break;
+		default: type_dbg.push_back('-'); break;
+		}
+	}
+	VLOGD("Compiled shader program: {} [{}]", dbg_name, type_dbg);
+	
 	Shader* s = new Shader (prog);
 	s->dbg_name = dbg_name;
 	return s;
@@ -146,16 +158,48 @@ Shader* Shader::load(const char* filename)
 	    {"#geom\n", GL_GEOMETRY_SHADER}
 	};
 	
+	static const char *vert_pass_src = 
+R"(#version 330 core
+
+layout(location = 0) in vec2 vert;
+out vec2 tc;
+
+void main() {
+	tc = vert * 0.5 + 0.5;
+	gl_Position = vec4(vert, 0, 1);
+})";
+	
+	static const char *vert_texel_src = 
+R"(#version 330 core
+
+uniform vec2 tc_size;
+layout(location = 0) in vec2 vert;
+out vec2 tc;
+
+void main() {
+	tc = tc_size * (vert * 0.5 + 0.5);
+	gl_Position = vec4(vert, 0, 1);
+})";
+	
 	std::vector <std::pair<GLenum, std::string_view>> shs;
 	for (auto &p : ps)
 	{
-		size_t pos = file.find( p.first );
-		if (pos == std::string::npos)
+		size_t pos;
+		while (true)
 		{
-			if (p.second == GL_FRAGMENT_SHADER) VLOGW("Shader::load() no fragment shader: \"{}\"", filename);
-			continue;
+			pos = file.find( p.first );
+			if (pos == std::string::npos)
+			{
+				if (p.second == GL_VERTEX_SHADER)   VLOGW("Shader::load() no vertex shader: \"{}\"", filename);
+				if (p.second == GL_FRAGMENT_SHADER) VLOGW("Shader::load() no fragment shader: \"{}\"", filename);
+				break;
+			}
+			if (pos != 0 && file[pos - 1] != '\n') continue;
+			
+			pos += p.first.length();
+			break;
 		}
-		pos += p.first.length();
+		if (pos == std::string::npos) continue;
 		
 		size_t end = file.find( "#end", pos );
 		if (end == std::string::npos)
@@ -165,6 +209,27 @@ Shader* Shader::load(const char* filename)
 		}
 		
 		shs.emplace_back( p.second, std::string_view(file).substr(pos, end - pos) );
+	}
+	
+	const std::vector <std::pair<std::string, std::pair<GLenum, std::string_view>>> marks =
+	{
+		{"#vert_pass\n", {GL_VERTEX_SHADER, vert_pass_src}},
+	    {"#vert_texel\n", {GL_VERTEX_SHADER, vert_texel_src}}
+	};
+	for (auto& p : marks)
+	{
+		size_t pos;
+		while (true)
+		{
+			pos = file.find( p.first );
+			if (pos == std::string::npos) break;
+			if (pos != 0 && file[pos - 1] != '\n') continue;
+			
+			pos += p.first.length();
+			break;
+		}
+		if (pos != std::string::npos)
+			shs.emplace_back( p.second.first, p.second.second );
 	}
 	
 	Shader* s = make(filename, shs);

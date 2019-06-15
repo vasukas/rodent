@@ -17,8 +17,7 @@ class RenderControl
 {
 public:
 	bool shader_fail = false; ///< If true, fails if load_shader fails
-	
-	bool use_pp = true;
+	bool use_pp = true; ///< Is post-processing used
 	
 	
 	
@@ -60,6 +59,9 @@ public:
 	
 	/// Reloads and recompiles all shaders
 	virtual void reload_shaders() = 0;
+	
+	/// Reloads post-processing chain
+	virtual void reload_pp() = 0;
 	
 	/// Returns internal VAO representing full screen in NDC as two triangles - 6 vertices of vec2
 	virtual GLA_VertexArray& ndc_screen2() = 0;

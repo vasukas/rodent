@@ -4,6 +4,7 @@ Ctrl + Q   exit immediatly
 Ctrl + R   reload shaders
 Ctrl + D   toggle show debug info
 Ctrl + P   toggle postprocessing
+Ctrl + ]   reload postprocessing chain
 `          toggle console
 
 === Console
