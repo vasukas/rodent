@@ -91,7 +91,7 @@ in vec4 tclr;
 out vec4 res;
 
 void main() {
-	res = vec4(1,0,0,1);//tclr * texture(tex, tc);
+	res = tclr * texture(tex, tc);
 }
 
 #end

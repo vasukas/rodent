@@ -22,6 +22,7 @@ struct ParticleGroup
 	bool radius_fixed = false; ///< are all particles appear on maximum radius
 	
 	std::vector<TextureReg> sprs; ///< images
+	int px_radius = 8; ///< radius of particle itself, in pixels
 	
 	std::vector<uint32_t> colors; ///< RGBA (alpha ignored unless 'alpha' is zero)
 	uint8_t colors_range[6] = {}; ///< RGB, min (indices 0-2) and max (indices 3-5), ignored if 'colors' not empty

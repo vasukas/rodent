@@ -229,6 +229,11 @@ public:
 		
 		vao.set_attribs(std::vector<GLA_VertexArray::Attrib>(6, {bufs[0], 4}));
 		glDrawArrays(GL_POINTS, 0, gs_off_max);
+		
+//		VLOGD("");
+//		float d[per_part];
+//		bufs[0]->get_part(0, per_part, d);
+//		for (int i=0; i<16; i+=4) VLOGD("{} {} {} {}", d[i], d[i+1], d[i+2], d[i+3]);
 	}
 	void add(const ParticleGroup& group)
 	{
@@ -320,7 +325,9 @@ public:
 		{
 			auto &p = g.ps[i];
 			auto &ip = ig.ps[i];
+			
 			ip.tex = p.tex;
+			ip.srcw2 = g.px_radius;
 			
 			ip.px = p.x;
 			ip.py = p.y;
