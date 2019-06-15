@@ -55,7 +55,7 @@ public:
 	static void set3mx(int loc, const float *v, bool do_transpose = false);
 	static void set4mx(int loc, const float *v, bool do_transpose = false);
 	static void set_rgba(int loc, uint32_t clr, float mul = 1.f);
-//	static void set_clr(int loc, const FColor& clr);
+	static void set_clr(int loc, const FColor& clr);
 	
 	void set1i(const char *name, int v);
 	void set1f(const char *name, float v);
@@ -67,7 +67,7 @@ public:
 	void set3mx(const char *name, const float *v, bool do_transpose = false);
 	void set4mx(const char *name, const float *v, bool do_transpose = false);
 	void set_rgba(const char *name, uint32_t clr, float mul = 1.f);
-//	void set_clr(const char *name, const FColor& clr);
+	void set_clr(const char *name, const FColor& clr);
 	
 	void set2f(int loc, vec2fp p) { set2f(loc, p.x, p.y); }
 	void set2f(const char *name, vec2fp p) { set2f(name, p.x, p.y); }

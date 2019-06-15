@@ -18,7 +18,7 @@ class RenderControl
 public:
 	bool shader_fail = false; ///< If true, fails if load_shader fails
 	
-	bool use_pp_glow = false;
+	bool use_pp = true;
 	
 	
 	

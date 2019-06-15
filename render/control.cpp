@@ -180,7 +180,7 @@ public:
 		              1, -1,   -1, 1,   1, 1
 		};
 		ndc_screen2_obj->bufs[0]->usage = GL_STATIC_DRAW;
-		ndc_screen2_obj->bufs[0]->update(6, ps);
+		ndc_screen2_obj->bufs[0]->update(12, ps);
 		
 		
 		
@@ -250,12 +250,12 @@ public:
 			cam_ui.set_vport_full();
 			cam_ui.set_pos( cam_ui.get_vport().size() / 2 );
 			
-			if (pp_main && use_pp_glow) pp_main->start(passed);
+			if (pp_main && use_pp) pp_main->start(passed);
 			RenAAL::get().render();
 			
 			RenImm::get().render_pre();
 			RenImm::get().render(RenImm::DEFCTX_WORLD);
-			if (pp_main && use_pp_glow) pp_main->finish();
+			if (pp_main && use_pp) pp_main->finish();
 			
 			RenImm::get().render(RenImm::DEFCTX_UI);
 			RenImm::get().render_post();

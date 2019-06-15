@@ -2,124 +2,110 @@
 #include "control.hpp"
 #include "postproc.hpp"
 #include "shader.hpp"
+#include "texture.hpp"
 
-class PP_Glow : public Postproc
+
+
+struct GLA_Framebuffer
 {
-public:
-	GLuint fbo[2], tex[2];
-	Shader* sh;
-	float t = 0.f;
+	GLuint fbo = 0;
 	
-	const float k_norm = 0.2f;
-	const float sigma = 4.f;
-	const int passes = 1;
-	const int size = 3; // up to 8
-	
-	PP_Glow();
-	~PP_Glow();
-	void start(TimeSpan passed);
-	void finish();
+	GLA_Framebuffer() {
+		glGenFramebuffers(1, &fbo);
+	}
+	~GLA_Framebuffer() {
+		glDeleteFramebuffers(1, &fbo);
+	}
+	void bind() {
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	}
+	void attach_tex(GLenum point, GLuint tex) {
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, point, GL_TEXTURE_2D, tex, 0);
+	}
+	void swap(GLA_Framebuffer& obj) {
+		std::swap(fbo, obj.fbo);
+	}
 };
 
 
 
-PP_Glow::PP_Glow()
+class PostprocMain : public Postproc
 {
-	vec2i scr = RenderControl::get_size();
+public:
+	const bool use_add = true;
+	const bool use_after = false;
 	
-	glGenFramebuffers(2, fbo);
-	glGenTextures(2, tex);
+	Shader *aft_sh;
+	GLA_Framebuffer aft_fb[2];
+	GLA_Texture aft_tex[2];
 	
-	for (int i=0; i<2; ++i)
+	const float aft_feedback = 0.07;
+	const float aft_alpha = 0.2;
+	
+	
+	
+	PostprocMain()
 	{
-		glBindTexture(GL_TEXTURE_2D, tex[i]);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, scr.x, scr.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		
-		glBindFramebuffer(GL_FRAMEBUFFER, fbo[i]);
-		glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, tex[i], 0);
-		
-		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-			LOG_THROW_X("PP_Glow::() failed");
-	}
-	
-	sh = RenderControl::get().load_shader("glow", [this](Shader& sh)
-	{
-	    static const int max = 17;
-	    const float s = sigma * sigma;
-	    const float k = sqrt(2 * M_PI);
-	     
-	    float kern[max] = {};
-	    float tot = 0.f;
-	     
-		for (int i = 0; i <= size; ++i)
+		if (use_after)
 		{
-			float v = exp(-i*i / (2 * s)) / (s * k);
-			kern[size - i] = kern[size + i] = v;
-			tot += v;
+			aft_sh = RenderControl::get().load_shader("pp/pass");
+			vec2i ssz = RenderControl::get_size();
+			
+			for (int i=0; i<2; ++i)
+			{
+				aft_tex[i].set(GL_RGBA16F, ssz);
+				aft_fb[i].attach_tex(GL_COLOR_ATTACHMENT0, aft_tex[i]);
+				
+				if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+					LOG_THROW_X("PostprocMain::() afterglow FBO error {}", i);
+			}
 		}
-	
-		tot = k_norm / tot;
-		for (int i = 0; i < max; ++i)
-			kern[i] *= tot;
-		kern[size] = 1.f;
-		
-	    sh.set1i("size", size);
-		sh.setfv("kern", kern, size*2 + 1);
-	});
-}
-PP_Glow::~PP_Glow()
-{
-	glDeleteFramebuffers(2, fbo);
-	glDeleteTextures(2, tex);
-}
-void PP_Glow::start(TimeSpan passed)
-{
-	glClearColor(0, 0, 0, 0);
-	
-	glBindFramebuffer(GL_FRAMEBUFFER, fbo[0]);
-	glClear(GL_COLOR_BUFFER_BIT);
-	
-	t += passed.seconds();
-}
-void PP_Glow::finish()
-{
-	sh->bind();
-	sh->set1f("t", t);
-	
-	RenderControl::get().ndc_screen2().bind();
-	glActiveTexture(GL_TEXTURE0);
-	
-	for (int i=0; i<passes; ++i)
-	{
-		glBindFramebuffer(GL_FRAMEBUFFER, fbo[1]);
-		glClear(GL_COLOR_BUFFER_BIT);
-		glBindTexture(GL_TEXTURE_2D, tex[0]);
-		
-		sh->set1i("horiz", 1);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
-		
-		if (i == passes - 1) {
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-			glClear(GL_COLOR_BUFFER_BIT);
-		}
-		else {
-			glBindFramebuffer(GL_FRAMEBUFFER, fbo[0]);
-			glClear(GL_COLOR_BUFFER_BIT);
-		}
-		glBindTexture(GL_TEXTURE_2D, tex[1]);
-		
-		sh->set1i("horiz", 0);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
 	}
-}
-
-
-
+	void start(TimeSpan)
+	{
+		if (use_after)
+		{
+			aft_fb[0].bind();
+			glClearColor(0, 0, 0, 0);
+			glClear(GL_COLOR_BUFFER_BIT);
+		}
+		
+		if (use_add)
+			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
+	}
+	void finish()
+	{
+		if (use_after)
+		{
+			RenderControl::get().ndc_screen2().bind();
+			
+			aft_sh->bind();
+			
+			glActiveTexture(GL_TEXTURE0);
+			aft_tex[1].bind();
+			
+			aft_sh->set1f("alpha", aft_feedback);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+			
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			
+			aft_sh->set1f("alpha", aft_alpha);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+			
+			aft_tex[0].bind();
+			aft_sh->set1f("alpha", 1.f);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+			
+			aft_fb [0].swap(aft_fb [1]);
+			aft_tex[0].swap(aft_tex[1]);
+		}
+		
+		if (use_add)
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	}
+};
 Postproc* Postproc::create_main_chain()
 {
-	return new PP_Glow;
+	return new PostprocMain;
 }

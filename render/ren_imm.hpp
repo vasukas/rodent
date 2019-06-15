@@ -118,8 +118,9 @@ public:
 	/// Clips viewport at previous clip rect
 	virtual void clip_pop() = 0;
 	
-	/// Executes command
-	virtual void draw_cmd( EffectCmd cmd ) = 0;
+//	/// Executes command
+//	virtual void draw_cmd( EffectCmd cmd ) = 0;
+// Note: blending is set in main render loop
 	
 	
 protected:

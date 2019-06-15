@@ -32,20 +32,18 @@ class Texture_Impl : public Texture
 public:
 	GLuint tex;
 	vec2i size;
-	Format fmt_index;
+	FmtDescr fmt;
 	
-	const FmtDescr& fmt() { return fmts[fmt_index]; }
-	
-	Texture_Impl( vec2i size, Format fmt_index )
-		: size(size), fmt_index(fmt_index)
+	Texture_Impl( vec2i size, FmtDescr fmt )
+		: size(size), fmt(fmt)
 	{
 		glGenTextures( 1, &tex );
-		dbg_total_size += size.area() * fmts[fmt_index].bpp;
+		dbg_total_size += size.area() * fmt.bpp;
 	}
 	~Texture_Impl()
 	{
 		glDeleteTextures( 1, &tex );
-		dbg_total_size -= size.area() * fmts[fmt_index].bpp;
+		dbg_total_size -= size.area() * fmt.bpp;
 	}
 	uint get_obj() const
 	{
@@ -91,14 +89,15 @@ public:
 		
 		glPixelStorei( GL_UNPACK_ALIGNMENT, 1 );
 		glBindTexture( GL_TEXTURE_2D, tex );
-		glTexSubImage2D( GL_TEXTURE_2D, 0, x, y, w, h, fmt().in_format, fmt().in_type, data );
+		glTexSubImage2D( GL_TEXTURE_2D, 0, x, y, w, h, fmt.in_format, fmt.in_type, data );
 	}
 };
 Texture* Texture::create_empty( vec2i size, Format fmt, Filter fil )
 {
-	auto t = new Texture_Impl( size, fmt );
+	FmtDescr f = fmts[fmt];
+	auto t = new Texture_Impl( size, f );
 	glBindTexture( GL_TEXTURE_2D, t->tex );
-	glTexImage2D( GL_TEXTURE_2D, 0, fmts[fmt].internal, size.x, size.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr );
+	glTexImage2D( GL_TEXTURE_2D, 0, f.internal, size.x, size.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr );
 	t->set_filter( fil );
 	return t;
 }
@@ -116,10 +115,11 @@ Texture* Texture::create_from( const ImageInfo& img, Filter fil )
 }
 Texture* Texture::create_from( vec2i size, Format fmt, const void *data, Filter fil )
 {
-	auto t = new Texture_Impl( size, fmt );
+	FmtDescr f = fmts[fmt];
+	auto t = new Texture_Impl( size, f );
 	glPixelStorei( GL_UNPACK_ALIGNMENT, 1 );
 	glBindTexture( GL_TEXTURE_2D, t->tex );
-	glTexImage2D( GL_TEXTURE_2D, 0, fmts[fmt].internal, size.x, size.y, 0, fmts[fmt].in_format, fmts[fmt].in_type, data );
+	glTexImage2D( GL_TEXTURE_2D, 0, f.internal, size.x, size.y, 0, f.in_format, f.in_type, data );
 	t->set_filter( fil );
 	return t;
 }

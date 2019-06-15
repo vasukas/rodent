@@ -3,7 +3,7 @@
 Ctrl + Q   exit immediatly
 Ctrl + R   reload shaders
 Ctrl + D   toggle show debug info
-Ctrl + F   toggle glow effect
+Ctrl + P   toggle postprocessing
 `          toggle console
 
 === Console

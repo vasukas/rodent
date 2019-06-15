@@ -37,8 +37,11 @@ void main()
 	float a = wpar * (1 - length(norm.xy));
 	float b = endk * (1 - abs(norm.z));
 	a *= clamp(b, 0, 1);
-	a = clamp(a, 0, 1);
-	res = vec4(clr.rgb, clr.a * a);
+//	a = clamp(a, 0, 1);
+	a *= a;
+	res = vec4(clr.rgb * a, clr.a);
+//	res = clr * a;
+//	res = vec4(clr.rgb, clr.a * a);
 }
 
 #end

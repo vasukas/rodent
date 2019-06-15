@@ -14,39 +14,50 @@ public:
 	{
 		size_t off, count; // Vertices in buffer
 		uint32_t clr;
+		float clr_mui;
 	};
-	
-	const size_t per_line = 6; ///< Vertices per single line object
 	
 	GLA_VertexArray vao;
 	std::vector<float> data_f; // Buffer data to send
 	std::vector<uint8_t> data_i;
 	
-	size_t objs_off = 0; ///< Last vertices offset (same as data.size())
-	size_t vert_cou = 0;
+	size_t objs_off = 0; ///< Last vertex count
 	std::vector<Obj> objs;
 	
 	Shader* sh;
-	uint32_t prev_clr;
+	uint32_t prev_clr = 0;
 	
 	
 	
 	void add_line(vec2fp p0, vec2fp p1, float width, float wpar, float aa_width)
 	{
-		if (p0.equals(p1, 1e-5f)) return; // otherwise fastlen will fail
+		vec2fp n;
+		float len;
 		
-		vec2fp n = p1 - p0;
-		float len = n.fastlen();
+		if (!p0.equals(p1, 1e-5f))
+		{
+			n = p1 - p0;
+			len = n.fastlen();
+			
+			vec2fp dir = n;
+			dir *= 0.5 * aa_width / len;
+			p0 -= dir;
+			p1 += dir;
+			
+			n.rot90cw();
+			n /= len;
+		}
+		else
+		{
+			n = {1, 0};
+			len = 0.f;
+			
+			p0.x -= width / 2;
+			p1.x += width / 2;
+			n.rot90cw();
+		}
 		
-		vec2fp dir = n;
-		dir *= 0.5 * aa_width / len;
-		p0 -= dir;
-		p1 += dir;
-		
-		n.rot90cw();
-		n /= len;
 		vec2fp u = n;
-		
 		n *= width * 0.5f;
 		float x0 = p0.x + n.x, y0 = p0.y + n.y,
 		      x1 = p1.x + n.x, y1 = p1.y + n.y,
@@ -81,12 +92,13 @@ public:
 		PF( x3 ); PF( y3 ); PF(wpar); PF(endk);
 		PI(-u.x); PI(-u.y); PI( 1);
 	}
-	void add_obj(uint32_t clr, size_t n)
+	void add_objs(size_t n, uint32_t clr, float clr_mul)
 	{
+		n *= 6; // vertices per object
 		if (prev_clr == clr) objs.back().count += n;
 		else {
 			prev_clr = clr;
-			objs.push_back({ objs_off, n, clr });
+			objs.push_back({ objs_off, n, clr, clr_mul });
 		}
 		objs_off += n;
 	}
@@ -101,25 +113,29 @@ public:
 		});
 		sh = RenderControl::get().load_shader("aal");
 	}
-	void draw_line(vec2fp p0, vec2fp p1, uint32_t clr, float width, float aa_width)
+	void draw_line(vec2fp p0, vec2fp p1, uint32_t clr, float width, float aa_width, float clr_mul)
 	{
+		if (!clr) return;
 		if (aa_width < 1) aa_width = 1;
 		width += aa_width;
 		float wpar = width / aa_width;
 		
+		reserve_more_block(objs, 1024);
 		reserve_more_block(data_f, 4096);
 		reserve_more_block(data_i, 4096);
 		
 		add_line(p0, p1, width, wpar, aa_width);
-		add_obj(clr, per_line);
+		add_objs(1, clr, clr_mul);
 	}
-	void draw_chain(const std::vector<vec2fp>& ps, bool loop, uint32_t clr, float width, float aa_width)
+	void draw_chain(const std::vector<vec2fp>& ps, bool loop, uint32_t clr, float width, float aa_width, float clr_mul)
 	{
+		if (!clr || ps.size() < 2) return;
 		if (aa_width < 1) aa_width = 1;
 		width += aa_width;
 		float wpar = width / aa_width;
 		
-		size_t dsz = std::max(4096UL, ps.size() * 6 * 4);
+		size_t dsz = std::max(static_cast<size_t>(4096), ps.size() * 6 * 4);
+		reserve_more_block(objs, 1024);
 		reserve_more_block(data_f, dsz);
 		reserve_more_block(data_i, dsz);
 		
@@ -128,7 +144,7 @@ public:
 		for (size_t i = 1; i < n; ++i)
 			add_line(ps[i%ps.size()], ps[i-1], width, wpar, aa_width);
 		
-		add_obj(clr, n * per_line);
+		add_objs(n-1, clr, clr_mul);
 	}
 	void render()
 	{
@@ -146,7 +162,7 @@ public:
 		{
 			if (prev_clr != o.clr) {
 				prev_clr = o.clr;
-				sh->set_rgba("clr", o.clr);
+				sh->set_rgba("clr", o.clr, o.clr_mui);
 			}
 			glDrawArrays(GL_TRIANGLES, o.off, o.count);
 		}

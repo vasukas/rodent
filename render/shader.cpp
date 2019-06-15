@@ -266,9 +266,9 @@ void Shader::set_rgba(int loc, uint32_t clr, float mul) {
 	      mul * ((clr >> 8) & 0xff),
 	      (clr & 0xff) / 255.f);
 }
-//void Shader::set_clr(int loc, const FColor& clr) {
-//	glUniform4f(loc, clr.r, clr.g, clr.b, clr.a);
-//}
+void Shader::set_clr(int loc, const FColor& clr) {
+	glUniform4f(loc, clr.r, clr.g, clr.b, clr.a);
+}
 
 
 
@@ -302,6 +302,6 @@ void Shader::set4mx(const char *name, const float *v, bool transp) {
 void Shader::set_rgba(const char *name, uint32_t clr, float mul) {
 	set_rgba( find_loc(name), clr, mul );
 }
-//void Shader::set_clr(const char *name, const FColor& clr) {
-//	set_clr( find_loc(name), clr );
-//}
+void Shader::set_clr(const char *name, const FColor& clr) {
+	set_clr( find_loc(name), clr );
+}

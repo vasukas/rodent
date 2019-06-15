@@ -1,0 +1,28 @@
+// ==================
+#vert
+#version 330 core
+
+layout(location = 0) in vec2 vert;
+out vec2 tc;
+
+void main() {
+	tc = vert * 0.5 + 0.5;
+	gl_Position = vec4(vert, 0, 1);
+}
+#end
+
+// ==================
+#frag
+#version 330 core
+
+uniform sampler2D tex;
+uniform float alpha;
+
+in vec2 tc;
+out vec4 res;
+
+void main() {
+	res = texture(tex, tc);
+	res.a *= alpha;
+}
+#end

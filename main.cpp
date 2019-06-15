@@ -318,7 +318,7 @@ int main( int argc, char *argv[] )
 			h.per = TimeSpan::seconds( 0.1f * (1 + rand() % 8) );
 		}
 	};
-	(new L)->bring_to_top();
+//	(new L)->bring_to_top();
 	
 	
 	
@@ -346,7 +346,7 @@ int main( int argc, char *argv[] )
 					if		(ks.scancode == SDL_SCANCODE_Q) run = false;
 					else if (ks.scancode == SDL_SCANCODE_R) RenderControl::get().reload_shaders();
 					else if (ks.scancode == SDL_SCANCODE_D) dbg_show = !dbg_show;
-					else if (ks.scancode == SDL_SCANCODE_P) {auto& f = RenderControl::get().use_pp_glow; f = !f;}
+					else if (ks.scancode == SDL_SCANCODE_P) {auto& f = RenderControl::get().use_pp; f = !f;}
 				}
 				else if (ks.scancode == SDL_SCANCODE_GRAVE) cons_shown = !cons_shown;
 			}
@@ -395,10 +395,10 @@ int main( int argc, char *argv[] )
 			auto& imm = RenImm::get();
 			auto str = FMT_FORMAT("Buffer : max {:4} KB, current {:4} KB\n"
 			                      "Texture : {:4} KB\n"
-								  "Glow: {}",
+								  "Postproc: {}",
 			                      GLA_Buffer::dbg_size_max >>10, GLA_Buffer::dbg_size_now >>10,
 			                      Texture::dbg_total_size >>10,
-			                      RenderControl::get().use_pp_glow);
+			                      RenderControl::get().use_pp);
 			
 			TextRenderInfo tri;
 			tri.str_a = str.data();
@@ -411,9 +411,26 @@ int main( int argc, char *argv[] )
 		
 		if (cons_shown) cons.render();
 		
+		static float r = 0;
+		RenAAL::get().draw_line({0, 0}, vec2fp(400, 0).get_rotated(r), 0x40ff40ff, 5.f, 60.f, 2.f);
+		r += M_PI * 0.5 * passed.seconds();
+		
+		RenAAL::get().draw_line({-400,  200}, {-220, -200}, 0x4040ffff, 5.f, 60.f);
+		RenAAL::get().draw_line({-400, -200}, {-220,  200}, 0xff0000ff, 5.f, 60.f);
+		
 		RenImm::get().set_context(RenImm::DEFCTX_WORLD);
 		RenImm::get().draw_frame({-200, -200, 400, 400}, 0xff0000ff, 3);
+		
 		RenAAL::get().draw_line({-200, -200}, {200, 200}, 0x00ff80ff, 5.f, 12.f);
+		RenAAL::get().draw_chain({{-200, -200}, {50, 50}, {200, -50}}, true, 0x80ff80ff, 8.f, 3.f);
+		RenAAL::get().draw_line({-300, 0}, {-300, 0}, 0xffc080ff, 8.f, 20.f);
+		
+		RenAAL::get().draw_line({250, -200}, {250, 200}, 0xffc080ff, 8.f, 8.f);
+		RenAAL::get().draw_line({325, -200}, {325, 200}, 0xffc080ff, 16.f, 3.f);
+		RenAAL::get().draw_line({400, -200}, {400, 200}, 0xffc080ff, 5.f, 30.f);
+		
+		RenAAL::get().draw_line({-440,  200}, {-260, -200}, 0x6060ffff, 5.f, 60.f, 1.7f);
+		RenAAL::get().draw_line({-440, -200}, {-260,  200}, 0xff2020ff, 5.f, 60.f, 1.7f);
 		
 		last_time = TimeSpan::since_start() - loop_0;
 		if (!RenderControl::get().render( passed ))

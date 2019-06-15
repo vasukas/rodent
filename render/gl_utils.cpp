@@ -33,6 +33,45 @@ size_t gl_type_size( GLenum t )
 
 
 
+FColor::FColor(uint32_t rgba, float mul) {
+	r = mul * (rgba >> 24) / 255.f;
+	g = mul * ((rgba >> 16) & 255) / 255.f;
+	b = mul * ((rgba >> 8) & 255) / 255.f;
+	a = (rgba & 255) / 255.f;
+}
+FColor::FColor(float r, float g, float b, float a)
+	:r(r), g(g), b(b), a(a) {}
+float& FColor::operator[] (size_t i) {
+	if		(i == 0) return r;
+	else if (i == 1) return g;
+	else if (i == 2) return b;
+	return a;
+}
+const float& FColor::operator[] (size_t i) const {
+	if		(i == 0) return r;
+	else if (i == 1) return g;
+	else if (i == 2) return b;
+	return a;
+}
+FColor& FColor::operator*= (float f) {
+	for (size_t i=0; i<3; ++i) (*this)[i] *= f;
+	return *this;
+}
+FColor& FColor::operator-= (const FColor& c) {
+	for (size_t i=0; i<4; ++i) (*this)[i] -= c[i];
+	return *this;
+}
+FColor FColor::operator* (float f) {
+	FColor c = *this;
+	return c *= f;
+}
+FColor FColor::operator- (const FColor& f) {
+	FColor c = *this;
+	return c -= f;
+}
+
+
+
 size_t GLA_Buffer::dbg_size_now;
 size_t GLA_Buffer::dbg_size_max;
 
@@ -58,16 +97,20 @@ void GLA_Buffer::operator =( GLA_Buffer&& obj )
 {
 	std::swap( vbo, obj.vbo );
 }
+void GLA_Buffer::swap(GLA_Buffer& obj)
+{
+	std::swap(vbo, obj.vbo);
+}
 void GLA_Buffer::bind( GLenum target )
 {
 	glBindBuffer( target, vbo );
 }
-void GLA_Buffer::update( size_t el_num_new, const void *data )
+void GLA_Buffer::update( size_t new_val_count, const void *data )
 {
 	dbg_size_now -= size_bytes();
 	
 	bind();
-	el_num = el_num_new;
+	val_count = new_val_count;
 	glBufferData( GL_ARRAY_BUFFER, size_bytes(), data, usage );
 	
 	dbg_size_now += size_bytes();
@@ -75,7 +118,7 @@ void GLA_Buffer::update( size_t el_num_new, const void *data )
 }
 size_t GLA_Buffer::size_bytes() const
 {
-	return gl_type_size(type) * el_num;
+	return gl_type_size(type) * val_count;
 }
 
 
@@ -91,10 +134,17 @@ GLA_VertexArray::~GLA_VertexArray()
 GLA_VertexArray::GLA_VertexArray( GLA_VertexArray&& obj )
 {
 	std::swap( vao, obj.vao );
+	std::swap(bufs, obj.bufs);
 }
 void GLA_VertexArray::operator =( GLA_VertexArray&& obj )
 {
 	std::swap( vao, obj.vao );
+	std::swap(bufs, obj.bufs);
+}
+void GLA_VertexArray::swap(GLA_VertexArray& obj)
+{
+	std::swap(vao,  obj.vao);
+	std::swap(bufs, obj.bufs);
 }
 void GLA_VertexArray::bind()
 {
@@ -171,4 +221,43 @@ void GLA_VertexArray::set_attribs( std::vector< Attrib > attrs )
 		}
 		++i;
 	}
+}
+
+
+
+GLA_Texture::GLA_Texture()
+{
+	glGenTextures(1, &tex);
+}
+GLA_Texture::~GLA_Texture()
+{
+	glDeleteTextures(1, &tex);
+}
+GLA_Texture::GLA_Texture( GLA_Texture&& obj )
+{
+	std::swap(tex, obj.tex);
+}
+void GLA_Texture::operator =( GLA_Texture&& obj )
+{
+	std::swap(tex, obj.tex);
+}
+void GLA_Texture::swap(GLA_Texture& obj)
+{
+	std::swap(tex, obj.tex);
+}
+void GLA_Texture::bind(GLenum target)
+{
+	if (target == GL_NONE) target = this->target;
+	glBindTexture(target, tex);
+}
+void GLA_Texture::set(GLenum internal_format, vec2i size, int level)
+{
+	glBindTexture(target, tex);
+	glTexImage2D(target, level, internal_format, size.x, size.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+	
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 }

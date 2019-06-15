@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 #include <GL/glew.h>
+#include "vaslib/vas_math.hpp"
 
 
 
@@ -18,6 +19,26 @@ inline int8_t norm_i8(float x) {
 
 
 
+/// FP RGBA color
+struct FColor {
+	float r, g, b, a;
+	
+	FColor() = default;
+	FColor(float r, float g, float b, float a = 1.f);
+	FColor(uint32_t rgba, float mul = 1.f); ///< Multiplies colors (not alpha)
+	
+	float& operator[] (size_t i);
+	const float& operator[] (size_t i) const;
+	
+	FColor& operator*= (float f); ///< Multiplies all colors (not alpha)
+	FColor& operator-= (const FColor& c); ///< Adds all colors (including alpha)
+	
+	FColor operator* (float f);
+	FColor operator- (const FColor& c);
+};
+
+
+
 /// Wrapper for vertex buffer object
 struct GLA_Buffer
 {
@@ -25,11 +46,11 @@ struct GLA_Buffer
 	static size_t dbg_size_max; ///< info: max size of buffers ever was, in bytes
 	
 	GLuint vbo = 0;
-	int el_num = 0; ///< Number of values in buffer
+	int val_count = 0; ///< Number of values in buffer
 	int usage = GL_DYNAMIC_DRAW;
 	
 	int comp = 2; ///< Number of components (only as info for VAO)
-	int type = GL_FLOAT;
+	int type = GL_FLOAT; ///< Value type
 	bool normalized = false; ///< (only as info for VAO)
 	
 	
@@ -43,9 +64,11 @@ struct GLA_Buffer
 	GLA_Buffer( GLA_Buffer&& );
 	void operator =( GLA_Buffer&& );
 	
+	void swap(GLA_Buffer& obj);
+	
 	
 	void bind( GLenum target = GL_ARRAY_BUFFER );
-	void update( size_t el_num_new, const void *data = nullptr ); ///< Binds buffer
+	void update( size_t new_val_count, const void *data = nullptr ); ///< Binds buffer
 	size_t size_bytes() const;
 };
 
@@ -67,6 +90,8 @@ struct GLA_VertexArray
 	GLA_VertexArray( GLA_VertexArray&& );
 	void operator =( GLA_VertexArray&& );
 	
+	void swap(GLA_VertexArray& obj);
+	
 	
 	/// Binds array object
 	void bind();
@@ -84,6 +109,36 @@ struct GLA_VertexArray
 	};
 	/// Automatically sets all attributes with calculated strides and offsets; binds both VAO and VBOs
 	void set_attribs( std::vector< Attrib> attrs );
+};
+
+
+
+struct GLA_Texture
+{
+	GLuint tex = 0;
+	GLenum target = GL_TEXTURE_2D; ///< default
+	
+	
+	GLA_Texture(); ///< Creates object
+	~GLA_Texture(); ///< Destroys object
+	
+	GLA_Texture( const GLA_Texture& ) = delete;
+	void operator =( const GLA_Texture& ) = delete;
+	
+	GLA_Texture( GLA_Texture&& );
+	void operator =( GLA_Texture&& );
+	
+	void swap(GLA_Texture& obj);
+	
+	
+	/// Binds to specified target or to default one, if GL_NONE
+	void bind(GLenum target = GL_NONE);
+	
+	/// Allocates storage for 2D; binds texture. 
+	/// Sets filtering to nearest and enables clamping
+	void set(GLenum internal_format, vec2i size, int level = 0);
+	
+	operator GLuint() {return tex;}
 };
 
 #endif // GL_UTILS_HPP
