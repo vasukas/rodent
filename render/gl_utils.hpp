@@ -46,7 +46,7 @@ struct GLA_Buffer
 	static size_t dbg_size_max; ///< info: max size of buffers ever was, in bytes
 	
 	GLuint vbo = 0;
-	int val_count = 0; ///< Number of values in buffer
+	int val_count = 0; ///< Number of values in buffer (info only)
 	int usage = GL_DYNAMIC_DRAW;
 	
 	int comp = 2; ///< Number of components (only as info for VAO)
@@ -69,6 +69,8 @@ struct GLA_Buffer
 	
 	void bind( GLenum target = GL_ARRAY_BUFFER );
 	void update( size_t new_val_count, const void *data = nullptr ); ///< Binds buffer
+	void update_part( size_t offset, size_t val_count, const void* data );
+	void get_part( size_t offset, size_t val_count, void* data );
 	size_t size_bytes() const;
 };
 

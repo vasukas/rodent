@@ -3,7 +3,6 @@
 #include "core/tui_layer.hpp"
 #include "render/control.hpp"
 #include "render/gl_utils.hpp" // debug stats
-#include "render/ren_aal.hpp" // test
 #include "render/ren_imm.hpp"
 #include "render/ren_text.hpp"
 #include "render/texture.hpp" // debug stats
@@ -18,6 +17,10 @@
 #endif
 
 // #define USE_RELEASE_PATHS 1
+
+// test
+#include "render/ren_aal.hpp"
+#include "render/particles.hpp"
 
 
 
@@ -68,11 +71,7 @@ static std::string get_game_path(GamePath path)
 	switch (path)
 	{
 	case GAME_PATH_LOG:
-#ifdef __unix__
-		return {};
-#else
 		return "rod.log";
-#endif
 	case GAME_PATH_RESOURCES:
 		return "";
 	case GAME_PATH_SETTINGS:
@@ -349,6 +348,31 @@ int main( int argc, char *argv[] )
 					else if (ks.scancode == SDL_SCANCODE_P) {auto& f = RenderControl::get().use_pp; f = !f;}
 				}
 				else if (ks.scancode == SDL_SCANCODE_GRAVE) cons_shown = !cons_shown;
+				
+				else if (ks.scancode == SDL_SCANCODE_1)
+				{
+					static Texture* tex;
+					if (!tex) {
+						ImageInfo img;
+						img.load("res/part.png", ImageInfo::FMT_RGBA);
+						tex = Texture::create_from(img);
+					}
+					
+					ParticleGroup ptg;
+					ptg.count = 1000;
+					ptg.origin.set(0, 0);
+					ptg.radius = 60;
+//					ptg.sprs.push_back({tex, {0,0,1,1}});
+					ptg.sprs.push_back( RenText::get().get_white_rect() );
+					ptg.colors_range[0] = 192; ptg.colors_range[3] = 255;
+					ptg.colors_range[1] = 192; ptg.colors_range[4] = 255;
+					ptg.colors_range[2] = 192; ptg.colors_range[5] = 255;
+					ptg.alpha = 255;
+					ptg.speed_min = 200; ptg.speed_max = 600;
+					ptg.TTL.ms(2000), ptg.FT.ms(1000);
+					ptg.TTL_max = ptg.TTL + TimeSpan::ms(500), ptg.FT_max = ptg.FT + TimeSpan::ms(1000);
+					ptg.submit();
+				}
 			}
 			
 			RenderControl::get().on_event( ev );

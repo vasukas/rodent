@@ -1,0 +1,7 @@
+  data:
+ 0	3x pos 1x left
+ 1	3x vel 1x size
+ 2	4x out_clr
+ 3	4x texlim
+ 4	3x acc 1x fade
+ 5	4x clr

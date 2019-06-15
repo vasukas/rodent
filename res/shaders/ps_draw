@@ -1,0 +1,97 @@
+// ==================
+#vert
+#version 330 core
+
+uniform mat4 proj;
+
+layout(location = 0) in vec4 data[6];
+out Data {
+	mat4 mx;
+	vec4 clr;
+	vec4 texz;
+	float size;
+};
+
+void main() {
+	mat4 rot = mat4(1.0);
+	rot[0][0] = cos(data[0].z);
+	rot[1][0] = -sin(data[0].z);
+	rot[0][1] = -rot[1][0];
+	rot[1][1] = rot[0][0];
+
+	mat4 trans = mat4(1.0);
+	trans[3][0] = data[0].x;
+	trans[3][1] = data[0].y;
+
+	mx = proj * trans * rot;
+	clr = data[2];
+	texz = data[3];
+	size = data[1].w;
+}
+
+#end
+// ==================
+#geom
+#version 330 core
+
+layout(points) in;
+layout(triangle_strip, max_vertices=4) out;
+
+in Data {
+	mat4 mx;
+	vec4 clr;
+	vec4 texz;
+	float size;
+} dat[];
+out vec2 tc;
+out vec4 tclr;
+
+void main() {
+	mat4 mx = dat[0].mx;
+	vec4 clr = dat[0].clr;
+	vec4 texz = dat[0].texz;
+	float size = dat[0].size;
+
+	gl_Position = mx * vec4( - size,  - size, 0, 1);
+	tc = texz.xy;
+	tclr = clr;
+	gl_PrimitiveID = gl_PrimitiveIDIn;
+	EmitVertex();
+
+	gl_Position = mx * vec4( + size,  - size, 0, 1);
+	tc = texz.zy;
+	tclr = clr;
+	gl_PrimitiveID = gl_PrimitiveIDIn;
+	EmitVertex();
+
+	gl_Position = mx * vec4( - size,  + size, 0, 1);
+	tc = texz.xw;
+	tclr = clr;
+	gl_PrimitiveID = gl_PrimitiveIDIn;
+	EmitVertex();
+
+	gl_Position = mx * vec4( + size,  + size, 0, 1);
+	tc = texz.zw;
+	tclr = clr;
+	gl_PrimitiveID = gl_PrimitiveIDIn;
+	EmitVertex();
+
+	EndPrimitive();
+}
+
+#end
+// ==================
+#frag
+#version 330 core
+
+uniform sampler2D tex;
+
+in vec2 tc;
+in vec4 tclr;
+out vec4 res;
+
+void main() {
+	res = vec4(1,0,0,1);//tclr * texture(tex, tc);
+}
+
+#end

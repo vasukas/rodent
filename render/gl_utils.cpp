@@ -99,7 +99,15 @@ void GLA_Buffer::operator =( GLA_Buffer&& obj )
 }
 void GLA_Buffer::swap(GLA_Buffer& obj)
 {
-	std::swap(vbo, obj.vbo);
+	// params are probably same when swapping, but still
+#define SW(x) std::swap(x, obj.x)
+	SW(vbo);
+	SW(val_count);
+	SW(usage);
+	SW(comp);
+	SW(type);
+	SW(normalized);
+#undef SW
 }
 void GLA_Buffer::bind( GLenum target )
 {
@@ -115,6 +123,18 @@ void GLA_Buffer::update( size_t new_val_count, const void *data )
 	
 	dbg_size_now += size_bytes();
 	dbg_size_max = std::max(dbg_size_max, dbg_size_now);
+}
+void GLA_Buffer::update_part( size_t offset, size_t val_count, const void* data )
+{
+	size_t raw = gl_type_size(type);
+	bind();
+	glBufferSubData(GL_ARRAY_BUFFER, offset * raw, val_count * raw, data);
+}
+void GLA_Buffer::get_part( size_t offset, size_t val_count, void* data )
+{
+	size_t raw = gl_type_size(type);
+	bind();
+	glGetBufferSubData(GL_ARRAY_BUFFER, offset * raw, val_count * raw, data);
 }
 size_t GLA_Buffer::size_bytes() const
 {
@@ -244,6 +264,7 @@ void GLA_Texture::operator =( GLA_Texture&& obj )
 void GLA_Texture::swap(GLA_Texture& obj)
 {
 	std::swap(tex, obj.tex);
+	std::swap(target, obj.target);
 }
 void GLA_Texture::bind(GLenum target)
 {

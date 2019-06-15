@@ -9,8 +9,8 @@ struct AppSettings
 	vec2i wnd_size = {1024, 600};
 	
 	std::string font_path = "res/font.ttf";
-	std::string font_ui_path = "res/font.ttf";
-	std::string font_dbg_path = "res/font.ttf";
+	std::string font_ui_path = {};
+	std::string font_dbg_path = {};
 	
 	float font_pt = 16;
 	float font_ui_pt = 16;

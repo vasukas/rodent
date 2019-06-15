@@ -55,6 +55,12 @@ GLuint Shader::link(const std::vector <GLuint> &shaders)
 		if (!sh) return 0;
 		glAttachShader(prog, sh);
 	}
+	prog = link_fin(prog);
+	if (prog) for (auto &sh : shaders) glDetachShader(prog, sh);
+	return prog;
+}
+GLuint Shader::link_fin(GLuint prog)
+{
 	glLinkProgram(prog);
 	
 	GLint err;
@@ -88,7 +94,6 @@ GLuint Shader::link(const std::vector <GLuint> &shaders)
 		}
 	}
 	
-	for (auto &sh : shaders) glDetachShader(prog, sh);
 	return prog;
 }
 Shader* Shader::make(const char *dbg_name, const std::vector <std::pair<GLenum, std::string_view>> &shaders)

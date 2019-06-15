@@ -31,6 +31,10 @@ struct TimeSpan
 	int     ms()      const { return mks_value / 1000; }
 	int64_t micro()   const { return mks_value; }
 	
+	void set_seconds( double  t ) { mks_value = t * 1000 * 1000; }
+	void set_ms     ( int     t ) { mks_value = t * 1000; }
+	void set_micro  ( int64_t t ) { mks_value = t; }
+	
 	TimeSpan diff( const TimeSpan& t ) const; ///< Difference - always positive
 	
 	TimeSpan  operator - ( const TimeSpan& t ) const { return TimeSpan( mks_value - t.mks_value ); }

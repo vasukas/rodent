@@ -21,6 +21,9 @@ public:
 	/// Doesn't delete shaders
 	static GLuint link( const std::vector< GLuint >& shaders );
 	
+	/// Links shader program with shaders already attached; returns 0 on fail (deleting program)
+	static GLuint link_fin( GLuint prog );
+	
 	/// Creates shader program; returns null on fail.
 	/// 'shaders' contain pairs of shader type and source code for it.
 	/// Convenience wrapper around compile() and link() for run-time generated shaders

@@ -39,8 +39,8 @@ void main()
 	a *= clamp(b, 0, 1);
 //	a = clamp(a, 0, 1);
 	a *= a;
-	res = vec4(clr.rgb * a, clr.a);
-//	res = clr * a;
+//	res = vec4(clr.rgb * a, clr.a);
+	res = clr * a;
 //	res = vec4(clr.rgb, clr.a * a);
 }
 

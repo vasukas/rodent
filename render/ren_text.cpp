@@ -63,7 +63,7 @@ public:
 			throw std::runtime_error("see log for details");
 		}
 		
-		if (sets.font_path == sets.font_ui_path && sets.font_pt == sets.font_ui_pt) {
+		if ((sets.font_path == sets.font_ui_path && sets.font_pt == sets.font_ui_pt) || sets.font_ui_path.empty()) {
 			VLOGW("Using primary font for UI");
 			fonts[1] = fonts[0];
 		}
@@ -75,7 +75,7 @@ public:
 			}
 		}
 		
-		if (sets.font_path == sets.font_dbg_path && sets.font_pt == sets.font_dbg_pt) {
+		if ((sets.font_path == sets.font_dbg_path && sets.font_pt == sets.font_dbg_pt) || sets.font_dbg_path.empty()) {
 			VLOGW("Using primary font for debug");
 			fonts[2] = fonts[0];
 		}

@@ -15,6 +15,7 @@ SOURCES += \
 	render/camera.cpp \
 	render/control.cpp \
 	render/gl_utils.cpp \
+	render/particles.cpp \
 	render/postproc.cpp \
 	render/ren_aal.cpp \
 	render/ren_imm.cpp \
@@ -42,6 +43,7 @@ HEADERS += \
 	render/camera.hpp \
 	render/control.hpp \
 	render/gl_utils.hpp \
+	render/particles.hpp \
 	render/postproc.hpp \
 	render/ren_aal.hpp \
 	render/ren_imm.hpp \

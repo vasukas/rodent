@@ -5,6 +5,7 @@
 #include "camera.hpp"
 #include "control.hpp"
 #include "gl_utils.hpp"
+#include "particles.hpp"
 #include "postproc.hpp"
 #include "ren_aal.hpp"
 #include "ren_imm.hpp"
@@ -55,6 +56,7 @@ public:
 	
 	GLA_VertexArray* ndc_screen2_obj = nullptr;
 	
+	ParticleRenderer* r_part = nullptr;
 	RenAAL* r_aal = nullptr;
 	RenImm* r_imm = nullptr;
 	RenText* r_text = nullptr;
@@ -194,6 +196,7 @@ public:
 		INIT(r_imm, RenImm);
 		INIT(r_aal, RenAAL);
 		INIT(r_tui, RenTUI);
+		INIT(r_part, ParticleRenderer);
 		
 		try {pp_main = Postproc::create_main_chain();}
 		catch (std::exception& e) {
@@ -208,6 +211,7 @@ public:
 		
 		delete r_aal;
 		delete r_imm;
+		delete r_part;
 		delete r_tui;
 		
 		delete r_text;
@@ -252,6 +256,8 @@ public:
 			
 			if (pp_main && use_pp) pp_main->start(passed);
 			RenAAL::get().render();
+			
+			ParticleRenderer::get().render(passed);
 			
 			RenImm::get().render_pre();
 			RenImm::get().render(RenImm::DEFCTX_WORLD);
