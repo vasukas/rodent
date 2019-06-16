@@ -37,7 +37,8 @@ void TUI_Layer::Field::set(std::string_view str, size_t highlight)
 	s.resize( r.size().area() );
 	for (auto& c : s) c.back = is_transp? TUI_TRANSP : TUI_SET_BACK;
 	
-	for (size_t i = 0; i < str.length(); ++i) {
+	size_t n = std::min(s.size(), str.length());
+	for (size_t i = 0; i < n; ++i) {
 		auto& c = s[i];
 		c.sym = str[i];
 		if (i == highlight) {

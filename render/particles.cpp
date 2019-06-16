@@ -1,5 +1,5 @@
 #include "core/dbg_menu.hpp"
-#include "core/noise.hpp"
+#include "utils/noise.hpp"
 #include "vaslib/vas_cpp_utils.hpp"
 #include "vaslib/vas_file.hpp"
 #include "vaslib/vas_log.hpp"

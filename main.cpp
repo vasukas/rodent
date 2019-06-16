@@ -1,12 +1,12 @@
 #include <SDL2/SDL.h>
 #include "core/dbg_menu.hpp"
-#include "core/res_image.hpp"
 #include "core/tui_layer.hpp"
 #include "render/control.hpp"
 #include "render/gl_utils.hpp" // debug stats
 #include "render/ren_imm.hpp"
 #include "render/ren_text.hpp"
 #include "render/texture.hpp" // debug stats
+#include "utils/res_image.hpp"
 #include "vaslib/vas_file.hpp"
 #include "vaslib/vas_log.hpp"
 #include "vaslib/vas_time.hpp"

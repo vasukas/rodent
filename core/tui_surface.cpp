@@ -17,7 +17,7 @@
 	X(1,1,0,1, 0x252c, 0x2533, 0xc2, '-')\
 	X(1,1,1,0, 0x2534, 0x253b, 0xc1, '-')
 
-#define BOXDRAW_CHAR_FLAGS(L,R,U,D) ((L<<3)|(R<<2)|(U<<1)|(D))
+#define BOXDRAW_CHAR_FLAGS(L,R,U,D) (((L)<<3)|((R)<<2)|((U)<<1)|(D))
 
 char32_t boxdraw_char(bool left, bool right, bool up, bool down)
 {
@@ -26,7 +26,7 @@ char32_t boxdraw_char(bool left, bool right, bool up, bool down)
 	    BOXDRAW_CHAR_LIST
 	};
 #undef X
-	auto it = map.find(BOXDRAW_CHAR_FLAGS(left, right, up, down));
+	auto it = map.find(BOXDRAW_CHAR_FLAGS((int)left, (int)right, (int)up, (int)down));
 	return it != map.end() ? it->second : ' ';
 }
 

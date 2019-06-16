@@ -143,14 +143,7 @@ public:
 			}
 		}
 		else VLOGW("glDebugMessageCallback not available");
-		
-//		if (SDL_GL_SetSwapInterval(-1))
-//		{
-//			VLOGW("Enabling late vsync failed");
-//			if (SDL_GL_SetSwapInterval(1)) VLOGW("Enabling vsync failed");
-//			else VLOGI("Enabled vsync");
-//		}
-//		else VLOGI("Enabled late vsync");
+
 		
 		
 //		glHint(GL_GENERATE_MIPMAP_HINT, GL_NICEST);
@@ -190,7 +183,7 @@ public:
 		
 #define INIT(VAR, NAME) \
 	try {VAR = NAME::init(); VLOGI(#NAME " initialized");} \
-	catch (std::exception& e) {VLOGE(#NAME " initialization failed"); return;}
+	catch (std::exception& e) {VLOGE(#NAME " initialization failed: {}", e.what()); return;}
 		
 		INIT(r_text, RenText);
 		INIT(r_imm, RenImm);
@@ -292,9 +285,9 @@ public:
 	void set_vsync( bool on )
 	{
 		if (SDL_GL_SetSwapInterval( on? 1 : 0 ))
-			VLOGW( "RenderControl::set_vsync() failed - {}", on );
+			VLOGW( "RenderControl::set_vsync() failed - (tried to set: {})", on );
 		else
-			VLOGI( "RenderControl::set_vsync() ok - {}", on );
+			VLOGI( "RenderControl::set_vsync() ok - (tried to set: {})", on );
 	}
 	bool has_vsync()
 	{
@@ -367,7 +360,7 @@ public:
 			pp_main = Postproc::create_main_chain();
 		}
 		catch (std::exception& e) {
-			VLOGE("Postproc::create_main_chain() failed");
+			VLOGE("Postproc::create_main_chain() failed - {}", e.what());
 			pp_main = nullptr;
 		}
 	}

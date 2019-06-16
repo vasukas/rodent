@@ -1,8 +1,8 @@
-#include "core/res_image.hpp"
 #include "core/tui_layer.hpp"
 #include "render/particles.hpp"
 #include "render/ren_aal.hpp"
 #include "render/ren_imm.hpp"
+#include "utils/res_image.hpp"
 #include "vaslib/vas_log.hpp"
 #include "main_loop.hpp"
 

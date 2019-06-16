@@ -1,4 +1,4 @@
-#include "core/res_image.hpp"
+#include "utils/res_image.hpp"
 #include "vaslib/vas_log.hpp"
 #include "gl_utils.hpp"
 #include "texture.hpp"

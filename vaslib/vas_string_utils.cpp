@@ -165,13 +165,13 @@ bool string_atof (const std::string& s, double& value)
 {
 	char *end = nullptr;
 	value = strtod( s.data(), &end );
-	return end == &*s.end();
+	return end && end - s.data() == static_cast<ptrdiff_t>(s.length());
 }
 bool string_atof (const std::string& s, float& value)
 {
 	char *end = nullptr;
 	value = strtof( s.data(), &end );
-	return end == &*s.end();
+	return end && end - s.data() == static_cast<ptrdiff_t>(s.length());
 }
 
 

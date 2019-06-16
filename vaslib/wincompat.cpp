@@ -92,7 +92,8 @@ FILE* winc_fopen( const char *fn, const char *mode )
 
 #include <vector>
 #include <shellapi.h>
-int main(int, char*[]);
+#include <SDL2/SDL_main.h>
+//int main(int, char*[]);
 
 int __stdcall WinMain(HINSTANCE, HINSTANCE, char *, int) {
 	LPWSTR cmd = GetCommandLineW();

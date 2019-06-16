@@ -1,5 +1,6 @@
-Compiler=i686-w64-mingw32-g++
-CompilerLnk=i686-w64-mingw32-ar
+CmpPrefix=i686-w64-mingw32-
+Compiler=${CmpPrefix}g++
+CompilerLnk=${CmpPrefix}ar
 Platform=win
 
 Source+=(

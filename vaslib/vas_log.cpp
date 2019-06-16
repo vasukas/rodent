@@ -1,4 +1,5 @@
 #include <chrono>
+#include <csignal>
 #include <ctime>
 #include <mutex>
 #include "vas_log.hpp"
@@ -44,7 +45,6 @@ static void write_lines(LogLevel level, const char *str, int length)
 #if defined(_WIN32)
 void debugbreak() {__debugbreak();}
 #elif defined(__unix__)
-#include <signal.h>
 void debugbreak() {raise(SIGTRAP);}
 #endif
 
@@ -54,13 +54,6 @@ static std::vector<void(*)()> term_fs;
 
 void log_setup_signals()
 {
-#ifdef __unix__
-//	auto logsig = [](int sig){ VLOGD("Signal {}", sig); };
-	
-//	for (auto& i : ignore)
-//		signal(i, logsig);
-	
-#endif
 	signal(SIGSEGV, [](int)
 	{
 		log_critical_flush();

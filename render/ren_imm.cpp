@@ -534,7 +534,7 @@ public:
 		auto& cx = ctxs[ ctx_cur ];
 		
 		reserve_more_block( cx.cmds, 256 );
-		cx.cmds.push_back({ Cmd::T_ECMD, cmd });
+		cx.cmds.push_back({ Cmd::T_ECMD, static_cast<size_t>(cmd) });
 	}
 	void render_pre()
 	{

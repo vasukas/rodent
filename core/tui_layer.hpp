@@ -2,6 +2,7 @@
 #define TUI_LAYER_HPP
 
 union SDL_Event;
+#include <string>
 #include "tui_surface.hpp"
 
 class TUI_Layer

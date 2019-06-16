@@ -5,10 +5,10 @@ function show_help {
 	echo "DBG_LEVEL is one of:"
 	echo "  0 debug (with symbols)"
 	echo "  1 release (with symbols)"
-	echo "  2 optimized & minimized release"
+	echo "  2 optimized & minimized release (no symbols, flto)"
 	echo "Options:"
 	echo "  clean  performs complete rebuild"
-    echo "  p<N>   set number of compilation processes"
+    echo "  p<N>   set number of compilation processes (defaults to /proc/cpuinfo)"
 }
 
 if [ "$#" -lt 2 ]; then

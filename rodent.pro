@@ -3,13 +3,16 @@ CONFIG += console c++17
 CONFIG -= app_bundle
 CONFIG -= qt
 
-CONFIG += gcc_sanitize
+CONFIG(debug, debug|release) {
+	CONFIG += gcc_sanitize
+}
+CONFIG(release, debug|release) {
+	CONFIG += gcc_flto
+}
 
 SOURCES += \
 	console.cpp \
 	core/dbg_menu.cpp \
-	core/noise.cpp \
-	core/res_image.cpp \
 	core/tui_layer.cpp \
 	core/tui_surface.cpp \
 	main.cpp \
@@ -27,6 +30,8 @@ SOURCES += \
 	render/texture.cpp \
 	settings.cpp \
 	utils/block_cfg.cpp \
+	utils/noise.cpp \
+	utils/res_image.cpp \
 	vaslib/vas_atlas_packer.cpp \
 	vaslib/vas_file.cpp \
 	vaslib/vas_font.cpp \
@@ -39,8 +44,6 @@ SOURCES += \
 HEADERS += \
 	console.hpp \
 	core/dbg_menu.hpp \
-	core/noise.hpp \
-	core/res_image.hpp \
 	core/tui_layer.hpp \
 	core/tui_surface.hpp \
 	main_loop.hpp \
@@ -57,6 +60,8 @@ HEADERS += \
 	render/texture.hpp \
 	settings.hpp \
 	utils/block_cfg.hpp \
+	utils/noise.hpp \
+	utils/res_image.hpp \
 	vaslib/vas_atlas_packer.hpp \
 	vaslib/vas_cpp_utils.hpp \
 	vaslib/vas_file.hpp \
@@ -78,6 +83,12 @@ unix {
 
 linux-g++:gcc_sanitize {
 	COMP_FLAGS = -fsanitize=address -fsanitize=undefined
+	QMAKE_CXXFLAGS += $${COMP_FLAGS}
+	QMAKE_LFLAGS += $${COMP_FLAGS}
+}
+
+linux-g++:gcc_flto {
+	COMP_FLAGS = -flto
 	QMAKE_CXXFLAGS += $${COMP_FLAGS}
 	QMAKE_LFLAGS += $${COMP_FLAGS}
 }
