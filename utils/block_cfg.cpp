@@ -236,6 +236,7 @@ enum
 	BCAT_FIXED,
 	BCAT_OPTPREF,
 	BCAT_INT,
+	BCAT_FLOAT,
 	BCAT_STR
 };
 
@@ -292,6 +293,12 @@ void BC_Cmd::val( int& value )
 	auto& a = args.emplace_back();
 	a.vi = &value;
 	a.type = BCAT_INT;
+}
+void BC_Cmd::val( float& value )
+{
+	auto& a = args.emplace_back();
+	a.vf = &value;
+	a.type = BCAT_FLOAT;
 }
 void BC_Cmd::val( std::string& value )
 {
@@ -365,6 +372,14 @@ bool bc_process( const BC_Block& top, std::vector <BC_Cmd> cmds )
 			else if (typ.type == BCAT_INT)
 			{
 				if (!string_atoi( arg, *typ.vi ))
+				{
+					VLOGE( "bc_process() invalid value for command: \"{}\" at #{}", cm.name, ln.line );
+					return false;
+				}
+			}
+			else if (typ.type == BCAT_FLOAT)
+			{
+				if (!string_atof( arg, *typ.vf ))
 				{
 					VLOGE( "bc_process() invalid value for command: \"{}\" at #{}", cm.name, ln.line );
 					return false;

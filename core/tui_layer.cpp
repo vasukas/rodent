@@ -7,8 +7,16 @@ float TUI_Layer::char_sz_mul = 1.f;
 
 
 
+void TUI_Layer::Field::clear()
+{
+	if (!sur) return;
+	TUI_Char c;
+	c.back = is_transp? TUI_TRANSP : TUI_SET_BACK;
+	sur->set_rect(r, c);
+}
 void TUI_Layer::Field::set(TUI_Char* s, size_t n)
 {
+	if (!sur) return;
 	vec2i at = {};
 	for (size_t i=0; i<n; ++i) {
 		if (at.x >= r.size().x) {
@@ -19,19 +27,23 @@ void TUI_Layer::Field::set(TUI_Char* s, size_t n)
 			at.x = 0;
 			if (++at.y == r.size().y) break;
 		}
-		sur.set(r.lower() + at, s[i]);
+		sur->set(r.lower() + at, s[i]);
 		++at.x;
 	}
 }
 void TUI_Layer::Field::set(std::string_view str, size_t highlight)
 {
 	std::vector<TUI_Char> s;
-	s.resize( r.size().x );
+	s.resize( r.size().area() );
+	for (auto& c : s) c.back = is_transp? TUI_TRANSP : TUI_SET_BACK;
 	
 	for (size_t i = 0; i < str.length(); ++i) {
 		auto& c = s[i];
 		c.sym = str[i];
-		if (i == highlight) std::swap(c.fore, c.back);
+		if (i == highlight) {
+			std::swap(c.fore, c.back);
+			if (is_transp) c.fore = TUI_SET_BACK;
+		}
 	}
 	
 	set(s.data(), s.size());
@@ -42,11 +54,12 @@ void TUI_Layer::Field::set_bar(float t, bool show_percent)
 	int n = std::round(std::min(1.f, std::max(0.f, t)) * r.size().x);
 	
 	std::vector<TUI_Char> s;
-	s.resize( r.size().x );
+	s.resize( r.size().area() );
 	
 	int i=0;
 	for (auto& c : s) {
 		c.sym = i < n ? SCH_BLOCK_FULL : SCH_CHECKER_LIGHT;
+		c.back = is_transp? TUI_TRANSP : TUI_SET_BACK;
 		++i;
 	}
 	set(s.data(), s.size());
@@ -120,8 +133,8 @@ void TUI_Layer::hide()
 		stack_upd = true;
 	}
 }
-TUI_Layer::Field TUI_Layer::mk_field(Rect r)
+TUI_Layer::Field TUI_Layer::mk_field(Rect r, int is_transp)
 {
 	if (!r.size().area()) VLOGX("TUI_Layer::mk_field() zero area");
-	return Field(sur, r);
+	return Field(sur, r, is_transp == -1 ? transparent : is_transp == 1);
 }

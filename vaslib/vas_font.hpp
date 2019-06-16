@@ -4,14 +4,16 @@
 #define VAS_FONT_HPP
 
 #include <cinttypes>
+#include <optional>
 #include <vector>
 #include "vas_math.hpp"
 
-#define VAS_HAS_FREETYPE	1
+#define VAS_HAS_FREETYPE 1
+#define VAS_HAS_RESIMAGE 1
 
 
 
-class File;
+class  File;
 
 namespace vas {
 
@@ -44,6 +46,9 @@ public:
 	};
 	
 	
+	
+	/// Automatically detects font format
+	static Font* load_auto(const char *filename, float pt);
 	
 #if VAS_HAS_FREETYPE == 1
 	/// Intializes FreeType2 library and increases reference count

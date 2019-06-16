@@ -9,18 +9,22 @@ class TUI_Layer
 public:
 	struct Field
 	{
+		bool is_transp = false; ///< Is SET_BACK or TRANSP used for background
+		
+		void clear();
 		void set(TUI_Char* s, size_t s_len); ///< Processes newlines
 		void set(std::string_view str, size_t highlight = std::string::npos);
 		void set(int n) {set(std::to_string(n));}
 		void set_bar(float t, bool show_percent = false); ///< Fills available space with progress bar
 		
-		Field(TUI_Surface& sur, Rect r): sur(sur), r(r) {}
-		Field(const Field& f): sur(f.sur), r(f.r) {}
+		Field() {sur = nullptr;}
+		Field(TUI_Surface& sur, Rect r, bool is_transp): is_transp(is_transp), sur(&sur), r(r) {clear();}
+		Field(const Field& f): is_transp(f.is_transp), sur(f.sur), r(f.r) {}
 		
 //		std::string prefix; ///< Added before value
 		
 	private:
-		TUI_Surface& sur;
+		TUI_Surface* sur;
 		Rect r;
 	};
 	
@@ -44,7 +48,7 @@ public:
 	virtual void on_event(const SDL_Event& ev) = 0;
 	virtual void render() = 0; ///< Draws to 'sur'
 	
-	Field mk_field(Rect r);
+	[[nodiscard]] Field mk_field(Rect r, int is_transp = -1);
 };
 
 #endif // TUI_LAYER_HPP

@@ -178,7 +178,7 @@ inline vec2fp max(const vec2fp &a, const vec2fp &b) {return {std::max(a.x, b.x),
 /// Integer upper/size-agnostic rectangle
 struct Rect {
 	Rect() = default;
-//	Rect(vec2i p0, vec2i size): Rect(p0, size, true) {}
+	Rect(int ax, int ay, int bx, int by): Rect({ax, ay}, {bx, by}, true) {}
 	Rect    (vec2i p0, vec2i b, bool is_size) {this->p0 = p0, this->b = b; this->is_size = is_size;}
 	void set(vec2i p0, vec2i b, bool is_size) {this->p0 = p0, this->b = b; this->is_size = is_size;}
 	void zero() {p0.zero(); b = p0; is_size = false;}

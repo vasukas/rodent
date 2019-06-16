@@ -22,8 +22,6 @@
 
 
 
-void tui_char_add_alts(); // core/tui_surface.cpp
-
 #ifdef __unix__
 #include <csignal>
 #endif
@@ -229,7 +227,8 @@ int main( int argc, char *argv[] )
 	
 	
 	
-	TUI_Layer::char_sz_mul = 2.f;
+	TUI_Layer::char_sz_mul = AppSettings::get().tui_scale;
+	
 	bool burn_gpu = false;
 	
 	auto dbg_g = DbgMenu::get().reg({[&]()
@@ -249,7 +248,6 @@ int main( int argc, char *argv[] )
 	if (!RenderControl::init()) return 1;
 	RenderControl::get().set_vsync( true );
 	
-	tui_char_add_alts();
 	set_wnd_pars();
 	
 	VLOGI("Basic initialization finished in {:6.3} seconds", (TimeSpan::since_start() - time_init).seconds());

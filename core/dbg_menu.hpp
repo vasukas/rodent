@@ -30,7 +30,7 @@ public:
 	virtual ~DbgMenu();
 	
 	/// Registers new section
-	virtual RAII_Guard reg(Section sec) = 0;
+	[[nodiscard]] virtual RAII_Guard reg(Section sec) = 0;
 	
 	/// Draw text
 	virtual void label(std::string_view s) = 0;

@@ -57,15 +57,12 @@ public:
 	virtual void build( TextRenderInfo& info ) = 0;
 	virtual vec2i predict_size( vec2i str_size, FontIndex font ) = 0; ///< Most probable size of such string in pixels
 	
-	virtual TextureReg get_white_rect() = 0; ///< Returns info for 1x1 white rectangle
+	virtual TextureReg get_white_rect(FontIndex font = FontIndex::Default) = 0; ///< Returns info for 1x1 white rectangle
 	
 	virtual bool  is_mono    (FontIndex font) = 0; ///< Is font (roughly) monowide
 	virtual int   width_mode (FontIndex font) = 0; ///< Average char width
 	virtual int   line_height(FontIndex font) = 0; ///< Not character height
 	virtual vec2i mxc_size   (FontIndex font) = 0; ///< width_mode + line_height
-	
-	/// Adds alternate symbols for all fonts
-	virtual void add_alts(std::vector<std::vector<char32_t>> alts) = 0;
 	
 	/// Returns glyph info as if it would be rendered at {0,0}
 	virtual TextRenderInfo::GlyphInfo get_glyph(char32_t cp, FontIndex font) = 0;

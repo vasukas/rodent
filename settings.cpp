@@ -15,6 +15,7 @@ bool AppSettings::load()
 	
 	int i, i2;
 	std::string s;
+	float f;
 	
 	auto c = &cs.emplace_back( true, true, "wnd_size", [&](){ wnd_size = {i, i2}; return true; });
 	c->val(i);
@@ -32,6 +33,9 @@ bool AppSettings::load()
 	FONT();
 	FONT(ui_);
 	FONT(dbg_);
+	
+	c = &cs.emplace_back( true, true, "tui_scale", [&](){ tui_scale = f; return true; });
+	c->val(f);
 	
 	return bc_parsefile( cfg_path.c_str(), std::move(cs) );
 }

@@ -1,6 +1,74 @@
+#include "vas_file.hpp"
 #include "vas_font.hpp"
 #include "vas_log.hpp"
 using namespace vas;
+
+
+
+Font* Font::load_auto(const char *filename, float pt)
+{
+	std::string ext = strrchr(filename, '.');
+	for (auto& c : ext) c = tolower(c);
+	
+	if (ext == ".vasfont") {
+		std::unique_ptr<File> f( File::open(filename) );
+		if (!f) {
+			VLOGE("Font::load() failed");
+			return nullptr;
+		}
+		return load_vas(*f);
+	}
+	
+#if VAS_HAS_FREETYPE == 1
+	return load_ft(filename, pt);
+#else
+	VLOGE("Font::load() unknown file format - \"{}\"", filename);
+	return nullptr;
+#endif
+}
+vec2i Font::Glyph::get_kern (char32_t next)
+{
+	for (auto &k : kerns) if (k.cp == next) return k.off;
+	return {};
+}
+int Font::load_glyphs(char32_t cp_first, char32_t cp_last)
+{
+	int n = 0;
+	for (; cp_first <= cp_last; ++cp_first)
+		if (has_glyph(cp_first) && load_glyph(cp_first)) ++n;
+	return n;
+}
+void Font::unload_glyphs(char32_t cp_first, char32_t cp_last)
+{
+	for (; cp_first <= cp_last; ++cp_first)
+		unload_glyph(cp_first);
+}
+bool Font::monowide_check(int tolerance, int threshold)
+{
+	vas::Font::Info inf;
+	inf.kerning = false;
+	inf.mode = 1;
+	update_info(inf);
+	
+	size_t other = 0;
+	auto gs = get_glyphs();
+	for (auto& fg : gs) {
+		if (abs(fg.xadv - inf.mode) > tolerance) ++other;
+	}
+	
+	if (other != 0) {
+		int perc = 100 * other / gs.size();
+		if (perc < threshold) {
+			VLOGD("Font::monowide_check() ok, below threshold ({}% vs {}%)", perc, threshold);
+			return true;
+		}
+		VLOGD("Font::monowide_check() fail, above threshold ({}% vs {}%)", perc, threshold);
+		return false;
+	}
+	
+	VLOGD("Font::monowide_check() ok");
+	return true;
+}
 
 
 
@@ -287,49 +355,7 @@ Font* Font::load_ft(const void *mem, size_t size, float pt) {
 
 
 
-vec2i Font::Glyph::get_kern (char32_t next) {
-	for (auto &k : kerns) if (k.cp == next) return k.off;
-	return {};
-}
-int Font::load_glyphs(char32_t cp_first, char32_t cp_last) {
-	int n = 0;
-	for (; cp_first <= cp_last; ++cp_first)
-		if (has_glyph(cp_first) && load_glyph(cp_first)) ++n;
-	return n;
-}
-void Font::unload_glyphs(char32_t cp_first, char32_t cp_last) {
-	for (; cp_first <= cp_last; ++cp_first)
-		unload_glyph(cp_first);
-}
-bool Font::monowide_check(int tolerance, int threshold) {
-	vas::Font::Info inf;
-	inf.kerning = false;
-	inf.mode = 1;
-	update_info(inf);
-	
-	size_t other = 0;
-	auto gs = get_glyphs();
-	for (auto& fg : gs) {
-		if (abs(fg.xadv - inf.mode) > tolerance) ++other;
-	}
-	
-	if (other != 0) {
-		int perc = 100 * other / gs.size();
-		if (perc < threshold) {
-			VLOGD("Font::monowide_check() ok, below threshold ({}% vs {}%)", perc, threshold);
-			return true;
-		}
-		VLOGD("Font::monowide_check() fail, above threshold ({}% vs {}%)", perc, threshold);
-		return false;
-	}
-	
-	VLOGD("Font::monowide_check() ok");
-	return true;
-}
-
-
-
-class Font_Vas : public Font {
+class Font_Bitmap : public Font {
 public:
 	std::vector<Glyph> gs, lds;
 	vec2i cz;
@@ -367,7 +393,6 @@ public:
 
 
 
-#include "vas_file.hpp"
 static const char vas_font_head[] = {"vasfont\0"};
 
 Font* Font::load_vas(File& f)
@@ -399,7 +424,7 @@ Font* Font::load_vas(File& f)
 		return nullptr;
 	}
 	
-	Font_Vas* ft = new Font_Vas;
+	Font_Bitmap* ft = new Font_Bitmap;
 	ft->lds = std::move(gs);
 	ft->cz = {x, y};
 	return ft;

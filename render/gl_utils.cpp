@@ -231,7 +231,7 @@ void GLA_VertexArray::set_attribs( std::vector< Attrib > attrs )
 		auto b = a.buf.get();
 		
 		b->bind();
-		glEnableVertexAttribArray( i );
+		glEnableVertexAttribArray(i);
 		
 		auto& s = ss[b];
 		if (!s.cou) glVertexAttribPointer( i, a.comp, b->type, b->normalized, 0, 0 );

@@ -16,6 +16,7 @@ struct AppSettings
 	float font_ui_pt = 16;
 	float font_dbg_pt = 16;
 	
+	float tui_scale = 1.f;
 	int target_fps = 30;
 	
 	

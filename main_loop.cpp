@@ -18,10 +18,17 @@ public:
 			int x, y, clr;
 			TimeSpan cou, per;
 		};
-		std::array<Head, 20> hs;
+		std::array<Head, 35> hs;
 		TimeSpan prev;
 		
+		Field y0, y1;
+		int fd_w = 8;
+		
 		L() {
+			transparent = false;
+			y0 = mk_field({1,1,fd_w,1});
+			y1 = mk_field({1,3,fd_w,1});
+			
 			for (auto& h : hs) init(h);
 			
 			auto t = TimeSpan::seconds(80);
@@ -34,18 +41,35 @@ public:
 			if (ev.type == SDL_MOUSEBUTTONDOWN)
 				delete this;
 		}
-		void render() {
+		void render()
+		{
 			auto next = TimeSpan::since_start();
 			TimeSpan passed = next - prev;
 			prev = next;
 			proc(passed * 2);
+			
+			auto ch = TUI_Char::none();
+			ch.fore = TUI_SET_TEXT;
+			ch.back = TUI_BLACK;
+			ch.alpha = 1.f;
+			sur.change_rect({0,0,fd_w+1,4}, ch);
+			
+			float t = float(hs[0].y + 1) / sur.size.y;
+			y0.set_bar(t);
+			y1.set(FMT_FORMAT("XPos: {}", hs[0].x), 1);
+			
+			TUI_BoxdrawHelper box;
+			box.init(sur);
+			box.box({0,0,fd_w+1,2});
+			box.box({0,2,fd_w+1,2});
+			box.submit();
 		}
 		void proc(TimeSpan passed)
 		{
 			sur.upd_any = true;
 			for (auto& c : sur.cs) {
-				if (c.alpha > 0.2f)
-					c.alpha -= 0.2 * passed.seconds();
+				if (c.alpha > 0)
+					c.alpha -= 0.17 * passed.seconds();
 			}
 			
 			for (auto& h : hs) {
@@ -127,6 +151,9 @@ public:
 		
 		RenAAL::get().draw_line({-440,  200}, {-260, -200}, 0x6060ffff, 5.f, 60.f, 1.7f);
 		RenAAL::get().draw_line({-440, -200}, {-260,  200}, 0xff2020ff, 5.f, 60.f, 1.7f);
+		
+		RenImm::get().set_context(RenImm::DEFCTX_UI);
+		RenImm::get().draw_rect({0,0,400,200}, 0xff0000ff);
 	}
 };
 

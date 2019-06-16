@@ -3,19 +3,19 @@
 #include "tui_surface.hpp"
 
 #define BOXDRAW_CHAR_LIST\
-	X(1,1,0,0, 0x2500, '-')\
-	X(0,0,1,1, 0x2502, '|')\
-	X(1,1,1,1, 0x253c, '+')\
+	X(1,1,0,0, 0x2500, 0x2501, 0xc4, '-')\
+	X(0,0,1,1, 0x2502, 0x2503, 0xb3, '|')\
+	X(1,1,1,1, 0x253c, 0x254b, 0xc5, '+')\
 	\
-	X(0,1,0,1, 0x256d, 0x250c, '/')\
-	X(1,0,0,1, 0x256e, 0x2510, '\\')\
-	X(0,1,1,0, 0x2570, 0x2514, '\\')\
-	X(1,0,1,0, 0x256f, 0x2518, '/')\
+	X(0,1,0,1, 0x256d, 0x250c, 0x250f, 0xda, '/')\
+	X(1,0,0,1, 0x256e, 0x2510, 0x2513, 0xbf, '\\')\
+	X(0,1,1,0, 0x2570, 0x2514, 0x2517, 0xc0, '\\')\
+	X(1,0,1,0, 0x256f, 0x2518, 0x251b, 0xd9, '/')\
 	\
-	X(0,1,1,1, 0x251c, '|')\
-	X(1,0,1,1, 0x2524, '|')\
-	X(1,1,0,1, 0x252c, '-')\
-	X(1,1,1,0, 0x2534, '-')
+	X(0,1,1,1, 0x251c, 0x2523, 0xc3, '|')\
+	X(1,0,1,1, 0x2524, 0x252b, 0xb4, '|')\
+	X(1,1,0,1, 0x252c, 0x2533, 0xc2, '-')\
+	X(1,1,1,0, 0x2534, 0x253b, 0xc1, '-')
 
 #define BOXDRAW_CHAR_FLAGS(L,R,U,D) ((L<<3)|(R<<2)|(U<<1)|(D))
 
@@ -30,23 +30,27 @@ char32_t boxdraw_char(bool left, bool right, bool up, bool down)
 	return it != map.end() ? it->second : ' ';
 }
 
-// called from main()
-void tui_char_add_alts()
+// called from render/ren_text.cpp
+std::vector<std::vector<char32_t>> tui_char_get_alts()
 {
 	std::vector<std::vector<char32_t>> alts;
-	alts.push_back({ SCH_BULLET, '*' });
 	
-	alts.push_back({ SCH_BULLET, '*' });
-	alts.push_back({ SCH_CHECKER_LIGHT, ' ' });
-	alts.push_back({ SCH_CHECKER_MED,   ' ' });
-	alts.push_back({ SCH_CHECKER_HEAVY, '#' });
-	alts.push_back({ SCH_BLOCK_FULL, '#' });
+	alts.push_back({ SCH_BULLET, 0x07, '*' });
+	alts.push_back({ SCH_CHECKER_LIGHT, 0xb0, ' ' });
+	alts.push_back({ SCH_CHECKER_MED,   0xb1, ' ' });
+	alts.push_back({ SCH_CHECKER_HEAVY, 0xb2, '#' });
+	alts.push_back({ SCH_BLOCK_FULL, 0xdb, '#' });
+	
+	alts.push_back({ SCH_POINT_RIGHT, 0x10, '>' });
+	alts.push_back({ SCH_POINT_LEFT,  0x11, '<' });
+	alts.push_back({ SCH_POINT_UP,    0x1e, '^' });
+	alts.push_back({ SCH_POINT_DOWN,  0x1f, 'v' });
 	
 #define X(L,R,U,D, G, ...) alts.push_back({G, __VA_ARGS__});
 	BOXDRAW_CHAR_LIST
 #undef X
 	        
-	RenText::get().add_alts( std::move(alts) );
+	return alts;
 }
 
 
@@ -124,6 +128,7 @@ void TUI_Surface::change(vec2i pos, TUI_Char ch)
 	if (ch.sym != static_cast<char32_t>(-1)) c.sym = ch.sym;
 	if (ch.fore != -1) c.fore = ch.fore;
 	if (ch.back != -1) c.back = ch.back;
+	if (ch.alpha >= 0.f) c.alpha = ch.alpha;
 	upd_any = true;
 }
 void TUI_Surface::set_rect(Rect r, TUI_Char ch)
@@ -141,6 +146,11 @@ void TUI_Surface::change_rect(Rect r, TUI_Char ch)
 
 
 
+void TUI_BoxdrawHelper::init(TUI_Surface& s)
+{
+	sur = &s;
+	clear();
+}
 void TUI_BoxdrawHelper::box(Rect r)
 {
 	hline(r.lower().x, r.upper().x, r.lower().y);
@@ -168,7 +178,7 @@ void TUI_BoxdrawHelper::submit()
 	cs.resize( sz.area() );
 	
 	for (int y=0; y<sz.y; ++y)
-	for (int x=0; y<sz.x; ++x)
+	for (int x=0; x<sz.x; ++x)
 	{
 		size_t i = y * sz.x + x;
 		if (!flags[i]) continue;

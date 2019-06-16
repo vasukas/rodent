@@ -10,6 +10,10 @@ enum : char32_t {
 	SCH_CHECKER_MED   = 0x2592,
 	SCH_CHECKER_HEAVY = 0x2593,
 	SCH_BLOCK_FULL = 0x2588,
+	SCH_POINT_RIGHT = 0x25ba,
+	SCH_POINT_LEFT  = 0x25c4,
+	SCH_POINT_UP    = 0x25b2,
+	SCH_POINT_DOWN  = 0x25bc
 };
 
 enum : int {
@@ -22,17 +26,18 @@ enum : int {
 	
 	// preset colors
 	TUI_SET_TEXT = 16,
-	TUI_SET_BACK
+	TUI_SET_BACK,
+	TUI_TRANSP
 };
 
 struct TUI_Char
 {
 	char32_t sym = 0;
 	int fore = TUI_SET_TEXT;
-	int back = TUI_SET_BACK;
+	int back = TUI_TRANSP;
 	float alpha = 1.f;
 	
-	static TUI_Char none() {return {static_cast<char32_t>(-1), -1, -1};} ///< All values set to -1	
+	static TUI_Char none() {return {static_cast<char32_t>(-1), -1, -1, -1.f};} ///< All values set to -1	
 };
 
 char32_t boxdraw_char(bool left, bool right, bool up, bool down);
@@ -75,7 +80,7 @@ struct TUI_BoxdrawHelper
 {
 	TUI_Surface* sur = nullptr;
 	
-	void init(TUI_Surface& s) {sur = &s; clear();}
+	void init(TUI_Surface& s);
 	void box(Rect r);
 	void hline(int x1, int x2, int y);
 	void vline(int y1, int y2, int x);

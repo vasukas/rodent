@@ -13,7 +13,8 @@ public:
 	Shader* sh;
 	
 	vec2i size; // display size in characters
-	vec2i cz; // char size
+	vec2i cz; // char size (already multiplied)
+	float cz_m; // char size multiplier
 	
 	std::vector<TUI_Char> oldbuf;
 	TUI_Surface sur;
@@ -44,7 +45,7 @@ public:
 			static const uint32_t tab[16] = 
 			{
 			    // back
-			    0,
+			    0x000000ff,
 			    0xa00000ff,
 			    0x00a000ff,
 			    0xa09000ff,
@@ -55,7 +56,7 @@ public:
 			    0xa0a0a0ff,
 			    
 			    // fore
-			    0x202020ff,
+			    0x404040ff,
 			    0xff1010ff,
 			    0x00ff20ff,
 			    0xfff000ff,
@@ -71,28 +72,32 @@ public:
 		{
 		case TUI_SET_TEXT: return getclr(TUI_GREEN, true);
 		case TUI_SET_BACK: return getclr(TUI_BLACK, false);
+		case TUI_TRANSP:   return 0;
 		}
 		return 0xffffffff;
 	}
 	
 	
+	
 	RenTUI_Impl()
 	{
-		auto b = std::make_shared<GLA_Buffer>(4);
+		auto b = std::make_shared<GLA_Buffer>(0);
 		vao.set_attribs({ {b, 4}, {b, 4} });
 		sh = RenderControl::get().load_shader("char_matrix");
 		
 		
 		size = TUI_Layer::screen_size();
 		cz = RenText::get().mxc_size(FontIndex::TUI);
-		cz *= TUI_Layer::char_sz_mul;
+		cz_m = TUI_Layer::char_sz_mul;
+		cz *= cz_m;
+		VLOGD("RenTUI: screen size {}x{}, char size {}x{}", size.x, size.y, cz.x, cz.y);
 		
 		oldbuf.resize( size.area() );
 		sur.resize_clear(size);
 		
-		auto wg = RenText::get().get_white_rect();
+		auto wg = RenText::get().get_white_rect(FontIndex::TUI);
 		tex = wg.tex;
-		wr = wg.tc.lower();
+		wr = wg.tc.center();
 		
 		
 		num = size.area() * attr * vert; // half size of buffer, in floats
@@ -137,7 +142,8 @@ public:
 				auto& bc = sur.cs[i];
 				bool achx = (ob.alpha != bc.alpha) || force_upd;
 				
-				if (ob.sym != bc.sym || force_upd) {
+				if (ob.sym != bc.sym || force_upd)
+				{
 					ob.sym = bc.sym;
 					update = true;
 					
@@ -150,8 +156,8 @@ public:
 					// calculate coordinates for character
 					float x0 = pos.x * cz.x + cd.pos.lower().x; // get screen coords
 					float y0 = pos.y * cz.y + cd.pos.lower().y;
-					float x1 = x0 + cd.pos.size().x;
-					float y1 = y0 + cd.pos.size().y;
+					float x1 = x0 + cd.pos.size().x * cz_m;
+					float y1 = y0 + cd.pos.size().y * cz_m;
 					trans(x0, y0); // transform to NDC
 					trans(x1, y1);
 					
@@ -164,17 +170,18 @@ public:
 					d[0] = x1, d[1] = y0, d[2] = cd.tex.tc.b.x, d[3] = cd.tex.tc.a.y; d += 8;
 					d[0] = x1, d[1] = y1, d[2] = cd.tex.tc.b.x, d[3] = cd.tex.tc.b.y; d += 8;
 				}
-				if (ob.fore != bc.fore || achx) {
+				if (ob.fore != bc.fore || achx)
+				{
 					ob.fore = bc.fore;
 					ob.alpha = bc.alpha;
 					update = true;
 					
 					// calculate normalized color
 					uint32_t clr = getclr(bc.fore, true);
-					float r = ((clr >> 16) & 0xff) / 255.f;
-					float g = ((clr >> 8) & 0xff) / 255.f;
-					float b = ((clr) & 0xff) / 255.f;
-					float a = bc.alpha;
+					float r = ((clr >> 24) & 0xff) / 255.f;
+					float g = ((clr >> 16) & 0xff) / 255.f;
+					float b = ((clr >> 8)  & 0xff) / 255.f;
+					float a = (clr & 0xff) / 255.f * ob.alpha;
 					
 					// set color
 					float *d = data.data() + i * vert*attr + num;
@@ -185,17 +192,18 @@ public:
 					d[4] = r, d[5] = g, d[6] = b; d[7] = a; d += 8;
 					d[4] = r, d[5] = g, d[6] = b; d[7] = a; d += 8;
 				}
-				if (ob.back != bc.back || achx) {
+				if (ob.back != bc.back || achx)
+				{
 					ob.back = bc.back;
 					ob.alpha = bc.alpha;
 					update = true;
 					
 					// calculate normalized color
 					uint32_t clr = getclr(bc.back, false);
-					float r = ((clr >> 16) & 0xff) / 255.f;
-					float g = ((clr >> 8) & 0xff) / 255.f;
-					float b = ((clr) & 0xff) / 255.f;
-					float a = bc.alpha;
+					float r = ((clr >> 24) & 0xff) / 255.f;
+					float g = ((clr >> 16) & 0xff) / 255.f;
+					float b = ((clr >> 8)  & 0xff) / 255.f;
+					float a = (clr & 0xff) / 255.f * ob.alpha;
 					
 					// set color
 					float *d = data.data() + i * vert*attr;
@@ -209,7 +217,7 @@ public:
 			}
 			
 			if (update)
-				vao.bufs[0]->update(num*2, data.data());
+				vao.bufs[0]->update(data.size(), data.data());
 			
 			force_upd = false;
 		}
@@ -220,8 +228,9 @@ public:
 		glBindTexture(GL_TEXTURE_2D, tex->get_obj());
 		
 		vao.bind();
-		glDrawArrays(GL_TRIANGLES, 0, num); // draw background rectangles (fills window completely, so no clear)
-		glDrawArrays(GL_TRIANGLES, num, num); // draw characters
+		int n = (data.size() / attr) /2;
+		glDrawArrays(GL_TRIANGLES, 0, n); // draw background rectangles (fills window completely, so no clear)
+		glDrawArrays(GL_TRIANGLES, n, n); // draw characters
 	}
 };
 

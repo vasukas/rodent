@@ -7,7 +7,13 @@
 #include "ren_text.hpp"
 #include "texture.hpp"
 
-// #include "core/res_image.hpp"
+std::vector<std::vector<char32_t>> tui_char_get_alts(); // core/tui_surface.cpp
+
+// #define DEBUG_ATLAS 1
+
+#ifdef DEBUG_ATLAS
+#include "core/res_image.hpp"
+#endif
 
 
 
@@ -57,6 +63,7 @@ public:
 		auto& sets = AppSettings::get();
 		fonts.resize(3);
 		
+		VLOGD("Loading default (primary) font");
 		fonts[0] = load_font( sets.font_path.c_str(), sets.font_pt );
 		if (!fonts[0]) {
 			VLOGE("Can't load primary font");
@@ -68,6 +75,7 @@ public:
 			fonts[1] = fonts[0];
 		}
 		else {
+			VLOGD("Loading TUI font");
 			fonts[1] = load_font( sets.font_ui_path.c_str(), sets.font_ui_pt );
 			if (!fonts[1]) {
 				VLOGW("Can't load UI font, using primary");
@@ -84,6 +92,7 @@ public:
 			fonts[2] = fonts[1];
 		}
 		else {
+			VLOGD("Loading debug font");
 			fonts[2] = load_font( sets.font_dbg_path.c_str(), sets.font_dbg_pt );
 			if (!fonts[2]) {
 				VLOGW("Can't load debug font, using UI");
@@ -98,7 +107,7 @@ public:
 			}
 			else {
 				VLOGE("Only monowide font can be used for UI");
-				throw std::runtime_error("see log for details");
+				throw std::runtime_error("check log for details");
 			}
 		}
 		
@@ -173,37 +182,15 @@ public:
 	{
 		return str_size * vec2i( gf(i).w_mode, gf(i).line_ht );
 	}
-	TextureReg get_white_rect()
+	TextureReg get_white_rect(FontIndex font)
 	{
-		return gf(FontIndex::Default).white.tex;
+		return gf(font).white.tex;
 	}
 	bool is_mono   ( FontIndex i ) {return gf(i).is_mono_flag;}
 	int width_mode ( FontIndex i ) {return gf(i).w_mode;}
 	int line_height( FontIndex i ) {return gf(i).line_ht;}
 	vec2i mxc_size ( FontIndex i ) {return vec2i(gf(i).w_mode, gf(i).line_ht);}
 	
-	void add_alts(std::vector<std::vector<char32_t>> alts)
-	{
-		for (auto& f : fonts)
-		for (auto& ar : alts)
-		{
-			if (ar.size() < 2) continue;
-			
-			size_t i = 0;
-			for (; i < ar.size(); ++i)
-			{
-				auto it = f->glyphs.find( ar[i] );
-				if (it != f->glyphs.end())
-				{
-					if (i) f->glyphs.emplace( ar.front(), it->second );
-					break;
-				}
-			}
-			
-			if (i == ar.size())
-				VLOGW("RenText::add_alts() failed for {:#x}", (uint32_t) ar.front());
-		}
-	}
 	TextRenderInfo::GlyphInfo get_glyph(char32_t cp, FontIndex font)
 	{
 		auto& ft = gf(font);
@@ -221,15 +208,36 @@ public:
 	std::shared_ptr<FontData> load_font(const char *fname, float pt)
 	{
 		VLOGV("RenText::load_font() called: {}pt \"{}\"", pt, fname);
-		std::unique_ptr <vas::Font> font (vas::Font::load_ft (fname, pt));
-		if (!font)
-		{
+		std::unique_ptr <vas::Font> font (vas::Font::load_auto (fname, pt));
+		if (!font) {
 			VLOGE("Can't load font");
 			return {};
 		}
 		
 		font->load_glyph((char32_t) -1); // for missing glyph symbol
 		font->load_glyphs(32, 126);
+		
+		size_t alt_c = 0;
+		std::vector<std::vector<char32_t>> alts = tui_char_get_alts();
+		std::vector<std::pair<char32_t, char32_t>> alt_add;
+		alt_add.reserve(alts.size());
+		
+		for (auto& ar : alts)
+		{
+			if (ar.empty()) continue;
+			size_t i = 0;
+			for (; i < ar.size(); ++i) if (font->has_glyph(ar[i])) break;
+			if (i == ar.size()) VLOGW("No alt characters for {:#x}", (uint32_t) ar.front());
+			else {
+				if (!i) ++alt_c;
+				else {
+					VLOGV("  Using alt character: {} of {} ({:#x}) for {:#x}", i, ar.size() - 1, (uint32_t) ar[i], (uint32_t) ar.front());
+					alt_add.emplace_back(ar.front(), ar[i]);
+				}
+				font->load_glyph(ar[i]);
+			}
+		}
+		VLOGV("  Non-alt characters: {} of {}", alt_c, alts.size());
 		
 		vas::Font::Info inf;
 		inf.kerning = false;
@@ -279,20 +287,22 @@ public:
 			
 			fd->texs[i].reset( Texture::create_from({ img.info.w, img.info.h }, Texture::FMT_SINGLE,
 			                                        img.px.data(), Texture::FIL_NEAREST ) );
-			
-//			if (!i)
-//			{
-//				ImageInfo ii;
-//				ii.reset({ img.info.w, img.info.h }, ImageInfo::FMT_ALPHA);
-//				memcpy( ii.raw(), img.px.data(), img.px.size() );
-//				ii.save("test.png");
-//				return;
-//			}
+#ifdef DEBUG_ATLAS
+			static int fi = 0; ++fi;
+			if (!i && fi == DEBUG_ATLAS+1)
+			{
+				ImageInfo ii;
+				ii.reset({ img.info.w, img.info.h }, ImageInfo::FMT_ALPHA);
+				memcpy( ii.raw(), img.px.data(), img.px.size() );
+				ii.save("test.png");
+				exit(1);
+			}
+#endif
 		}
 		
 		
 		// add symbols
-		fd->glyphs.reserve( gs.size() + 1 );
+		fd->glyphs.reserve( gs.size() + 1 + alt_add.size() );
 		
 		VLOGV("  glyphs count: {}", gs.size());
 		
@@ -312,6 +322,11 @@ public:
 			
 			if (fg.cp == (char32_t) -1) fd->miss = rg;
 			else fd->glyphs.emplace(fg.cp, rg);
+		}
+		
+		for (auto& p : alt_add) {
+			auto it = fd->glyphs.find(p.second);
+			fd->glyphs.emplace(p.first, it->second);
 		}
 		
 		fd->is_mono_flag = font->monowide_check( fd->w_mode / 6, 8 );

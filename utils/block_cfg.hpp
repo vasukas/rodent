@@ -65,13 +65,14 @@ struct BC_Cmd
 	void arg( std::string name, size_t val_count, bool& exists ); ///< Optional fixed
 	
 	void val( int& value );
+	void val( float& value );
 	void val( std::string& value );
 	
 private:
 	struct Arg
 	{
 		std::string pref;
-		union { int* vi; std::string* vs; bool* vb; };
+		union { int* vi; std::string* vs; bool* vb; float* vf; };
 		int type;
 		size_t skip = 0;
 	};

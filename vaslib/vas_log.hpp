@@ -82,7 +82,7 @@ void log_setup_signals();
 /// Registers function to be called on ABNORMAL program termination. 
 /// Guard removes function registration. 
 /// Note: works only if log_setup_signals() was called
-RAII_Guard log_terminate_reg(void(*f)());
+[[nodiscard]] RAII_Guard log_terminate_reg(void(*f)());
 
 
 
