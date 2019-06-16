@@ -10,6 +10,10 @@ enum DbgMenuGroup
 	DBGMEN_RENDER,
 };
 
+#define dbgm_label   DbgMenu::get().label
+#define dbgm_button  DbgMenu::get().button
+#define dbgm_check   DbgMenu::get().checkbox
+
 /// Immediate-mode UI for debugging utilities
 class DbgMenu
 {
@@ -19,7 +23,7 @@ public:
 		std::function<void()> proc;
 		std::string name = {};
 		DbgMenuGroup group = DBGMEN_ETC;
-		char hotkey = 0;
+		char hotkey = 0; // only a-z
 	};
 	
 	static DbgMenu& get(); ///< Returns singleton
@@ -37,7 +41,7 @@ public:
 	/// Draw checkbox button, returns true if state changed
 	bool checkbox(bool& flag, std::string_view s, char hotkey);
 	
-	virtual void render(TimeSpan passed) = 0;
+	virtual void render(TimeSpan passed, bool has_input) = 0;
 	virtual void on_key(int scan) = 0;
 };
 

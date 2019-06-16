@@ -1,3 +1,4 @@
+#include "core/dbg_menu.hpp"
 #include "core/noise.hpp"
 #include "vaslib/vas_cpp_utils.hpp"
 #include "vaslib/vas_file.hpp"
@@ -51,6 +52,7 @@ public:
 	int gs_off_max = 0; // max currently used
 	
 	GLuint tex_obj = 0; // only single texture supported atm
+	RAII_Guard dbgm_g;
 	
 	
 	
@@ -87,6 +89,9 @@ public:
 		
 		sh_calc.reset(new Shader(prog));
 		sh_calc->dbg_name = "ps_calc";
+		
+		dbgm_g = DbgMenu::get().reg({[this]() {dbgm_label(FMT_FORMAT("{:5} / {:5}", gs_off_max, part_lim));},
+		                             "Particles", DBGMEN_RENDER});
 	}
 	int group_alloc(int size)
 	{

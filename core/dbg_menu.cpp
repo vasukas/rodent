@@ -62,7 +62,7 @@ public:
 		++b_cou;
 		return ok;
 	}
-	void render(TimeSpan passed)
+	void render(TimeSpan passed, bool has_input)
 	{
 		b_cou = 0;
 		if (b_left >= TimeSpan::ms(0)) {
@@ -75,25 +75,34 @@ public:
 		else if (has_key('1')) c_grp = DBGMEN_ETC;
 		else if (has_key('2')) c_grp = DBGMEN_RENDER;
 		
+		out_str += "=== ";
+		out_str += (c_grp == DBGMEN_ETC) ? '@' : '1';
+		out_str += " other === ";
+		out_str += (c_grp == DBGMEN_RENDER) ? '@' : '2';
+		out_str += " render === ";
+		if (!has_input) out_str += "INPUT CAPTURE DISABLED";
+		out_str += "\n\n";
+		
 		for (size_t i=0; i<ss.size(); ++i)
 		{
 			auto& s = ss[i];
 			if (!s.proc || s.group != c_grp) continue;
 			
 			if (s.hotkey && has_key(s.hotkey)) sel = i;
-			is_sel = (i == sel) || !s.hotkey;
+			is_sel = (i == sel) || (!s.hotkey && sel == (size_t) -1);
 			
-			out_str += "[[[";
+			out_str += "=== ";
 			out_str += is_sel? '@' : (s.hotkey? s.hotkey : ' ');
 			out_str += ' ';
 			out_str += s.name;
-			out_str += "]]]\n";
+			out_str += " ===\n";
 			
 			s.proc();
+			out_str += '\n';
 		}
 		
 		vec2i sz = RenderControl::get_size();
-		RenImm::get().draw_rect({0,0,sz.x,sz.y}, 0x80);
+		RenImm::get().draw_rect({0,0,sz.x,sz.y}, 0xc0);
 		RenImm::get().draw_text({}, out_str, -1, false, 1.f, FontIndex::Debug);
 		
 		keys.clear();

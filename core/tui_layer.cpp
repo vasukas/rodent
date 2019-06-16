@@ -3,6 +3,8 @@
 #include "vaslib/vas_log.hpp"
 #include "tui_layer.hpp"
 
+float TUI_Layer::char_sz_mul = 1.f;
+
 
 
 void TUI_Layer::Field::set(TUI_Char* s, size_t n)
@@ -58,15 +60,10 @@ static bool stack_was_empty = true;
 
 
 
-TUI_Layer::TUI_Layer(): sur(screen_size())
-{}
-TUI_Layer::~TUI_Layer()
-{
-	hide();
-}
 vec2i TUI_Layer::screen_size()
 {
 	vec2i cz = RenText::get().mxc_size(FontIndex::TUI);
+	cz *= char_sz_mul;
 	return RenderControl::get_size() / cz;
 }
 TUI_Layer* TUI_Layer::get_stack_top()
@@ -102,6 +99,12 @@ bool TUI_Layer::render_all(TUI_Surface& dst)
 	
 	stack_upd = false;
 	return any;
+}
+TUI_Layer::TUI_Layer(): sur(screen_size())
+{}
+TUI_Layer::~TUI_Layer()
+{
+	hide();
 }
 void TUI_Layer::bring_to_top()
 {

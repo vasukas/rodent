@@ -227,6 +227,25 @@ int main( int argc, char *argv[] )
 //		return 1;
 	}
 	
+	
+	
+	TUI_Layer::char_sz_mul = 2.f;
+	bool burn_gpu = false;
+	
+	auto dbg_g = DbgMenu::get().reg({[&]()
+	{
+		dbgm_label(FMT_FORMAT(
+			"Buffer : max {:4} KB, current {:4} KB\n"
+			"Texture : {:4} KB\n",
+			GLA_Buffer::dbg_size_max >>10, GLA_Buffer::dbg_size_now >>10,
+			Texture::dbg_total_size >>10));
+		dbgm_check(RenderControl::get().use_pp, "Postproc", 'p');
+		if (dbgm_button("Reload postproc chain", 'm')) RenderControl::get().reload_pp();
+		if (dbgm_check(burn_gpu, "Framerate limit disabled", 'b')) RenderControl::get().set_vsync(!burn_gpu);
+	}, "General"});
+	
+	
+	
 	if (!RenderControl::init()) return 1;
 	RenderControl::get().set_vsync( true );
 	
@@ -260,26 +279,11 @@ int main( int argc, char *argv[] )
 	
 	
 	
-	bool burn_gpu = false;
-	
-	auto dbg_g = DbgMenu::get().reg({[&]()
-	{
-		DbgMenu::get().label(FMT_FORMAT(
-			"Buffer : max {:4} KB, current {:4} KB\n"
-			"Texture : {:4} KB\n",
-			GLA_Buffer::dbg_size_max >>10, GLA_Buffer::dbg_size_now >>10,
-			Texture::dbg_total_size >>10));
-		DbgMenu::get().checkbox(RenderControl::get().use_pp, "Postproc", 'p');
-		if (DbgMenu::get().button("Reload postproc chain", 'm')) RenderControl::get().reload_pp();
-		if (DbgMenu::get().checkbox(burn_gpu, "Framerate limit disabled", 'b')) RenderControl::get().set_vsync(!burn_gpu);
-	}, "General"});
-	
-	
-	
 	bool cons_shown = false;
-	bool dbg_show = false;
-	bool run = true;
+	bool& dbg_show = RenderControl::get().is_dbgmenu;
+	bool dbg_input = false;
 	
+	bool run = true;
 	while (run)
 	{
 		TimeSpan loop_0 = TimeSpan::since_start();
@@ -298,17 +302,22 @@ int main( int argc, char *argv[] )
 				{
 					if		(ks.scancode == SDL_SCANCODE_Q) run = false;
 					else if (ks.scancode == SDL_SCANCODE_R) RenderControl::get().reload_shaders();
-					else if (ks.scancode == SDL_SCANCODE_D) {dbg_show = !dbg_show; cons_shown = false;}
+					else if (ks.scancode == SDL_SCANCODE_D) {
+						if (dbg_show && !dbg_input) dbg_input = true;
+						else dbg_input = dbg_show = !dbg_show, cons_shown = false;
+					}
 				}
 				else if (ks.scancode == SDL_SCANCODE_GRAVE) {cons_shown = !cons_shown; dbg_show = false;}
 				
-				if (dbg_show && !(ks.mod & (KMOD_CTRL | KMOD_ALT | KMOD_SHIFT)))
+				if (dbg_input && !(ks.mod & (KMOD_CTRL | KMOD_ALT | KMOD_SHIFT)))
 					continue;
 			}
 			else if (ev.type == SDL_KEYUP)
 			{
 				auto &ks = ev.key.keysym;
-				if (dbg_show && !(ks.mod & (KMOD_CTRL | KMOD_ALT | KMOD_SHIFT))) {
+				if (dbg_input && !(ks.mod & (KMOD_CTRL | KMOD_ALT | KMOD_SHIFT)))
+				{
+					if (ks.scancode == SDL_SCANCODE_TAB) dbg_input = false;
 					DbgMenu::get().on_key(ks.scancode);
 					continue;
 				}
@@ -353,7 +362,7 @@ int main( int argc, char *argv[] )
 		RenImm::get(). draw_rect( {dbg_rpos, dbg_size, true}, 0x80 );
 		RenImm::get(). draw_text( dbg_rpos, dbg_str, 0x00ff00ff );
 		
-		if (dbg_show) DbgMenu::get().render(passed);
+		if (dbg_show) DbgMenu::get().render(passed, dbg_input);
 		if (cons_shown) Console::get().render();
 		
 		if (burn_gpu)

@@ -27,12 +27,16 @@ public:
 	TUI_Surface sur;
 	bool transparent = true; ///< If false, lower layers not drawn
 	
-	TUI_Layer(); ///< Initializes fullscreen transparent surface
-	virtual ~TUI_Layer(); ///< Removes layer from stack
+	
 	
 	static vec2i screen_size(); ///< Returns screen size in chars
 	static TUI_Layer* get_stack_top(); ///< May return null
+	
+	static float char_sz_mul; ///< Character size multiplier. Must be set before initing renderer
 	static bool render_all(TUI_Surface& dst); ///< Returns false if nothing changed
+	
+	TUI_Layer(); ///< Initializes fullscreen transparent surface
+	virtual ~TUI_Layer(); ///< Removes layer from stack
 	
 	void bring_to_top(); ///< Places layer on top of stack
 	void hide(); ///< Removes layer from stack

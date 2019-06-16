@@ -263,7 +263,8 @@ public:
 			RenImm::get().render(RenImm::DEFCTX_UI);
 			RenImm::get().render_post();
 			
-			RenTUI::get().render();
+			if (!is_dbgmenu)
+				RenTUI::get().render();
 			
 			cam.step(passed);
 		}

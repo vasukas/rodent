@@ -19,6 +19,8 @@ public:
 	bool shader_fail = false; ///< If true, fails if load_shader fails
 	bool use_pp = true; ///< Is post-processing used
 	
+	bool is_dbgmenu = false; // hack
+	
 	
 	
 	static bool init(); ///< Initialize singleton (including all other rendering singletons)

@@ -1,3 +1,4 @@
+#include "core/dbg_menu.hpp"
 #include "vaslib/vas_log.hpp"
 #include "control.hpp"
 #include "postproc.hpp"
@@ -39,7 +40,9 @@ public:
 	Shader* sh = nullptr;
 	
 	virtual ~PP_Filter() = default;
+	virtual bool is_ok() {return sh && sh->get_obj();}
 	virtual void proc() = 0;
+	virtual std::string descr() = 0;
 	
 	void set_tc_size() {
 		auto sz = RenderControl::get_size();
@@ -54,7 +57,7 @@ public:
 	
 	PPF_Kuwahara()
 	{
-		sh = RenderControl::get().load_shader( dir? "pp/kuwahara_dir" : "pp/kuwahara");
+		sh = RenderControl::get().load_shader( dir? "pp/kuwahara_dir" : "pp/kuwahara", {}, false );
 	}
 	void proc()
 	{
@@ -67,6 +70,7 @@ public:
 		
 		draw(true);
 	}
+	std::string descr() {return FMT_FORMAT("Kuwahara; dir: {}, radius: {}", dir, r);}
 };
 
 
@@ -80,6 +84,9 @@ public:
 	std::vector<std::unique_ptr<PP_Filter>> fts;
 	bool bs_index, bs_last;
 	
+	RAII_Guard dbgm_g;
+	
+	
 	
 	PostprocMain()
 	{
@@ -89,8 +96,8 @@ public:
 			fbo_s[i].attach_tex(GL_COLOR_ATTACHMENT0, tex_s[i]);
 		}
 		
-//		fts.emplace_back(new PPF_Kuwahara);
-//		fts.back()->enabled = true;
+		fts.emplace_back(new PPF_Kuwahara);
+		fts.back()->enabled = false;
 		
 		for (auto& f : fts) f->draw = [this](bool is_last)
 		{
@@ -105,11 +112,23 @@ public:
 			
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		};
+		
+		dbgm_g = DbgMenu::get().reg({
+		[this]() {
+			char c = 'a';
+			for (auto& f : fts) {
+				bool ok = f->is_ok();
+				bool en = f->enabled && ok;
+				dbgm_check(en, f->descr() + (ok? " OK" : " --"), c);
+				if (ok) f->enabled = en;
+				++c;
+			}
+		}, "Postproc", DBGMEN_RENDER, 's'});
 	}
 	void start(TimeSpan passed)
 	{
 		bool any = false;
-		for (auto& f : fts) if (f->enabled) {any = true; break;}
+		for (auto& f : fts) if (f->enabled && f->is_ok()) {any = true; break;}
 		
 		if (any)
 		{
@@ -125,7 +144,7 @@ public:
 	void finish()
 	{
 		int last = fts.size() - 1;
-		for (; last != -1; --last) if (fts[last]->enabled) break;
+		for (; last != -1; --last) if (fts[last]->enabled && fts[last]->is_ok()) break;
 		
 		if (last != -1)
 		{
@@ -137,7 +156,7 @@ public:
 		for (int i=0; i<=last; ++i)
 		{
 			auto& f = fts[i];
-			if (f->enabled)
+			if (f->enabled && f->is_ok())
 			{
 				bs_last = (i == last);
 				f->proc();

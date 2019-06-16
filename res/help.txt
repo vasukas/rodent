@@ -20,3 +20,11 @@ End        go to current page
 Ctrl + <=  shift output to left
 Ctrl + =>  shift output to right
 Ctrl + ^   reset output shift
+
+=== Debug menu
+
+1-9       switch tab
+a-z       select section / toggle option in selected section
+Escape    deselect section
+Tab       disable input capture
+Ctrl + D  enable input capture / exit menu

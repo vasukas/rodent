@@ -85,6 +85,7 @@ public:
 		
 		size = TUI_Layer::screen_size();
 		cz = RenText::get().mxc_size(FontIndex::TUI);
+		cz *= TUI_Layer::char_sz_mul;
 		
 		oldbuf.resize( size.area() );
 		sur.resize_clear(size);
