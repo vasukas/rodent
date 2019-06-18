@@ -247,4 +247,29 @@ struct Rectfp
 	bool contains( const Rectfp& r ) const; ///< Checks if another rectangle is completely within this
 };
 
+
+
+/// 2D
+struct Transform
+{
+	vec2fp pos = {};
+	float rot = 0.f;
+	
+	Transform() = default;
+	Transform(vec2fp pos, float rot = 0.f): pos(pos), rot(rot) {}
+	
+	vec2fp apply(vec2fp p) const; ///< Applies transform to point
+	vec2fp reverse(vec2fp p) const; ///< Applies reverse transform to point
+	
+	Transform operator -() const {return Transform{-pos, -rot};}
+	
+	Transform operator + (const Transform& t) const;
+	Transform operator - (const Transform& t) const;
+	Transform operator * (float t) const;
+	
+	void operator += (const Transform& t);
+	void operator -= (const Transform& t);
+	void operator *= (float t);
+};
+
 #endif // EXT_MATH_HPP

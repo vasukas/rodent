@@ -21,6 +21,8 @@ struct ParticleGroup
 	float rot_min = 0, rot_max = M_PI*2; ///< start rotation range (radians)
 	bool radius_fixed = false; ///< are all particles appear on maximum radius
 	
+	std::vector<vec2fp> pre_pos; ///< Prebuilt positions. If not empty, used instead of radius, origin and count
+	
 	std::vector<TextureReg> sprs; ///< images
 	int px_radius = 8; ///< radius of particle itself, in pixels
 	
