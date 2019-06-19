@@ -92,15 +92,6 @@ void clamp_angle (float& x)
 
 
 
-vec2i::operator vec2fp() const
-{
-	return vec2fp (x, y);
-}
-vec2fp vec2i::get_norm() const
-{
-	float t = len();
-	return { x / t, y / t };
-}
 vec2i vec2i::get_rotated (double angle) const
 {
 	float c = sin(angle + M_PI_2), s = sin(angle);
@@ -109,19 +100,7 @@ vec2i vec2i::get_rotated (double angle) const
 		s * x + c * y
 	);
 }
-vec2fp vec2fp::get_rotated (double angle) const
-{
-	float c = sin(angle + M_PI_2), s = sin(angle);
-	return vec2fp (
-		c * x - s * y,
-		s * x + c * y
-	);
-}
 void vec2i::rotate (double angle)
-{
-	*this = get_rotated (angle);
-}
-void vec2fp::rotate (double angle)
 {
 	*this = get_rotated (angle);
 }
@@ -131,6 +110,30 @@ void vec2i::fastrotate (float angle)
 	int t = x;
 	x = cs.x * t - cs.y * y;
 	y = cs.y * t + cs.x * y;
+}
+vec2fp vec2i::get_norm() const
+{
+	float t = len();
+	return { x / t, y / t };
+}
+vec2i::operator vec2fp() const
+{
+	return vec2fp (x, y);
+}
+
+
+
+vec2fp vec2fp::get_rotated (double angle) const
+{
+	float c = sin(angle + M_PI_2), s = sin(angle);
+	return vec2fp (
+		c * x - s * y,
+		s * x + c * y
+	);
+}
+void vec2fp::rotate (double angle)
+{
+	*this = get_rotated (angle);
 }
 void vec2fp::fastrotate (float angle)
 {
@@ -148,6 +151,18 @@ void vec2fp::norm()
 {
 	float t = len();
 	x /= t; y /= t;
+}
+vec2fp vec2fp::get_rotate (float cos, float sin)
+{
+	return {
+		cos * x - sin * y ,
+		sin * x + cos * y };
+}
+void vec2fp::rotate (float cos, float sin)
+{
+	float t = x;
+	x = cos * t - sin * y;
+	y = sin * t + cos * y;
 }
 
 

@@ -33,45 +33,6 @@ size_t gl_type_size( GLenum t )
 
 
 
-FColor::FColor(uint32_t rgba, float mul) {
-	r = mul * (rgba >> 24) / 255.f;
-	g = mul * ((rgba >> 16) & 255) / 255.f;
-	b = mul * ((rgba >> 8) & 255) / 255.f;
-	a = (rgba & 255) / 255.f;
-}
-FColor::FColor(float r, float g, float b, float a)
-	:r(r), g(g), b(b), a(a) {}
-float& FColor::operator[] (size_t i) {
-	if		(i == 0) return r;
-	else if (i == 1) return g;
-	else if (i == 2) return b;
-	return a;
-}
-const float& FColor::operator[] (size_t i) const {
-	if		(i == 0) return r;
-	else if (i == 1) return g;
-	else if (i == 2) return b;
-	return a;
-}
-FColor& FColor::operator*= (float f) {
-	for (size_t i=0; i<3; ++i) (*this)[i] *= f;
-	return *this;
-}
-FColor& FColor::operator-= (const FColor& c) {
-	for (size_t i=0; i<4; ++i) (*this)[i] -= c[i];
-	return *this;
-}
-FColor FColor::operator* (float f) {
-	FColor c = *this;
-	return c *= f;
-}
-FColor FColor::operator- (const FColor& f) {
-	FColor c = *this;
-	return c -= f;
-}
-
-
-
 size_t GLA_Buffer::dbg_size_now;
 size_t GLA_Buffer::dbg_size_max;
 

@@ -155,6 +155,9 @@ struct vec2fp {
 	void rotate (double angle); ///< Rotation by angle (radians)
 	void fastrotate (float angle); ///< Rotation by angle (radians) using table functions
 
+	vec2fp get_rotate (float cos, float sin);
+	void rotate (float cos, float sin);
+	
 	vec2fp get_norm() const; ///< Returns normalized vector
 	void norm(); ///< Normalizes vector
 	
@@ -252,8 +255,8 @@ struct Rectfp
 /// 2D
 struct Transform
 {
-	vec2fp pos = {};
-	float rot = 0.f;
+	vec2fp pos;
+	float rot;
 	
 	Transform() = default;
 	Transform(vec2fp pos, float rot = 0.f): pos(pos), rot(rot) {}

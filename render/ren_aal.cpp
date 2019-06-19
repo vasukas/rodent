@@ -16,6 +16,12 @@ public:
 		uint32_t clr;
 		float clr_mui;
 	};
+	struct InstObj
+	{
+		Transform tr;
+		size_t id;
+		FColor clr;
+	};
 	
 	GLA_VertexArray vao;
 	std::vector<float> data_f; // Buffer data to send
@@ -25,7 +31,13 @@ public:
 	std::vector<Obj> objs;
 	
 	Shader* sh;
+	Shader* sh_inst;
 	uint32_t prev_clr = 0;
+	
+	// for instanced drawing
+	GLA_VertexArray inst_vao;
+	std::vector<std::pair<size_t, size_t>> inst_objs;
+	std::vector<InstObj> inst_q;
 	
 	
 	
@@ -103,6 +115,25 @@ public:
 		objs_off += n;
 	}
 	
+	size_t add_chain(const std::vector<vec2fp>& ps, bool loop, float width, float aa_width)
+	{
+		if (aa_width < 1) aa_width = 1;
+		width += aa_width;
+		float wpar = width / aa_width;
+		
+		size_t dsz = std::max(static_cast<size_t>(4096), ps.size() * 6 * 4);
+		reserve_more_block(objs, 1024);
+		reserve_more_block(data_f, dsz);
+		reserve_more_block(data_i, dsz);
+		
+		size_t n = ps.size();
+		if (loop) ++n;
+		for (size_t i = 1; i < n; ++i)
+			add_line(ps[i%ps.size()], ps[i-1], width, wpar, aa_width);
+		
+		return n;
+	}
+	
 	
 	
 	RenAAL_Impl()
@@ -112,6 +143,7 @@ public:
 		    std::make_shared<GLA_Buffer>(3, GL_BYTE,  true,  GL_STREAM_DRAW)
 		});
 		sh = RenderControl::get().load_shader("aal");
+		sh_inst = RenderControl::get().load_shader("aal_inst");
 	}
 	void draw_line(vec2fp p0, vec2fp p1, uint32_t clr, float width, float aa_width, float clr_mul)
 	{
@@ -130,48 +162,92 @@ public:
 	void draw_chain(const std::vector<vec2fp>& ps, bool loop, uint32_t clr, float width, float aa_width, float clr_mul)
 	{
 		if (!clr || ps.size() < 2) return;
-		if (aa_width < 1) aa_width = 1;
-		width += aa_width;
-		float wpar = width / aa_width;
-		
-		size_t dsz = std::max(static_cast<size_t>(4096), ps.size() * 6 * 4);
-		reserve_more_block(objs, 1024);
-		reserve_more_block(data_f, dsz);
-		reserve_more_block(data_i, dsz);
-		
-		size_t n = ps.size();
-		if (loop) ++n;
-		for (size_t i = 1; i < n; ++i)
-			add_line(ps[i%ps.size()], ps[i-1], width, wpar, aa_width);
-		
+		size_t n = add_chain(ps, loop, width, aa_width);
 		add_objs(n-1, clr, clr_mul);
 	}
 	void render()
 	{
+		const float *mx = RenderControl::get().get_world_camera()->get_full_matrix();
+		if (!objs.empty())
+		{
+			vao.bufs[0]->update( data_f.size(), data_f.data() );
+			vao.bufs[1]->update( data_i.size(), data_i.data() );
+			vao.bind();
+			
+			sh->bind();
+			sh->set4mx("proj", mx);
+			prev_clr = 0;
+			
+			for (auto& o : objs)
+			{
+				if (prev_clr != o.clr) {
+					prev_clr = o.clr;
+					sh->set_rgba("clr", o.clr, o.clr_mui);
+				}
+				glDrawArrays(GL_TRIANGLES, o.off, o.count);
+			}
+			
+			data_f.clear();
+			data_i.clear();
+			objs_off = 0;
+			objs.clear();
+			prev_clr = 0;
+		}
+		if (!inst_q.empty())
+		{
+			inst_vao.bind();
+			
+			sh_inst->bind();
+			sh_inst->set4mx("proj", mx);
+			
+			for (auto& o : inst_q)
+			{
+				auto cs = cossin_ft(o.tr.rot);
+				sh_inst->set4f("pr", o.tr.pos.x, o.tr.pos.y, cs.x, cs.y);
+				sh_inst->set_clr("clr", o.clr);
+				
+				auto& p = inst_objs[o.id];
+				glDrawArrays(GL_TRIANGLES, p.first, p.second);
+			}
+			
+			inst_q.clear();
+		}
+	}
+	
+	
+	
+	void inst_begin()
+	{
+		inst_vao.set_buffers({
+			std::make_shared<GLA_Buffer>(4, GL_FLOAT, false, GL_STATIC_DRAW),
+		    std::make_shared<GLA_Buffer>(3, GL_BYTE,  true,  GL_STATIC_DRAW)
+		});
+		inst_objs.clear();
+	}
+	void inst_end()
+	{
 		vao.bufs[0]->update( data_f.size(), data_f.data() );
 		vao.bufs[1]->update( data_i.size(), data_i.data() );
-		vao.bind();
 		
-		const float *mx = RenderControl::get().get_world_camera()->get_full_matrix();
-		
-		sh->bind();
-		sh->set4mx("proj", mx);
-		prev_clr = 0;
-		
-		for (auto& o : objs)
-		{
-			if (prev_clr != o.clr) {
-				prev_clr = o.clr;
-				sh->set_rgba("clr", o.clr, o.clr_mui);
-			}
-			glDrawArrays(GL_TRIANGLES, o.off, o.count);
-		}
-		
-		data_f.clear();
-		data_i.clear();
-		objs_off = 0;
-		objs.clear();
-		prev_clr = 0;
+		data_f.clear(); data_f.shrink_to_fit();
+		data_i.clear(); data_i.shrink_to_fit();
+	}
+	void inst_add(const std::vector<vec2fp>& ps, bool loop, float width, float aa_width)
+	{
+		add_chain(ps, loop, width, aa_width);
+	}
+	size_t inst_add_end()
+	{
+		size_t last = inst_objs.empty()? 0 : inst_objs.back().first + inst_objs.back().second;
+		size_t cur = data_f.size() / 4;
+		size_t id = inst_objs.size();
+		inst_objs.emplace_back(last, cur - last);
+		return id;
+	}
+	void draw_inst(const Transform& tr, FColor clr, size_t id)
+	{
+		reserve_more_block(inst_q, 512);
+		inst_q.push_back({tr, id, clr});
 	}
 };
 

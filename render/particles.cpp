@@ -9,7 +9,81 @@
 #include "shader.hpp"
 #include "texture.hpp"
 
-#include "ren_imm.hpp"
+
+
+void ParticleParams::set_zero(bool vel, bool accel)
+{
+	if (vel) vx = vy = vr = 0;
+	if (accel) ax = ay = ar = 0;
+}
+void ParticleParams::decel_to_zero()
+{
+	ax = vx / (ft + lt);
+	ay = vy / (ft + lt);
+	ar = vr / (ft + lt);
+}
+void ParticleGroupGenerator::draw(const Transform& tr)
+{
+	ParticleRenderer::get().add(*this, tr);
+}
+
+
+
+size_t ParticleGroupStd::begin(const Transform& tr, ParticleParams& p)
+{
+	t_tr = tr;
+	t_spdmax = speed_max < 0 ? speed_min : speed_max;
+	t_rotmax = rot_speed_max < 0 ? rot_speed_min : rot_speed_max;
+	t_lmax = (TTL_max.ms() < 0 ? TTL : TTL_max).seconds();
+	t_fmax = (FT_max.ms() < 0 ? FT : FT_max).seconds();
+	
+	p.set_zero(false, true);
+	p.size = px_radius;
+	return count;
+}
+void ParticleGroupStd::gen(ParticleParams& p)
+{
+	p.tex = sprs[ rnd_uint(0, sprs.size()) ];
+	
+	// position
+	p.pr = t_tr.rot + rnd_range(rot_min, rot_max);
+	vec2fp rv = {radius_fixed? radius : (float) rnd_range(0, radius), 0.f};
+	rv.rotate(p.pr);
+	p.px = t_tr.pos.x + rv.x;
+	p.py = t_tr.pos.y + rv.y;
+	
+	// speed
+	float sp = rnd_range(speed_min, t_spdmax);
+	float sa = rnd_range(rot_min, rot_max);
+	p.vx = sp * cos(sa);
+	p.vy = sp * sin(sa);
+	
+	p.vr = rnd_range(rot_speed_min, t_rotmax);
+	if (rnd_range(-1, 1) < 0) p.vr = -p.vr;
+	
+	// color
+	if (colors.size()) {
+		int i = rnd_uint(0, colors.size());
+		p.clr[0] = (colors[i] >> 24) / 255.f;
+		p.clr[1] = (colors[i] >> 16) / 255.f;
+		p.clr[2] = (colors[i] >> 8) / 255.f;
+		if (alpha) p.clr[3] = alpha / 255.f;
+		else p.clr[3] = colors[i] / 255.f;
+	}
+	else {
+		for (int i=0; i<3; i++) p.clr[i] = rnd_range(colors_range[i], colors_range[i+3]) / 255.f;
+		p.clr[3] = alpha / 255.f;
+	}
+	if (color_speed != 0.f) {
+		for (int j=0; j<3; j++)
+			p.clr[j] *= (1. - color_speed);
+	}
+	
+	// time
+	p.lt = rnd_range(TTL.seconds(), t_lmax);
+	p.ft = rnd_range( FT.seconds(), t_fmax);
+}
+
 
 
 class ParticleRenderer_Impl : public ParticleRenderer
@@ -157,162 +231,94 @@ public:
 		
 		vao.set_attribs(std::vector<GLA_VertexArray::Attrib>(6, {bufs[0], 4}));
 		glDrawArrays(GL_POINTS, 0, gs_off_max);
-		
-//		VLOGD("");
-//		float d[per_part];
-//		bufs[0]->get_part(0, per_part, d);
-//		for (int i=0; i<16; i+=4) VLOGD("{} {} {} {}", d[i], d[i+1], d[i+2], d[i+3]);
 	}
-	void add(const ParticleGroup& g)
+	void add(ParticleGroupGenerator& group, const Transform& tr)
 	{
-		// check
+		ParticleParams p;
 		
-		if (!g.count && g.pre_pos.empty()) return;
-		if (g.sprs.empty()) {
-			debugbreak();
-			VLOGE("ParticleRenderer::add() zero sprites");
+		int num = group.begin(tr, p);
+		if (!num) {
+			group.end();
 			return;
 		}
 		
-		Texture* t0 = g.sprs[0].tex;
-		for (auto& t : g.sprs) {
-			if (t.tex != t0) {
-				debugbreak();
-				VLOGE("ParticleRenderer::add() multiple textures not supported");
-				return;
-			}
-		}
-		
-		// setup
-		
-		auto speed_max = g.speed_max < 0 ? g.speed_min : g.speed_max;
-		auto rot_speed_max = g.rot_speed_max < 0 ? g.rot_speed_min : g.rot_speed_max;
-		auto TTL_max = g.TTL_max.ms() < 0 ? g.TTL : g.TTL_max;
-		auto FT_max = g.FT_max.ms() < 0 ? g.FT : g.FT_max;
-		
-		// add group
-		
-		int num = g.pre_pos.empty() ? g.count : g.pre_pos.size();
 		if (gs_off_max + num > part_lim)
 			resize_bufs(num);
 		
 		reserve_more_block(gs, 128);
-		gs.push_back({ gs_off_max, num, TTL_max + FT_max });
+		gs.push_back({ gs_off_max, num, {} });
 		gs_off_max += num;
-		
-		tex_obj = g.sprs.front().tex->get_obj();
 		
 		// fill data
 		
-		upd_data.reserve(num * per_part);
+		upd_data.clear();
+		upd_data.resize(num * per_part);
 		float *data = upd_data.data();
+		
+		float max_time = 0.f;
 		
 		for (int i=0; i<num; ++i)
 		{
 			float *d = data + i * per_part;
+			group.gen(p);
 			
-			// generate
+			float total = p.lt + p.ft;
+			max_time = std::max(max_time, total);
 			
-			float px, py, pr;
-			float vx, vy, vr;
-			float ax, ay, ar;
-			uint8_t clr[4];
-			TimeSpan life_time, fade_time;
-			auto& tex = g.sprs[ rnd_uint(0, g.sprs.size()) ];
-			
-			// position
-			pr = rnd_range(g.rot_min, g.rot_max);
-			if (g.pre_pos.empty()) {
-				vec2i rv = {g.radius_fixed? g.radius : (int) rnd_range(0, g.radius), 0};
-				rv.rotate(pr);
-				px = g.origin.x + rv.x;
-				py = g.origin.y + rv.y;
+			if (!tex_obj) tex_obj = p.tex.tex->get_obj();
+			else if (tex_obj != p.tex.tex->get_obj()) {
+				debugbreak();
+				VLOGE("ParticleRenderer::add() multiple textures not supported");
+				group.end();
+				gs.pop_back();
+				return;
 			}
-			else {
-				px = g.pre_pos[i].x;
-				py = g.pre_pos[i].y;
-			}
-			
-			// speed
-			float sp = rnd_range(g.speed_min, speed_max);
-			float sa = rnd_range(g.rot_min, g.rot_max);
-			vx = sp * cos(sa);
-			vy = sp * sin(sa);
-			
-			vr = rnd_range(g.rot_speed_min, rot_speed_max);
-			if (rnd_range(-1, 1) < 0) vr = -vr;
-			
-			// accel
-			ax = ay = ar = 0.f;
-			
-			// color
-			if (g.colors.size()) {
-				int i = rnd_uint(0, g.colors.size());
-				clr[0] = (g.colors[i] >> 24);
-				clr[1] = (g.colors[i] >> 16);
-				clr[2] = (g.colors[i] >> 8);
-				if (g.alpha) clr[3] = g.alpha;
-				else clr[3] = g.colors[i];
-			}
-			else {
-				for (int i=0; i<3; i++) clr[i] = rnd_range(g.colors_range[i], g.colors_range[i+3]);
-				clr[3] = g.alpha;
-			}
-			if (g.color_speed != 0.f) {
-				for (int j=0; j<3; j++)
-					clr[j] *= (1. - g.color_speed);
-			}
-			
-			// time
-			life_time.set_seconds( rnd_range(g.TTL.seconds(), TTL_max.seconds()) );
-			fade_time.set_seconds( rnd_range(g.FT .seconds(),  FT_max.seconds()) );
-			
-			// fill buffer
 			
 			// pos, left
-			d[0] = px;
-			d[1] = py;
-			d[2] = pr;
-			d[3] = (life_time + fade_time).seconds();
+			d[0] = p.px;
+			d[1] = p.py;
+			d[2] = p.pr;
+			d[3] = total;
 			d += 4;
 			
 			// vel, size
-			d[0] = vx;
-			d[1] = vy;
-			d[2] = vr;
-			d[3] = g.px_radius;
+			d[0] = p.vx;
+			d[1] = p.vy;
+			d[2] = p.vr;
+			d[3] = p.size;
+// outclr - it doesn't work
 			d += 8;
 			
 			// texlim
-			d[0] = tex.tc.lower().x;
-			d[1] = tex.tc.lower().y;
-			d[2] = tex.tc.upper().x;
-			d[3] = tex.tc.upper().y;
+			d[0] = p.tex.tc.lower().x;
+			d[1] = p.tex.tc.lower().y;
+			d[2] = p.tex.tc.upper().x;
+			d[3] = p.tex.tc.upper().y;
 			d += 4;
 			
 			// acc, fade
-			d[0] = ax;
-			d[1] = ay;
-			d[2] = ar;
-			d[3] = 1.f / fade_time.seconds();
+			d[0] = p.ax;
+			d[1] = p.ay;
+			d[2] = p.ar;
+			d[3] = 1.f / p.ft;
 			d += 4;
 			
 			// color
-			d[0] = float(clr[0]) / 255;
-			d[1] = float(clr[1]) / 255;
-			d[2] = float(clr[2]) / 255;
-			d[3] = float(clr[3]) / 255;
+			d[0] = p.clr.r;
+			d[1] = p.clr.g;
+			d[2] = p.clr.b;
+			d[3] = p.clr.a;
 		}
 		
 		// finish
 		
 		bufs[0]->update_part(gs.back().off * per_part, num * per_part, data);
+		gs.back().time_left.set_seconds(max_time);
+		group.end();
 	}
 };
 
 
-
-void ParticleGroup::submit() {ParticleRenderer::get().add(*this);}
 
 static ParticleRenderer_Impl* rni;
 ParticleRenderer& ParticleRenderer::get() {

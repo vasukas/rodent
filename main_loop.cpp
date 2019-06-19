@@ -112,12 +112,11 @@ public:
 					tex = Texture::create_from(img);
 				}
 				
-				ParticleGroup ptg;
+				ParticleGroupStd ptg;
 				ptg.count = 1000;
-				ptg.origin.set(0, 0);
 				ptg.radius = 60;
 				ptg.sprs.push_back({tex, {0,0,1,1}});
-//					ptg.sprs.push_back( RenText::get().get_white_rect() );
+//				ptg.sprs.push_back( RenText::get().get_white_rect() );
 				ptg.colors_range[0] = 192; ptg.colors_range[3] = 255;
 				ptg.colors_range[1] = 192; ptg.colors_range[4] = 255;
 				ptg.colors_range[2] = 192; ptg.colors_range[5] = 255;
@@ -125,7 +124,7 @@ public:
 				ptg.speed_min = 200; ptg.speed_max = 600;
 				ptg.TTL.ms(2000), ptg.FT.ms(1000);
 				ptg.TTL_max = ptg.TTL + TimeSpan::ms(500), ptg.FT_max = ptg.FT + TimeSpan::ms(1000);
-				ptg.submit();
+				ptg.draw({});
 			}
 		}
 	}

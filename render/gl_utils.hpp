@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 #include <GL/glew.h>
+#include "utils/color_manip.hpp"
 #include "vaslib/vas_math.hpp"
 
 
@@ -16,26 +17,6 @@ inline int8_t norm_i8(float x) {
 	if (x < 0) return x > -1.f ? x * 128 : -128;
 	return x < 1.f ? x * 127 : 127;
 }
-
-
-
-/// FP RGBA color
-struct FColor {
-	float r, g, b, a;
-	
-	FColor() = default;
-	FColor(float r, float g, float b, float a = 1.f);
-	FColor(uint32_t rgba, float mul = 1.f); ///< Multiplies colors (not alpha)
-	
-	float& operator[] (size_t i);
-	const float& operator[] (size_t i) const;
-	
-	FColor& operator*= (float f); ///< Multiplies all colors (not alpha)
-	FColor& operator-= (const FColor& c); ///< Adds all colors (including alpha)
-	
-	FColor operator* (float f);
-	FColor operator- (const FColor& c);
-};
 
 
 

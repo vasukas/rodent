@@ -2,29 +2,66 @@
 #define PARTICLES_HPP
 
 #include <vector>
+#include "utils/color_manip.hpp"
 #include "vaslib/vas_math.hpp"
 #include "vaslib/vas_time.hpp"
 #include "texture.hpp"
 
 
 
+/// Single particle
+struct ParticleParams
+{
+	float px, py, pr; // position
+	float vx, vy, vr; // velocity
+	float ax, ay, ar; // acceleration
+	FColor clr;
+	float lt, ft; // life and fade times, seconds
+	float size; // particle radius
+	TextureReg tex;
+	
+	/// Sets velocity and acceleration to zero
+	void set_zero(bool vel = true, bool accel = true);
+	
+	/// Sets acceleration so particle would stop moving at the end of full lifetime. 
+	/// Needs velocity and lt & ft to be already set
+	void decel_to_zero();
+};
+
+
+
+struct ParticleGroupGenerator
+{
+	virtual ~ParticleGroupGenerator() = default;
+	
+	/// Begins generating new group. Returns number of particles
+	virtual size_t begin(const Transform& tr, ParticleParams& p) = 0;
+	
+	/// Fills params, value is same since last call and call to begin
+	virtual void gen(ParticleParams& p) = 0;
+	
+	/// Group generation finished 
+	virtual void end() {}
+	
+	/// Generates group with specified transformation
+	void draw(const Transform& tr);
+};
+
+
 
 /// Particle group generation parameters
-struct ParticleGroup
+struct ParticleGroupStd : ParticleGroupGenerator
 {
 	// in all min & max pairs max -1 means "same as min"
 	
-	int count = 20; ///< number of particles
+	size_t count = 20; ///< Number of particles
 	
-	vec2i origin = {}; ///< start position
-	int radius = 1; ///< maximum start radius
+	float radius = 1; ///< maximum start radius
 	float rot_min = 0, rot_max = M_PI*2; ///< start rotation range (radians)
 	bool radius_fixed = false; ///< are all particles appear on maximum radius
 	
-	std::vector<vec2fp> pre_pos; ///< Prebuilt positions. If not empty, used instead of radius, origin and count
-	
 	std::vector<TextureReg> sprs; ///< images
-	int px_radius = 8; ///< radius of particle itself, in pixels
+	float px_radius = 8; ///< radius of particle itself, in pixels
 	
 	std::vector<uint32_t> colors; ///< RGBA (alpha ignored unless 'alpha' is zero)
 	uint8_t colors_range[6] = {}; ///< RGB, min (indices 0-2) and max (indices 3-5), ignored if 'colors' not empty
@@ -38,11 +75,12 @@ struct ParticleGroup
 	TimeSpan TTL = TimeSpan::ms(1200), TTL_max = TimeSpan::ms(-1); ///< time to live (before fade)
 	TimeSpan FT = TimeSpan::ms(800), FT_max = TimeSpan::ms(-1); ///< fade time
 	
-	int prerender_index = -1; ///< internal
+private:
+	Transform t_tr;
+	float t_spdmax, t_rotmax, t_lmax, t_fmax;
 	
-	
-	/// Adds group to renderer
-	void submit();
+	size_t begin(const Transform& tr, ParticleParams& p);
+	void gen(ParticleParams& p);
 };
 
 
@@ -57,8 +95,8 @@ protected:
 	virtual ~ParticleRenderer();
 	virtual void render(TimeSpan passed) = 0;
 	
-	friend ParticleGroup;
-	virtual void add(const ParticleGroup& group) = 0;
+	friend ParticleGroupGenerator;
+	virtual void add(ParticleGroupGenerator& group, const Transform& tr) = 0;
 };
 
 #endif // PARTICLES_HPP
