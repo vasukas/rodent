@@ -20,11 +20,13 @@ EC_Render::~EC_Render()
 	c.type = PresCommand::T_DEL;
 	send(c);
 }
-void EC_Render::parts(size_t id)
+void EC_Render::parts(size_t id, float power, Transform rel)
 {
 	PresCommand c;
 	c.type = PresCommand::T_OBJPARTS;
 	c.index = id;
+	c.pos = rel;
+	c.power = power;
 	send(c);
 }
 void EC_Render::send(PresCommand& c)
@@ -88,12 +90,12 @@ public:
 			case PresCommand::T_OBJPARTS:
 				{	auto& o = objs[e.obj];
 					auto& p = p_objs[o.oid];
-					p.ps[e.index]->draw(o.tr);
+					p.ps[e.index]->draw(o.tr + e.pos, e.power);
 				}
 				break;
 				
 			case PresCommand::T_FREEPARTS:
-				p_pars[e.obj]->draw(e.pos);
+				p_pars[e.index]->draw(e.pos, e.power);
 				break;
 			}
 		}

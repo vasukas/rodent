@@ -7,7 +7,6 @@
 #include "control.hpp"
 #include "particles.hpp"
 #include "shader.hpp"
-#include "texture.hpp"
 
 
 
@@ -22,14 +21,14 @@ void ParticleParams::decel_to_zero()
 	ay = vy / (ft + lt);
 	ar = vr / (ft + lt);
 }
-void ParticleGroupGenerator::draw(const Transform& tr)
+void ParticleGroupGenerator::draw(const Transform& tr, float power)
 {
-	ParticleRenderer::get().add(*this, tr);
+	ParticleRenderer::get().add(*this, tr, power);
 }
 
 
 
-size_t ParticleGroupStd::begin(const Transform& tr, ParticleParams& p)
+size_t ParticleGroupStd::begin(const Transform& tr, ParticleParams& p, float)
 {
 	t_tr = tr;
 	t_spdmax = speed_max < 0 ? speed_min : speed_max;
@@ -43,8 +42,6 @@ size_t ParticleGroupStd::begin(const Transform& tr, ParticleParams& p)
 }
 void ParticleGroupStd::gen(ParticleParams& p)
 {
-	p.tex = sprs[ rnd_uint(0, sprs.size()) ];
-	
 	// position
 	p.pr = t_tr.rot + rnd_range(rot_min, rot_max);
 	vec2fp rv = {radius_fixed? radius : (float) rnd_range(0, radius), 0.f};
@@ -91,7 +88,7 @@ class ParticleRenderer_Impl : public ParticleRenderer
 public:
 	const int part_lim_step = 10000;
 	int part_lim = 0; // max number of particles
-	int per_part = 24; // values per particle
+	int per_part = 20; // values per particle
 	
 	GLA_VertexArray vao;
 	std::array<std::shared_ptr<GLA_Buffer>, 2> bufs;
@@ -108,7 +105,6 @@ public:
 	std::vector<Group> gs;
 	int gs_off_max = 0; // max currently used
 	
-	GLuint tex_obj = 0; // only single texture supported atm
 	RAII_Guard dbgm_g;
 	
 	
@@ -135,10 +131,9 @@ public:
 		    "newd[1]",
 		    "newd[2]",
 		    "newd[3]",
-		    "newd[4]",
-		    "newd[5]"
+		    "newd[4]"
 		};
-		glTransformFeedbackVaryings(prog, 6, vars, GL_INTERLEAVED_ATTRIBS);
+		glTransformFeedbackVaryings(prog, 5, vars, GL_INTERLEAVED_ATTRIBS);
 		
 		bool ok = Shader::link_fin(prog);
 		glDeleteShader(vo);
@@ -180,17 +175,11 @@ public:
 		sh_calc->bind();
 		sh_calc->set1f("passed", passed.seconds());
 		
-		vao.set_attribs(std::vector<GLA_VertexArray::Attrib>(6, {bufs[0], 4}));
+		vao.set_attribs(std::vector<GLA_VertexArray::Attrib>(5, {bufs[0], 4}));
 		
 		glEnable(GL_RASTERIZER_DISCARD);
 		glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, bufs[1]->vbo);
 		glBeginTransformFeedback(GL_POINTS);
-		
-		// some old bug test?
-//		for (size_t gi=1; gi<gs.size(); gi++) {
-//			if (gs[gi].off != gs[gi-1].off + gs[gi-1].num)
-//				debugbreak();
-//		}
 		
 		int ptr = 0;
 		for (size_t gi=0; gi<gs.size(); gi++) {
@@ -226,17 +215,14 @@ public:
 		sh_draw->bind();
 		sh_draw->set4mx("proj", RenderControl::get().get_world_camera()->get_full_matrix());
 		
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, tex_obj);
-		
-		vao.set_attribs(std::vector<GLA_VertexArray::Attrib>(6, {bufs[0], 4}));
+		vao.set_attribs(std::vector<GLA_VertexArray::Attrib>(5, {bufs[0], 4}));
 		glDrawArrays(GL_POINTS, 0, gs_off_max);
 	}
-	void add(ParticleGroupGenerator& group, const Transform& tr)
+	void add(ParticleGroupGenerator& group, const Transform& tr, float power)
 	{
 		ParticleParams p;
 		
-		int num = group.begin(tr, p);
+		int num = group.begin(tr, p, power);
 		if (!num) {
 			group.end();
 			return;
@@ -265,15 +251,6 @@ public:
 			float total = p.lt + p.ft;
 			max_time = std::max(max_time, total);
 			
-			if (!tex_obj) tex_obj = p.tex.tex->get_obj();
-			else if (tex_obj != p.tex.tex->get_obj()) {
-				debugbreak();
-				VLOGE("ParticleRenderer::add() multiple textures not supported");
-				group.end();
-				gs.pop_back();
-				return;
-			}
-			
 			// pos, left
 			d[0] = p.px;
 			d[1] = p.py;
@@ -286,15 +263,8 @@ public:
 			d[1] = p.vy;
 			d[2] = p.vr;
 			d[3] = p.size;
-// outclr - it doesn't work
+// +4 color calculated in shader
 			d += 8;
-			
-			// texlim
-			d[0] = p.tex.tc.lower().x;
-			d[1] = p.tex.tc.lower().y;
-			d[2] = p.tex.tc.upper().x;
-			d[3] = p.tex.tc.upper().y;
-			d += 4;
 			
 			// acc, fade
 			d[0] = p.ax;

@@ -21,7 +21,7 @@ struct EC_Render
 	
 	EC_Render(Entity* ent, size_t sprite_id);
 	~EC_Render();
-	void parts(size_t id);
+	void parts(size_t id, float power = 1.f, Transform rel = {});
 	
 private:
 	void send(PresCommand& c);
@@ -35,23 +35,17 @@ struct PresCommand
 	{
 		T_CREATE, ///< new object; [sprite index]
 		T_DEL, ///< delete object with post-effect; [pos]
-		T_OBJPARTS, ///< generate particles onto obj [preset index]
+		T_OBJPARTS, ///< generate particles onto obj [preset index, pos (relative), power]
 		
-		T_FREEPARTS ///< generate particles [obj = preset index, pos]
+		T_FREEPARTS ///< generate particles [(obj ignored), preset index, pos, power]
 	};
 	Type type;
 	size_t obj; ///< non-zero EntityIndex
 	
-	union {
-		struct {
-			size_t index;
-			float time;
-		};
-		Transform pos;
-	};
+	size_t index;
+	Transform pos;
+	float power;
 };
-
-
 
 struct PresObject
 {
@@ -59,8 +53,6 @@ struct PresObject
 	FColor clr = FColor(1, 1, 1, 1);
 	std::vector<std::shared_ptr<ParticleGroupGenerator>> ps; ///< [0] must be null or contain death gen
 };
-
-
 
 /// Runs in separate thread
 class GamePresenter

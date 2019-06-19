@@ -6,11 +6,10 @@
 
 uniform mat4 proj;
 
-layout(location = 0) in vec4 data[6];
+layout(location = 0) in vec4 data[5];
 out Data {
 	mat4 mx;
 	vec4 clr;
-	vec4 texz;
 	float size;
 };
 
@@ -27,7 +26,6 @@ void main() {
 
 	mx = proj * trans * rot;
 	clr = data[2];
-	texz = data[3];
 	size = data[1].w;
 }
 
@@ -42,7 +40,6 @@ layout(triangle_strip, max_vertices=4) out;
 in Data {
 	mat4 mx;
 	vec4 clr;
-	vec4 texz;
 	float size;
 } dat[];
 out vec2 tc;
@@ -51,29 +48,28 @@ out vec4 tclr;
 void main() {
 	mat4 mx = dat[0].mx;
 	vec4 clr = dat[0].clr;
-	vec4 texz = dat[0].texz;
 	float size = dat[0].size;
 
-	gl_Position = mx * vec4( - size,  - size, 0, 1);
-	tc = texz.xy;
+	gl_Position = mx * vec4( -size, -size, 0, 1);
+	tc = vec2(-1, -1);
 	tclr = clr;
 	gl_PrimitiveID = gl_PrimitiveIDIn;
 	EmitVertex();
 
-	gl_Position = mx * vec4( + size,  - size, 0, 1);
-	tc = texz.zy;
+	gl_Position = mx * vec4( +size, -size, 0, 1);
+	tc = vec2(+1, -1);
 	tclr = clr;
 	gl_PrimitiveID = gl_PrimitiveIDIn;
 	EmitVertex();
 
-	gl_Position = mx * vec4( - size,  + size, 0, 1);
-	tc = texz.xw;
+	gl_Position = mx * vec4( -size, +size, 0, 1);
+	tc = vec2(-1, +1);
 	tclr = clr;
 	gl_PrimitiveID = gl_PrimitiveIDIn;
 	EmitVertex();
 
-	gl_Position = mx * vec4( + size,  + size, 0, 1);
-	tc = texz.zw;
+	gl_Position = mx * vec4( +size, +size, 0, 1);
+	tc = vec2(+1, +1);
 	tclr = clr;
 	gl_PrimitiveID = gl_PrimitiveIDIn;
 	EmitVertex();
@@ -86,14 +82,13 @@ void main() {
 #frag
 #version 330 core
 
-uniform sampler2D tex;
-
 in vec2 tc;
 in vec4 tclr;
 out vec4 res;
 
 void main() {
-	res = tclr * texture(tex, tc);
+	float a = 1 - (tc.x * tc.x + tc.y * tc.y) / 2;
+	res = tclr * a;
 }
 
 #end

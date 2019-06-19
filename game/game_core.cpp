@@ -1,8 +1,10 @@
 #include <random>
 #include "vaslib/vas_cpp_utils.hpp"
 #include "game_core.hpp"
-#include "presenter.hpp"
 #include "physics.hpp"
+#include "presenter.hpp"
+
+const TimeSpan GameCore::step_len = TimeSpan::seconds(1./30);
 
 class GameCore_Impl : public GameCore
 {

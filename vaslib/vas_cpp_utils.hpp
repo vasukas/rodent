@@ -53,4 +53,11 @@ void reserve_more( T& vs, size_t required )
 	vs.reserve( vs.size() + required );
 }
 
+/// Inserts second container to the end of first
+template <typename T>
+void append( T& vs, const T& as )
+{
+	vs.insert( vs.end(), as.begin(), as.end() );
+}
+
 #endif // VAS_CPP_UTILS_HPP

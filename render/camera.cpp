@@ -37,7 +37,7 @@ void Camera::add_shift_frame (Frame frm)
 	frm.rot += f.rot;
 	add_frame(frm);
 }
-void Camera::clear()
+void Camera::reset_frames()
 {
 	while (!ans.empty()) ans.pop();
 }

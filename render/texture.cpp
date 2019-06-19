@@ -92,6 +92,23 @@ public:
 		glTexSubImage2D( GL_TEXTURE_2D, 0, x, y, w, h, fmt.in_format, fmt.in_type, data );
 	}
 };
+Texture* Texture::load( const char *filename, Format fmt, Filter fil )
+{
+	ImageInfo::Format i_fmt;
+	if      (fmt == FMT_RGBA)   i_fmt = ImageInfo::FMT_RGBA;
+	else if (fmt == FMT_SINGLE) i_fmt = ImageInfo::FMT_ALPHA;
+	else {
+		VLOGE("Texture::load() unsupported format");
+		return nullptr;
+	}
+	
+	ImageInfo img;
+	if (!img.load(filename, i_fmt)) {
+		VLOGE("Texture::load() failed");
+		return nullptr;
+	}
+	return create_from( img.get_size(), fmt, img.raw(), fil );
+}
 Texture* Texture::create_empty( vec2i size, Format fmt, Filter fil )
 {
 	FmtDescr f = fmts[fmt];

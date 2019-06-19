@@ -4,19 +4,19 @@
 
 uniform float passed;
 
-layout(location = 0) in vec4 data[6];
-out vec4 newd[6];
+layout(location = 0) in vec4 data[5];
+out vec4 newd[5];
 
 void main() {
 	// pos += vel
 	newd[0].xyz = data[0].xyz + data[1].xyz * passed;
 
 	// vel += acc
-	newd[1].xyz = data[1].xyz + data[4].xyz;
+	newd[1].xyz = data[1].xyz + data[3].xyz * passed;
 
 	// color
-	float alpha = data[0].w * data[4].w;
-	newd[2] = data[5] * clamp(alpha, 0, 1);
+	float alpha = data[0].w * data[3].w;
+	newd[2] = data[4] * clamp(alpha, 0, 1);
 
 	// time -= passed
 	newd[0].w = data[0].w - passed;
@@ -25,5 +25,4 @@ void main() {
 	newd[1].w = data[1].w;
 	newd[3] = data[3];
 	newd[4] = data[4];
-	newd[5] = data[5];
 }

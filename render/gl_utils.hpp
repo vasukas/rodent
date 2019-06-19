@@ -124,4 +124,38 @@ struct GLA_Texture
 	operator GLuint() {return tex;}
 };
 
+
+
+struct GLA_Framebuffer
+{
+	GLuint fbo = 0;
+	vec2i size = {};
+	
+	GLA_Framebuffer() {
+		glGenFramebuffers(1, &fbo);
+	}
+	~GLA_Framebuffer() {
+		glDeleteFramebuffers(1, &fbo);
+	}
+	
+	GLA_Framebuffer( const GLA_Framebuffer& ) = delete;
+	void operator =( const GLA_Framebuffer& ) = delete;
+	
+	GLA_Framebuffer( GLA_Framebuffer&& obj ) {swap(obj);}
+	void operator =( GLA_Framebuffer&& obj ) {swap(obj);}
+	
+	void swap(GLA_Framebuffer& obj) {
+		std::swap(fbo, obj.fbo);
+		std::swap(size, obj.size);
+	}
+	
+	void bind() {
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	}
+	void attach_tex(GLenum point, GLuint tex) {
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, point, GL_TEXTURE_2D, tex, 0);
+	}
+};
+
 #endif // GL_UTILS_HPP

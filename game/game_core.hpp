@@ -17,7 +17,7 @@ public:
 		uint32_t random_seed = 0;
 	};
 	
-	const TimeSpan step_len = TimeSpan::seconds(1./30);
+	static const TimeSpan step_len;
 	
 	static GameCore& get(); ///< Returns singleton
 	static GameCore* create( const InitParams& pars ); ///< Creates empty handler and inits all systems

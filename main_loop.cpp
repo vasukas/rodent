@@ -1,8 +1,14 @@
+#include <mutex>
+#include <thread>
 #include "core/tui_layer.hpp"
+#include "game/game_core.hpp"
+#include "game/physics.hpp"
+#include "game/presenter.hpp"
+#include "render/camera.hpp"
+#include "render/control.hpp"
 #include "render/particles.hpp"
 #include "render/ren_aal.hpp"
 #include "render/ren_imm.hpp"
-#include "utils/res_image.hpp"
 #include "vaslib/vas_log.hpp"
 #include "main_loop.hpp"
 
@@ -23,8 +29,9 @@ public:
 		
 		Field y0, y1;
 		int fd_w = 8;
+		ML_Rentest* mren;
 		
-		L() {
+		L(ML_Rentest* mren): mren(mren) {
 			transparent = false;
 			y0 = mk_field({1,1,fd_w,1});
 			y1 = mk_field({1,3,fd_w,1});
@@ -38,8 +45,10 @@ public:
 			prev = TimeSpan::since_start();
 		}
 		void on_event(const SDL_Event& ev) {
-			if (ev.type == SDL_MOUSEBUTTONDOWN)
+			if (ev.type == SDL_MOUSEBUTTONDOWN) {
+				mren->lr = nullptr;
 				delete this;
+			}
 		}
 		void render()
 		{
@@ -93,10 +102,12 @@ public:
 			h.per = TimeSpan::seconds( 0.1f * (1 + rand() % 8) );
 		}
 	};
+	L* lr;
 	
 	ML_Rentest()
 	{
-		(new L)->bring_to_top();
+		lr = new L(this);
+		lr->bring_to_top();
 	}
 	void on_event(SDL_Event& ev)
 	{
@@ -105,23 +116,15 @@ public:
 			auto& ks = ev.key.keysym;
 			if (ks.scancode == SDL_SCANCODE_1)
 			{
-				static Texture* tex;
-				if (!tex) {
-					ImageInfo img;
-					img.load("res/part.png", ImageInfo::FMT_RGBA);
-					tex = Texture::create_from(img);
-				}
-				
 				ParticleGroupStd ptg;
+				ptg.px_radius = 4.f; // default
 				ptg.count = 1000;
 				ptg.radius = 60;
-				ptg.sprs.push_back({tex, {0,0,1,1}});
-//				ptg.sprs.push_back( RenText::get().get_white_rect() );
 				ptg.colors_range[0] = 192; ptg.colors_range[3] = 255;
 				ptg.colors_range[1] = 192; ptg.colors_range[4] = 255;
 				ptg.colors_range[2] = 192; ptg.colors_range[5] = 255;
 				ptg.alpha = 255;
-				ptg.speed_min = 200; ptg.speed_max = 600;
+				ptg.speed_min = 60; ptg.speed_max = 200; // 200, 600
 				ptg.TTL.ms(2000), ptg.FT.ms(1000);
 				ptg.TTL_max = ptg.TTL + TimeSpan::ms(500), ptg.FT_max = ptg.FT + TimeSpan::ms(1000);
 				ptg.draw({});
@@ -151,10 +154,169 @@ public:
 		RenAAL::get().draw_line({-440,  200}, {-260, -200}, 0x6060ffff, 5.f, 60.f, 1.7f);
 		RenAAL::get().draw_line({-440, -200}, {-260,  200}, 0xff2020ff, 5.f, 60.f, 1.7f);
 		
-		RenImm::get().set_context(RenImm::DEFCTX_UI);
-		RenImm::get().draw_rect({0,0,400,200}, 0xff0000ff);
+		if (lr) {
+			RenImm::get().set_context(RenImm::DEFCTX_UI);
+			RenImm::get().draw_rect({0,0,400,200}, 0xff0000ff);
+		}
 	}
 };
+
+
+/*
+enum ObjEffect
+{
+	OE_DEATH,
+	OE_DAMAGED,
+	OE_SPEEDUP
+};
+enum FreeEffect
+{
+	FE_EXPLOSION,
+	FE_HIT
+};
+enum ObjList
+{
+	OBJ_RAT,
+	OBJ_BOX,
+	OBJ_ARMEDBOX,
+	OBJ_RUNNER,
+	OBJ_ROCKETMAN
+};
+
+class ML_Game : public MainLoop
+{
+public:
+	enum State
+	{
+		ST_LOADING,
+		ST_RUN,
+		ST_FINISH
+	};
+	
+	std::unique_ptr<GamePresenter> pres;
+	
+	std::thread thr_core;
+	State state = ST_LOADING;
+	
+	std::mutex pc_lock;
+	Camera* cam;
+	EntityIndex cam_ent = 0;
+	
+	std::unique_ptr<GameCore> core;
+	EntityIndex pc_ent = 0; // player character
+	
+	
+	
+	ML_Game()
+	{
+		part_tex.reset( Texture::load("res/particles.png") );
+		if (!part_tex) throw std::runtime_error("");
+		
+		cam = RenderControl::get().get_world_camera();
+		Camera::Frame cf = cam->get_state();
+		cf.mag = RenderControl::get_size().x / (15.f *2); // 15 m / width (yeah?)
+		cam->set_state(cf);
+		
+		pres.reset( &GamePresenter::get() );
+		thr_core = std::thread([this](){thr_func();});
+	}
+	~ML_Game()
+	{
+		state = ST_FINISH;
+		thr_core.join();
+	}
+	void on_event(SDL_Event& ev)
+	{
+		if (state == ST_FINISH)
+		{
+			if (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_ESCAPE)
+				delete this;
+			return;
+		}
+		if (state != ST_RUN) return;
+		
+#error move PC
+		
+		std::unique_lock g(pc_lock);
+#error apply PC movement
+	}
+	void render(TimeSpan passed)
+	{
+		if		(state == ST_LOADING) RenImm::get().draw_text({}, "Loading...", -1, false, 4.f);
+		else if (state == ST_FINISH)  RenImm::get().draw_text({}, "Game finished. Press ESC to exit.", -1, false, 4.f);
+		else {
+			std::unique_lock g(pc_lock);
+			if (auto e = core->get_ent(cam_ent)) cam_follow(e); else cam_ent = 0;
+			GamePresenter::get().render(passed);
+		}
+	}
+	
+	
+	
+	void thr_func() try
+	{
+		GameCore::InitParams core_init;
+		core_init.random_seed = 0;
+		core.reset( GameCore::create(core_init) );
+		
+		init_objs();
+		init_level();
+#error Init
+		
+		state = ST_RUN;
+		while (state != ST_FINISH)
+		{
+			{	std::unique_lock g(pc_lock);
+				core->step();
+			}
+			sleep(core->step_len);
+		}
+	}
+	catch (std::exception& e) {
+		state = ST_FINISH;
+		VLOGE("Game failed: {}", e.what());
+	}
+	
+	
+	
+	void init_resources()
+	{
+		{
+			auto g = std::make_shared<ParticleGroupStd>();
+			g->count = ;
+			pres->add_preset(g);
+		}
+	}
+	void init_level()
+	{
+		
+	}
+	void cam_follow(Entity* ent)
+	{
+		b2Body* body = ent->get_phy()->body;
+		
+		b2Vec2 vel = body->GetLinearVelocity();
+		float spd = vel.Length();
+		b2Vec2 fwd = body->GetWorldVector({0, -1});
+		if (b2Dot(vel, fwd) < 0) fwd = -fwd;
+		vel = fwd;
+		vel *= spd;
+		
+		Camera::Frame cf = cam->get_state();
+		
+		vec2fp old = cf.pos;
+		cf.pos = conv( vel + body->GetPosition() );
+		
+		float d = cf.pos.dist(old);
+		if (d < 3.f) return; // min dist - 3 m
+		
+		cf.len = TimeSpan::seconds(0.2) * d; // 5 m / sec
+		
+		cam->reset_frames();
+		cam->add_frame(cf);
+	}
+};
+*/
 
 
 
@@ -164,7 +326,13 @@ void MainLoop::init( InitWhich which )
 	if (which == INIT_DEFAULT)
 		which = INIT_RENTEST;
 	
-	if		(which == INIT_RENTEST) current = new ML_Rentest;
+	try {
+		if		(which == INIT_RENTEST) current = new ML_Rentest;
+//		else if (which == INIT_GAME)    current = new ML_Game;
+	}
+	catch (std::exception& e) {
+		VLOGE("MainLoop::init() failed: {}", e.what());
+	}
 }
 MainLoop::~MainLoop() {
 	if (current == this) current = nullptr;

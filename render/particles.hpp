@@ -18,7 +18,6 @@ struct ParticleParams
 	FColor clr;
 	float lt, ft; // life and fade times, seconds
 	float size; // particle radius
-	TextureReg tex;
 	
 	/// Sets velocity and acceleration to zero
 	void set_zero(bool vel = true, bool accel = true);
@@ -35,7 +34,7 @@ struct ParticleGroupGenerator
 	virtual ~ParticleGroupGenerator() = default;
 	
 	/// Begins generating new group. Returns number of particles
-	virtual size_t begin(const Transform& tr, ParticleParams& p) = 0;
+	virtual size_t begin(const Transform& tr, ParticleParams& p, float power) = 0;
 	
 	/// Fills params, value is same since last call and call to begin
 	virtual void gen(ParticleParams& p) = 0;
@@ -44,7 +43,7 @@ struct ParticleGroupGenerator
 	virtual void end() {}
 	
 	/// Generates group with specified transformation
-	void draw(const Transform& tr);
+	void draw(const Transform& tr, float power = 1.f);
 };
 
 
@@ -60,8 +59,7 @@ struct ParticleGroupStd : ParticleGroupGenerator
 	float rot_min = 0, rot_max = M_PI*2; ///< start rotation range (radians)
 	bool radius_fixed = false; ///< are all particles appear on maximum radius
 	
-	std::vector<TextureReg> sprs; ///< images
-	float px_radius = 8; ///< radius of particle itself, in pixels
+	float px_radius = 8; ///< radius of particle itself, in units
 	
 	std::vector<uint32_t> colors; ///< RGBA (alpha ignored unless 'alpha' is zero)
 	uint8_t colors_range[6] = {}; ///< RGB, min (indices 0-2) and max (indices 3-5), ignored if 'colors' not empty
@@ -79,7 +77,7 @@ private:
 	Transform t_tr;
 	float t_spdmax, t_rotmax, t_lmax, t_fmax;
 	
-	size_t begin(const Transform& tr, ParticleParams& p);
+	size_t begin(const Transform& tr, ParticleParams& p, float);
 	void gen(ParticleParams& p);
 };
 
@@ -96,7 +94,7 @@ protected:
 	virtual void render(TimeSpan passed) = 0;
 	
 	friend ParticleGroupGenerator;
-	virtual void add(ParticleGroupGenerator& group, const Transform& tr) = 0;
+	virtual void add(ParticleGroupGenerator& group, const Transform& tr, float power) = 0;
 };
 
 #endif // PARTICLES_HPP

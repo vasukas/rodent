@@ -271,7 +271,6 @@ int main( int argc, char *argv[] )
 	bool loop_limit = !RenderControl::get().has_vsync() || target_fps != vsync_fps;
 	VLOGD("Main loop limiter: {}", loop_limit);
 	
-	TimeSpan step_counter;
 	TimeSpan passed = loop_length; // render time
 	TimeSpan last_time = loop_length; // processing time (for info)
 	
@@ -285,9 +284,6 @@ int main( int argc, char *argv[] )
 	while (run)
 	{
 		TimeSpan loop_0 = TimeSpan::since_start();
-		
-		MainLoop::current->prepare();
-		if (!MainLoop::current) break;
 		
 		SDL_Event ev;
 		while (SDL_PollEvent(&ev))
@@ -331,24 +327,13 @@ int main( int argc, char *argv[] )
 				t->on_event(ev);
 			
 			MainLoop::current->on_event(ev);
-			if (!MainLoop::current) break;
+			if (!MainLoop::current) {
+				run = false;
+				break;
+			}
 		}
 		
-		while (step_counter >= MainLoop::current->step_each)
-		{
-			try {
-				step_counter -= MainLoop::current->step_each;
-				MainLoop::current->step();
-			}
-			catch (const std::exception& e)
-			{
-				VLOGC("main() unhandled exception in MainLoop::step: {}", e.what());
-				delete MainLoop::current;
-				MainLoop::current = nullptr;
-			}
-			if (!MainLoop::current) break;
-		}
-		
+		if (!run) break;
 		MainLoop::current->render( passed );
 		
 		vec2i scr_size = RenderControl::get().get_size();
@@ -380,7 +365,6 @@ int main( int argc, char *argv[] )
 			if (!burn_gpu) sleep(loop_length - loop_total);
 		}
 		else passed = loop_total;
-		step_counter += passed;
 	}
 	
 	VLOGI("main() normal exit");
