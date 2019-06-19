@@ -22,7 +22,13 @@ External dependecies (C/C++ libraries, normally linked dynamically):
   zlib license
 
 
+
 Static dependecies (linked into app):
+
+* Box2D
+  www.box2d.org
+  https://github.com/erincatto/Box2D
+  zlib license
 
 * stb_image, stb_image_write
   https://github.com/nothings/stb

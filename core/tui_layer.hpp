@@ -20,7 +20,6 @@ public:
 		
 		Field() {sur = nullptr;}
 		Field(TUI_Surface& sur, Rect r, bool is_transp): is_transp(is_transp), sur(&sur), r(r) {clear();}
-		Field(const Field& f): is_transp(f.is_transp), sur(f.sur), r(f.r) {}
 		
 //		std::string prefix; ///< Added before value
 		
