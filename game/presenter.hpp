@@ -51,7 +51,7 @@ struct PresObject
 {
 	size_t id; ///< RenInstanced id
 	FColor clr = FColor(1, 1, 1, 1);
-	std::vector<std::shared_ptr<ParticleGroupGenerator>> ps; ///< [0] must be null or contain death gen
+	std::vector<std::shared_ptr<ParticleGroupGenerator>> ps; ///< [0] must be null or contain death, or ps must be empty
 };
 
 /// Runs in separate thread

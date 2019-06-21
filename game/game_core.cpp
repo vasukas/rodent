@@ -47,7 +47,7 @@ public:
 		// tick systems
 		
 //		for (auto& e : ents) if (e) if (auto c = e->get_move())  c->tick();
-//		for (auto& e : ents) if (e) if (auto c = e->get_logic()) c->tick();
+		for (auto& e : ents) if (e && e->logic) e->logic->tick();
 		
 		phy->step();
 		GamePresenter::get().submit();

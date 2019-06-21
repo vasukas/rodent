@@ -372,5 +372,6 @@ int main( int argc, char *argv[] )
 	delete &RenderControl::get();
 	SDL_Quit();
 	
+	VLOGI("main() cleanup finished");
 	return 0;
 }

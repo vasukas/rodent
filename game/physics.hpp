@@ -16,12 +16,21 @@ struct EC_Physics
 	Entity* ent;
 	b2Body* body;
 	
-	EC_Physics(const b2BodyDef& def);
+	EC_Physics(const b2BodyDef& def); ///< Creates body
 	~EC_Physics();
 	
 	void add_circle(b2FixtureDef& fd, float radius, float mass);
 	void add_box(b2FixtureDef& fd, vec2fp half_extents, float mass);
+	
+	void attach_to(EC_Physics& target); ///< Fixed
+	void detach(); ///< Detaches self
+	
+private:
+	std::vector<b2Joint*> js;
+	void destroy(b2Joint* j);
 };
+
+inline EC_Physics* getptr(b2Body* b) {return static_cast<EC_Physics*>(b->GetUserData());}
 
 
 

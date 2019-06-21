@@ -83,7 +83,8 @@ public:
 				{	auto& o = objs[e.obj];
 					o.ei = 0;
 					auto& p = p_objs[o.oid];
-					if (p.ps[0]) p.ps[0]->draw(o.tr);
+					if (!p.ps.empty() && p.ps[0])
+						p.ps[0]->draw(o.tr);
 				}
 				break;
 				
