@@ -3,6 +3,7 @@ IsLibrary=0
 
 Source=(
 	../core/*.cpp
+	../game/*.cpp
 	../render/*.cpp
 	../utils/*.cpp
 	../vaslib/*.cpp

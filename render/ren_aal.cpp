@@ -4,6 +4,7 @@
 #include "camera.hpp"
 #include "control.hpp"
 #include "shader.hpp"
+#include "texture.hpp"
 
 
 
@@ -14,7 +15,7 @@ public:
 	{
 		size_t off, count; // Vertices in buffer
 		uint32_t clr;
-		float clr_mui;
+		float clr_mul;
 	};
 	struct InstObj
 	{
@@ -38,6 +39,8 @@ public:
 	GLA_VertexArray inst_vao;
 	std::vector<std::pair<size_t, size_t>> inst_objs;
 	std::vector<InstObj> inst_q;
+	
+	GLA_Texture tex;
 	
 	
 	
@@ -144,6 +147,35 @@ public:
 		});
 		sh = RenderControl::get().load_shader("aal");
 		sh_inst = RenderControl::get().load_shader("aal_inst");
+		
+		const int n = 200;
+		float data[n];
+		
+		float c = 0.2;
+		float a = 1.f / (c * sqrt(2 * M_PI));
+		float w = 2 * c * sqrt(2 * log(2));
+		c = 2 * c * c;
+		
+		auto f = [&](float x){
+			x = (1 - x) / w;
+			return a * exp(-(x*x) / c);
+		};
+		float x1 = f(1);
+		
+		for (int i=0; i<n; ++i) {
+			float x = (i + 1); x /= n;
+			float y = f(x) / x1;
+			data[i] = y;//std::min(255.f, 255 * y);
+		}
+		tex.bind();
+		glTexImage2D(tex.target, 0, GL_R8, n, 1, 0, GL_RED, GL_FLOAT, data);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		
+//		Texture::debug_save(tex.tex, "test.png", Texture::FMT_SINGLE);
+//		exit(1);
 	}
 	void draw_line(vec2fp p0, vec2fp p1, uint32_t clr, float width, float aa_width, float clr_mul)
 	{
@@ -167,7 +199,13 @@ public:
 	}
 	void render()
 	{
-		const float *mx = RenderControl::get().get_world_camera()->get_full_matrix();
+		Camera* cam = RenderControl::get().get_world_camera();
+		const float *mx = cam->get_full_matrix();
+		const float scrmul = 1.f;//cam->get_state().mag;
+		
+		glActiveTexture(GL_TEXTURE0);
+		tex.bind();
+		
 		if (!objs.empty())
 		{
 			vao.bufs[0]->update( data_f.size(), data_f.data() );
@@ -176,13 +214,14 @@ public:
 			
 			sh->bind();
 			sh->set4mx("proj", mx);
+			sh->set1f("scrmul", scrmul);
 			prev_clr = 0;
 			
 			for (auto& o : objs)
 			{
 				if (prev_clr != o.clr) {
 					prev_clr = o.clr;
-					sh->set_rgba("clr", o.clr, o.clr_mui);
+					sh->set_rgba("clr", o.clr, o.clr_mul);
 				}
 				glDrawArrays(GL_TRIANGLES, o.off, o.count);
 			}
@@ -199,10 +238,11 @@ public:
 			
 			sh_inst->bind();
 			sh_inst->set4mx("proj", mx);
+			sh_inst->set1f("scrmul", scrmul);
 			
 			for (auto& o : inst_q)
 			{
-				auto cs = cossin_ft(o.tr.rot);
+				auto cs = cossin_ft(-o.tr.rot);
 				sh_inst->set4f("pr", o.tr.pos.x, o.tr.pos.y, cs.x, cs.y);
 				sh_inst->set_clr("clr", o.clr);
 				
@@ -226,8 +266,8 @@ public:
 	}
 	void inst_end()
 	{
-		vao.bufs[0]->update( data_f.size(), data_f.data() );
-		vao.bufs[1]->update( data_i.size(), data_i.data() );
+		inst_vao.bufs[0]->update( data_f.size(), data_f.data() );
+		inst_vao.bufs[1]->update( data_i.size(), data_i.data() );
 		
 		data_f.clear(); data_f.shrink_to_fit();
 		data_i.clear(); data_i.shrink_to_fit();
@@ -238,7 +278,7 @@ public:
 	}
 	size_t inst_add_end()
 	{
-		size_t last = inst_objs.empty()? 0 : inst_objs.back().first + inst_objs.back().second;
+		size_t last = inst_objs.empty() ? 0 : inst_objs.back().first + inst_objs.back().second;
 		size_t cur = data_f.size() / 4;
 		size_t id = inst_objs.size();
 		inst_objs.emplace_back(last, cur - last);

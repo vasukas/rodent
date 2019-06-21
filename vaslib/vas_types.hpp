@@ -4,6 +4,7 @@
 #include <cinttypes>
 #include <cstddef>
 #include <limits>
+#include <type_traits>
 
 /// Combination of flags
 using flags_t = uint32_t;
@@ -16,11 +17,7 @@ const size_t size_t_inval = std::numeric_limits< size_t >::max();
 typedef unsigned int uint;
 
 #ifdef _MSC_VER
-#ifdef _WIN64
-typedef __int64 ssize_t;
-#else
-typedef long ssize_t;
-#endif
+typedef std::make_signed<size_t>::type ssize_t;
 #endif
 
 #endif // VAS_TYPES_HPP

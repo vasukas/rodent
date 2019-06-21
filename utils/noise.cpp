@@ -3,6 +3,12 @@
 
 
 
+bool rnd_bool()
+{
+	static std::mt19937 rnd_gen;
+	static std::uniform_real_distribution<> rnd_dis(-1, 1);
+	return rnd_dis(rnd_gen) < 0;
+}
 double rnd_range(double r0, double r1)
 {
 	static std::mt19937 rnd_gen (4);

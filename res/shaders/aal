@@ -5,6 +5,7 @@
 #version 330 core
 
 uniform mat4 proj;
+uniform float scrmul;
 
 layout(location = 0) in vec4 data;
 layout(location = 1) in vec3 norm_in;
@@ -16,8 +17,8 @@ out float endk;
 void main()
 {
 	norm = norm_in;
-	wpar = data.z;
-	endk = data.w;
+	wpar = data.z * scrmul;
+	endk = data.w * scrmul;
 
 	gl_Position = proj * vec4(data.xy, 0, 1);
 }

@@ -6,6 +6,7 @@
 
 uniform mat4 proj;
 uniform vec4 pr;
+uniform float scrmul;
 
 layout(location = 0) in vec4 data;
 layout(location = 1) in vec3 norm_in;
@@ -17,8 +18,8 @@ out float endk;
 void main()
 {
 	norm = norm_in;
-	wpar = data.z;
-	endk = data.w;
+	wpar = data.z * scrmul;
+	endk = data.w * scrmul;
 
 	mat2 rot = mat2(pr.z, -pr.w, pr.w, pr.z);
 	gl_Position = proj * vec4(rot * data.xy + pr.xy, 0, 1);
@@ -29,6 +30,7 @@ void main()
 #frag
 #version 330 core
 
+uniform sampler2D tex;
 uniform vec4 clr;
 
 in vec3 norm;
@@ -41,11 +43,8 @@ void main()
 	float a = wpar * (1 - length(norm.xy));
 	float b = endk * (1 - abs(norm.z));
 	a *= clamp(b, 0, 1);
-//	a = clamp(a, 0, 1);
-	a *= a;
-//	res = vec4(clr.rgb * a, clr.a);
+	a = texture(tex, vec2(a, 0)).r;
 	res = clr * a;
-//	res = vec4(clr.rgb, clr.a * a);
 }
 
 #end

@@ -5,6 +5,9 @@
 
 #include <cstddef>
 
+/// Returns random bool
+bool rnd_bool();
+
 /// Returns random number in specified range
 double rnd_range(double r0 = 0., double r1 = 1.);
 

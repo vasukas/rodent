@@ -285,9 +285,9 @@ public:
 	void set_vsync( bool on )
 	{
 		if (SDL_GL_SetSwapInterval( on? 1 : 0 ))
-			VLOGW( "RenderControl::set_vsync() failed - (tried to set: {})", on );
+			VLOGW( "RenderControl::set_vsync() failed - (tried to set to {})", on );
 		else
-			VLOGI( "RenderControl::set_vsync() ok - (tried to set: {})", on );
+			VLOGI( "RenderControl::set_vsync() ok - (tried to set to {})", on );
 	}
 	bool has_vsync()
 	{

@@ -18,14 +18,14 @@ vec2fp cossin_ft(float x)
 		table[table_size] = table[0];
 	}
 	
-	x /= (M_PI*2);
-	x = fmodf(x, 1.f);
-	if (x < 0) x += 1;
+	if (!std::isfinite(x)) return {1, 0};
+	clamp_angle(x);
 	
 	x *= table_size;
 	int i = static_cast< int >(x);
 	x -= i;
 	
+	if (i < 0) i += table_size;
 	i %= table_size;
 	int j = (i + table_size /4) % table_size;
 	

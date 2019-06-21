@@ -24,6 +24,8 @@ struct vec2fp;
 inline bool aequ(float  v, float  c, float eps)  {return std::fabs(v - c) < eps;} ///< Approximate comparison
 inline bool aequ(double v, double c, double eps) {return std::fabs(v - c) < eps;} ///< Approximate comparison
 
+inline float clampf(float x, float min, float max) {return std::max(min, std::min(max, x));}
+
 /// Integer square root
 uint isqrt(uint value);
 
@@ -148,8 +150,8 @@ struct vec2fp {
 	float dist(const vec2fp& v) const {return (*this - v).len();} ///< Straight distance
 	float ndg_dist(const vec2fp& v) const {return std::fabs(x - v.x) + std::fabs(y - v.y);} ///< Manhattan distance
 	
-	void rot90cw()  {int t = x; x = y; y = -t;}
-	void rot90ccw() {int t = x; x = -y; y = t;}
+	void rot90cw()  {float t = x; x = y; y = -t;}
+	void rot90ccw() {float t = x; x = -y; y = t;}
 	
 	vec2fp get_rotated (double angle) const; ///< Rotation by angle (radians)
 	void rotate (double angle); ///< Rotation by angle (radians)

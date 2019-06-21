@@ -118,7 +118,7 @@ struct GLA_Texture
 	void bind(GLenum target = GL_NONE);
 	
 	/// Allocates storage for 2D; binds texture. 
-	/// Sets filtering to nearest and enables clamping
+	/// Sets filtering to linear and enables clamping
 	void set(GLenum internal_format, vec2i size, int level = 0);
 	
 	operator GLuint() {return tex;}

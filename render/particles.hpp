@@ -12,6 +12,8 @@
 /// Single particle
 struct ParticleParams
 {
+	// note: all rotations set to 0 by default
+	
 	float px, py, pr; // position
 	float vx, vy, vr; // velocity
 	float ax, ay, ar; // acceleration

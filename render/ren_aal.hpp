@@ -23,7 +23,7 @@ public:
 	
 	virtual void inst_begin() = 0; ///< Starts building collection, discarding all
 	virtual void inst_end() = 0; ///< Ends building collection
-	virtual void inst_add(const std::vector<vec2fp>& ps, bool loop, float width = 5.f, float aa_width = 60.f) = 0; ///< New object part
+	virtual void inst_add(const std::vector<vec2fp>& ps, bool loop, float width = 0.1f, float aa_width = 3.f) = 0; ///< New object part
 	virtual size_t inst_add_end() = 0; ///< Returns ID of finished object
 	
 	virtual void draw_inst(const Transform& tr, FColor clr, size_t id) = 0; ///< Draws instanced object
