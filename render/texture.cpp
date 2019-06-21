@@ -140,3 +140,27 @@ Texture* Texture::create_from( vec2i size, Format fmt, const void *data, Filter 
 	t->set_filter( fil );
 	return t;
 }
+void Texture::debug_save(uint obj, const char *filename, Format fmt, uint target)
+{
+	ImageInfo::Format i_fmt;
+	if      (fmt == FMT_RGBA)   i_fmt = ImageInfo::FMT_RGBA;
+	else if (fmt == FMT_SINGLE) i_fmt = ImageInfo::FMT_ALPHA;
+	else {
+		VLOGE("Texture::debug_save() unsupported format");
+		return;
+	}
+	
+	if (!target) target = GL_TEXTURE_2D;
+	glBindTexture(target, obj);
+	
+	int w, h;
+	glGetTexLevelParameteriv(target, 0, GL_TEXTURE_WIDTH, &w);
+	glGetTexLevelParameteriv(target, 0, GL_TEXTURE_HEIGHT, &h);
+	
+	ImageInfo img;
+	img.reset({w, h}, i_fmt);
+	glGetTexImage(target, 0, fmts[fmt].in_format, GL_UNSIGNED_BYTE, img.raw());
+	
+	bool ok = img.save(filename);
+	VLOGD("Texture::debug_save() {} of {}", ok, filename);
+}

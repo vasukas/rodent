@@ -59,6 +59,9 @@ public:
 	
 	/// This function is slow and unsafe
 	virtual void update( const Rect& part, const void *data ) = 0;
+	
+	/// Saves contents of texture. For debugging only
+	static void debug_save(uint obj, const char *filename, Format fmt, uint target = 0);
 };
 
 #endif // TEXTURE_HPP
