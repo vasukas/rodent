@@ -1,6 +1,7 @@
 #ifndef PHYSICS_HPP
 #define PHYSICS_HPP
 
+#include <vector>
 #include "Box2D/Box2D.h"
 #include "entity.hpp"
 

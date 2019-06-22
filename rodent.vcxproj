@@ -20,14 +20,22 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="core\*.cpp" />
+    <ClCompile Include="game\*.cpp" />
     <ClCompile Include="render\*.cpp" />
     <ClCompile Include="utils\*.cpp" />
     <ClCompile Include="vaslib\*.cpp" />
     <ClCompile Include="*.cpp" />
     <ClCompile Include="build_libs\src\*.c*" />
+    <ClCompile Include="Box2D\Collision\*.cpp" />
+    <ClCompile Include="Box2D\Collision\Shapes\*.cpp" />
+    <ClCompile Include="Box2D\Common\*.cpp" />
+    <ClCompile Include="Box2D\Dynamics\*.cpp" />
+    <ClCompile Include="Box2D\Dynamics\Contacts\*.cpp" />
+    <ClCompile Include="Box2D\Dynamics\Joints\*.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="core\*.hpp" />
+    <Content Include="game\*.hpp" />
     <Content Include="render\*.hpp" />
     <Content Include="utils\*.hpp" />
     <Content Include="vaslib\*.hpp" />
