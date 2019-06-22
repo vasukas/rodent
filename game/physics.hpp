@@ -38,6 +38,7 @@ class PhysicsWorld
 {
 public:
 	GameCore& core;
+	std::unique_ptr<b2Draw> dbg_draw;
 	b2World world;
 	
 	PhysicsWorld(GameCore& core);

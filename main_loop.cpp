@@ -217,6 +217,8 @@ public:
 	std::unique_ptr<GameCore> core;
 	PC_Logic* pc_log; // player character
 	
+	bool ph_debug_draw = true;
+	
 	
 	
 	ML_Game()
@@ -245,6 +247,11 @@ public:
 		}
 		if (state != ST_RUN) return;
 		
+		if (ev.type == SDL_KEYUP) {
+			int k = ev.key.keysym.scancode;
+			if (k == SDL_SCANCODE_0) ph_debug_draw = !ph_debug_draw;
+		}
+		
 		std::unique_lock g(pc_lock);
 		pc_log->on_event(ev);
 	}
@@ -256,6 +263,11 @@ public:
 			std::unique_lock g(pc_lock);
 //			if (auto e = core->get_ent(cam_ent)) cam_follow(e); else cam_ent = 0;
 			GamePresenter::get().render(passed);
+			
+			if (ph_debug_draw) {
+				RenImm::get().set_context(RenImm::DEFCTX_WORLD);
+				core->get_phy().world.DrawDebugData();
+			}
 		}
 	}
 	
@@ -265,7 +277,7 @@ public:
 	{
 		ML_Game* ml_game;
 		
-		static const int key_n = 4;
+		static const int key_n = 5;
 		bool keyf[key_n] = {};
 		
 		PC_Logic(ML_Game* ml_game, Entity* ent_): ml_game(ml_game) {
@@ -286,13 +298,15 @@ public:
 			const float tmul = ent->core.step_len.seconds();
 			
 			const b2Vec2 vel = body->GetLinearVelocity();
-			b2Vec2 damp = -0.99f * vel;
+			b2Vec2 damp = -1 * vel;
+			if (keyf[4]) damp *= 2;
 			
-			const float min_damp = 2.5f;
-			const float max_damp = 6.f;
+			const float min_damp = keyf[4]? 0.5f : 0.2f;
+			const float max_damp = keyf[4]? 9.f : 6.f;
 			float dl = damp.Length();
 			if (dl > max_damp) damp *= max_damp / dl;
-			else if (dl != 0.f && dl < min_damp) damp *= 1.f / tmul;
+			else if (dl != 0.f && dl < min_damp) damp *= min_damp / dl;
+			if (!mv_any && dl == 0.f) return;
 			
 			b2Vec2 mv_vec = 8.f * conv(mv);
 			if (fabs(mv_vec.x) > 0) damp.x = 0;
@@ -304,7 +318,7 @@ public:
 		void on_event(SDL_Event& ev) {
 			if (ev.type == SDL_KEYDOWN || ev.type == SDL_KEYUP) {
 				const SDL_Scancode cs[key_n] = {
-				    SDL_SCANCODE_A, SDL_SCANCODE_W, SDL_SCANCODE_S, SDL_SCANCODE_D
+				    SDL_SCANCODE_A, SDL_SCANCODE_W, SDL_SCANCODE_S, SDL_SCANCODE_D, SDL_SCANCODE_SPACE
 				};
 				for (int i=0; i<key_n; ++i)
 					if (cs[i] == ev.key.keysym.scancode)
@@ -390,7 +404,7 @@ bd.fixedRotation = true;
 			
 			b2FixtureDef fd;
 			fd.friction = 0.3;
-			fd.restitution = 0.2;
+			fd.restitution = 0.5;
 			e->get_phy()->add_circle(fd, hsz_rat, 12.f);
 			
 			pc_log = new PC_Logic(this, e);

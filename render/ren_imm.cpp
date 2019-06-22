@@ -232,7 +232,7 @@ public:
 	{
 		add_rect(pos.lower().x, pos.lower().y, pos.upper().x, pos.upper().y, tc);
 	}
-	void add_line (vec2fp p0, vec2fp p1, int width)
+	void add_line (vec2fp p0, vec2fp p1, float width)
 	{
 		if (p0.equals(p1, 1e-5f)) return; // otherwise fastlen will fail
 		
@@ -298,7 +298,7 @@ public:
 		add_rect( dst, white_tc );
 		add_obj( white_tex, clr, IS_TEXT_WHITE );
 	}
-	void draw_frame (const Rectfp& dst, uint32_t clr, int frame_width)
+	void draw_frame (const Rectfp& dst, uint32_t clr, float frame_width)
 	{
 		if (!can_add( IS_TEXT_WHITE )) return;
 		reserve(4);
@@ -339,7 +339,7 @@ public:
 		add_rect(dst, rk.x, rk.y, white_tc);
 		add_obj(white_tex, clr, IS_TEXT_WHITE);
 	}
-	void draw_frame_rot (const Rectfp& dst, uint32_t clr, float rot, int frame_width)
+	void draw_frame_rot (const Rectfp& dst, uint32_t clr, float rot, float frame_width)
 	{
 		if (!can_add( IS_TEXT_WHITE )) return;
 		reserve(4);
@@ -375,7 +375,7 @@ public:
 	
 	
 	
-	void draw_line (vec2fp p0, vec2fp p1, uint32_t clr, int width)
+	void draw_line (vec2fp p0, vec2fp p1, uint32_t clr, float width)
 	{
 		if (!can_add( IS_TEXT_WHITE )) return;
 		reserve(1);
@@ -383,7 +383,7 @@ public:
 		add_line(p0, p1, width);
 		add_obj(white_tex, clr, IS_TEXT_WHITE);
 	}
-	void draw_radius (vec2fp pos, float radius, uint32_t clr, int width)
+	void draw_radius (vec2fp pos, float radius, uint32_t clr, float width)
 	{
 		if (!can_add( IS_TEXT_WHITE )) return;
 		
@@ -498,6 +498,20 @@ public:
 		tri.length = str.length();
 		tri.build();
 		draw_text( at, tri, clr, center, size_k );
+	}
+	void draw_vertices(const std::vector<vec2fp>& vs)
+	{
+		reserve(vs.size() / 6);
+		for (auto& v : vs) {
+			data.push_back(v.x);
+			data.push_back(v.y);
+			data.push_back(white_tc.center().x);
+			data.push_back(white_tc.center().y);
+		}
+	}
+	void draw_vertices_end(uint32_t clr)
+	{
+		add_obj( white_tex, clr, IS_TEXT_WHITE );
 	}
 	void clip_push( Rect r )
 	{

@@ -64,7 +64,7 @@ public:
 	virtual void draw_rect (const Rectfp& dst, uint32_t clr) = 0;
 	
 	/// Draw frame
-	virtual void draw_frame (const Rectfp& dst, uint32_t clr, int frame_width = 1) = 0;
+	virtual void draw_frame (const Rectfp& dst, uint32_t clr, float frame_width = 1) = 0;
 	
 	/// Draw image
 	virtual void draw_image (const Rectfp& dst, const TextureReg& tex, uint32_t clr = (unsigned) -1) = 0;
@@ -78,7 +78,7 @@ public:
 	virtual void draw_rect_rot (const Rectfp& dst, uint32_t clr, float rot) = 0;
 	
 	/// Draw frame
-	virtual void draw_frame_rot (const Rectfp& dst, uint32_t clr, float rot, int frame_width = 1) = 0;
+	virtual void draw_frame_rot (const Rectfp& dst, uint32_t clr, float rot, float frame_width = 1) = 0;
 	
 	/// Draw image; rotation is in radians
 	virtual void draw_image_rot (const Rectfp& dst, const TextureReg& tex, float rot, uint32_t clr = (unsigned) -1) = 0;
@@ -89,10 +89,10 @@ public:
 	
 	
 	/// Draw crude line
-	virtual void draw_line (vec2fp p0, vec2fp p1, uint32_t clr, int width = 2) = 0;
+	virtual void draw_line (vec2fp p0, vec2fp p1, uint32_t clr, float width = 2) = 0;
 	
 	/// Draw outlined circle with lines
-	virtual void draw_radius (vec2fp pos, float radius, uint32_t clr, int width = 2) = 0;
+	virtual void draw_radius (vec2fp pos, float radius, uint32_t clr, float width = 2) = 0;
 	
 	/// Draw filled circle with triangles
 	virtual void draw_circle (vec2fp pos, float radius, uint32_t clr) = 0;
@@ -110,6 +110,14 @@ public:
 	
 	/// Returns size of non-null ASCII string
 	static vec2i text_size (std::string_view str);
+	
+	
+	
+	/// Adds raw vertices with solid white texture
+	virtual void draw_vertices(const std::vector<vec2fp>& vs) = 0;
+	
+	/// Finishes adding raw vertices
+	virtual void draw_vertices_end(uint32_t clr) = 0;
 
 	
 	
