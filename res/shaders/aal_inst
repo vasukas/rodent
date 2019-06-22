@@ -21,7 +21,7 @@ void main()
 	wpar = data.z * scrmul;
 	endk = data.w * scrmul;
 
-	mat2 rot = mat2(pr.z, -pr.w, pr.w, pr.z);
+	mat2 rot = mat2(pr.z, pr.w, -pr.w, pr.z);
 	gl_Position = proj * vec4(rot * data.xy + pr.xy, 0, 1);
 }
 

@@ -217,7 +217,7 @@ public:
 	std::unique_ptr<GameCore> core;
 	PC_Logic* pc_log; // player character
 	
-	bool ph_debug_draw = true;
+	bool ph_debug_draw = false;
 	
 	
 	

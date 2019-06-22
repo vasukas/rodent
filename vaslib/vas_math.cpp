@@ -20,6 +20,7 @@ vec2fp cossin_ft(float x)
 	
 	if (!std::isfinite(x)) return {1, 0};
 	clamp_angle(x);
+	x /= M_PI*2;
 	
 	x *= table_size;
 	int i = static_cast< int >(x);
