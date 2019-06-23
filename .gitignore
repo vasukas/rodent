@@ -1,8 +1,9 @@
-.vs
-Box2D/
-build/
-build_libs
-stuff/
-rodent.*.user
-rod.*
-rodent
+/.vs
+/Box2D/
+/build/
+/build_libs
+/stuff/
+/rodent.*.user
+/rod.*
+/rodent
+/*.sh
