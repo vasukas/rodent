@@ -69,7 +69,7 @@ public:
 	virtual size_t add_preset(std::shared_ptr<ParticleGroupGenerator> p) = 0; ///< Adds new preset, returns internal index
 	virtual size_t add_preset(const PresObject& p) = 0; ///< Adds new preset, returns internal index
 	
-	virtual void effect(size_t preset_id, Transform at) = 0; ///< Plays particle effect
+	virtual void effect(size_t preset_id, Transform at, float power = 1.f) = 0; ///< Plays particle effect
 };
 
 #endif // GAME_PRESENTER_HPP

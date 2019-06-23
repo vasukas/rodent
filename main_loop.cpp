@@ -127,7 +127,7 @@ public:
 				ptg.colors_range[2] = 192; ptg.colors_range[5] = 255;
 				ptg.alpha = 255;
 				ptg.speed_min = 60; ptg.speed_max = 200; // 200, 600
-				ptg.TTL.ms(2000), ptg.FT.ms(1000);
+				ptg.TTL.set_ms(2000), ptg.FT.set_ms(1000);
 				ptg.TTL_max = ptg.TTL + TimeSpan::ms(500), ptg.FT_max = ptg.FT + TimeSpan::ms(1000);
 				ptg.draw({});
 			}
@@ -262,14 +262,14 @@ public:
 		if		(state == ST_LOADING) RenImm::get().draw_text({}, "Loading...", -1, false, 4.f);
 		else if (state == ST_FINISH)  RenImm::get().draw_text({}, "Game finished. Press ESC to exit.", -1, false, 4.f);
 		else {
+			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
+			
 			std::unique_lock g(pc_lock);
 //			if (auto e = core->get_ent(cam_ent)) cam_follow(e); else cam_ent = 0;
 			GamePresenter::get().render(passed);
 			
-			if (ph_debug_draw) {
-				RenImm::get().set_context(RenImm::DEFCTX_WORLD);
+			if (ph_debug_draw)
 				core->get_phy().world.DrawDebugData();
-			}
 		}
 	}
 	
@@ -303,8 +303,9 @@ public:
 			b2Vec2 damp = -1 * vel;
 			if (keyf[4]) damp *= 2;
 			
-			if (vel.Length() > 3.f) {
-				float p = vel.Length() / 3.f;
+			float ps_lim = 4.f;
+			if (vel.Length() > ps_lim) {
+				float p = vel.Length() - ps_lim;
 				Transform tr = {};
 				tr.rot = std::atan2(vel.y, vel.x);
 				ent->get_ren()->parts(OE_DUST, p, tr);
@@ -382,12 +383,26 @@ public:
 			void PostSolve(b2Contact* ct, const b2ContactImpulse* res) {
 				float i = 0.f;
 				for (auto& f : res->normalImpulses) i += f;
-				if (i < 5.f) return;
 				
-				auto pa = dynamic_cast<DL*>(getptr(ct->GetFixtureA()->GetBody())->ent->logic.get());
-				auto pb = dynamic_cast<DL*>(getptr(ct->GetFixtureB()->GetBody())->ent->logic.get());
-				if (pa) pa->ent->destroy();
-				if (pb) pb->ent->destroy();
+				int pc = ct->GetManifold()->pointCount;
+				b2WorldManifold wm;
+				ct->GetWorldManifold(&wm);
+				b2Vec2 p = b2Vec2_zero;
+				for (int i=0; i<pc; ++i) p += wm.points[i];
+				p *= 1.f / pc;
+				
+				float lim = 40.f;
+				bool expl = false;
+				
+				if (i > lim)
+				{
+					auto pa = dynamic_cast<DL*>(getptr(ct->GetFixtureA()->GetBody())->ent->logic.get());
+					auto pb = dynamic_cast<DL*>(getptr(ct->GetFixtureB()->GetBody())->ent->logic.get());
+					if (pa) pa->ent->destroy();
+					if (pb) pb->ent->destroy();
+					if (pa || pb) expl = true;
+				}
+				GamePresenter::get().effect(expl ? FE_EXPLOSION : FE_HIT, {conv(p), 0.f}, expl ? i / lim : i / lim * 2);
 			}
 		};
 		auto cl = std::make_unique<ContactLstr>();
@@ -447,6 +462,8 @@ bd.fixedRotation = true;
 			}
 			sleep(core->step_len);
 		}
+		
+		core->get_phy().world.SetContactListener(nullptr);
 	}
 	catch (std::exception& e) {
 		state = ST_FINISH;
@@ -463,42 +480,51 @@ bd.fixedRotation = true;
 			
 			float p_min = 0.1, p_max = 5.f;
 			float a_lim = M_PI; // angle limit
+			
+			float alpha = 1.f;
+			float size = 0.1;
 			        
 			Transform tr;
 			float power;
 			FColor clr_t;
 			
 			size_t begin(const Transform& tr_in, ParticleParams& p, float power_in) {
-				p.px = tr.pos.x;
-				p.py = tr.pos.y;
-				p.size = 0.1;
-				p.lt = 0;
-				
 				tr = tr_in;
 				power = clampf(power_in, p_min, p_max);
 				clr_t = clr0 + (clr1 - clr0) * clampf(power / p_max - p_min, 0.1, 0.9);
+				
+				p.px = tr.pos.x;
+				p.py = tr.pos.y;
+				p.size = size;
+				p.lt = 0;
+				
 				return n_base * power;
 			}
 			void gen(ParticleParams& p) {
-				vec2fp vel{clampf(power, 0.1, 2), 0};
+				float vk = rnd_range(0.5, 2) * clampf(power, 0.1, 2);
+				vec2fp vel{vk, 0};
 				vel.fastrotate( tr.rot + rnd_range(-a_lim, a_lim) );
 				p.vx = vel.x;
 				p.vy = vel.y;
 				
-				p.ft = rnd_range(2, 5);
+				p.ft = rnd_range(2, 3.5) * alpha;
+				float t = rnd_range();
 				
-#define RND(A) p.clr.A = rnd_bool() ? rnd_range(clr0.A, clr_t.A) : rnd_range(clr_t.A, clr1.A)
+#define RND(A) p.clr.A = t < 0.5 ? lint(clr0.A, clr_t.A, t*2) : lint(clr_t.A, clr1.A, t*2-1)
 				RND(r); RND(g); RND(b); RND(a);
 #undef RND
+//				p.clr.a *= alpha;
 			}
 		};
 		
 		// FE_EXPLOSION
 		{
 			auto g = std::make_shared<Explosion>();
-			g->n_base = 80;
+			g->n_base = 30;
+			g->p_max = 3.f;
+			g->size = 0.3;
 			g->clr0 = FColor(0.5, 0, 0, 0.5);
-			g->clr1 = FColor(1.2, 1, 0.5, 1);
+			g->clr1 = FColor(1.2, 1, 0.8, 1);
 			pres->add_preset(g);
 		}
 		// FE_HIT
@@ -515,7 +541,8 @@ bd.fixedRotation = true;
 		{
 			auto& g = dust_ps;
 			g->n_base = 8;
-			g->p_min = 1.f, g->p_max = 2.f;
+			g->p_min = 0.2f, g->p_max = 2.f;
+			g->alpha = 0.45;
 			g->clr0 = FColor(0.4, 1, 1, 0.8);
 			g->clr1 = FColor(0.9, 1, 1, 0.8);
 		}

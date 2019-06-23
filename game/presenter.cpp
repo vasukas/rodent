@@ -5,8 +5,6 @@
 #include "game_core.hpp"
 #include "presenter.hpp"
 
-#include "vaslib/vas_log.hpp"
-
 
 
 EC_Render::EC_Render(Entity *ent, size_t sprite_id): ent(ent)
@@ -146,12 +144,13 @@ public:
 		p_objs.emplace_back(p);
 		return p_objs.size() - 1;
 	}
-	void effect(size_t preset_id, Transform at)
+	void effect(size_t preset_id, Transform at, float power)
 	{
 		PresCommand c;
 		c.type = PresCommand::T_FREEPARTS;
-		c.obj = preset_id;
+		c.index = preset_id;
 		c.pos = at;
+		c.power = power;
 		add_cmd(c);
 	}
 };
