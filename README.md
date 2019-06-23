@@ -12,9 +12,11 @@ Source code is licensed under MIT license.
 
 Overly complex, later will be replaced with CMake.
 
-Requires C++17 compiler with support for zero-argument variadic macros, tested only with fresh GCC and MSVC.
+Requires C++17 compiler with support for zero-argument variadic macros, tested only with new GCC and MSVC.
 
 For vb.sh builds (Linux, MinGW) - call it without arguments to see usage summary.
+
+All builds require Box2D source in root directory.
 
 ### Linux
 
@@ -42,7 +44,7 @@ Build project (from root directory):
 
 Compiled executable will be placed in 'build/vb_bin' (no extension).
 
-### Windows (Visual Studio)
+### Windows
 
 Dependecies can be either linked or built-in. Latter placed in build_libs/include for headers and build_libs/src for sources.
 
@@ -69,6 +71,8 @@ Compiled executable will be placed in 'build/Release' or 'build/Debug'.
 Before debugging run 'build_scripts/msvc_run_prepare.bat', which would setup special working directories with DLLs and softlink to folder with game resources.
 
 #### Cross-compile from Linux (MinGW, bash script)
+
+_Seems to be broken_
 
 Requires dependecies to be placed in 'build_libs/mingw'. Additionaly needs 'libwinpthread-1.dll' at runtime (/usr/i686-w64-mingw32/bin/libwinpthread-1.dll on Arch Linux).
 
