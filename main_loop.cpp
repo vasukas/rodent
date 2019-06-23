@@ -231,6 +231,8 @@ public:
 		pres.reset( &GamePresenter::get() );
 		init_game();
 		thr_core = std::thread([this](){thr_func();});
+		
+		VLOGI("Box2D version: {}.{}.{}", b2_version.major, b2_version.minor, b2_version.revision);
 	}
 	~ML_Game()
 	{
@@ -288,11 +290,11 @@ public:
 			ml_game->pc_log = nullptr;
 		}
 		void tick() {
-			const vec2fp kmv[key_n] = {{-1, 0}, {0, -1}, {0, 1}, {1, 0}};
+			const vec2fp kmv[4] = {{-1, 0}, {0, -1}, {0, 1}, {1, 0}};
 			vec2fp mv = {};
 			bool mv_any = false;
 			for (int i=0; i<4; ++i) if (keyf[i]) mv += kmv[i], mv_any = true;
-			if (mv_any) mv.norm();
+			if (mv.equals({}, 0.1)) mv_any = false; else mv.norm();
 			
 			b2Body* body = ent->get_phy()->body;
 			const float tmul = ent->core.step_len.seconds();
@@ -300,6 +302,13 @@ public:
 			const b2Vec2 vel = body->GetLinearVelocity();
 			b2Vec2 damp = -1 * vel;
 			if (keyf[4]) damp *= 2;
+			
+			if (vel.Length() > 3.f) {
+				float p = vel.Length() / 3.f;
+				Transform tr = {};
+				tr.rot = std::atan2(vel.y, vel.x);
+				ent->get_ren()->parts(OE_DUST, p, tr);
+			}
 			
 			const float min_damp = keyf[4]? 0.5f : 0.2f;
 			const float max_damp = keyf[4]? 9.f : 6.f;
@@ -328,9 +337,9 @@ public:
 	};
 	
 	const float hsize = 15.f; // level
-	const float hsz_box = 0.4;
+	const float hsz_box = 0.7;
 	const float hsz_heavy = 1.5;
-	const float hsz_rat = 0.5;
+	const float hsz_rat = 0.6;
 	const float hsz_proj = 0.2;
 	const vec2fp hsz_shld = {2, 0.7};
 	
@@ -347,7 +356,44 @@ public:
 	}
 	void thr_func() try
 	{
-		for (int i=0; i<8; ++i)
+		struct DL : EC_Logic {
+			void tick() {
+				b2Body* body = ent->get_phy()->body;
+				const float tmul = ent->core.step_len.seconds();
+//					const float fk = body->GetFixtureList()->GetFriction();
+				
+				const b2Vec2 vel = body->GetLinearVelocity();
+				b2Vec2 damp = -0.99f * vel;
+				
+				const float max_damp = 2.f;
+				if (float l = damp.Length(); l > max_damp)
+					damp *= max_damp / l;
+				
+				b2Vec2 imp = tmul * damp;
+				body->ApplyLinearImpulse(body->GetMass() * imp, body->GetWorldCenter(), false);
+				
+				float ai = -2.f * body->GetAngularVelocity();
+				ai *= tmul;
+				body->ApplyAngularImpulse(body->GetMass() * ai, false);
+			}
+		};
+		class ContactLstr : public b2ContactListener {
+		public:
+			void PostSolve(b2Contact* ct, const b2ContactImpulse* res) {
+				float i = 0.f;
+				for (auto& f : res->normalImpulses) i += f;
+				if (i < 5.f) return;
+				
+				auto pa = dynamic_cast<DL*>(getptr(ct->GetFixtureA()->GetBody())->ent->logic.get());
+				auto pb = dynamic_cast<DL*>(getptr(ct->GetFixtureB()->GetBody())->ent->logic.get());
+				if (pa) pa->ent->destroy();
+				if (pb) pb->ent->destroy();
+			}
+		};
+		auto cl = std::make_unique<ContactLstr>();
+		core->get_phy().world.SetContactListener(cl.get());
+		
+		for (int i=0; i<25; ++i)
 		{
 			bool big = (i%4 == 0);
 			float rn = hsize - 1;
@@ -366,27 +412,6 @@ public:
 			fd.restitution = big? 0.1 : 0.5;
 			e->get_phy()->add_box(fd, vec2fp::one(big? hsz_heavy : hsz_box), big? 25.f : 8.f);
 			
-			struct DL : EC_Logic {
-				void tick() {
-					b2Body* body = ent->get_phy()->body;
-					const float tmul = ent->core.step_len.seconds();
-//					const float fk = body->GetFixtureList()->GetFriction();
-					
-					const b2Vec2 vel = body->GetLinearVelocity();
-					b2Vec2 damp = -0.99f * vel;
-					
-					const float max_damp = 2.f;
-					if (float l = damp.Length(); l > max_damp)
-						damp *= max_damp / l;
-					
-					b2Vec2 imp = tmul * damp;
-					body->ApplyLinearImpulse(body->GetMass() * imp, body->GetWorldCenter(), false);
-					
-					float ai = -2.f * body->GetAngularVelocity();
-					ai *= tmul;
-					body->ApplyAngularImpulse(body->GetMass() * ai, false);
-				}
-			};
 			e->logic.reset(new DL);
 			e->logic->ent = e;
 			
@@ -405,7 +430,7 @@ bd.fixedRotation = true;
 			b2FixtureDef fd;
 			fd.friction = 0.3;
 			fd.restitution = 0.5;
-			e->get_phy()->add_circle(fd, hsz_rat, 12.f);
+			e->get_phy()->add_circle(fd, hsz_rat, 15.f);
 			
 			pc_log = new PC_Logic(this, e);
 			e->logic.reset(pc_log);
@@ -447,7 +472,6 @@ bd.fixedRotation = true;
 				p.px = tr.pos.x;
 				p.py = tr.pos.y;
 				p.size = 0.1;
-				p.ax = p.ay = 0;
 				p.lt = 0;
 				
 				tr = tr_in;
@@ -527,36 +551,41 @@ bd.fixedRotation = true;
 							auto& l = ls.emplace_back();
 							l.a = s.ps[i-1];
 							l.b = s.ps[i % s.ps.size()];
-							l.n = l.a.dist(l.b) * 10;
+							l.n = l.a.dist(l.b) * 5;
 							if (l.n < 2) l.n = 2;
 							total += l.n;
 						}
 					}
 				}
-				size_t begin(const Transform& tr_in, ParticleParams& p, float) {
+				size_t begin(const Transform& tr_in, ParticleParams& p, float)
+				{
 					p.size = 0.1;
 					p.lt = 0;
 					p.clr = clr;
+					p.lt = 0;
 					
 					li = lc = 0;
 					tr = tr_in;
 					return total;
 				}
-				void gen(ParticleParams& p) {
+				void gen(ParticleParams& p)
+				{
 					auto& l = ls[li];
 					float t = (lc + 0.5f) / l.n;
 					vec2fp pos = lint(l.a, l.b, t);
-					if (++lc == l.n) ++li;
+					if (++lc == l.n) ++li, lc = 0;
 					
-					p.px = pos.x;
-					p.py = pos.y;
+					vec2fp rp = pos;
+					rp.fastrotate(tr.rot);
+					p.px = rp.x + tr.pos.x;
+					p.py = rp.y + tr.pos.y;
 					
 					vec2fp rv = vec2fp(0, rnd_range(0.1, 0.5));
 					rv.fastrotate( rnd_range(-M_PI, M_PI) );
 					p.vx = rv.x;
 					p.vy = rv.y;
 					
-					p.ft = rnd_range(1, 3);
+					p.ft = rnd_range(3, 5);
 				}
 			};
 			

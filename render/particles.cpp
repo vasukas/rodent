@@ -221,7 +221,8 @@ public:
 	void add(ParticleGroupGenerator& group, const Transform& tr, float power)
 	{
 		ParticleParams p;
-		p.pr = p.vr = p.ar = 0;
+		p.pr = p.vr = 0;
+		p.ax = p.ay = p.ar = 0;
 		
 		int num = group.begin(tr, p, power);
 		if (!num) {

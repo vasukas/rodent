@@ -12,8 +12,6 @@
 /// Single particle
 struct ParticleParams
 {
-	// note: all rotations set to 0 by default
-	
 	float px, py, pr; // position
 	float vx, vy, vr; // velocity
 	float ax, ay, ar; // acceleration
@@ -35,7 +33,8 @@ struct ParticleGroupGenerator
 {
 	virtual ~ParticleGroupGenerator() = default;
 	
-	/// Begins generating new group. Returns number of particles
+	/// Begins generating new group. Returns number of particles. 
+	/// Params are already inited with zero rotations and acceleration, everything else is unset
 	virtual size_t begin(const Transform& tr, ParticleParams& p, float power) = 0;
 	
 	/// Fills params, value is same since last call and call to begin
