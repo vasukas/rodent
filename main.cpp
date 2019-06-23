@@ -298,7 +298,7 @@ int main( int argc, char *argv[] )
 					else if (ks.scancode == SDL_SCANCODE_R) RenderControl::get().reload_shaders();
 					else if (ks.scancode == SDL_SCANCODE_D) {
 						if (dbg_show && !dbg_input) dbg_input = true;
-						else dbg_input = dbg_show = !dbg_show, cons_shown = false;
+						else {dbg_input = dbg_show = !dbg_show; cons_shown = false;}
 					}
 				}
 				else if (ks.scancode == SDL_SCANCODE_GRAVE) {cons_shown = !cons_shown; dbg_show = false;}

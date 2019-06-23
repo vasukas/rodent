@@ -10,7 +10,7 @@
 #include <cinttypes>
 #include <cmath>
 
-typedef unsigned int uint;
+using uint = unsigned int;
 
 struct SDL_Rect;
 
@@ -42,8 +42,8 @@ void clamp_angle(float  &x);
 /// Linear interpolation between two angles, expressed in radians. Handles all cases
 inline double lint_angle (double a, double b, double t) {return a + t * std::remainder(b - a, M_PI*2);}
 
-inline float lint (float a, float b, float t)    {return a * (1.f - t) + b * t;}
-inline float lint (double a, double b, double t) {return a * (1.0 - t) + b * t;}
+inline float  lint (float  a, float  b, float  t) {return a * (1.f - t) + b * t;}
+inline double lint (double a, double b, double t) {return a * (1.0 - t) + b * t;}
 
 vec2fp cossin_ft(float rad); ///< Table-lookup cosine (x) + sine (y)
 

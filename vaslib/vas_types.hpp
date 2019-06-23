@@ -14,10 +14,10 @@ const size_t size_t_inval = std::numeric_limits< size_t >::max();
 
 
 
-typedef unsigned int uint;
+using uint = unsigned int;
 
 #ifdef _MSC_VER
-typedef std::make_signed<size_t>::type ssize_t;
+using ssize_t = std::make_signed<size_t>::type;
 #endif
 
 #endif // VAS_TYPES_HPP

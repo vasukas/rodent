@@ -263,13 +263,13 @@ float File::rpif()
 		float f = k / (1 << 24) + .5f;
 		x = std::ldexp(f, e);
 	}
-	if (mem & (1 << 31)) x = -x;
+	if (mem & (1UL << 31)) x = -x;
 	
 	return x;
 }
 void File::wpif(float x)
 {
-	uint32_t mem = (x < 0)? (1<<31) : 0;
+	uint32_t mem = (x < 0)? (1UL << 31) : 0UL;
 	if		(x == 0.f) ;
 	else if (std::isinf(x)) mem |= (0x7f80 << 16);
 	else if (std::isnan(x)) mem |= (0x7f80 << 16) | 1;

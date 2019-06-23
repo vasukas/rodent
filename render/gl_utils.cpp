@@ -161,7 +161,7 @@ void GLA_VertexArray::set_buffers( std::vector< std::shared_ptr<GLA_Buffer> > ne
 	{
 		b->bind();
 		glEnableVertexAttribArray( i );
-		glVertexAttribPointer( i, b->comp, b->type, b->normalized, 0, 0 );
+		glVertexAttribPointer( i, b->comp, b->type, b->normalized, 0, nullptr );
 		++i;
 	}
 }
@@ -195,7 +195,7 @@ void GLA_VertexArray::set_attribs( std::vector< Attrib > attrs )
 		glEnableVertexAttribArray(i);
 		
 		auto& s = ss[b];
-		if (!s.cou) glVertexAttribPointer( i, a.comp, b->type, b->normalized, 0, 0 );
+		if (!s.cou) glVertexAttribPointer( i, a.comp, b->type, b->normalized, 0, nullptr );
 		else {
 			glVertexAttribPointer( i, a.comp, b->type, b->normalized, s.str, reinterpret_cast< void* >(s.off) );
 			s.off += a.comp * gl_type_size( b->type );
@@ -235,7 +235,7 @@ void GLA_Texture::bind(GLenum target)
 void GLA_Texture::set(GLenum internal_format, vec2i size, int level)
 {
 	glBindTexture(target, tex);
-	glTexImage2D(target, level, internal_format, size.x, size.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+	glTexImage2D(target, level, internal_format, size.x, size.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 	
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);

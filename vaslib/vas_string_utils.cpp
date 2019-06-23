@@ -188,7 +188,7 @@ std::vector<std::string> string_split(std::string_view s, const std::vector<std:
 		}
 		pos = np + 1;
 	}
-	if (!rs.empty() && !rs.back().size()) rs.pop_back();
+	if (!rs.empty() && rs.back().empty()) rs.pop_back();
 	return rs;
 }
 

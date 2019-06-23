@@ -17,15 +17,13 @@ std::string date_time_fn();
 /// Amount of time
 struct TimeSpan
 {
-	int64_t mks_value;
-	
 	TimeSpan() { mks_value = 0; } ///< Inits to zero
 	
 	static TimeSpan since_start(); ///< Returns amount of time passed since program start using steady clock
 	
-	static TimeSpan seconds( double  t ) { return TimeSpan( t * 1000 * 1000 ); }
-	static TimeSpan ms     ( int     t ) { return TimeSpan( t * 1000 ); }
-	static TimeSpan micro  ( int64_t t ) { return TimeSpan( t ); }
+	[[nodiscard]] static TimeSpan seconds( double  t ) { return TimeSpan( t * 1000 * 1000 ); }
+	[[nodiscard]] static TimeSpan ms     ( int     t ) { return TimeSpan( t * 1000 ); }
+	[[nodiscard]] static TimeSpan micro  ( int64_t t ) { return TimeSpan( t ); }
 	
 	double  seconds() const { return mks_value / (1000.f * 1000.f); }
 	int     ms()      const { return mks_value / 1000; }
@@ -54,6 +52,7 @@ struct TimeSpan
 	bool operator >=( const TimeSpan& t ) const { return mks_value >= t.mks_value; }
 	
 private:
+	int64_t mks_value;
 	explicit TimeSpan( int64_t mks_value ) : mks_value (mks_value) {}
 };
 
