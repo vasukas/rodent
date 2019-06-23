@@ -62,6 +62,7 @@ FlagsOpt=(
 
 ObjDirPrefix=../build/vb_obj
 BinDirPrefix=../build/vb_bin
+OutputPostfix=
 
 
 
@@ -77,11 +78,11 @@ if ! [ -f vb_project ]; then
 fi
 source vb_project
 
-if ! [ -f vb_tar_"$Target" ]; then
+if ! [ -f vb_tar_$Target ]; then
 	info "Target variables file does not exist for \"$Target\""
 	exit 1
 fi
-source vb_tar_"$Target"
+source vb_tar_$Target
 
 if   [ $Dbglev == 0 ]; then
 	info "Debug build"
@@ -105,8 +106,8 @@ fi
 
 [ -f vb_project_post ] && source vb_project_post
 
-CmpExe=$Compiler
-CmpAr=$CompilerLnk
+CmpExe="$Compiler"
+CmpAr="$CompilerLnk"
 ObjDir="$ObjDirPrefix"/$Target
 
 info "Building \"${ProName}\" for $Target"
@@ -192,7 +193,7 @@ for (( i=0; i<${#Source[@]}; i++ )) {
 		fi
 	fi
 	if [ "${Source[i]}" -nt "${Objects[i]}" ] || [ ! -f "${Objects[i]}" ]; then
-		(echo $CmpExe ${Flags[@]} -c "${Source[i]}" -o "${Objects[i]}" | bash) &
+		(echo "$CmpExe" ${Flags[@]} -c "${Source[i]}" -o "${Objects[i]}" | bash) &
 		PrPids+=("$!")
 		((PrCou++))
 		ReLink=1
@@ -209,11 +210,7 @@ fi
 
 if [ $IsLibrary -eq "0" ]; then
 	mkdir -p "$BinDirPrefix"
-	Output="$BinDirPrefix"/${ProName}
-
-	if [ "$Platform" == "win" ]; then
-		Output=$Output.exe
-	fi
+	Output="$BinDirPrefix"/${ProName}${OutputPostfix}
 
 	if [ $ReLink -eq 1 ] || [ ! -f $Output ]; then
 		info "Link flags: ${LnkFlags[@]}"

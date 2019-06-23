@@ -1,6 +1,7 @@
 Compiler=g++
 CompilerLnk=ar
 Platform=linux
+OutputPostfix=.$(uname -m)
 
 Pkgs=( glew fmt freetype2 sdl2 )
 

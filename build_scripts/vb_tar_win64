@@ -1,8 +1,8 @@
-CmpPrefix=i686-w64-mingw32-
+CmpPrefix=x86_64-w64-mingw32-
 Compiler=${CmpPrefix}g++
 CompilerLnk=${CmpPrefix}ar
-Platform=win
-OutputPostfix=.x86.exe
+Platform=win64
+OutputPostfix=.x86_64.exe
 
 Source+=(
 	../build_libs/src/*.c*
@@ -21,16 +21,16 @@ Flags+=(
 	-D_USE_MATH_DEFINES
 )
 LnkFlags+=(
-	-L../build_libs/mingw/lib32
+	-L../build_libs/mingw/lib64
 
 	-mconsole
 	-mwindows
 	-static-libgcc -static-libstdc++
 
 	-lopengl32
-	-l:glew32.lib
+	-lglew32
 	-lSDL2
-	-l:freetype271.lib
+	-l:freetype.lib
 )
 FlagsDbg+=(
 	-ggdb
