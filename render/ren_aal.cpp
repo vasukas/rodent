@@ -6,6 +6,8 @@
 #include "shader.hpp"
 #include "texture.hpp"
 
+#define USE_NORM_INT 0
+
 
 
 class RenAAL_Impl : public RenAAL
@@ -26,8 +28,10 @@ public:
 	
 	GLA_VertexArray vao;
 	std::vector<float> data_f; // Buffer data to send
+#if USE_NORM_INT
 	std::vector<uint8_t> data_i;
-	
+#endif
+
 	size_t objs_off = 0; ///< Last vertex count
 	std::vector<Obj> objs;
 	
@@ -83,7 +87,11 @@ public:
 		
 #define PF(X) data_f.push_back(X)
 		
+#if USE_NORM_INT
 #define PI(x) data_i.push_back( norm_i8(x) )
+#else
+#define PI PF
+#endif
 		
 		// first triangle (11 - 21 - 12)
 		
@@ -124,11 +132,18 @@ public:
 		width += aa_width;
 		float wpar = width / aa_width;
 		
-		size_t dsz = std::max(static_cast<size_t>(4096), ps.size() * 6 * 4);
+#if USE_NORM_INT
+		size_t dsz = ps.size() * 6 * 4;
+#else
+		size_t dsz = ps.size() * 6 * 7;
+#endif
+		if (4096 > dsz) dsz = 4096;
 		reserve_more_block(objs, 1024);
 		reserve_more_block(data_f, dsz);
+#if USE_NORM_INT
 		reserve_more_block(data_i, dsz);
-		
+#endif
+
 		size_t n = ps.size();
 		if (loop) ++n;
 		for (size_t i = 1; i < n; ++i)
@@ -141,10 +156,15 @@ public:
 	
 	RenAAL_Impl()
 	{
+#if USE_NORM_INT
 		vao.set_buffers({
 			std::make_shared<GLA_Buffer>(4, GL_FLOAT, false, GL_STREAM_DRAW),
 		    std::make_shared<GLA_Buffer>(3, GL_BYTE,  true,  GL_STREAM_DRAW)
 		});
+#else
+		auto buf = std::make_shared<GLA_Buffer>(0);
+		vao.set_attribs({ {buf, 4}, {buf, 3} });
+#endif
 		sh = RenderControl::get().load_shader("aal");
 		sh_inst = RenderControl::get().load_shader("aal_inst");
 		
@@ -186,7 +206,9 @@ public:
 		
 		reserve_more_block(objs, 1024);
 		reserve_more_block(data_f, 4096);
+#if USE_NORM_INT
 		reserve_more_block(data_i, 4096);
+#endif
 		
 		add_line(p0, p1, width, wpar, aa_width);
 		add_objs(1, clr, clr_mul);
@@ -209,7 +231,9 @@ public:
 		if (!objs.empty())
 		{
 			vao.bufs[0]->update( data_f.size(), data_f.data() );
+#if USE_NORM_INT
 			vao.bufs[1]->update( data_i.size(), data_i.data() );
+#endif
 			vao.bind();
 			
 			sh->bind();
@@ -227,7 +251,9 @@ public:
 			}
 			
 			data_f.clear();
+#if USE_NORM_INT
 			data_i.clear();
+#endif
 			objs_off = 0;
 			objs.clear();
 			prev_clr = 0;
@@ -258,19 +284,26 @@ public:
 	
 	void inst_begin()
 	{
+#if USE_NORM_INT
 		inst_vao.set_buffers({
 			std::make_shared<GLA_Buffer>(4, GL_FLOAT, false, GL_STATIC_DRAW),
 		    std::make_shared<GLA_Buffer>(3, GL_BYTE,  true,  GL_STATIC_DRAW)
 		});
+#else
+		auto buf = std::make_shared<GLA_Buffer>(0);
+		inst_vao.set_attribs({ {buf, 4}, {buf, 3} });
+#endif
 		inst_objs.clear();
 	}
 	void inst_end()
 	{
 		inst_vao.bufs[0]->update( data_f.size(), data_f.data() );
-		inst_vao.bufs[1]->update( data_i.size(), data_i.data() );
-		
 		data_f.clear(); data_f.shrink_to_fit();
+
+#if USE_NORM_INT
+		inst_vao.bufs[1]->update( data_i.size(), data_i.data() );
 		data_i.clear(); data_i.shrink_to_fit();
+#endif
 	}
 	void inst_add(const std::vector<vec2fp>& ps, bool loop, float width, float aa_width)
 	{
@@ -279,7 +312,11 @@ public:
 	size_t inst_add_end()
 	{
 		size_t last = inst_objs.empty() ? 0 : inst_objs.back().first + inst_objs.back().second;
+#if USE_NORM_INT
 		size_t cur = data_f.size() / 4;
+#else
+		size_t cur = data_f.size() / 7;
+#endif
 		size_t id = inst_objs.size();
 		inst_objs.emplace_back(last, cur - last);
 		return id;
