@@ -300,30 +300,55 @@ public:
 			const float tmul = ent->core.step_len.seconds();
 			
 			const b2Vec2 vel = body->GetLinearVelocity();
-			b2Vec2 damp = -1 * vel;
-			if (keyf[4]) damp *= 2;
 			
-			float ps_lim = 4.f;
-			if (vel.Length() > ps_lim) {
-				float p = vel.Length() - ps_lim;
-				Transform tr = {};
-				tr.rot = std::atan2(vel.y, vel.x);
-				ent->get_ren()->parts(OE_DUST, p, tr);
+			if (false)
+			{
+				b2Vec2 damp = -1 * vel;
+				if (keyf[4]) damp *= 2;
+				
+				float ps_lim = 4.f;
+				if (vel.Length() > ps_lim) {
+					float p = vel.Length() - ps_lim;
+					Transform tr = {};
+					tr.rot = std::atan2(vel.y, vel.x);
+					ent->get_ren()->parts(OE_DUST, p, tr);
+				}
+				
+				const float min_damp = keyf[4]? 0.5f : 0.2f;
+				const float max_damp = keyf[4]? 9.f : 6.f;
+				float dl = damp.Length();
+				if (dl > max_damp) damp *= max_damp / dl;
+				else if (dl != 0.f && dl < min_damp) damp *= min_damp / dl;
+				if (!mv_any && dl == 0.f) return;
+				
+				b2Vec2 mv_vec = 8.f * conv(mv);
+				if (fabs(mv_vec.x) > 0) damp.x = 0;
+				if (fabs(mv_vec.y) > 0) damp.y = 0;
+				
+				b2Vec2 imp = tmul * (mv_vec + damp);
+				body->ApplyLinearImpulse(body->GetMass() * imp, body->GetWorldCenter(), mv_any);
 			}
-			
-			const float min_damp = keyf[4]? 0.5f : 0.2f;
-			const float max_damp = keyf[4]? 9.f : 6.f;
-			float dl = damp.Length();
-			if (dl > max_damp) damp *= max_damp / dl;
-			else if (dl != 0.f && dl < min_damp) damp *= min_damp / dl;
-			if (!mv_any && dl == 0.f) return;
-			
-			b2Vec2 mv_vec = 8.f * conv(mv);
-			if (fabs(mv_vec.x) > 0) damp.x = 0;
-			if (fabs(mv_vec.y) > 0) damp.y = 0;
-			
-			b2Vec2 imp = tmul * (mv_vec + damp);
-			body->ApplyLinearImpulse(body->GetMass() * imp, body->GetWorldCenter(), mv_any);
+			else
+			{
+				float min_ch = 0.1f;
+				float max_ch = 20.f;
+				b2Vec2 tar = 10.f * conv(mv);
+				if (keyf[4]) tar *= 1.8;
+				
+				b2Vec2 vec = tar - vel;
+				float xd = fabs(tar.x) - fabs(vel.x);
+				float yd = fabs(tar.y) - fabs(vel.y);
+				
+				if (xd > 0) vec.x *= 10; else vec.x *= !keyf[4]? (xd > 1.0 ? 20 : 10) : 2;
+				if (yd > 0) vec.y *= 10; else vec.y *= !keyf[4]? (yd > 1.0 ? 20 : 10) : 2;
+				float dl = vec.Length();
+				
+				if (dl == 0.f) return;
+				else if (dl > max_ch) vec *= max_ch / dl;
+				else if (dl < min_ch) vec *= 1.f / tmul;
+				
+				body->ApplyLinearImpulse(body->GetMass() * tmul * vec, body->GetWorldCenter(), mv_any);
+			}
 		}
 		void on_event(SDL_Event& ev) {
 			if (ev.type == SDL_KEYDOWN || ev.type == SDL_KEYUP) {
