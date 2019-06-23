@@ -7,10 +7,7 @@
 
 Entity::Entity( GameCore& core, EntityIndex index ) : index( index ), core( core ) {}
 Entity::~Entity() = default;
-void Entity::destroy() {
-	core.mark_deleted( this );
-	delete this;
-}
+void Entity::destroy() {core.mark_deleted(this);}
 
 
 

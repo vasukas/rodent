@@ -17,6 +17,7 @@ public:
 	std::vector<size_t> e_free; // stack of free indices
 	std::vector<size_t> e_next1; // stack of indices which would be free on cycle after the next
 	std::vector<size_t> e_next2; // stack of indices which would be free on the next cycle
+	std::vector<std::unique_ptr <Entity, Del_Entity>> e_todel; // freed at the end of step
 	
 	uint32_t step_cou = 1;
 	std::mt19937 rndg;
@@ -53,6 +54,7 @@ public:
 		GamePresenter::get().submit();
 		
 		step_flag = false;
+		e_todel.clear();
 	}
 	Entity* create_ent() noexcept
 	{
@@ -84,6 +86,13 @@ public:
 	}
 	void mark_deleted( Entity* e ) noexcept
 	{
+		if (!is_in_step()) delete e;
+		else {
+			auto it = std::find_if( e_todel.begin(), e_todel.end(), [&](auto&& v){return v.get() == e;} );
+			if (it == e_todel.end()) e_todel.emplace_back(e);
+		}
+		ents[ e->index - 1 ].release();
+		
 		reserve_more_block( e_next1, 256 );
 		e_next1.push_back( e->index );
 	}

@@ -36,7 +36,7 @@ public:
 	std::unique_ptr<EC_Logic> logic; // temp
 	
 	
-	void destroy(); ///< Immediatly deletes entity. Index garanteed to be not used in next step
+	void destroy(); ///< Deletes entity immediatly or at the end of the step. Index garanteed to be not used in next step
 
 	Transform get_pos() const; ///< Returns center position
 	float     get_dir() const; ///< Returns face direction

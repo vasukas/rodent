@@ -76,7 +76,6 @@ PhysicsWorld::PhysicsWorld(GameCore& core): core(core), world(b2Vec2(0,0))
 {
 	dbg_draw.reset( create_debug_draw() );
 	
-	world.SetAllowSleeping(true);
 //	world.SetContinuousPhysics(true);
 	world.SetDebugDraw( dbg_draw.get() );
 }

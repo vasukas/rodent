@@ -5,6 +5,8 @@
 #include "game_core.hpp"
 #include "presenter.hpp"
 
+#include "vaslib/vas_log.hpp"
+
 
 
 EC_Render::EC_Render(Entity *ent, size_t sprite_id): ent(ent)
@@ -60,8 +62,9 @@ public:
 	void render(TimeSpan)
 	{
 		std::vector<PresCommand> evs;
-		{	std::unique_lock g(q_lock);
-			evs = std::move(q_evs);
+		{
+			std::unique_lock g(q_lock);
+			evs.swap(q_evs);
 		}
 		
 		for (auto& e : evs)
@@ -107,6 +110,12 @@ public:
 		for (auto& o : objs)
 		{
 			if (!o.ei) continue;
+			auto ent = core.get_ent(o.ei);
+			if (!ent) {
+				o.ei = 0;
+				continue;
+			}
+			
 			o.tr = core.get_ent(o.ei)->get_pos();
 			ren.draw_inst(o.tr, o.clr, p_objs[o.oid].id);
 		}
