@@ -24,6 +24,9 @@ bool AppSettings::load()
 	c = &cs.emplace_back( true, true, "target_fps", [&](){ target_fps = i; return true; });
 	c->val(i);
 	
+	c = &cs.emplace_back( true, true, "set_vsync", [&](){ set_vsync = i; return true; });
+	c->val(i);
+	
 #define FONT(NM) \
 	c = &cs.emplace_back( true, true, "font_" #NM "fn", [&](){ font_##NM##path = s; font_##NM##path.insert( 0, "res/" ); return true; }); \
 	c->val(s); \

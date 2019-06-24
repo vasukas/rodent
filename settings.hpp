@@ -18,6 +18,7 @@ struct AppSettings
 	
 	float tui_scale = 1.f;
 	int target_fps = 30;
+	int set_vsync = 1;
 	
 	
 	static std::string cfg_path;

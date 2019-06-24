@@ -246,10 +246,12 @@ int main( int argc, char *argv[] )
 	
 	
 	if (!RenderControl::init()) return 1;
-	RenderControl::get().set_vsync( true );
+	
+	if (int set = AppSettings::get().set_vsync; set != -1)
+		RenderControl::get().set_vsync(set);
+	else VLOGI("set_vsync = ignored");
 	
 	set_wnd_pars();
-	
 	VLOGI("Basic initialization finished in {:6.3} seconds", (TimeSpan::since_start() - time_init).seconds());
 	
 	MainLoop::init( ml_which );
@@ -300,6 +302,7 @@ int main( int argc, char *argv[] )
 						if (dbg_show && !dbg_input) dbg_input = true;
 						else {dbg_input = dbg_show = !dbg_show; cons_shown = false;}
 					}
+					continue;
 				}
 				else if (ks.scancode == SDL_SCANCODE_GRAVE) {cons_shown = !cons_shown; dbg_show = false;}
 				
