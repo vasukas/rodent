@@ -229,8 +229,6 @@ int main( int argc, char *argv[] )
 	
 	TUI_Layer::char_sz_mul = AppSettings::get().tui_scale;
 	
-	bool burn_gpu = false;
-	
 	auto dbg_g = DbgMenu::get().reg({[&]()
 	{
 		dbgm_label(FMT_FORMAT(
@@ -240,12 +238,13 @@ int main( int argc, char *argv[] )
 			Texture::dbg_total_size >>10));
 		dbgm_check(RenderControl::get().use_pp, "Postproc", 'p');
 		if (dbgm_button("Reload postproc chain", 'm')) RenderControl::get().reload_pp();
-		if (dbgm_check(burn_gpu, "Framerate limit disabled", 'b')) RenderControl::get().set_vsync(!burn_gpu);
 	}, "General"});
 	
 	
 	
+	log_write_str(LogLevel::Critical, "=== Starting renderer initialization ===");
 	if (!RenderControl::init()) return 1;
+	log_write_str(LogLevel::Critical, "=== Renderer initialization finished ===");
 	
 	if (int set = AppSettings::get().set_vsync; set != -1)
 		RenderControl::get().set_vsync(set);
@@ -265,13 +264,25 @@ int main( int argc, char *argv[] )
 	
 	
 	
+	int vsync_fps = 0;
+	{	SDL_DisplayMode disp_mode;
+		if (SDL_GetCurrentDisplayMode(0, &disp_mode)) VLOGE("SDL_GetCurrentDisplayMode failed - {}", SDL_GetError());
+		else vsync_fps = disp_mode.refresh_rate;
+	}
+	if (vsync_fps) VLOGI("Refresh rate specified - {}", vsync_fps);
+	else {
+		vsync_fps = 60;
+		VLOGI("No refresh rate specified, using default - {}", vsync_fps);
+	}
+	
 	const int target_fps = AppSettings::get().target_fps;
-	const int vsync_fps = 60;
 	VLOGI("Target FPS: {}", target_fps);
 	
 	TimeSpan loop_length = TimeSpan::seconds( 1.f / target_fps );
 	bool loop_limit = !RenderControl::get().has_vsync() || target_fps != vsync_fps;
 	VLOGD("Main loop limiter: {}", loop_limit);
+	
+	log_write_str(LogLevel::Critical, "=== main loop begin ===");
 	
 	TimeSpan passed = loop_length; // render time
 	TimeSpan last_time = loop_length; // processing time (for info)
@@ -279,7 +290,7 @@ int main( int argc, char *argv[] )
 	
 	
 	bool cons_shown = false;
-	bool& dbg_show = RenderControl::get().is_dbgmenu;
+	bool& dbg_show = RenderControl::get().draw_tui;
 	bool dbg_input = false;
 	
 	bool run = true;
@@ -301,6 +312,12 @@ int main( int argc, char *argv[] )
 					else if (ks.scancode == SDL_SCANCODE_D) {
 						if (dbg_show && !dbg_input) dbg_input = true;
 						else {dbg_input = dbg_show = !dbg_show; cons_shown = false;}
+					}
+					else if (ks.scancode == SDL_SCANCODE_F) {
+						if (RenderControl::get().get_fscreen() != RenderControl::FULLSCREEN_OFF)
+							RenderControl::get().set_fscreen( RenderControl::FULLSCREEN_OFF );
+						else
+							RenderControl::get().set_fscreen( RenderControl::FULLSCREEN_DESKTOP );
 					}
 					continue;
 				}
@@ -351,9 +368,6 @@ int main( int argc, char *argv[] )
 		if (dbg_show) DbgMenu::get().render(passed, dbg_input);
 		if (cons_shown) Console::get().render();
 		
-		if (burn_gpu)
-			RenImm::get().draw_text( scr_size/2, "FRAMERATE LIMIT DISABLED", 0xff0000ff, true, 5.f );
-		
 		last_time = TimeSpan::since_start() - loop_0;
 		if (!RenderControl::get().render( passed ))
 		{
@@ -365,12 +379,12 @@ int main( int argc, char *argv[] )
 		if (loop_limit && loop_total < loop_length)
 		{
 			passed = loop_length;
-			if (!burn_gpu) sleep(loop_length - loop_total);
+			sleep(loop_length - loop_total);
 		}
 		else passed = loop_total;
 	}
 	
-	VLOGI("main() normal exit");
+	log_write_str(LogLevel::Critical, "main() normal exit");
 	delete MainLoop::current;
 	delete &RenderControl::get();
 	SDL_Quit();

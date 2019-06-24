@@ -64,6 +64,9 @@ public:
 	
 	Postproc* pp_main = nullptr;
 	
+	std::vector< std::function<void()> > cb_resize;
+	vec2i old_size;
+	
 	
 	
 	RenderControl_Impl(bool& ok)
@@ -86,6 +89,8 @@ public:
 		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
 		
 		auto wnd_sz = AppSettings::get().wnd_size;
+		old_size = wnd_sz;
+		
 		wnd = SDL_CreateWindow( "Loading...", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, wnd_sz.x, wnd_sz.y, SDL_WINDOW_OPENGL );
 		if (!wnd)
 		{
@@ -226,8 +231,15 @@ public:
 		if (crit_error) return false;
 		if (!visib) return true;
 		
+		auto n_size = get_size();
+		if (old_size != n_size)
+		{
+			for (auto& c : cb_resize) if (c) c();
+			old_size = n_size;
+		}
+		
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		glViewport(0, 0, get_size().x, get_size().y);
+		glViewport(0, 0, n_size.x, n_size.y);
 		
 		if (reload_fail)
 		{
@@ -255,7 +267,7 @@ public:
 			RenImm::get().render(RenImm::DEFCTX_UI);
 			RenImm::get().render_post();
 			
-			if (!is_dbgmenu)
+			if (!draw_tui)
 				RenTUI::get().render();
 			
 			cam.step(passed);
@@ -291,6 +303,24 @@ public:
 	bool has_vsync()
 	{
 		return 0 != SDL_GL_GetSwapInterval();
+	}
+	void set_fscreen(FullscreenValue val)
+	{
+		Uint32 fs;
+		switch (val)
+		{
+		case FULLSCREEN_OFF:    fs = 0; break;
+		case FULLSCREEN_ENABLED: fs = SDL_WINDOW_FULLSCREEN; break;
+		case FULLSCREEN_DESKTOP: fs = SDL_WINDOW_FULLSCREEN_DESKTOP; break;
+		}
+		SDL_SetWindowFullscreen(wnd, fs);
+	}
+	FullscreenValue get_fscreen()
+	{
+		Uint32 fs = SDL_GetWindowFlags(wnd);
+		if ((fs & SDL_WINDOW_FULLSCREEN_DESKTOP) == SDL_WINDOW_FULLSCREEN_DESKTOP) return FULLSCREEN_DESKTOP;
+		else if ((fs & SDL_WINDOW_FULLSCREEN) == SDL_WINDOW_FULLSCREEN) return FULLSCREEN_ENABLED;
+		return FULLSCREEN_OFF;
 	}
 	Shader* load_shader( const char *name, std::function <void(Shader&)> reload_cb, bool is_crit )
 	{
@@ -366,6 +396,18 @@ public:
 	GLA_VertexArray& ndc_screen2()
 	{
 		return *ndc_screen2_obj;
+	}
+	RAII_Guard add_size_cb(std::function<void()> cb)
+	{
+		size_t i=0;
+		for (; i<cb_resize.size(); ++i) if (!cb_resize[i]) break;
+		if (i == cb_resize.size()) cb_resize.emplace_back();
+		
+		cb_resize[i] = std::move(cb);
+		return RAII_Guard([i](){
+			if (!rct) return;
+			static_cast<RenderControl_Impl*>(rct)->cb_resize[i] = {};
+		});
 	}
 };
 bool RenderControl::init()

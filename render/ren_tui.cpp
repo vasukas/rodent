@@ -28,6 +28,8 @@ public:
 	vec2fp wr;
 	
 	bool force_upd = true;
+	RAII_Guard ren_rsz;
+	
 	
 	
 	// coord transform (screen pixels -> NDC)
@@ -87,6 +89,13 @@ public:
 		
 		
 		size = TUI_Layer::screen_size();
+		ren_rsz = RenderControl::get().add_size_cb([this]()
+		{
+			size = TUI_Layer::screen_size();
+			force_upd = true;
+		});
+		
+		
 		cz = RenText::get().mxc_size(FontIndex::TUI);
 		cz_m = TUI_Layer::char_sz_mul;
 		cz *= cz_m;

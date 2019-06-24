@@ -42,12 +42,36 @@ private:
 	std::unique_ptr<b2ContactListener> c_lstr;
 	
 public:
+	struct CastResult {
+		Entity* ent;
+		void* fix; ///< Fixture userdata
+		float distance; ///< Distance from start
+	};
+	struct RaycastResult : CastResult {
+		vec2fp poi; ///< Point of impact
+	};
+	
 	GameCore& core;
 	b2World world;
+	
 	
 	PhysicsWorld(GameCore& core);
 	~PhysicsWorld();
 	void step();
+	
+	
+	
+	/// Appends result - all object along ray
+	void raycast_all(std::vector<RaycastResult>& es, vec2fp from, vec2fp to);
+	
+	/// Returns nearest object hit
+	std::optional<RaycastResult> raycast_nearest(vec2fp from, vec2fp to, bool ignore_sensors = true);
+	
+	/// Appends result - all objects inside the circle
+	void circle_cast_all(std::vector<CastResult>& es, vec2fp ctr, float radius);
+	
+	/// Appends result - objects inside the circle which are nearest to center
+	void circle_cast_nearest(std::vector<RaycastResult>& es, vec2fp ctr, float radius);
 };
 
 #endif // PHYSICS_HPP

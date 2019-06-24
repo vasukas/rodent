@@ -18,6 +18,7 @@ struct PP_Filter
 	virtual bool is_ok() {return sh && sh->get_obj();}
 	virtual void proc() = 0;
 	virtual std::string descr() = 0;
+	virtual void dbgm_opts() {}
 	
 	void set_tc_size() {
 		auto sz = RenderControl::get_size();
@@ -48,7 +49,7 @@ struct PPF_Kuwahara : PP_Filter
 };
 struct PPF_Bleed : PP_Filter
 {
-	int n = 0;
+	int n = 1;
 	
 	PPF_Bleed()
 	{
@@ -61,6 +62,10 @@ struct PPF_Bleed : PP_Filter
 		for (int i=0; i<n; ++i) draw(i == n-1);
 	}
 	std::string descr() {return FMT_FORMAT("Bleed; n: {}", n);}
+	void dbgm_opts() {
+		if (dbgm_button("N-", 'z')) {if (n) --n;}
+		if (dbgm_button("N+", 'x')) ++n;
+	}
 };
 
 
@@ -75,16 +80,22 @@ public:
 	bool bs_index, bs_last;
 	
 	RAII_Guard dbgm_g;
+	RAII_Guard ren_rsz;
 	
 	
 	
 	PostprocMain()
 	{
-		for (int i=0; i<2; ++i)
+		auto set_fb = [this]()
 		{
-			tex_s[i].set(GL_RGBA, RenderControl::get_size());
-			fbo_s[i].attach_tex(GL_COLOR_ATTACHMENT0, tex_s[i]);
-		}
+			for (int i=0; i<2; ++i)
+			{
+				tex_s[i].set(GL_RGBA, RenderControl::get_size());
+				fbo_s[i].attach_tex(GL_COLOR_ATTACHMENT0, tex_s[i]);
+			}
+		};
+		set_fb();
+		ren_rsz = RenderControl::get().add_size_cb(set_fb);
 		
 		fts.emplace_back(new PPF_Kuwahara)->enabled = false;
 		fts.emplace_back(new PPF_Bleed)->enabled = true;
@@ -111,6 +122,7 @@ public:
 				bool en = f->enabled && ok;
 				dbgm_check(en, f->descr() + (ok? ". [OK]" : ". [Err]"), c);
 				if (ok) f->enabled = en;
+				f->dbgm_opts();
 				++c;
 			}
 		}, "Postproc", DBGMEN_RENDER, 's'});
