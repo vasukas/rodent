@@ -26,9 +26,11 @@ void EC_Physics::add_circle(b2FixtureDef& fd, float radius, float mass)
 	shp.m_radius = radius;
 	
 	float area = M_PI * shp.m_radius * shp.m_radius;
+	
 	fd.density = mass / area;
 	fd.shape = &shp;
 	body->CreateFixture(&fd);
+	calc_radius();
 }
 void EC_Physics::add_box(b2FixtureDef& fd, vec2fp half_extents, float mass)
 {
@@ -37,9 +39,11 @@ void EC_Physics::add_box(b2FixtureDef& fd, vec2fp half_extents, float mass)
 	shp.SetAsBox(v.x, v.y);
 	
 	float area = v.x * v.y * 4;
+	
 	fd.density = mass / area;
 	fd.shape = &shp;
 	body->CreateFixture(&fd);
+	calc_radius();
 }
 void EC_Physics::attach_to(EC_Physics& target)
 {
@@ -71,6 +75,28 @@ void EC_Physics::destroy(b2Joint* j)
 	auto it = std::find(p->js.begin(), p->js.end(), j);
 	p->js.erase(it);
 	body->GetWorld()->DestroyJoint(j);
+}
+void EC_Physics::calc_radius()
+{
+	b_radius = 0;
+	auto f = body->GetFixtureList();
+	while (f)
+	{
+		float r = 0.f;
+		auto sa = f->GetShape();
+		
+		if      (sa->GetType() == b2Shape::e_circle) r = sa->m_radius;
+		else if (sa->GetType() == b2Shape::e_polygon)
+		{
+			auto s = static_cast<b2PolygonShape*>(sa);
+			for (int i=0; i<s->m_count; ++i)
+				r = std::max(r, s->m_vertices[i].LengthSquared());
+			r = sqrt(r);
+		}
+		
+		b_radius = std::max(b_radius, r);
+		f = f->GetNext();
+	}
 }
 
 

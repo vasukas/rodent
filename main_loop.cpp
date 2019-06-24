@@ -3,6 +3,7 @@
 #include "core/tui_layer.hpp"
 #include "game/game_core.hpp"
 #include "game/logic.hpp"
+#include "game/movement.hpp"
 #include "game/physics.hpp"
 #include "game/presenter.hpp"
 #include "render/camera.hpp"
@@ -268,44 +269,15 @@ public:
 		void step() {
 			const vec2fp kmv[4] = {{-1, 0}, {0, -1}, {0, 1}, {1, 0}};
 			vec2fp mv = {};
-			bool mv_any = false;
-			for (int i=0; i<4; ++i) if (keyf[i]) mv += kmv[i], mv_any = true;
-			if (mv.equals({}, 0.1)) mv_any = false; else mv.norm();
+			for (int i=0; i<4; ++i) if (keyf[i]) mv += kmv[i];
+			if (!mv.equals({}, 0.1)) mv.norm();
 			
-			b2Body* body = ent->get_phy()->body;
-			const float tmul = ent->core.step_len.seconds();
+			Transform tr = {mv, 0};
+			tr.pos *= keyf[4] ? 18.f : 10.f;
 			
-			const b2Vec2 vel = body->GetLinearVelocity();
-			const float min_ch = 0.1f;
-			const float max_ch = 20.f;
-			const float tar_m = 10.f;
-			
-			const float ps_lim = tar_m * 0.8;
-			if (vel.Length() > ps_lim) {
-				float p = vel.Length() - ps_lim;
-				Transform tr;
-				tr.rot = std::atan2(vel.y, vel.x);
-				tr.pos = {-GameResBase::get().hsz_rat, 0};
-				tr.pos.fastrotate(tr.rot);
-				ent->get_ren()->parts(OE_DUST, p, tr);
-			}
-			
-			b2Vec2 tar = tar_m * conv(mv);
-			if (keyf[4]) tar *= 1.8;
-			
-			b2Vec2 vec = tar - vel;
-			float xd = fabs(tar.x) - fabs(vel.x);
-			float yd = fabs(tar.y) - fabs(vel.y);
-			
-			if (xd > 0) vec.x *= 10; else vec.x *= !keyf[4]? (xd > 1.0 ? 20 : 10) : 2;
-			if (yd > 0) vec.y *= 10; else vec.y *= !keyf[4]? (yd > 1.0 ? 20 : 10) : 2;
-			float dl = vec.Length();
-			
-			if (dl == 0.f) return;
-			else if (dl > max_ch) vec *= max_ch / dl;
-			else if (dl < min_ch) vec *= 1.f / tmul;
-			
-			body->ApplyLinearImpulse(body->GetMass() * tmul * vec, body->GetWorldCenter(), mv_any);
+			auto mov = ent->get_mov();
+			mov->inertial_mode = keyf[4];
+			mov->set_target_velocity(tr);
 		}
 		void on_event_sdl(SDL_Event& ev) {
 			if (ev.type == SDL_KEYDOWN || ev.type == SDL_KEYUP) {
@@ -335,25 +307,7 @@ public:
 	void thr_func() try
 	{
 		struct DL : EC_Logic {
-			void step() {
-				b2Body* body = ent->get_phy()->body;
-				const float tmul = ent->core.step_len.seconds();
-//				const float fk = body->GetFixtureList()->GetFriction();
-				
-				const b2Vec2 vel = body->GetLinearVelocity();
-				b2Vec2 damp = -0.99f * vel;
-				
-				const float max_damp = 2.f;
-				if (float l = damp.Length(); l > max_damp)
-					damp *= max_damp / l;
-				
-				b2Vec2 imp = tmul * damp;
-				body->ApplyLinearImpulse(body->GetMass() * imp, body->GetWorldCenter(), false);
-				
-				float ai = -2.f * body->GetAngularVelocity();
-				ai *= tmul;
-				body->ApplyAngularImpulse(body->GetMass() * ai, false);
-			}
+			void step() {}
 			void on_event(const ContactEvent& ev) {
 				const float lim = 120.f; // 40
 				if (ev.type == ContactEvent::T_RESOLVE && ev.imp > lim) {
@@ -384,8 +338,11 @@ public:
 			fd.restitution = big? 0.1 : 0.5;
 			e->get_phy()->add_box(fd, vec2fp::one(big? rb.hsz_heavy : rb.hsz_box), big? 25.f : 8.f);
 			
+			auto mov = new EC_Movement;
+			mov->dust_vel = 0.f;
+			e->cnew(mov);
+			        
 			e->cnew(new DL);
-			
 			e->dbg_name = big? "Heavy" : "Box";
 		}
 		{
@@ -406,9 +363,16 @@ bd.fixedRotation = true;
 			pc_log = new PC_Logic(this, e);
 			e->cnew(pc_log);
 			
+			auto mov = new EC_Movement;
+			mov->max_ch = 20.f;
+			mov->use_damp = false;
+			e->cnew(mov);
+			
 			e->dbg_name = "PC";
 			cam_ent = e->index;
 		}
+		
+		VLOGI("Game initialized");
 		
 		state = ST_RUN;
 		while (state != ST_FINISH)

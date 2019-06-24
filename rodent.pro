@@ -62,6 +62,7 @@ SOURCES += \
 	core/tui_surface.cpp \
 	game/entity.cpp \
 	game/game_core.cpp \
+	game/movement.cpp \
 	game/physics.cpp \
 	game/presenter.cpp \
 	game/presenter_res.cpp \
@@ -146,6 +147,7 @@ HEADERS += \
 	game/entity.hpp \
 	game/game_core.hpp \
 	game/logic.hpp \
+	game/movement.hpp \
 	game/physics.hpp \
 	game/presenter.hpp \
 	game/presenter_res.hpp \

@@ -268,10 +268,10 @@ struct Transform
 	
 	void combine(const Transform& t);
 	void combine_reversed(const Transform& t);
-	
 	Transform get_combined(const Transform& t) const;
 	
 	void add(const Transform& t);
+	Transform get_add(const Transform& t) const;
 	
 	Transform operator -() const {return Transform{-pos, -rot};}
 	Transform operator * (float t) const;

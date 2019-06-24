@@ -16,6 +16,7 @@ struct EC_Physics
 {
 	Entity* ent;
 	b2Body* body;
+	float b_radius = 0.f; ///< Approximate radius, calculated from fixtures
 	
 	EC_Physics(const b2BodyDef& def); ///< Creates body
 	~EC_Physics();
@@ -25,6 +26,8 @@ struct EC_Physics
 	
 	void attach_to(EC_Physics& target); ///< Fixed
 	void detach(); ///< Detaches self
+	
+	void calc_radius(); ///< Recalculates radius
 	
 private:
 	std::vector<b2Joint*> js;

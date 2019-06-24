@@ -2,10 +2,13 @@
 #include "vaslib/vas_cpp_utils.hpp"
 #include "game_core.hpp"
 #include "logic.hpp"
+#include "movement.hpp"
 #include "physics.hpp"
 #include "presenter.hpp"
 
 const TimeSpan GameCore::step_len = TimeSpan::seconds(1./30);
+
+
 
 class GameCore_Impl : public GameCore
 {
@@ -48,9 +51,9 @@ public:
 		// tick systems
 		
 		for (auto& e : ents) if (e) if (auto c = e->get_log()) c->step();
+		for (auto& e : ents) if (e) if (auto c = e->get_mov()) c->step();
 		
 		phy->step();
-		
 		GamePresenter::get().submit();
 		
 		// finish

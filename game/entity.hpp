@@ -7,6 +7,7 @@
 
 class  GameCore;
 struct EC_Logic;
+struct EC_Movement;
 struct EC_Physics;
 struct EC_Render;
 class  Entity;
@@ -20,6 +21,7 @@ struct EC_SetPosition
 {
 	Transform pos;
 	Transform vel = {}; ///< Velocity per second
+	float radius = 0.5;
 	
 	EC_SetPosition(Transform pos, Transform vel = {}): pos(pos), vel(vel) {}
 };
@@ -42,21 +44,25 @@ public:
 	Transform get_pos() const; ///< Returns center position
 	Transform get_vel() const; ///< Returns velocity per second
 	vec2fp get_norm_dir() const; ///< Returns normalized face direction
+	float get_radius() const; ///< Returns approximate radius of object
 	
-	EC_Logic   *get_log() const {return c_log.get();}
-	EC_Physics *get_phy() const {return c_phy.get();}
-	EC_Render  *get_ren() const {return c_ren.get();}
+	EC_Logic    *get_log() const {return c_log.get();}
+	EC_Movement *get_mov() const {return c_mov.get();}
+	EC_Physics  *get_phy() const {return c_phy.get();}
+	EC_Render   *get_ren() const {return c_ren.get();}
 	
-	void cnew(EC_Logic   *c);
-	void cnew(EC_Physics *c);
-	void cnew(EC_Render  *c);
+	void cnew(EC_Logic    *c);
+	void cnew(EC_Movement *c);
+	void cnew(EC_Physics  *c);
+	void cnew(EC_Render   *c);
 	
 private:
 	friend class GameCore_Impl;
 	
-	std::unique_ptr<EC_Logic>   c_log;
-	std::unique_ptr<EC_Physics> c_phy;
-	std::unique_ptr<EC_Render>  c_ren;
+	std::unique_ptr<EC_Logic>    c_log;
+	std::unique_ptr<EC_Movement> c_mov;
+	std::unique_ptr<EC_Physics>  c_phy;
+	std::unique_ptr<EC_Render>   c_ren;
 	
 	Entity( GameCore&, EntityIndex );
 	~Entity();

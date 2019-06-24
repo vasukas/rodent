@@ -295,5 +295,6 @@ void Transform::add(const Transform& t)
 	pos += t.pos;
 	rot += t.rot;
 }
+Transform Transform::get_add(const Transform& t) const {Transform r = *this; r.add(t); return r;}
 Transform Transform::operator * (float t) const {return {pos * t, rot * t};}
 void Transform::operator *= (float t) {pos *= t, rot *= t;}

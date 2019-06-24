@@ -1,6 +1,7 @@
 #include "entity.hpp"
 #include "game_core.hpp"
 #include "logic.hpp"
+#include "movement.hpp"
 #include "physics.hpp"
 #include "presenter.hpp"
 
@@ -30,9 +31,20 @@ vec2fp Entity::get_norm_dir() const
 	p.fastrotate( get_pos().rot );
 	return p;
 }
-void Entity::cnew(EC_Logic   *c)
+float Entity::get_radius() const
+{
+	if (c_phy) return c_phy->b_radius;
+	if (setpos) return setpos->radius;
+	return 0.5f;
+}
+void Entity::cnew(EC_Logic *c)
 {
 	c_log.reset(c);
+	c->ent = this;
+}
+void Entity::cnew(EC_Movement *c)
+{
+	c_mov.reset(c);
 	c->ent = this;
 }
 void Entity::cnew(EC_Physics *c)
@@ -40,7 +52,7 @@ void Entity::cnew(EC_Physics *c)
 	c_phy.reset(c);
 	c->ent = this;
 }
-void Entity::cnew(EC_Render  *c)
+void Entity::cnew(EC_Render *c)
 {
 	c_ren.reset(c);
 	c->ent = this;
