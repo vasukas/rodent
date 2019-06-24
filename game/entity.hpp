@@ -2,6 +2,7 @@
 #define ENTITY_HPP
 
 #include <memory>
+#include <optional>
 #include "vaslib/vas_math.hpp"
 
 class  GameCore;
@@ -15,6 +16,16 @@ typedef uint32_t EntityIndex;
 
 
 
+struct EC_SetPosition
+{
+	Transform pos;
+	Transform vel = {}; ///< Velocity per second
+	
+	EC_SetPosition(Transform pos, Transform vel = {}): pos(pos), vel(vel) {}
+};
+
+
+
 /// Game object
 class Entity final
 {
@@ -23,12 +34,14 @@ public:
 	GameCore& core;
 	
 	std::string dbg_name = {};
+	std::optional<EC_SetPosition> setpos;
 	
 	
 	void destroy(); ///< Deletes entity immediatly or at the end of the step. Index garanteed to be not used in next step
 
 	Transform get_pos() const; ///< Returns center position
-	float     get_dir() const; ///< Returns face direction
+	Transform get_vel() const; ///< Returns velocity per second
+	vec2fp get_norm_dir() const; ///< Returns normalized face direction
 	
 	EC_Logic   *get_log() const {return c_log.get();}
 	EC_Physics *get_phy() const {return c_phy.get();}

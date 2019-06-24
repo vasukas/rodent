@@ -355,7 +355,7 @@ public:
 				body->ApplyAngularImpulse(body->GetMass() * ai, false);
 			}
 			void on_event(const ContactEvent& ev) {
-				const float lim = 45.f;
+				const float lim = 120.f; // 40
 				if (ev.type == ContactEvent::T_RESOLVE && ev.imp > lim) {
 					ent->destroy();
 					GamePresenter::get().effect(FE_EXPLOSION, {ev.point, 0.f}, ev.imp / lim + 0.5f);

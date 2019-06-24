@@ -34,11 +34,13 @@ struct PresCommand
 {
 	enum Type
 	{
-		T_CREATE, ///< new object; [sprite index]
+		// object
+		T_CREATE, ///< new object; [sprite index] (note - internally also uses pos)
 		T_DEL, ///< delete object with post-effect; [pos]
 		T_OBJPARTS, ///< generate particles onto obj [preset index, pos (relative), power]
 		
-		T_FREEPARTS ///< generate particles [(obj ignored), preset index, pos, power]
+		// general
+		T_FREEPARTS ///< generate particles [\preset index, pos, power]
 	};
 	Type type;
 	size_t obj; ///< non-zero EntityIndex

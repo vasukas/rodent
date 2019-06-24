@@ -49,7 +49,7 @@ public:
 	struct Object
 	{
 		EntityIndex ei;
-		Transform tr;
+		Transform tr, vel;
 		FColor clr;
 		size_t oid;
 	};
@@ -57,7 +57,7 @@ public:
 	
 	
 	
-	void render(TimeSpan)
+	void render(TimeSpan passed)
 	{
 		std::vector<PresCommand> evs;
 		{
@@ -73,7 +73,8 @@ public:
 				{	if (e.obj >= objs.size()) objs.resize( e.obj + 1 );
 					auto& o = objs[e.obj];
 					o.ei = e.obj;
-					o.tr = {};
+					o.tr = e.pos;
+					o.vel = {};
 					o.oid = e.index;
 					auto& p = p_objs[o.oid];
 					o.clr = p.clr;
@@ -92,7 +93,7 @@ public:
 			case PresCommand::T_OBJPARTS:
 				{	auto& o = objs[e.obj];
 					auto& p = p_objs[o.oid];
-					p.ps[e.index]->draw(o.tr + e.pos, e.power);
+					p.ps[e.index]->draw(o.tr.get_combined(e.pos), e.power);
 				}
 				break;
 				
@@ -102,20 +103,14 @@ public:
 			}
 		}
 
-		auto& core = GameCore::get();
 		auto& ren = RenAAL::get();
+		float tk = passed.seconds();
 		
 		for (auto& o : objs)
 		{
 			if (!o.ei) continue;
-			auto ent = core.get_ent(o.ei);
-			if (!ent) {
-				o.ei = 0;
-				continue;
-			}
-			
-			o.tr = core.get_ent(o.ei)->get_pos();
 			ren.draw_inst(o.tr, o.clr, p_objs[o.oid].id);
+			o.tr.add(o.vel * tk);
 		}
 	}
 	void add_cmd(const PresCommand& cmd)
@@ -130,6 +125,20 @@ public:
 		else {
 			q_evs.insert( q_evs.end(), q_next.begin(), q_next.end() );
 			q_next.clear();
+		}
+		auto& core = GameCore::get();
+		for (auto& e : q_evs)
+		{
+			if (e.type == PresCommand::T_CREATE)
+				e.pos = core.get_ent(e.obj)->get_pos();
+		}
+		for (auto& o : objs)
+		{
+			if (!o.ei) continue;
+			if (auto e = core.get_ent(o.ei)) {
+				o.tr = e->get_pos();
+				o.vel = e->get_vel();
+			}
 		}
 	}
 	size_t add_preset(std::shared_ptr<ParticleGroupGenerator> p)

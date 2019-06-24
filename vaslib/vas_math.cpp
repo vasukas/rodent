@@ -279,17 +279,21 @@ bool Rectfp::contains( const Rectfp& r ) const
 
 vec2fp Transform::apply(vec2fp p) const {return (p + pos).get_rotated(rot);}
 vec2fp Transform::reverse(vec2fp p) const {return p.get_rotated(-rot) - pos;}
-Transform Transform::operator + (const Transform& t) const {Transform r = *this; r += t; return r;}
-Transform Transform::operator - (const Transform& t) const {Transform r = *this; r -= t; return r;}
-Transform Transform::operator * (float t) const {return {pos * t, rot * t};}
-void Transform::operator += (const Transform& t)
+void Transform::combine(const Transform& t)
 {
 	pos += t.pos.get_rotated(rot);
 	rot += t.rot;
 }
-void Transform::operator -= (const Transform& t)
+void Transform::combine_reversed(const Transform& t)
 {
 	rot -= t.rot;
 	pos -= t.pos.get_rotated(rot);
 }
+Transform Transform::get_combined(const Transform& t) const {Transform r = *this; r.combine(t); return r;}
+void Transform::add(const Transform& t)
+{
+	pos += t.pos;
+	rot += t.rot;
+}
+Transform Transform::operator * (float t) const {return {pos * t, rot * t};}
 void Transform::operator *= (float t) {pos *= t, rot *= t;}

@@ -266,14 +266,15 @@ struct Transform
 	vec2fp apply(vec2fp p) const; ///< Applies transform to point
 	vec2fp reverse(vec2fp p) const; ///< Applies reverse transform to point
 	
+	void combine(const Transform& t);
+	void combine_reversed(const Transform& t);
+	
+	Transform get_combined(const Transform& t) const;
+	
+	void add(const Transform& t);
+	
 	Transform operator -() const {return Transform{-pos, -rot};}
-	
-	Transform operator + (const Transform& t) const;
-	Transform operator - (const Transform& t) const;
 	Transform operator * (float t) const;
-	
-	void operator += (const Transform& t);
-	void operator -= (const Transform& t);
 	void operator *= (float t);
 };
 

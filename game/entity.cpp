@@ -14,13 +14,21 @@ void Entity::destroy() {core.mark_deleted(this);}
 
 Transform Entity::get_pos() const
 {
-	if (!c_phy) return {};
-	return conv(c_phy->body->GetTransform());
+	if (c_phy) return conv(c_phy->body->GetTransform());
+	if (setpos) return setpos->pos;
+	return {};
 }
-float Entity::get_dir() const
+Transform Entity::get_vel() const
 {
-	if (!c_phy) return 0.f;
-	return c_phy->body->GetAngle();
+	if (c_phy) return {conv(c_phy->body->GetLinearVelocity()), c_phy->body->GetAngularVelocity()};
+	if (setpos) return setpos->vel;
+	return {};
+}
+vec2fp Entity::get_norm_dir() const
+{
+	vec2fp p{1, 0};
+	p.fastrotate( get_pos().rot );
+	return p;
 }
 void Entity::cnew(EC_Logic   *c)
 {
