@@ -1,5 +1,6 @@
 #include "entity.hpp"
 #include "game_core.hpp"
+#include "logic.hpp"
 #include "physics.hpp"
 #include "presenter.hpp"
 
@@ -20,6 +21,11 @@ float Entity::get_dir() const
 {
 	if (!c_phy) return 0.f;
 	return c_phy->body->GetAngle();
+}
+void Entity::cnew(EC_Logic   *c)
+{
+	c_log.reset(c);
+	c->ent = this;
 }
 void Entity::cnew(EC_Physics *c)
 {

@@ -2,6 +2,7 @@
 #include <thread>
 #include "core/tui_layer.hpp"
 #include "game/game_core.hpp"
+#include "game/logic.hpp"
 #include "game/physics.hpp"
 #include "game/presenter.hpp"
 #include "render/camera.hpp"
@@ -165,33 +166,6 @@ public:
 
 
 
-enum ObjEffect
-{
-	OE_DEATH,
-	OE_DUST
-};
-enum FreeEffect
-{
-	FE_EXPLOSION,
-	FE_HIT
-};
-enum ObjList
-{
-	OBJ_PC,
-	OBJ_BOX,
-	OBJ_HEAVY,
-	PROJ_ROCKET,
-//	PROJ_RAY,
-//	PROJ_BULLET,
-	PROJ_PLASMA,
-	ARM_SHIELD,
-	ARM_ROCKET,
-//	ARM_MGUN,
-//	ARM_RAYGUN,
-	ARM_PLASMA,
-	
-	OBJ_ALL_WALLS
-};
 
 class ML_Game : public MainLoop
 {
@@ -215,7 +189,7 @@ public:
 	struct PC_Logic;
 	
 	std::unique_ptr<GameCore> core;
-	PC_Logic* pc_log; // player character
+	PC_Logic* pc_log = nullptr; // player character
 	
 	bool ph_debug_draw = false;
 	
@@ -254,8 +228,10 @@ public:
 			if (k == SDL_SCANCODE_0) ph_debug_draw = !ph_debug_draw;
 		}
 		
-		std::unique_lock g(pc_lock);
-		pc_log->on_event(ev);
+		if (pc_log) {
+			std::unique_lock g(pc_lock);
+			pc_log->on_event_sdl(ev);
+		}
 	}
 	void render(TimeSpan passed)
 	{
@@ -289,7 +265,7 @@ public:
 			ml_game->state = ST_FINISH;
 			ml_game->pc_log = nullptr;
 		}
-		void tick() {
+		void step() {
 			const vec2fp kmv[4] = {{-1, 0}, {0, -1}, {0, 1}, {1, 0}};
 			vec2fp mv = {};
 			bool mv_any = false;
@@ -300,57 +276,38 @@ public:
 			const float tmul = ent->core.step_len.seconds();
 			
 			const b2Vec2 vel = body->GetLinearVelocity();
+			const float min_ch = 0.1f;
+			const float max_ch = 20.f;
+			const float tar_m = 10.f;
 			
-			if (false)
-			{
-				b2Vec2 damp = -1 * vel;
-				if (keyf[4]) damp *= 2;
-				
-				float ps_lim = 4.f;
-				if (vel.Length() > ps_lim) {
-					float p = vel.Length() - ps_lim;
-					Transform tr = {};
-					tr.rot = std::atan2(vel.y, vel.x);
-					ent->get_ren()->parts(OE_DUST, p, tr);
-				}
-				
-				const float min_damp = keyf[4]? 0.5f : 0.2f;
-				const float max_damp = keyf[4]? 9.f : 6.f;
-				float dl = damp.Length();
-				if (dl > max_damp) damp *= max_damp / dl;
-				else if (dl != 0.f && dl < min_damp) damp *= min_damp / dl;
-				if (!mv_any && dl == 0.f) return;
-				
-				b2Vec2 mv_vec = 8.f * conv(mv);
-				if (fabs(mv_vec.x) > 0) damp.x = 0;
-				if (fabs(mv_vec.y) > 0) damp.y = 0;
-				
-				b2Vec2 imp = tmul * (mv_vec + damp);
-				body->ApplyLinearImpulse(body->GetMass() * imp, body->GetWorldCenter(), mv_any);
+			const float ps_lim = tar_m * 0.8;
+			if (vel.Length() > ps_lim) {
+				float p = vel.Length() - ps_lim;
+				Transform tr;
+				tr.rot = std::atan2(vel.y, vel.x);
+				tr.pos = {-GameResBase::get().hsz_rat, 0};
+				tr.pos.fastrotate(tr.rot);
+				ent->get_ren()->parts(OE_DUST, p, tr);
 			}
-			else
-			{
-				float min_ch = 0.1f;
-				float max_ch = 20.f;
-				b2Vec2 tar = 10.f * conv(mv);
-				if (keyf[4]) tar *= 1.8;
-				
-				b2Vec2 vec = tar - vel;
-				float xd = fabs(tar.x) - fabs(vel.x);
-				float yd = fabs(tar.y) - fabs(vel.y);
-				
-				if (xd > 0) vec.x *= 10; else vec.x *= !keyf[4]? (xd > 1.0 ? 20 : 10) : 2;
-				if (yd > 0) vec.y *= 10; else vec.y *= !keyf[4]? (yd > 1.0 ? 20 : 10) : 2;
-				float dl = vec.Length();
-				
-				if (dl == 0.f) return;
-				else if (dl > max_ch) vec *= max_ch / dl;
-				else if (dl < min_ch) vec *= 1.f / tmul;
-				
-				body->ApplyLinearImpulse(body->GetMass() * tmul * vec, body->GetWorldCenter(), mv_any);
-			}
+			
+			b2Vec2 tar = tar_m * conv(mv);
+			if (keyf[4]) tar *= 1.8;
+			
+			b2Vec2 vec = tar - vel;
+			float xd = fabs(tar.x) - fabs(vel.x);
+			float yd = fabs(tar.y) - fabs(vel.y);
+			
+			if (xd > 0) vec.x *= 10; else vec.x *= !keyf[4]? (xd > 1.0 ? 20 : 10) : 2;
+			if (yd > 0) vec.y *= 10; else vec.y *= !keyf[4]? (yd > 1.0 ? 20 : 10) : 2;
+			float dl = vec.Length();
+			
+			if (dl == 0.f) return;
+			else if (dl > max_ch) vec *= max_ch / dl;
+			else if (dl < min_ch) vec *= 1.f / tmul;
+			
+			body->ApplyLinearImpulse(body->GetMass() * tmul * vec, body->GetWorldCenter(), mv_any);
 		}
-		void on_event(SDL_Event& ev) {
+		void on_event_sdl(SDL_Event& ev) {
 			if (ev.type == SDL_KEYDOWN || ev.type == SDL_KEYUP) {
 				const SDL_Scancode cs[key_n] = {
 				    SDL_SCANCODE_A, SDL_SCANCODE_W, SDL_SCANCODE_S, SDL_SCANCODE_D, SDL_SCANCODE_SPACE
@@ -363,11 +320,6 @@ public:
 	};
 	
 	const float hsize = 15.f; // level
-	const float hsz_box = 0.7;
-	const float hsz_heavy = 1.5;
-	const float hsz_rat = 0.6;
-	const float hsz_proj = 0.2;
-	const vec2fp hsz_shld = {2, 0.7};
 	
 	void init_game()
 	{
@@ -376,17 +328,17 @@ public:
 		core.reset( GameCore::create(core_init) );
 		
 		RenAAL::get().inst_begin();
-		init_resources();
+		GameResBase::get().init_res();
 		init_terrain(hsize);
 		RenAAL::get().inst_end();
 	}
 	void thr_func() try
 	{
 		struct DL : EC_Logic {
-			void tick() {
+			void step() {
 				b2Body* body = ent->get_phy()->body;
 				const float tmul = ent->core.step_len.seconds();
-//					const float fk = body->GetFixtureList()->GetFriction();
+//				const float fk = body->GetFixtureList()->GetFriction();
 				
 				const b2Vec2 vel = body->GetLinearVelocity();
 				b2Vec2 damp = -0.99f * vel;
@@ -402,36 +354,16 @@ public:
 				ai *= tmul;
 				body->ApplyAngularImpulse(body->GetMass() * ai, false);
 			}
-		};
-		class ContactLstr : public b2ContactListener {
-		public:
-			void PostSolve(b2Contact* ct, const b2ContactImpulse* res) {
-				float i = 0.f;
-				for (auto& f : res->normalImpulses) i += f;
-				
-				int pc = ct->GetManifold()->pointCount;
-				b2WorldManifold wm;
-				ct->GetWorldManifold(&wm);
-				b2Vec2 p = b2Vec2_zero;
-				for (int i=0; i<pc; ++i) p += wm.points[i];
-				p *= 1.f / pc;
-				
-				float lim = 40.f;
-				bool expl = false;
-				
-				if (i > lim)
-				{
-					auto pa = dynamic_cast<DL*>(getptr(ct->GetFixtureA()->GetBody())->ent->logic.get());
-					auto pb = dynamic_cast<DL*>(getptr(ct->GetFixtureB()->GetBody())->ent->logic.get());
-					if (pa) pa->ent->destroy();
-					if (pb) pb->ent->destroy();
-					if (pa || pb) expl = true;
+			void on_event(const ContactEvent& ev) {
+				const float lim = 45.f;
+				if (ev.type == ContactEvent::T_RESOLVE && ev.imp > lim) {
+					ent->destroy();
+					GamePresenter::get().effect(FE_EXPLOSION, {ev.point, 0.f}, ev.imp / lim + 0.5f);
 				}
-				GamePresenter::get().effect(expl ? FE_EXPLOSION : FE_HIT, {conv(p), 0.f}, expl ? i / lim : i / lim * 2);
 			}
 		};
-		auto cl = std::make_unique<ContactLstr>();
-		core->get_phy().world.SetContactListener(cl.get());
+		
+		auto& rb = GameResBase::get();
 		
 		for (int i=0; i<25; ++i)
 		{
@@ -450,10 +382,9 @@ public:
 			b2FixtureDef fd;
 			fd.friction = 0.1;
 			fd.restitution = big? 0.1 : 0.5;
-			e->get_phy()->add_box(fd, vec2fp::one(big? hsz_heavy : hsz_box), big? 25.f : 8.f);
+			e->get_phy()->add_box(fd, vec2fp::one(big? rb.hsz_heavy : rb.hsz_box), big? 25.f : 8.f);
 			
-			e->logic.reset(new DL);
-			e->logic->ent = e;
+			e->cnew(new DL);
 			
 			e->dbg_name = big? "Heavy" : "Box";
 		}
@@ -470,10 +401,10 @@ bd.fixedRotation = true;
 			b2FixtureDef fd;
 			fd.friction = 0.3;
 			fd.restitution = 0.5;
-			e->get_phy()->add_circle(fd, hsz_rat, 15.f);
+			e->get_phy()->add_circle(fd, rb.hsz_rat, 15.f);
 			
 			pc_log = new PC_Logic(this, e);
-			e->logic.reset(pc_log);
+			e->cnew(pc_log);
 			
 			e->dbg_name = "PC";
 			cam_ent = e->index;
@@ -487,8 +418,6 @@ bd.fixedRotation = true;
 			}
 			sleep(core->step_len);
 		}
-		
-		core->get_phy().world.SetContactListener(nullptr);
 	}
 	catch (std::exception& e) {
 		state = ST_FINISH;
@@ -497,230 +426,6 @@ bd.fixedRotation = true;
 	
 	
 	
-	void init_resources()
-	{
-		struct Explosion : ParticleGroupGenerator {
-			size_t n_base; // base count
-			FColor clr0, clr1; // color range
-			
-			float p_min = 0.1, p_max = 5.f;
-			float a_lim = M_PI; // angle limit
-			
-			float alpha = 1.f;
-			float size = 0.1;
-			        
-			Transform tr;
-			float power;
-			FColor clr_t;
-			
-			size_t begin(const Transform& tr_in, ParticleParams& p, float power_in) {
-				tr = tr_in;
-				power = clampf(power_in, p_min, p_max);
-				clr_t = clr0 + (clr1 - clr0) * clampf(power / p_max - p_min, 0.1, 0.9);
-				
-				p.px = tr.pos.x;
-				p.py = tr.pos.y;
-				p.size = size;
-				p.lt = 0;
-				
-				return n_base * power;
-			}
-			void gen(ParticleParams& p) {
-				float vk = rnd_range(0.5, 2) * clampf(power, 0.1, 2);
-				vec2fp vel{vk, 0};
-				vel.fastrotate( tr.rot + rnd_range(-a_lim, a_lim) );
-				p.vx = vel.x;
-				p.vy = vel.y;
-				
-				p.ft = rnd_range(2, 3.5) * alpha;
-				float t = rnd_range();
-				
-#define RND(A) p.clr.A = t < 0.5 ? lint(clr0.A, clr_t.A, t*2) : lint(clr_t.A, clr1.A, t*2-1)
-				RND(r); RND(g); RND(b); RND(a);
-#undef RND
-//				p.clr.a *= alpha;
-			}
-		};
-		
-		// FE_EXPLOSION
-		{
-			auto g = std::make_shared<Explosion>();
-			g->n_base = 30;
-			g->p_max = 3.f;
-			g->size = 0.3;
-			g->clr0 = FColor(0.5, 0, 0, 0.5);
-			g->clr1 = FColor(1.2, 1, 0.8, 1);
-			pres->add_preset(g);
-		}
-		// FE_HIT
-		{
-			auto g = std::make_shared<Explosion>();
-			g->n_base = 20;
-			g->clr0 = FColor(1, 0, 0, 0.1);
-			g->clr1 = FColor(1.2, 0.2, 0.2, 1);
-			pres->add_preset(g);
-		}
-		
-		// OE_DUST
-		auto dust_ps = std::make_shared<Explosion>();
-		{
-			auto& g = dust_ps;
-			g->n_base = 8;
-			g->p_min = 0.2f, g->p_max = 2.f;
-			g->alpha = 0.45;
-			g->clr0 = FColor(0.4, 1, 1, 0.8);
-			g->clr1 = FColor(0.9, 1, 1, 0.8);
-		}
-		
-		struct RenShape {
-			std::vector<vec2fp> ps;
-			bool loop = true;
-		};
-		std::vector<RenShape> ps;
-		
-		auto addobj = [&](FColor clr, vec2fp size)
-		{
-			struct Death : ParticleGroupGenerator {
-				struct Ln {
-					vec2fp a, b;
-					size_t n;
-				};
-				std::vector<Ln> ls;
-				size_t total = 0;
-				Transform tr;
-				FColor clr;
-				
-				size_t li, lc;
-				
-				Death(const std::vector<RenShape>& ps, FColor clr): clr(clr)
-				{
-					for (auto& s : ps)
-					{
-						size_t n = s.ps.size();
-						if (s.loop) ++n;
-						for (size_t i=1; i<n; ++i)
-						{
-							auto& l = ls.emplace_back();
-							l.a = s.ps[i-1];
-							l.b = s.ps[i % s.ps.size()];
-							l.n = l.a.dist(l.b) * 5;
-							if (l.n < 2) l.n = 2;
-							total += l.n;
-						}
-					}
-				}
-				size_t begin(const Transform& tr_in, ParticleParams& p, float)
-				{
-					p.size = 0.1;
-					p.lt = 0;
-					p.clr = clr;
-					p.lt = 0;
-					
-					li = lc = 0;
-					tr = tr_in;
-					return total;
-				}
-				void gen(ParticleParams& p)
-				{
-					auto& l = ls[li];
-					float t = (lc + 0.5f) / l.n;
-					vec2fp pos = lint(l.a, l.b, t);
-					if (++lc == l.n) ++li, lc = 0;
-					
-					vec2fp rp = pos;
-					rp.fastrotate(tr.rot);
-					p.px = rp.x + tr.pos.x;
-					p.py = rp.y + tr.pos.y;
-					
-					vec2fp rv = vec2fp(0, rnd_range(0.1, 0.5));
-					rv.fastrotate( rnd_range(-M_PI, M_PI) );
-					p.vx = rv.x;
-					p.vy = rv.y;
-					
-					p.ft = rnd_range(3, 5);
-				}
-			};
-			
-			vec2fp maxcd = {};
-			for (auto& s : ps) for (auto& p : s.ps) {
-				maxcd.x = std::max(maxcd.x, fabs(p.x));
-				maxcd.y = std::max(maxcd.y, fabs(p.y));
-			}
-			maxcd = size / maxcd;
-			for (auto& s : ps) for (auto& p : s.ps) p *= maxcd;
-			
-			auto& ren = RenAAL::get();
-			for (auto& p : ps) ren.inst_add(p.ps, p.loop);
-			
-			PresObject p;
-			p.id = ren.inst_add_end();
-			p.clr = clr;
-			p.ps.emplace_back(new Death(ps, clr));
-			p.ps.emplace_back(dust_ps);
-			pres->add_preset(p);
-			
-			ps.clear();
-		};
-		auto lnn = [&](bool loop){ ps.emplace_back().loop = loop; };
-		auto lpt = [&](float x, float y){ ps.back().ps.push_back({x, y}); };
-		
-		// OBJ_PC
-		lnn(true);
-		lpt(0, -1);
-		lpt(1, 1);
-		lpt(0, 0.7);
-		lpt(-1, 1);
-		addobj(FColor(0.4, 0.9, 1, 1), vec2fp::one(hsz_rat));
-		
-		// OBJ_BOX
-		lnn(true);
-		lpt(-1, -1); lpt( 1, -1);
-		lpt( 1,  1); lpt(-1,  1);
-		addobj(FColor(1, 0.4, 0, 1), vec2fp::one(hsz_box));
-		
-		// OBJ_HEAVY
-		lnn(true);
-		lpt(-1, -1); lpt( 1, -1);
-		lpt( 1,  1); lpt(-1,  1);
-		addobj(FColor(1, 0.4, 0, 1), vec2fp::one(hsz_heavy));
-		
-		// PROJ_ROCKET
-		lnn(true);
-		lpt(0, -1);
-		lpt(-1, 1);
-		lpt( 1, 1);
-		addobj(FColor(0.2, 1, 0.6, 1.5), vec2fp::one(hsz_proj));
-		
-		// PROJ_PLASMA
-		lnn(true);
-		lpt(-1, -1); lpt( 1, -1);
-		lpt( 1,  1); lpt(-1,  1);
-		addobj(FColor(0.4, 1, 0.4, 1.5), vec2fp::one(hsz_proj));
-		
-		// ARM_SHIELD
-		lnn(true);
-		lpt(-1, -1  ); lpt( 0, -1.2);
-		lpt( 0,  0.8); lpt(-1,  1  );
-		lnn(true);
-		lpt( 0, -1.2); lpt( 1, -1  );
-		lpt( 1,  1  ); lpt( 0,  0.8);
-		addobj(FColor(1, 0.4, 0, 1), hsz_shld);
-		
-		// ARM_ROCKET
-		lnn(true);
-		lpt(-1, -1); lpt( 1, -1);
-		lpt( 1,  1); lpt(-1,  1);
-		addobj(FColor(1, 0.4, 0, 1), {0.2, 0.7});
-		
-		// ARM_PLASMA
-		lnn(true);
-		lpt(-1, -1); lpt( 1, -1);
-		lpt( 1,  1); lpt(-1,  1);
-		lnn(true);
-		lpt(-1, -2); lpt( 0, -2);
-		lpt( 0, -1); lpt(-1, -1);
-		addobj(FColor(1, 0.4, 0, 1), {0.25, 0.5});
-	}
 	void init_terrain(float hsize)
 	{
 		std::vector<vec2fp> ps = {{-hsize,-hsize}, {hsize,-hsize}, {hsize,hsize}, {-hsize,hsize}};

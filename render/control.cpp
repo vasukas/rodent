@@ -135,14 +135,13 @@ public:
 			glEnable(GL_DEBUG_OUTPUT);
 			glDebugMessageCallback( &FOO::f, nullptr );
 			
-			if (glGetError() == GL_NO_ERROR)
-				VLOGI("glDebugMessageCallback set");
+			if (glGetError() == GL_NO_ERROR) VLOGI("glDebugMessageCallback set");
 			else {
 				glDisable(GL_DEBUG_OUTPUT);
-				VLOGE("glDebugMessageCallback set failed");
+				VLOGE("glDebugMessageCallback set failed\nOpenGL errors won't be reported");
 			}
 		}
-		else VLOGW("glDebugMessageCallback not available");
+		else VLOGE("glDebugMessageCallback not available\nOpenGL errors won't be reported");
 
 		
 		
@@ -155,7 +154,7 @@ public:
 		glDisable(GL_DEPTH_TEST);
 		glDepthMask(0);
 		
-		glEnable( GL_SCISSOR_TEST );
+//		glEnable(GL_SCISSOR_TEST);
 		
 //		int msaa;
 //		if (!SDL_GL_GetAttribute(SDL_GL_MULTISAMPLESAMPLES, &msaa) && msaa)

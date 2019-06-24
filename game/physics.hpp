@@ -37,20 +37,17 @@ inline EC_Physics* getptr(b2Body* b) {return static_cast<EC_Physics*>(b->GetUser
 
 class PhysicsWorld
 {
+private:
+	std::unique_ptr<b2Draw> c_draw;
+	std::unique_ptr<b2ContactListener> c_lstr;
+	
 public:
 	GameCore& core;
-	std::unique_ptr<b2Draw> dbg_draw;
 	b2World world;
 	
 	PhysicsWorld(GameCore& core);
 	~PhysicsWorld();
 	void step();
-	
-	void free_body(b2Body* b);
-	
-private:
-	bool in_step = false;
-	std::vector<b2Body*> to_remove;
 };
 
 #endif // PHYSICS_HPP

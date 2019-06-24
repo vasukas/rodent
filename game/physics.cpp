@@ -1,7 +1,9 @@
 #include "game_core.hpp"
+#include "logic.hpp"
 #include "physics.hpp"
 
-static b2Draw* create_debug_draw();
+#include "render/ren_imm.hpp"
+#include "presenter.hpp"
 
 
 
@@ -15,7 +17,7 @@ EC_Physics::EC_Physics(const b2BodyDef& def)
 EC_Physics::~EC_Physics()
 {
 	for (auto& j : js) destroy(j);
-	ent->core.get_phy().free_body(body);
+	body->GetWorld()->DestroyBody(body);
 }
 void EC_Physics::add_circle(b2FixtureDef& fd, float radius, float mass)
 {
@@ -72,34 +74,7 @@ void EC_Physics::destroy(b2Joint* j)
 
 
 
-PhysicsWorld::PhysicsWorld(GameCore& core): core(core), world(b2Vec2(0,0))
-{
-	dbg_draw.reset( create_debug_draw() );
-	
-//	world.SetContinuousPhysics(true);
-	world.SetDebugDraw( dbg_draw.get() );
-}
-PhysicsWorld::~PhysicsWorld() = default;
-void PhysicsWorld::step()
-{
-	in_step = true;
-	world.Step(core.step_len.seconds(), 8, 3);
-	in_step = false;
-	
-	for (auto& b : to_remove) world.DestroyBody(b);
-	to_remove.clear();
-}
-void PhysicsWorld::free_body(b2Body* b)
-{
-	if (in_step) to_remove.push_back(b);
-	else world.DestroyBody(b);
-}
-
-
-
-#include "render/ren_imm.hpp"
-
-class PhDebugDraw : public b2Draw
+class PHW_Draw : public b2Draw
 {
 public:
 	float ln_wid = 0.2f;
@@ -158,7 +133,7 @@ public:
 	}
 	
 	
-	PhDebugDraw() {
+	PHW_Draw() {
 		// e_shapeBit | e_jointBit | e_aabbBit | e_pairBit | e_centerOfMassBit
 		SetFlags( e_shapeBit );
 	}
@@ -182,9 +157,7 @@ public:
 	{
 		draw_line(p1, p2, color);
 	}
-	void DrawTransform(const b2Transform& xf)
-	{
-	}
+	void DrawTransform(const b2Transform& xf) {(void) xf;}
 	void DrawPoint(const b2Vec2& p, float32 size, const b2Color& color)
 	{
 		b2Vec2 vs[4];
@@ -195,7 +168,76 @@ public:
 		DrawPolygon(vs, 4, color);
 	}
 };
-b2Draw* create_debug_draw()
+class PHW_Lstr : public b2ContactListener
 {
-	return new PhDebugDraw;
+public:
+	vec2fp avg_point(b2Contact* ct)
+	{
+		int pc = ct->GetManifold()->pointCount;
+		b2WorldManifold wm;
+		ct->GetWorldManifold(&wm);
+		b2Vec2 p = b2Vec2_zero;
+		for (int i=0; i<pc; ++i) p += wm.points[i];
+		return conv(p) / pc;
+	}
+	void report(EC_Logic::ContactEvent::Type type, b2Contact* ct, float imp)
+	{
+		auto ea = getptr(ct->GetFixtureA()->GetBody())->ent;
+		auto eb = getptr(ct->GetFixtureB()->GetBody())->ent;
+		auto la = ea->get_log();
+		auto lb = ea->get_log();
+		if (!la && !lb) return;
+		
+		EC_Logic::ContactEvent ce;
+		ce.type = type;
+		ce.imp = imp;
+		
+		ce.point = avg_point(ct);
+		ce.fix_this  = ct->GetFixtureA()->GetUserData();
+		ce.fix_other = ct->GetFixtureB()->GetUserData();
+		
+		if (la) {
+			ce.other = eb;
+			la->on_event(ce);
+		}
+		if (lb) {
+			std::swap(ce.fix_this, ce.fix_other);
+			ce.other = ea;
+			lb->on_event(ce);
+		}
+	}
+	void BeginContact(b2Contact* ct) {
+		report(EC_Logic::ContactEvent::T_BEGIN, ct, 0.f);
+	}
+	void EndContact(b2Contact* ct) {
+		report(EC_Logic::ContactEvent::T_END, ct, 0.f);
+	}
+	void PostSolve(b2Contact* ct, const b2ContactImpulse* res) {
+		float imp = 0.f;
+		int pc = ct->GetManifold()->pointCount;
+		for (int i=0; i<pc; ++i) imp += res->normalImpulses[i];
+		
+		if (!ct->GetFixtureA()->IsSensor() && !ct->GetFixtureB()->IsSensor())
+			GamePresenter::get().effect(FE_HIT, {avg_point(ct), 0.f}, imp / 20.f);
+		
+		report(EC_Logic::ContactEvent::T_RESOLVE, ct, imp);
+	}
+};
+
+
+
+PhysicsWorld::PhysicsWorld(GameCore& core): core(core), world(b2Vec2(0,0))
+{
+//	world.SetContinuousPhysics(true);
+	
+	c_lstr.reset( new PHW_Lstr );
+	world.SetContactListener( c_lstr.get() );
+	
+	c_draw.reset( new PHW_Draw );
+	world.SetDebugDraw( c_draw.get() );
+}
+PhysicsWorld::~PhysicsWorld() = default;
+void PhysicsWorld::step()
+{
+	world.Step(core.step_len.seconds(), 8, 3);
 }

@@ -64,6 +64,7 @@ SOURCES += \
 	game/game_core.cpp \
 	game/physics.cpp \
 	game/presenter.cpp \
+	game/presenter_res.cpp \
 	main.cpp \
 	main_loop.cpp \
 	render/camera.cpp \
@@ -144,8 +145,10 @@ HEADERS += \
 	core/tui_surface.hpp \
 	game/entity.hpp \
 	game/game_core.hpp \
+	game/logic.hpp \
 	game/physics.hpp \
 	game/presenter.hpp \
+	game/presenter_res.hpp \
 	main_loop.hpp \
 	render/camera.hpp \
 	render/control.hpp \

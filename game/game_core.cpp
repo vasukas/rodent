@@ -1,6 +1,7 @@
 #include <random>
 #include "vaslib/vas_cpp_utils.hpp"
 #include "game_core.hpp"
+#include "logic.hpp"
 #include "physics.hpp"
 #include "presenter.hpp"
 
@@ -42,16 +43,17 @@ public:
 		
 		e_free.insert( e_free.end(), e_next2.begin(), e_next2.end() );
 		e_next2 = std::move( e_next1 );
-		
 		step_flag = true;
 		
 		// tick systems
 		
-//		for (auto& e : ents) if (e) if (auto c = e->get_move())  c->tick();
-		for (auto& e : ents) if (e && e->logic) e->logic->tick();
+		for (auto& e : ents) if (e) if (auto c = e->get_log()) c->step();
 		
 		phy->step();
+		
 		GamePresenter::get().submit();
+		
+		// finish
 		
 		step_flag = false;
 		e_todel.clear();
@@ -86,15 +88,18 @@ public:
 	}
 	void mark_deleted( Entity* e ) noexcept
 	{
-		if (!is_in_step()) delete e;
-		else {
+		if (is_in_step()) {
 			auto it = std::find_if( e_todel.begin(), e_todel.end(), [&](auto&& v){return v.get() == e;} );
-			if (it == e_todel.end()) e_todel.emplace_back(e);
+			if (it != e_todel.end()) return;
 		}
-		ents[ e->index - 1 ].release();
+		
+		ents[e->index - 1].release();
 		
 		reserve_more_block( e_next1, 256 );
 		e_next1.push_back( e->index );
+		
+		if (!is_in_step()) delete e;
+		else e_todel.emplace_back(e);
 	}
 };
 
