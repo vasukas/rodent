@@ -7,9 +7,8 @@
 
 
 
-class PP_Filter
+struct PP_Filter
 {
-public:
 	bool enabled = false;
 	TimeSpan passed;
 	std::function<void(bool is_last)> draw; ///< Flips buffers
@@ -25,9 +24,8 @@ public:
 		sh->set2f("tc_size", sz.x, sz.y);
 	}
 };
-class PPF_Kuwahara : public PP_Filter
+struct PPF_Kuwahara : PP_Filter
 {
-public:
 	float r = 4.f;
 	bool dir = true;
 	
@@ -47,6 +45,22 @@ public:
 		draw(true);
 	}
 	std::string descr() {return FMT_FORMAT("Kuwahara; dir: {}, radius: {}", dir, r);}
+};
+struct PPF_Bleed : PP_Filter
+{
+	int n = 0;
+	
+	PPF_Bleed()
+	{
+		sh = RenderControl::get().load_shader("pp/bleed", {}, false);
+	}
+	bool is_ok() {return PP_Filter::is_ok() && n != 0;}
+	void proc()
+	{
+		sh->bind();
+		for (int i=0; i<n; ++i) draw(i == n-1);
+	}
+	std::string descr() {return FMT_FORMAT("Bleed; n: {}", n);}
 };
 
 
@@ -72,8 +86,8 @@ public:
 			fbo_s[i].attach_tex(GL_COLOR_ATTACHMENT0, tex_s[i]);
 		}
 		
-		fts.emplace_back(new PPF_Kuwahara);
-		fts.back()->enabled = false;
+		fts.emplace_back(new PPF_Kuwahara)->enabled = false;
+		fts.emplace_back(new PPF_Bleed)->enabled = true;
 		
 		for (auto& f : fts) f->draw = [this](bool is_last)
 		{
@@ -95,7 +109,7 @@ public:
 			for (auto& f : fts) {
 				bool ok = f->is_ok();
 				bool en = f->enabled && ok;
-				dbgm_check(en, f->descr() + (ok? " OK" : " --"), c);
+				dbgm_check(en, f->descr() + (ok? ". [OK]" : ". [Err]"), c);
 				if (ok) f->enabled = en;
 				++c;
 			}
