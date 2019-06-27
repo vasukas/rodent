@@ -94,9 +94,13 @@ void EC_Movement::step()
 			float xd = fabs(tar.x) - fabs(vel.x);
 			float yd = fabs(tar.y) - fabs(vel.y);
 			
-			const float k1 = max_ch * 0.5, k2 = max_ch;
-			if (xd > 0) vec.x *= k1; else vec.x *= inertial_mode? 2 : (xd > 1.0 ? k2 : k1);
-			if (yd > 0) vec.y *= k1; else vec.y *= inertial_mode? 2 : (yd > 1.0 ? k2 : k1);
+//			const float k1 = max_ch * 0.5, k2 = max_ch;
+//			const float k1 = max_ch, k2 = max_ch;
+//			if (xd > 0) vec.x *= k1; else vec.x *= inertial_mode? 2 : (xd > 1.0 ? k2 : k1);
+//			if (yd > 0) vec.y *= k1; else vec.y *= inertial_mode? 2 : (yd > 1.0 ? k2 : k1);
+			
+			if (xd > 0) vec.x /= tmul;
+			if (yd > 0) vec.y /= tmul;
 			
 			float dl = vec.Length();
 			if (dl != vel_eps)

@@ -166,6 +166,7 @@ HEADERS += \
 	settings.hpp \
 	utils/block_cfg.hpp \
 	utils/color_manip.hpp \
+	utils/ev_signal.hpp \
 	utils/noise.hpp \
 	utils/res_image.hpp \
 	vaslib/vas_atlas_packer.hpp \

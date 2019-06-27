@@ -2,7 +2,7 @@
 #define PHYSICS_HPP
 
 #include <vector>
-#include "Box2D/Box2D.h"
+#include <Box2D/Box2D.h>
 #include "entity.hpp"
 
 inline b2Vec2 conv(const vec2fp& p) {return {p.x, p.y};}
@@ -12,11 +12,33 @@ inline Transform conv(const b2Transform& t) {return {conv(t.p), t.q.GetAngle()};
 
 
 
+struct ContactEvent
+{
+	enum Type {
+		T_BEGIN,  ///< Beginning of contact
+		T_END,    ///< End of contact
+		T_RESOLVE ///< Collision resolution
+	};
+	Type type;
+	
+	Entity* other; ///< Another entity
+	void* fix_this; ///< Fixture usedata for this entity
+	void* fix_other; ///< Fixture userdata for another entity
+	vec2fp point; ///< Averaged world point of impact
+	float imp; ///< Resolution impulse (set only for T_RESOLVE)
+};
+
+
+
 struct EC_Physics
 {
 	Entity* ent;
 	b2Body* body;
 	float b_radius = 0.f; ///< Approximate radius, calculated from fixtures
+	
+	ev_signal<ContactEvent> ev_contact;
+	
+	
 	
 	EC_Physics(const b2BodyDef& def); ///< Creates body
 	~EC_Physics();

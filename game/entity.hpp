@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <optional>
+#include "utils/ev_signal.hpp"
 #include "vaslib/vas_math.hpp"
 
 class  GameCore;

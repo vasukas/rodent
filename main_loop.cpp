@@ -231,7 +231,7 @@ public:
 		
 		if (pc_log) {
 			std::unique_lock g(pc_lock);
-			pc_log->on_event_sdl(ev);
+			pc_log->on_event(ev);
 		}
 	}
 	void render(TimeSpan passed)
@@ -279,7 +279,7 @@ public:
 			mov->inertial_mode = keyf[4];
 			mov->set_target_velocity(tr);
 		}
-		void on_event_sdl(SDL_Event& ev) {
+		void on_event(SDL_Event& ev) {
 			if (ev.type == SDL_KEYDOWN || ev.type == SDL_KEYUP) {
 				const SDL_Scancode cs[key_n] = {
 				    SDL_SCANCODE_A, SDL_SCANCODE_W, SDL_SCANCODE_S, SDL_SCANCODE_D, SDL_SCANCODE_SPACE
@@ -307,6 +307,11 @@ public:
 	void thr_func() try
 	{
 		struct DL : EC_Logic {
+			EVS_SUBSCR;
+			
+			DL(EC_Physics& ph) {
+				EVS_CONNECT1(ph.ev_contact, on_event);
+			}
 			void step() {}
 			void on_event(const ContactEvent& ev) {
 				const float lim = 120.f; // 40
@@ -342,7 +347,7 @@ public:
 			mov->dust_vel = 0.f;
 			e->cnew(mov);
 			        
-			e->cnew(new DL);
+			e->cnew(new DL( *e->get_phy() ));
 			e->dbg_name = big? "Heavy" : "Box";
 		}
 		{

@@ -207,15 +207,13 @@ public:
 		for (int i=0; i<pc; ++i) p += wm.points[i];
 		return conv(p) / pc;
 	}
-	void report(EC_Logic::ContactEvent::Type type, b2Contact* ct, float imp)
+	void report(ContactEvent::Type type, b2Contact* ct, float imp)
 	{
-		auto ea = getptr(ct->GetFixtureA()->GetBody())->ent;
-		auto eb = getptr(ct->GetFixtureB()->GetBody())->ent;
-		auto la = ea->get_log();
-		auto lb = ea->get_log();
-		if (!la && !lb) return;
+		auto ea = getptr(ct->GetFixtureA()->GetBody());
+		auto eb = getptr(ct->GetFixtureB()->GetBody());
+		if (!ea->ev_contact.has_conn() && !eb->ev_contact.has_conn()) return;
 		
-		EC_Logic::ContactEvent ce;
+		ContactEvent ce;
 		ce.type = type;
 		ce.imp = imp;
 		
@@ -223,21 +221,18 @@ public:
 		ce.fix_this  = ct->GetFixtureA()->GetUserData();
 		ce.fix_other = ct->GetFixtureB()->GetUserData();
 		
-		if (la) {
-			ce.other = eb;
-			la->on_event(ce);
-		}
-		if (lb) {
-			std::swap(ce.fix_this, ce.fix_other);
-			ce.other = ea;
-			lb->on_event(ce);
-		}
+		ce.other = eb->ent;
+		ea->ev_contact.signal(ce);
+			
+		std::swap(ce.fix_this, ce.fix_other);
+		ce.other = ea->ent;
+		eb->ev_contact.signal(ce);
 	}
 	void BeginContact(b2Contact* ct) {
-		report(EC_Logic::ContactEvent::T_BEGIN, ct, 0.f);
+		report(ContactEvent::T_BEGIN, ct, 0.f);
 	}
 	void EndContact(b2Contact* ct) {
-		report(EC_Logic::ContactEvent::T_END, ct, 0.f);
+		report(ContactEvent::T_END, ct, 0.f);
 	}
 	void PostSolve(b2Contact* ct, const b2ContactImpulse* res) {
 		float imp = 0.f;
@@ -247,7 +242,7 @@ public:
 		if (!ct->GetFixtureA()->IsSensor() && !ct->GetFixtureB()->IsSensor())
 			GamePresenter::get().effect(FE_HIT, {avg_point(ct), 0.f}, imp / 20.f);
 		
-		report(EC_Logic::ContactEvent::T_RESOLVE, ct, imp);
+		report(ContactEvent::T_RESOLVE, ct, imp);
 	}
 };
 
@@ -325,7 +320,7 @@ void PhysicsWorld::circle_cast_all(std::vector<CastResult>& es, vec2fp ctr, floa
 			if (fix->IsSensor()) return true;
 			float d = (fix->GetBody()->GetWorldCenter() - ctr).LengthSquared();
 			
-			float z = fix->GetShape()->m_radius;
+			float z = getptr(fix->GetBody())->b_radius;
 			d -= z*z;
 			
 			if (d < rad*rad)
