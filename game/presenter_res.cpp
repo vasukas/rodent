@@ -76,6 +76,17 @@ void GameResBase::init_res()
 		g->clr1 = FColor(1.2, 0.2, 0.2, 1);
 		pres->add_preset(g);
 	}
+	// FE_SHOOT_DUST
+	{
+		auto g = std::make_shared<Explosion>();
+		g->n_base = 40;
+		g->a_lim = M_PI * 0.2;
+		g->p_min = 0.5, g->p_max = 2.f;
+		g->spd_min = 2.f;
+		g->clr0 = FColor(1, 0.5, 0, 0.5);
+		g->clr1 = FColor(1, 1, 0.2, 1.2);
+		pres->add_preset(g);
+	}
 	
 	// OE_DUST
 	auto dust_ps = std::make_shared<Explosion>();

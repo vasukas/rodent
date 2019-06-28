@@ -11,7 +11,8 @@ enum ObjEffect
 enum FreeEffect
 {
 	FE_EXPLOSION,
-	FE_HIT
+	FE_HIT,
+	FE_SHOOT_DUST
 };
 enum ObjList
 {

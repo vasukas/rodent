@@ -1,6 +1,7 @@
 #ifndef MOVEMENT_HPP
 #define MOVEMENT_HPP
 
+#include "vaslib/vas_time.hpp"
 #include "entity.hpp"
 
 
@@ -9,33 +10,30 @@ struct EC_Movement
 {
 	Entity* ent = nullptr;
 	
-	float min_ch = 0.1f; ///< Minimal velocity change
-	float max_ch = 8.f; ///< Maximal velocity change
-	bool inertial_mode = false; ///< For PC only
+	TimeSpan app_inert = TimeSpan::seconds(0.5); ///< How much time takes to reach control velocity
+	TimeSpan dec_inert = TimeSpan::seconds(2.0); ///< How much time takes to slow down from control velocity
 	
-	bool use_damp = true;
-	float damp_lin = 0.99f; ///< Linear coefficient
-	float damp_max = 2.f; ///< Max linear damping velocity
-	float damp_ang = 2.f; ///< Angular (rotation) coefficient
+	// All coefficients are per second
+	vec2fp damp_sep = {0.99, 2}; ///< Separate damp_lin for forward and lateral directions
+	float damp_lin = 0.99; ///< Linear dampening coefficient or 0 to use damp_sep
+	float damp_ang = 1.2f; ///< Angular dampening coefficient
+	float damp_minthr = 0.1f; ///< Velocity below this immediatly damped to zero
 	
 	float dust_vel = 8.f; ///< Minimal dust particle effect velocity (0 to disable)
-	const float base_dist = 0.2f; ///< Base target distance
-	const float vel_eps = 0.0001f; ///< Velocities are considered equal if difference is less
 	
 	
 	
-	void set_target(vec2fp pos);
-	void set_target_velocity(Transform vel);
-	void set_target(EntityIndex eid, float dist);
-	
-	bool has_reached();
+	/// Sets applied (control) velocity
+	void set_app_vel(vec2fp v);
 	
 private:
-	enum TarType {T_NONE, T_POS, T_VEL, T_EID};
-	TarType t_type = T_NONE;
-	Transform t_tr;
-	EntityIndex t_eid = 0;
-	float t_dist;
+	enum TarSt {T_NONE, T_VEL, T_ZERO};
+	struct TarDir {
+		TarSt st = T_NONE;
+		float vel;
+		TimeSpan left;
+	};
+	TarDir tarx, tary;
 	
 	friend class GameCore_Impl;
 	void step();

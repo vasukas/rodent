@@ -245,6 +245,34 @@ public:
 //			if (auto e = core->get_ent(cam_ent)) cam_follow(e); else cam_ent = 0;
 			GamePresenter::get().render(passed);
 			
+			for (float t=0; t<hsize; t += 2) {
+				uint32_t clr = FColor(0, 0.8, 1, 0.3).to_px();
+				float w = 0.07f, a = 1.5f;
+				RenAAL::get().draw_line({-hsize,  t}, {hsize,  t}, clr, w, a);
+				RenAAL::get().draw_line({-hsize, -t}, {hsize, -t}, clr, w, a);
+				RenAAL::get().draw_line({ t, -hsize}, { t, hsize}, clr, w, a);
+				RenAAL::get().draw_line({-t, -hsize}, {-t, hsize}, clr, w, a);
+			}
+			
+			if (pc_log) {
+				int mx, my;
+				if ((SDL_GetMouseState(&mx, &my) & SDL_BUTTON_LEFT) == SDL_BUTTON_LEFT) {
+					vec2fp p0 = pc_log->ent->get_pos().pos;
+					
+					vec2fp mp = RenderControl::get().get_world_camera()->mouse_cast({mx, my});
+					mp -= p0;
+					mp.norm();
+					
+					if (auto r = core->get_phy().raycast_nearest(p0, p0 + mp * 1000.f))
+						mp = r->poi;
+					else
+						mp = p0 + mp * 1.5f;
+					
+					p0 += vec2fp(pc_log->ent->get_radius(), 0).get_rotated((mp - p0).angle());
+					RenAAL::get().draw_line(p0, mp, FColor(1, 0, 0, 1).to_px(), 0.07, 1.5f);
+				}
+			}
+			
 			if (ph_debug_draw)
 				core->get_phy().world.DrawDebugData();
 		}
@@ -254,13 +282,17 @@ public:
 	
 	struct PC_Logic : EC_Logic
 	{
+		EVS_SUBSCR;
 		ML_Game* ml_game;
 		
 		static const int key_n = 5;
 		bool keyf[key_n] = {};
 		
+		const float push_angle = M_PI/3;
+		
 		PC_Logic(ML_Game* ml_game, Entity* ent_): ml_game(ml_game) {
 			ent = ent_;
+			EVS_CONNECT1(ent->get_phy()->ev_contact, on_cnt);
 		}
 		~PC_Logic() {
 			ml_game->state = ST_FINISH;
@@ -270,14 +302,12 @@ public:
 			const vec2fp kmv[4] = {{-1, 0}, {0, -1}, {0, 1}, {1, 0}};
 			vec2fp mv = {};
 			for (int i=0; i<4; ++i) if (keyf[i]) mv += kmv[i];
-			if (!mv.equals({}, 0.1)) mv.norm();
-			
-			Transform tr = {mv, 0};
-			tr.pos *= keyf[4] ? 18.f : 10.f;
+			if (!mv.is_zero(0.1)) mv.norm();
 			
 			auto mov = ent->get_mov();
-			mov->inertial_mode = keyf[4];
-			mov->set_target_velocity(tr);
+			mv *= keyf[4] ? 14.f : 8.f;
+			mov->dec_inert = TimeSpan::seconds(keyf[4] ? 2 : 1);
+			mov->set_app_vel(mv);
 		}
 		void on_event(SDL_Event& ev) {
 			if (ev.type == SDL_KEYDOWN || ev.type == SDL_KEYUP) {
@@ -288,6 +318,26 @@ public:
 					if (cs[i] == ev.key.keysym.scancode)
 						keyf[i] = (ev.type == SDL_KEYDOWN);
 			}
+		}
+		void on_cnt(const ContactEvent& ce) {
+			int mx, my;
+			if (ce.type != ContactEvent::T_RESOLVE || (SDL_GetMouseState(&mx, &my) & SDL_BUTTON_LEFT) != SDL_BUTTON_LEFT) return;
+			
+			vec2fp mp = RenderControl::get().get_world_camera()->mouse_cast({mx, my});
+			mp -= ent->get_pos().pos;
+			mp.norm();
+			
+			float da = (ce.other->get_pos().pos - ent->get_pos().pos).angle();
+			if (wrap_angle(da - mp.angle()) > push_angle) return;
+			
+			auto b = ce.other->get_phy()->body;
+			float k = 60.f;
+			b->ApplyLinearImpulseToCenter(k * conv(mp), true);
+			
+			Transform at;
+			at.rot = mp.angle();
+			at.pos = ent->get_pos().pos + vec2fp(ent->get_radius(), 0).get_rotated(at.rot);
+			GamePresenter::get().effect(FE_SHOOT_DUST, at);
 		}
 	};
 	
@@ -344,6 +394,7 @@ public:
 			e->get_phy()->add_box(fd, vec2fp::one(big? rb.hsz_heavy : rb.hsz_box), big? 25.f : 8.f);
 			
 			auto mov = new EC_Movement;
+			mov->damp_lin = 1.5f;
 			mov->dust_vel = 0.f;
 			e->cnew(mov);
 			        
@@ -369,8 +420,7 @@ bd.fixedRotation = true;
 			e->cnew(pc_log);
 			
 			auto mov = new EC_Movement;
-			mov->max_ch = 20.f;
-			mov->use_damp = false;
+			mov->damp_lin = 2.f;
 			e->cnew(mov);
 			
 			e->dbg_name = "PC";
