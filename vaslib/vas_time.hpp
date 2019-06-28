@@ -51,6 +51,8 @@ struct TimeSpan
 	bool operator <=( const TimeSpan& t ) const { return mks_value <= t.mks_value; }
 	bool operator >=( const TimeSpan& t ) const { return mks_value >= t.mks_value; }
 	
+	bool is_negative() const {return mks_value < 0;}
+	
 private:
 	int64_t mks_value;
 	explicit TimeSpan( int64_t mks_value ) : mks_value (mks_value) {}

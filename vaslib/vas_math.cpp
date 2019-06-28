@@ -19,7 +19,7 @@ vec2fp cossin_ft(float x)
 	}
 	
 	if (!std::isfinite(x)) return {1, 0};
-	clamp_angle(x);
+	x = wrap_angle_2(x);
 	x /= M_PI*2;
 	
 	x *= table_size;
@@ -78,17 +78,18 @@ float fast_invsqrt(float x)
 	return y;
 }
 
-void clamp_angle (double& x)
+float wrap_angle_2(float x)
 {
-	int i = static_cast< int >( x / (M_PI*2.) );
+	int i = static_cast<int>( x / (M_PI*2.) );
 	x -= i * (M_PI*2.);
 	if (x < 0) x += M_PI*2.;
+	return x;
 }
-void clamp_angle (float& x)
+float wrap_angle(float x)
 {
-	int i = static_cast< int >( x / (M_PI*2.) );
-	x -= i * (M_PI*2.);
-	if (x < 0) x += M_PI*2.;
+	int i = static_cast<int>(x / M_PI);
+	x -= i * M_PI;
+	return x;
 }
 
 

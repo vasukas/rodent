@@ -18,8 +18,8 @@
 #define EVS_CONNECT1( SIG, FUNC_NAME )\
 	EVS_CONNECT_N_TEMP( SIG, FUNC_NAME, std::placeholders::_1 )
 
-/// Connects freestanding lambda to signal
-#define EVS_LAMBDA( SIG, FUNC )\
+/// Connects freestanding function to signal
+#define EVS_FREEFUNC( SIG, FUNC )\
 	SIG.connect(nullptr, FUNC)
 
 

@@ -35,9 +35,8 @@ float fast_invsqrt(float x);
 /// 
 inline float fast_sqrt(float x) {return 1.f / fast_invsqrt(x);}
 
-/// Clamps to range [0, M_PI*2]
-void clamp_angle(double &x);
-void clamp_angle(float  &x);
+float wrap_angle_2(float x); ///< Returns angle in range [0; 2pi]
+float wrap_angle(float x); ///< Returns angle in range [-pi, +pi]
 
 /// Linear interpolation between two angles, expressed in radians. Handles all cases
 inline double lint_angle (double a, double b, double t) {return a + t * std::remainder(b - a, M_PI*2);}
@@ -77,6 +76,7 @@ struct vec2i {
 	
 	bool operator == (const vec2i& v) const {return x == v.x && y == v.y;}
 	bool operator != (const vec2i& v) const {return x != v.x || y != v.y;}
+	bool is_zero() const {return x == 0 && y == 0;}
 	
 	float len() const {return std::sqrt(x*x + y*y);} ///< Length
 	float angle() const {return std::atan2( y, x );} ///< Rotation angle (radians)
@@ -141,6 +141,8 @@ struct vec2fp {
 	vec2fp operator - () const {return vec2fp(-x, -y);}
 	
 	bool equals(const vec2fp& v, float eps) const { return aequ(x, v.x, eps) && aequ(y, v.y, eps); }
+	bool is_zero(float eps) const {return std::fabs(x) < eps && std::fabs(y) < eps;}
+	bool is_exact_zero() const {return x == 0.f && y == 0.f;}
 	
 	float fastlen() const {return 1.f / fast_invsqrt(x*x + y*y);} ///< Length should be non-zero!
 	float len() const {return std::sqrt(x*x + y*y);} ///< Length

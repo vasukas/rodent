@@ -145,16 +145,6 @@ public:
 		dbgm_g = DbgMenu::get().reg({[this]() {dbgm_label(FMT_FORMAT("{:5} / {:5}", gs_off_max, part_lim));},
 		                             "Particles", DBGMEN_RENDER});
 	}
-	int group_alloc(int size)
-	{
-		if (gs_off_max + size > part_lim) return -1;
-	
-		reserve_more_block(gs, 128);
-		gs.push_back({ gs_off_max, size, {} });
-		
-		gs_off_max += size;
-		return gs.size() - 1;
-	}
 	void resize_bufs(int additional)
 	{
 		int new_lim = part_lim + part_lim_step + additional;
@@ -186,7 +176,7 @@ public:
 			Group& g = gs[gi];
 			
 			g.time_left -= passed;
-			if (g.time_left.ms() < 0) {
+			if (g.time_left.is_negative()) {
 				gs.erase( gs.begin() + gi );
 				--gi;
 				continue;
