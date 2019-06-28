@@ -41,7 +41,7 @@ private:
 	std::queue <Frame> ans;
 	Frame fst;
 	
-	Rect vport;
+	Rect vport = {};
 	Frame cur;
 	
 	mutable float mx_full[16];

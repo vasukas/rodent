@@ -193,6 +193,7 @@ public:
 	PC_Logic* pc_log = nullptr; // player character
 	
 	bool ph_debug_draw = false;
+	bool show_help = false;
 	
 	
 	
@@ -227,6 +228,7 @@ public:
 		if (ev.type == SDL_KEYUP) {
 			int k = ev.key.keysym.scancode;
 			if (k == SDL_SCANCODE_0) ph_debug_draw = !ph_debug_draw;
+			if (k == SDL_SCANCODE_F1) show_help = !show_help;
 		}
 		
 		if (pc_log) {
@@ -260,13 +262,13 @@ public:
 					vec2fp p0 = pc_log->ent->get_pos().pos;
 					
 					vec2fp mp = RenderControl::get().get_world_camera()->mouse_cast({mx, my});
-					mp -= p0;
-					mp.norm();
+//					mp -= p0;
+//					mp.norm();
 					
-					if (auto r = core->get_phy().raycast_nearest(p0, p0 + mp * 1000.f))
-						mp = r->poi;
-					else
-						mp = p0 + mp * 1.5f;
+//					if (auto r = core->get_phy().raycast_nearest(p0, p0 + mp * 1000.f))
+//						mp = r->poi;
+//					else
+//						mp = p0 + mp * 1.5f;
 					
 					p0 += vec2fp(pc_log->ent->get_radius(), 0).get_rotated((mp - p0).angle());
 					RenAAL::get().draw_line(p0, mp, FColor(1, 0, 0, 1).to_px(), 0.07, 1.5f);
@@ -275,6 +277,19 @@ public:
 			
 			if (ph_debug_draw)
 				core->get_phy().world.DrawDebugData();
+			
+			if (show_help) {
+				auto help = "========== HELP ==========\n"
+				            "F1    - show/hide help\n"
+				            "WASD  - movement\n"
+				            "Space - (hold) faster movement\n"
+				            "LMB   - (hold) enable push on contact";
+				RenImm::get().set_context(RenImm::DEFCTX_UI);
+				vec2i sz = RenImm::get().text_size(help) * 2;
+				vec2i off = (RenderControl::get_size() - sz) /2;
+				RenImm::get().draw_rect({off - vec2i::one(4), sz + vec2i::one(8), true}, 0xa0);
+				RenImm::get().draw_text(off, help, -1, false, 2.f);
+			}
 		}
 	}
 	
@@ -308,6 +323,19 @@ public:
 			mv *= keyf[4] ? 14.f : 8.f;
 			mov->dec_inert = TimeSpan::seconds(keyf[4] ? 2 : 1);
 			mov->set_app_vel(mv);
+			
+			int mx, my;
+			SDL_GetMouseState(&mx, &my);
+			vec2fp mp = RenderControl::get().get_world_camera()->mouse_cast({mx, my});
+			mp -= ent->get_pos().pos;
+			float ma = mp.angle() + M_PI_2;
+			float ca = ent->get_phy()->body->GetAngle();
+			if (std::fabs(wrap_angle(ma - ca)) > 0.1)
+			{
+				ma = std::remainder(ma - ca, M_PI*2) / M_PI;
+				ma /= ent->core.step_len.seconds();
+				ent->get_phy()->body->ApplyAngularImpulse(ma, true);
+			}
 		}
 		void on_event(SDL_Event& ev) {
 			if (ev.type == SDL_KEYDOWN || ev.type == SDL_KEYUP) {
@@ -321,7 +349,7 @@ public:
 		}
 		void on_cnt(const ContactEvent& ce) {
 			int mx, my;
-			if (ce.type != ContactEvent::T_RESOLVE || (SDL_GetMouseState(&mx, &my) & SDL_BUTTON_LEFT) != SDL_BUTTON_LEFT) return;
+			if (ce.type != ContactEvent::T_BEGIN || (SDL_GetMouseState(&mx, &my) & SDL_BUTTON_LEFT) != SDL_BUTTON_LEFT) return;
 			
 			vec2fp mp = RenderControl::get().get_world_camera()->mouse_cast({mx, my});
 			mp -= ent->get_pos().pos;
@@ -331,7 +359,7 @@ public:
 			if (wrap_angle(da - mp.angle()) > push_angle) return;
 			
 			auto b = ce.other->get_phy()->body;
-			float k = 60.f;
+			float k = 120.f;
 			b->ApplyLinearImpulseToCenter(k * conv(mp), true);
 			
 			Transform at;
@@ -408,7 +436,6 @@ public:
 			b2BodyDef bd;
 			bd.type = b2_dynamicBody;
 			bd.position = {0, 0};
-bd.fixedRotation = true;
 			e->cnew(new EC_Physics(bd));
 			
 			b2FixtureDef fd;
