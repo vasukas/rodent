@@ -146,7 +146,6 @@ HEADERS += \
 	core/tui_surface.hpp \
 	game/entity.hpp \
 	game/game_core.hpp \
-	game/logic.hpp \
 	game/movement.hpp \
 	game/physics.hpp \
 	game/presenter.hpp \

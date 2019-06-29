@@ -6,6 +6,8 @@
 
 class PhysicsWorld;
 
+#define GAME_THROW LOG_THROW_X
+
 
 
 /// Game entities handler
@@ -24,9 +26,9 @@ public:
 	virtual ~GameCore(); ///< Destroys all systems
 	
 	
+	
 	///
 	virtual PhysicsWorld& get_phy() noexcept = 0;
-	
 	
 	/// Returns index number of the next step (starting with 1)
 	virtual uint32_t get_step_counter() const noexcept = 0;
@@ -38,6 +40,7 @@ public:
 	virtual void step() = 0;
 	
 	
+	
 	/// Creates new entity. Never fails
 	virtual Entity* create_ent() noexcept = 0;
 	
@@ -45,13 +48,17 @@ public:
 	virtual Entity* get_ent( EntityIndex uid ) const noexcept = 0;
 	
 	
+	
 	/// Returns pseudorandom value, advancing generator
 	virtual uint32_t get_random() noexcept = 0;
 	
-	
 protected:
-	friend class Entity;
+	friend Entity;
 	virtual void mark_deleted( Entity* e ) noexcept = 0;
+	
+	friend EComp;
+	virtual size_t reg_step(EComp& c, GameStepOrder ord) noexcept = 0;
+	virtual void unreg_step(size_t i) noexcept = 0;
 };
 
 #endif // GAME_CORE_HPP

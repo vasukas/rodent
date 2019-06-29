@@ -3,28 +3,41 @@
 
 #include <memory>
 #include <optional>
+#include <typeindex>
+#include <unordered_map>
 #include "utils/ev_signal.hpp"
 #include "vaslib/vas_math.hpp"
+#include "vaslib/vas_types.hpp"
 
-class  GameCore;
-struct EC_Logic;
-struct EC_Movement;
-struct EC_Physics;
-struct EC_Render;
-class  Entity;
+class Entity;
+class GameCore;
 
 /// Unique entity index, always non-zero for existing entity
 typedef uint32_t EntityIndex;
 
-
-
-struct EC_SetPosition
+enum class GameStepOrder
 {
-	Transform pos;
-	Transform vel = {}; ///< Velocity per second
-	float radius = 0.5;
+	Logic,
+	Move,
+	TOTAL_COUNT // do not use
+};
+
+
+
+/// Entity component
+struct EComp
+{
+	Entity* ent = nullptr;
 	
-	EC_SetPosition(Transform pos, Transform vel = {}): pos(pos), vel(vel) {}
+	
+	virtual const char *get_typename() const noexcept {return "Undefined";}
+	virtual void step() {} // unused by most
+	virtual ~EComp();
+	
+	void reg_step(GameStepOrder order); ///< Registers component so step() function will be called
+	
+private:
+	size_t reg_step_id = size_t_inval;
 };
 
 
@@ -37,7 +50,7 @@ public:
 	GameCore& core;
 	
 	std::string dbg_name = {};
-	std::optional<EC_SetPosition> setpos;
+	
 	
 	
 	void destroy(); ///< Deletes entity immediatly or at the end of the step. Index garanteed to be not used in next step
@@ -47,25 +60,23 @@ public:
 	vec2fp get_norm_dir() const; ///< Returns normalized face direction
 	float get_radius() const; ///< Returns approximate radius of object
 	
-	EC_Logic    *get_log() const {return c_log.get();}
-	EC_Movement *get_mov() const {return c_mov.get();}
-	EC_Physics  *get_phy() const {return c_phy.get();}
-	EC_Render   *get_ren() const {return c_ren.get();}
+	void add(std::type_index type, EComp* c); ///< Adds new component (throws if already exists)
+	void rem(std::type_index type) noexcept; ///< Removes component if exists
+	EComp* get(std::type_index type) const noexcept; ///< Returns component if exists or null
+	EComp& getref(std::type_index type) const; ///< Returns component if exists  or throws
 	
-	void cnew(EC_Logic    *c);
-	void cnew(EC_Movement *c);
-	void cnew(EC_Physics  *c);
-	void cnew(EC_Render   *c);
+	template<class T> void add(T* c) noexcept {add(std::type_index(typeid(T)), c);} ///< Adds new component (throws if already exists)
+	template<class T> void rem() noexcept {rem(std::type_index(typeid(T)));} ///< Removes component if exists
+	template<class T> T* get() const noexcept {return static_cast<T*>(get(std::type_index(typeid(T))));} ///< Returns component if exists or null
+	template<class T> T& getref() const {return static_cast<T&>(getref(std::type_index(typeid(T))));} ///< Returns component if exists  or throws
 	
 private:
 	friend class GameCore_Impl;
 	
-	std::unique_ptr<EC_Logic>    c_log;
-	std::unique_ptr<EC_Movement> c_mov;
-	std::unique_ptr<EC_Physics>  c_phy;
-	std::unique_ptr<EC_Render>   c_ren;
+	std::unordered_map<std::type_index, EComp*> cs;
+	std::vector<std::unique_ptr<EComp>> cs_ord;
 	
-	Entity( GameCore&, EntityIndex );
+	Entity(GameCore&, EntityIndex);
 	~Entity();
 };
 

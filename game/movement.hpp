@@ -6,10 +6,8 @@
 
 
 
-struct EC_Movement
+struct EC_Movement : EComp
 {
-	Entity* ent = nullptr;
-	
 	TimeSpan app_inert = TimeSpan::seconds(0.5); ///< How much time takes to reach control velocity
 	TimeSpan dec_inert = TimeSpan::seconds(2.0); ///< How much time takes to slow down from control velocity
 	
@@ -26,6 +24,8 @@ struct EC_Movement
 	/// Sets applied (control) velocity
 	void set_app_vel(vec2fp v);
 	
+	EC_Movement();
+	
 private:
 	enum TarSt {T_NONE, T_VEL, T_ZERO};
 	struct TarDir {
@@ -35,7 +35,6 @@ private:
 	};
 	TarDir tarx, tary;
 	
-	friend class GameCore_Impl;
 	void step();
 };
 

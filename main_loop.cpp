@@ -2,7 +2,6 @@
 #include <thread>
 #include "core/tui_layer.hpp"
 #include "game/game_core.hpp"
-#include "game/logic.hpp"
 #include "game/movement.hpp"
 #include "game/physics.hpp"
 #include "game/presenter.hpp"
@@ -295,7 +294,7 @@ public:
 	
 	
 	
-	struct PC_Logic : EC_Logic
+	struct PC_Logic : EComp
 	{
 		EVS_SUBSCR;
 		ML_Game* ml_game;
@@ -307,7 +306,8 @@ public:
 		
 		PC_Logic(ML_Game* ml_game, Entity* ent_): ml_game(ml_game) {
 			ent = ent_;
-			EVS_CONNECT1(ent->get_phy()->ev_contact, on_cnt);
+			reg_step(GameStepOrder::Logic);
+			EVS_CONNECT1(ent->getref<EC_Physics>().ev_contact, on_cnt);
 		}
 		~PC_Logic() {
 			ml_game->state = ST_FINISH;
@@ -319,22 +319,22 @@ public:
 			for (int i=0; i<4; ++i) if (keyf[i]) mv += kmv[i];
 			if (!mv.is_zero(0.1)) mv.norm();
 			
-			auto mov = ent->get_mov();
+			auto& mov = ent->getref<EC_Movement>();
 			mv *= keyf[4] ? 14.f : 8.f;
-			mov->dec_inert = TimeSpan::seconds(keyf[4] ? 2 : 1);
-			mov->set_app_vel(mv);
+			mov.dec_inert = TimeSpan::seconds(keyf[4] ? 2 : 1);
+			mov.set_app_vel(mv);
 			
 			int mx, my;
 			SDL_GetMouseState(&mx, &my);
 			vec2fp mp = RenderControl::get().get_world_camera()->mouse_cast({mx, my});
 			mp -= ent->get_pos().pos;
 			float ma = mp.angle() + M_PI_2;
-			float ca = ent->get_phy()->body->GetAngle();
+			float ca = ent->getref<EC_Physics>().body->GetAngle();
 			if (std::fabs(wrap_angle(ma - ca)) > 0.1)
 			{
 				ma = std::remainder(ma - ca, M_PI*2) / M_PI;
 				ma /= ent->core.step_len.seconds();
-				ent->get_phy()->body->ApplyAngularImpulse(ma, true);
+				ent->getref<EC_Physics>().body->ApplyAngularImpulse(ma, true);
 			}
 		}
 		void on_event(SDL_Event& ev) {
@@ -358,7 +358,7 @@ public:
 			float da = (ce.other->get_pos().pos - ent->get_pos().pos).angle();
 			if (wrap_angle(da - mp.angle()) > push_angle) return;
 			
-			auto b = ce.other->get_phy()->body;
+			auto b = ce.other->getref<EC_Physics>().body;
 			float k = 120.f;
 			b->ApplyLinearImpulseToCenter(k * conv(mp), true);
 			
@@ -384,15 +384,16 @@ public:
 	}
 	void thr_func() try
 	{
-		struct DL : EC_Logic {
+		struct DL : EComp {
 			EVS_SUBSCR;
 			
 			DL(EC_Physics& ph) {
 				EVS_CONNECT1(ph.ev_contact, on_event);
 			}
-			void step() {}
 			void on_event(const ContactEvent& ev) {
-				const float lim = 120.f; // 40
+//				const float lim = 120.f; // 40
+//				float lim = 15.f * ent->get_phy()->body->GetMass();
+				float lim = 120.f * ent->get_radius();
 				if (ev.type == ContactEvent::T_RESOLVE && ev.imp > lim) {
 					ent->destroy();
 					GamePresenter::get().effect(FE_EXPLOSION, {ev.point, 0.f}, ev.imp / lim + 0.5f);
@@ -409,46 +410,47 @@ public:
 			vec2fp pos(rnd_range(-rn, rn), rnd_range(-rn, rn));
 			
 			auto e = core->create_ent();
-			e->cnew(new EC_Render(e, big? OBJ_HEAVY : OBJ_BOX));
+			e->add(new EC_Render(e, big? OBJ_HEAVY : OBJ_BOX));
 			
 			b2BodyDef bd;
 			bd.type = b2_dynamicBody;
 			bd.position = conv(pos);
-			e->cnew(new EC_Physics(bd));
+			auto phy = new EC_Physics(bd);
+			e->add(phy);
 			
 			b2FixtureDef fd;
 			fd.friction = 0.1;
 			fd.restitution = big? 0.1 : 0.5;
-			e->get_phy()->add_box(fd, vec2fp::one(big? rb.hsz_heavy : rb.hsz_box), big? 25.f : 8.f);
+			phy->add_box(fd, vec2fp::one(big? rb.hsz_heavy : rb.hsz_box), big? 25.f : 8.f);
 			
 			auto mov = new EC_Movement;
 			mov->damp_lin = 1.5f;
-			mov->dust_vel = 0.f;
-			e->cnew(mov);
+			mov->dust_vel = 12.f;
+			e->add(mov);
 			        
-			e->cnew(new DL( *e->get_phy() ));
+			e->add(new DL( *phy ));
 			e->dbg_name = big? "Heavy" : "Box";
 		}
 		{
 			auto e = core->create_ent();
-			e->cnew(new EC_Render(e, OBJ_PC));
+			e->add(new EC_Render(e, OBJ_PC));
 			
 			b2BodyDef bd;
 			bd.type = b2_dynamicBody;
 			bd.position = {0, 0};
-			e->cnew(new EC_Physics(bd));
+			e->add(new EC_Physics(bd));
 			
 			b2FixtureDef fd;
 			fd.friction = 0.3;
 			fd.restitution = 0.5;
-			e->get_phy()->add_circle(fd, rb.hsz_rat, 15.f);
+			e->get<EC_Physics>()->add_circle(fd, rb.hsz_rat, 15.f);
 			
 			pc_log = new PC_Logic(this, e);
-			e->cnew(pc_log);
+			e->add(pc_log);
 			
 			auto mov = new EC_Movement;
 			mov->damp_lin = 2.f;
-			e->cnew(mov);
+			e->add(mov);
 			
 			e->dbg_name = "PC";
 			cam_ent = e->index;
@@ -483,10 +485,10 @@ public:
 		pres->add_preset(p);
 		
 		auto e = core->create_ent();
-		e->cnew(new EC_Render(e, OBJ_ALL_WALLS));
+		e->add(new EC_Render(e, OBJ_ALL_WALLS));
 		
 		b2BodyDef def;
-		e->cnew(new EC_Physics(def));
+		e->add(new EC_Physics(def));
 		
 		b2ChainShape shp;
 		b2Vec2 vs[4];
@@ -497,33 +499,33 @@ public:
 		fd.friction = 0.15;
 		fd.restitution = 0.1;
 		fd.shape = &shp;
-		e->get_phy()->body->CreateFixture(&fd);
+		e->get<EC_Physics>()->body->CreateFixture(&fd);
 		
 		e->dbg_name = "terrain";
 	}
 	void cam_follow(Entity* ent)
 	{
-		b2Body* body = ent->get_phy()->body;
+//		b2Body* body = ent->get_phy()->body;
 		
-		b2Vec2 vel = body->GetLinearVelocity();
-		float spd = vel.Length();
-		b2Vec2 fwd = body->GetWorldVector({0, -1});
-		if (b2Dot(vel, fwd) < 0) fwd = -fwd;
-		vel = fwd;
-		vel *= spd;
+//		b2Vec2 vel = body->GetLinearVelocity();
+//		float spd = vel.Length();
+//		b2Vec2 fwd = body->GetWorldVector({0, -1});
+//		if (b2Dot(vel, fwd) < 0) fwd = -fwd;
+//		vel = fwd;
+//		vel *= spd;
 		
-		Camera::Frame cf = cam->get_state();
+//		Camera::Frame cf = cam->get_state();
 		
-		vec2fp old = cf.pos;
-		cf.pos = conv( vel + body->GetPosition() );
+//		vec2fp old = cf.pos;
+//		cf.pos = conv( vel + body->GetPosition() );
 		
-		float d = cf.pos.dist(old);
-		if (d < 3.f) return; // min dist - 3 m
+//		float d = cf.pos.dist(old);
+//		if (d < 3.f) return; // min dist - 3 m
 		
-		cf.len = TimeSpan::seconds(0.2) * d; // 5 m / sec
+//		cf.len = TimeSpan::seconds(0.2) * d; // 5 m / sec
 		
-		cam->reset_frames();
-		cam->add_frame(cf);
+//		cam->reset_frames();
+//		cam->add_frame(cf);
 	}
 };
 

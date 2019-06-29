@@ -30,9 +30,8 @@ struct ContactEvent
 
 
 
-struct EC_Physics
+struct EC_Physics : EComp
 {
-	Entity* ent;
 	b2Body* body;
 	float b_radius = 0.f; ///< Approximate radius, calculated from fixtures
 	

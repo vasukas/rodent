@@ -5,10 +5,9 @@
 #include <vector>
 #include "render/particles.hpp"
 #include "utils/color_manip.hpp"
-#include "vaslib/vas_math.hpp"
 #include "vaslib/vas_time.hpp"
-#include "vaslib/vas_types.hpp"
 #include "presenter_res.hpp"
+#include "entity.hpp"
 
 class  Entity;
 class  GameCore;
@@ -16,10 +15,8 @@ struct PresCommand;
 
 
 
-struct EC_Render
+struct EC_Render : EComp
 {
-	Entity* ent;
-	
 	EC_Render(Entity* ent, size_t sprite_id);
 	~EC_Render();
 	void parts(size_t id, float power = 1.f, Transform rel = {});

@@ -7,8 +7,10 @@
 
 
 
-EC_Render::EC_Render(Entity *ent, size_t sprite_id): ent(ent)
+EC_Render::EC_Render(Entity *ent, size_t sprite_id)
 {
+	this->ent = ent;
+	
 	PresCommand c;
 	c.type = PresCommand::T_CREATE;
 	c.index = sprite_id;

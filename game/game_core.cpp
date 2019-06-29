@@ -1,8 +1,6 @@
 #include <random>
 #include "vaslib/vas_cpp_utils.hpp"
 #include "game_core.hpp"
-#include "logic.hpp"
-#include "movement.hpp"
 #include "physics.hpp"
 #include "presenter.hpp"
 
@@ -16,6 +14,9 @@ public:
 	struct Del_Entity { void operator()( Entity* p ) { delete p; } };
 	
 	std::unique_ptr<PhysicsWorld> phy;
+	
+	// components on which step are called
+	std::array<std::vector<EComp*>, static_cast<size_t>(GameStepOrder::TOTAL_COUNT)> cs_step;
 	
 	std::vector<std::unique_ptr <Entity, Del_Entity>> ents;
 	std::vector<size_t> e_free; // stack of free indices
@@ -50,9 +51,7 @@ public:
 		
 		// tick systems
 		
-		for (auto& e : ents) if (e) if (auto c = e->get_log()) c->step();
-		for (auto& e : ents) if (e) if (auto c = e->get_mov()) c->step();
-		
+		for (auto& c : cs_step) for (auto& p : c) if (p) p->step();
 		phy->step();
 		GamePresenter::get().submit();
 		
@@ -103,6 +102,24 @@ public:
 		
 		if (!is_in_step()) delete e;
 		else e_todel.emplace_back(e);
+	}
+	
+	static_assert(static_cast<size_t>(GameStepOrder::TOTAL_COUNT) <= 4);
+	const size_t cs_off = sizeof(size_t) - 2;
+
+	size_t reg_step(EComp& c, GameStepOrder ord) noexcept
+	{
+		size_t i = static_cast<size_t>(ord);
+		auto& cs = cs_step[i];
+		reserve_more_block(cs, 256);
+		cs.push_back(&c);
+		return (cs.size() - 1) | (i << cs_off);
+	}
+	void unreg_step(size_t ix) noexcept
+	{
+		size_t i = ix >> cs_off;
+		size_t j = ix & ((static_cast<size_t>(1) << cs_off) - 1);
+		cs_step[i][j] = nullptr;
 	}
 };
 

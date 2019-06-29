@@ -1,6 +1,5 @@
 #include "vaslib/vas_cpp_utils.hpp"
 #include "game_core.hpp"
-#include "logic.hpp"
 #include "physics.hpp"
 
 #include "render/ren_imm.hpp"
@@ -344,7 +343,7 @@ void PhysicsWorld::circle_cast_nearest(std::vector<RaycastResult>& es, vec2fp ct
 	
 	reserve_more(es, fc.size());
 	for (auto& f : fc) {
-		auto res = raycast_nearest(ctr, conv(f.ent->get_phy()->body->GetWorldCenter()));
+		auto res = raycast_nearest(ctr, conv(f.ent->getref<EC_Physics>().body->GetWorldCenter()));
 		if (res && res->ent == f.ent && res->fix == f.fix)
 			es.push_back({ {f.ent, f.fix, res->distance}, res->poi });
 	}

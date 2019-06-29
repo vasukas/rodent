@@ -7,6 +7,10 @@ const float tar_near = 0.01;
 
 
 
+EC_Movement::EC_Movement()
+{
+	reg_step(GameStepOrder::Move);
+}
 void EC_Movement::set_app_vel(vec2fp v)
 {
 	auto set = [this](TarDir& d, float v)
@@ -26,8 +30,8 @@ void EC_Movement::set_app_vel(vec2fp v)
 }
 void EC_Movement::step()
 {
-	b2Body* body = ent->get_phy()->body;
-	b2Vec2 vel = body->GetLinearVelocity();
+	b2Body* body = ent->getref<EC_Physics>().body;
+	const b2Vec2 vel = body->GetLinearVelocity();
 	const float tmul = ent->core.step_len.seconds();
 	
 	b2Vec2 corr{0, 0};
@@ -72,8 +76,9 @@ void EC_Movement::step()
 	{
 		if (vel.Length() < damp_lin) corr -= tmul * vel;
 		else {
-			vel.Normalize();
-			corr -= damp_lin * tmul * vel;
+			b2Vec2 nv = vel;
+			nv.Normalize();
+			corr -= damp_lin * tmul * nv;
 		}
 //		corr += -damp_lin * tmul * vel;
 	}
@@ -91,17 +96,20 @@ void EC_Movement::step()
 	float ai = -damp_ang * tmul * body->GetAngularVelocity();
 	body->ApplyAngularImpulse(body->GetMass() * ai, wake);
 	
-	if (dust_vel != 0.f && ent->get_ren())
+	
+	
+	if (dust_vel == 0.f) return;
+	auto rc = ent->get<EC_Render>();
+	if (!rc) return;
+	
+	float amp = vel.Length();
+	if (amp > dust_vel)
 	{
-		float amp = vel.Length();
-		if (amp > dust_vel)
-		{
-			float p = amp - dust_vel;
-			Transform tr;
-			tr.rot = std::atan2(vel.y, vel.x);
-			tr.pos = {-ent->get_radius(), 0};
-			tr.pos.fastrotate(tr.rot);
-			ent->get_ren()->parts(OE_DUST, p, tr);
-		}
+		float p = amp - dust_vel;
+		Transform tr;
+		tr.rot = std::atan2(vel.y, vel.x) - body->GetAngle();
+		tr.pos = {-(ent->get_radius() + 0.1f), 0};
+		tr.pos.fastrotate(tr.rot);
+		rc->parts(OE_DUST, p, tr);
 	}
 }
