@@ -60,6 +60,7 @@ SOURCES += \
 	core/dbg_menu.cpp \
 	core/tui_layer.cpp \
 	core/tui_surface.cpp \
+	game/damage.cpp \
 	game/entity.cpp \
 	game/game_core.cpp \
 	game/movement.cpp \
@@ -144,6 +145,7 @@ HEADERS += \
 	core/dbg_menu.hpp \
 	core/tui_layer.hpp \
 	core/tui_surface.hpp \
+	game/damage.hpp \
 	game/entity.hpp \
 	game/game_core.hpp \
 	game/movement.hpp \
@@ -169,6 +171,7 @@ HEADERS += \
 	utils/noise.hpp \
 	utils/res_image.hpp \
 	vaslib/vas_atlas_packer.hpp \
+	vaslib/vas_containers.hpp \
 	vaslib/vas_cpp_utils.hpp \
 	vaslib/vas_file.hpp \
 	vaslib/vas_font.hpp \

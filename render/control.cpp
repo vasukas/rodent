@@ -256,9 +256,11 @@ public:
 			cam_ui.set_pos( cam_ui.get_vport().size() / 2 );
 			
 			if (pp_main && use_pp) pp_main->start(passed);
-			RenAAL::get().render();
+			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
 			
+			RenAAL::get().render();
 			ParticleRenderer::get().render(passed);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			
 			RenImm::get().render_pre();
 			RenImm::get().render(RenImm::DEFCTX_WORLD);

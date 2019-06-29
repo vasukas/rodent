@@ -140,8 +140,6 @@ public:
 			
 			for (auto& f : fts) f->passed = passed;
 		}
-		
-		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
 	}
 	void finish()
 	{
@@ -164,8 +162,6 @@ public:
 				f->proc();
 			}
 		}
-		
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	}
 };
 Postproc* Postproc::create_main_chain()

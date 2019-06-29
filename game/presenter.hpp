@@ -17,6 +17,8 @@ struct PresCommand;
 
 struct EC_Render : EComp
 {
+	bool hp_shown = false;
+	
 	EC_Render(Entity* ent, size_t sprite_id);
 	~EC_Render();
 	void parts(size_t id, float power = 1.f, Transform rel = {});

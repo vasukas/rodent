@@ -47,6 +47,9 @@ public:
 	/// Returns entity with such ID or nullptr
 	virtual Entity* get_ent( EntityIndex uid ) const noexcept = 0;
 	
+	/// Returns list of components of such type. May contain nullptrs
+	virtual std::vector<EComp*>& get_comp_list(ECompType type) noexcept = 0;
+	
 	
 	
 	/// Returns pseudorandom value, advancing generator
@@ -57,8 +60,8 @@ protected:
 	virtual void mark_deleted( Entity* e ) noexcept = 0;
 	
 	friend EComp;
-	virtual size_t reg_step(EComp& c, GameStepOrder ord) noexcept = 0;
-	virtual void unreg_step(size_t i) noexcept = 0;
+	virtual size_t reg_c(ECompType type, EComp* c) noexcept = 0;
+	virtual void unreg_c(ECompType type, size_t i) noexcept = 0;
 };
 
 #endif // GAME_CORE_HPP

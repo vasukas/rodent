@@ -1,9 +1,11 @@
 #include <mutex>
 #include "render/ren_aal.hpp"
-#include "render/particles.hpp"
 #include "vaslib/vas_cpp_utils.hpp"
 #include "game_core.hpp"
 #include "presenter.hpp"
+
+#include "render/ren_imm.hpp"
+#include "damage.hpp"
 
 
 
@@ -54,6 +56,9 @@ public:
 		Transform tr, vel;
 		FColor clr;
 		size_t oid;
+		
+		float hp = -1;
+		float obj_rad = 0; // radius
 	};
 	std::vector<Object> objs;
 	
@@ -108,10 +113,30 @@ public:
 		auto& ren = RenAAL::get();
 		float tk = passed.seconds();
 		
+		auto& imm = RenImm::get();
+		imm.set_context(RenImm::DEFCTX_WORLD);
+		
 		for (auto& o : objs)
 		{
 			if (!o.ei) continue;
 			ren.draw_inst(o.tr, o.clr, p_objs[o.oid].id);
+			
+			if (o.hp >= 0) {
+				const vec2fp sz = {2, 0.5};
+				
+				vec2fp base = o.tr.pos;
+				base.y -= o.obj_rad + sz.y/2 + 0.5;
+				
+				Rectfp r;
+				r.from_center(base, sz/2);
+				
+				imm.draw_rect(r, 0xff0000ff);
+				r.b.x = r.a.x + sz.x * o.hp;
+				imm.draw_rect(r, 0xc0ff00ff);
+				r.b.x = r.a.x + sz.x;
+				imm.draw_frame(r, 0xc0c0c0ff, 0.07);
+			}
+			
 			o.tr.add(o.vel * tk);
 		}
 	}
@@ -140,6 +165,19 @@ public:
 			if (auto e = core.get_ent(o.ei)) {
 				o.tr = e->get_pos();
 				o.vel = e->get_vel();
+				
+				auto& rc = e->getref<EC_Render>();
+				if (rc.hp_shown)
+				{
+					auto hc = e->get<EC_Health>();
+					if (hc && !hc->invincible)
+						o.hp = hc->hp / hc->hp_max;
+					else
+						o.hp = -1;
+				}
+				else o.hp = -1;
+				
+				o.obj_rad = e->get_radius();
 			}
 		}
 	}

@@ -6,20 +6,32 @@
 
 EComp::~EComp()
 {
-	if (reg_step_id != size_t_inval)
-		ent->core.unreg_step(reg_step_id);
+	for (auto& r : _regs)
+		GameCore::get().unreg_c( r.type, r.index );
 }
-void EComp::reg_step(GameStepOrder order)
+void EComp::reg(ECompType type) noexcept
 {
-	if (reg_step_id == size_t_inval)
-		reg_step_id = GameCore::get().reg_step(*this, order);
+	for (auto& r : _regs) if (r.type == type) return;
+	_regs.push_back({ type, GameCore::get().reg_c(type, this) });
+}
+void EComp::unreg(ECompType type) noexcept
+{
+	auto it = std::find_if( _regs.begin(), _regs.end(), [type](auto& v){return v.type == type;} );
+	if (it != _regs.end()) {
+		GameCore::get().unreg_c( it->type, it->index );
+		_regs.erase(it);
+	}
 }
 
 
 
+void Entity::destroy() {
+	core.mark_deleted(this);
+}
 Entity::Entity( GameCore& core, EntityIndex index ) : index( index ), core( core ) {}
-Entity::~Entity() {cs_ord.clear();}
-void Entity::destroy() {core.mark_deleted(this);}
+Entity::~Entity() {
+	for (auto it = cs_ord.rbegin(); it != cs_ord.rend(); ++it) it->reset();
+}
 
 
 

@@ -9,7 +9,7 @@ const float tar_near = 0.01;
 
 EC_Movement::EC_Movement()
 {
-	reg_step(GameStepOrder::Move);
+	reg(ECompType::StepMovement);
 }
 void EC_Movement::set_app_vel(vec2fp v)
 {

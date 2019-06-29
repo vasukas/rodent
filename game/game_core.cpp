@@ -1,5 +1,5 @@
 #include <random>
-#include "vaslib/vas_cpp_utils.hpp"
+#include "vaslib/vas_containers.hpp"
 #include "game_core.hpp"
 #include "physics.hpp"
 #include "presenter.hpp"
@@ -14,12 +14,9 @@ public:
 	struct Del_Entity { void operator()( Entity* p ) { delete p; } };
 	
 	std::unique_ptr<PhysicsWorld> phy;
+	std::array<SparseArray<EComp*>, static_cast<size_t>(ECompType::TOTAL_COUNT)> cs_list;
 	
-	// components on which step are called
-	std::array<std::vector<EComp*>, static_cast<size_t>(GameStepOrder::TOTAL_COUNT)> cs_step;
-	
-	std::vector<std::unique_ptr <Entity, Del_Entity>> ents;
-	std::vector<size_t> e_free; // stack of free indices
+	SparseArray<std::unique_ptr <Entity, Del_Entity>> ents;
 	std::vector<size_t> e_next1; // stack of indices which would be free on cycle after the next
 	std::vector<size_t> e_next2; // stack of indices which would be free on the next cycle
 	std::vector<std::unique_ptr <Entity, Del_Entity>> e_todel; // freed at the end of step
@@ -32,6 +29,7 @@ public:
 	
 	GameCore_Impl(const InitParams& pars)
 	{
+		ents.fi_expand = 256;
 		phy.reset(new PhysicsWorld(*this));
 		rndg.seed(pars.random_seed);
 	}
@@ -45,13 +43,15 @@ public:
 	{
 		// delete entities
 		
-		e_free.insert( e_free.end(), e_next2.begin(), e_next2.end() );
+		append( ents.fi, e_next2 );
 		e_next2 = std::move( e_next1 );
 		step_flag = true;
 		
 		// tick systems
 		
-		for (auto& c : cs_step) for (auto& p : c) if (p) p->step();
+		for (auto& p : get_comp_list(ECompType::StepLogic))    if (p) p->step();
+		for (auto& p : get_comp_list(ECompType::StepMovement)) if (p) p->step();
+		
 		phy->step();
 		GamePresenter::get().submit();
 		
@@ -62,19 +62,7 @@ public:
 	}
 	Entity* create_ent() noexcept
 	{
-		if (e_free.empty())
-		{
-			size_t n = ents.size();
-			size_t cap = n + 256;
-			ents.resize( cap );
-			
-			e_free.reserve( e_free.size() + 256 );
-			for (; n < cap; ++n) e_free.push_back( n );
-		}
-		
-		size_t i = e_free.back();
-		e_free.pop_back();
-		
+		size_t i = ents.new_index();
 		auto e = new Entity( *this, i + 1 );
 		ents[i].reset( e );
 		return e;
@@ -83,6 +71,10 @@ public:
 	{
 		--i;
 		return i < ents.size() ? ents[i].get() : nullptr;
+	}
+	std::vector<EComp*>& get_comp_list(ECompType type) noexcept
+	{
+		return cs_list[static_cast<size_t>(type)].vs;
 	}
 	uint32_t get_random() noexcept
 	{
@@ -103,23 +95,13 @@ public:
 		if (!is_in_step()) delete e;
 		else e_todel.emplace_back(e);
 	}
-	
-	static_assert(static_cast<size_t>(GameStepOrder::TOTAL_COUNT) <= 4);
-	const size_t cs_off = sizeof(size_t) - 2;
-
-	size_t reg_step(EComp& c, GameStepOrder ord) noexcept
+	size_t reg_c(ECompType type, EComp* c) noexcept
 	{
-		size_t i = static_cast<size_t>(ord);
-		auto& cs = cs_step[i];
-		reserve_more_block(cs, 256);
-		cs.push_back(&c);
-		return (cs.size() - 1) | (i << cs_off);
+		return cs_list[static_cast<size_t>(type)].insert_new(c);
 	}
-	void unreg_step(size_t ix) noexcept
+	void unreg_c(ECompType type, size_t i) noexcept
 	{
-		size_t i = ix >> cs_off;
-		size_t j = ix & ((static_cast<size_t>(1) << cs_off) - 1);
-		cs_step[i][j] = nullptr;
+		cs_list[static_cast<size_t>(type)][i] = nullptr;
 	}
 };
 

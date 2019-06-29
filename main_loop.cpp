@@ -1,6 +1,7 @@
 #include <mutex>
 #include <thread>
 #include "core/tui_layer.hpp"
+#include "game/damage.hpp"
 #include "game/game_core.hpp"
 #include "game/movement.hpp"
 #include "game/physics.hpp"
@@ -306,7 +307,7 @@ public:
 		
 		PC_Logic(ML_Game* ml_game, Entity* ent_): ml_game(ml_game) {
 			ent = ent_;
-			reg_step(GameStepOrder::Logic);
+			reg(ECompType::StepLogic);
 			EVS_CONNECT1(ent->getref<EC_Physics>().ev_contact, on_cnt);
 		}
 		~PC_Logic() {
@@ -384,20 +385,34 @@ public:
 	}
 	void thr_func() try
 	{
-		struct DL : EComp {
+		struct DL : EComp
+		{
 			EVS_SUBSCR;
+			TimeSpan hp_show = TimeSpan::ms(-1);
+			bool hp_too_low = false;
 			
-			DL(EC_Physics& ph) {
-				EVS_CONNECT1(ph.ev_contact, on_event);
+			DL(Entity* e) {
+				reg(ECompType::StepLogic);
+				EVS_CONNECT1(e->getref<EC_Health>().on_damage, on_event);
 			}
-			void on_event(const ContactEvent& ev) {
-//				const float lim = 120.f; // 40
-//				float lim = 15.f * ent->get_phy()->body->GetMass();
-				float lim = 120.f * ent->get_radius();
-				if (ev.type == ContactEvent::T_RESOLVE && ev.imp > lim) {
-					ent->destroy();
-					GamePresenter::get().effect(FE_EXPLOSION, {ev.point, 0.f}, ev.imp / lim + 0.5f);
-				}
+			~DL() {
+				float pow = ent->getref<EC_Health>().hp_max / 100.f;
+				GamePresenter::get().effect(FE_EXPLOSION, ent->get_pos(), pow);
+			}
+			void step()
+			{
+				if (hp_too_low) return;
+				hp_show -= ent->core.step_len;
+				if (hp_show.is_negative())
+					ent->getref<EC_Render>().hp_shown = false;
+			}
+			void on_event(const DamageEvent& )
+			{
+				hp_show = TimeSpan::seconds(3);
+				ent->getref<EC_Render>().hp_shown = true;
+				
+				auto& hc = ent->getref<EC_Health>();
+				hp_too_low = hc.hp / hc.hp_max < 0.4;
 			}
 		};
 		
@@ -427,8 +442,13 @@ public:
 			mov->damp_lin = 1.5f;
 			mov->dust_vel = 12.f;
 			e->add(mov);
+			
+			auto hp = new EC_Health;
+			hp->renew_hp( big? 300.f : 200.f );
+			hp->hook(*phy);
+			e->add(hp);
 			        
-			e->add(new DL( *phy ));
+			e->add(new DL(e));
 			e->dbg_name = big? "Heavy" : "Box";
 		}
 		{

@@ -243,6 +243,8 @@ struct Rectfp
 	void upper (vec2fp v) {b = v;}
 	void size  (vec2fp v) {b = v + a;}
 	
+	void from_center(vec2fp ctr, vec2fp half_size) {set(ctr - half_size, ctr + half_size, false);}
+	
 	/// Returns points representing same rectangle rotated around center
 	std::array <vec2fp, 4> rotate( float cs, float sn ) const;
 	
