@@ -29,6 +29,9 @@ public:
 	
 	bool draw_tui = false; ///< Hack for DbgMenu
 	
+	static bool opt_gldbg;
+	static bool opt_fullscreen;
+	
 	
 	
 	static bool init(); ///< Initialize singleton (including all other rendering singletons)

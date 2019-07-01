@@ -16,6 +16,9 @@
 class RenderControl_Impl;
 static RenderControl_Impl* rct;
 
+bool RenderControl::opt_gldbg = false;
+bool RenderControl::opt_fullscreen = false;
+
 
 
 static bool gl_library_init()
@@ -77,21 +80,36 @@ public:
 			return;
 		}
 		
-		SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
 		
-		SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
-		SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
-		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
-		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
+		int ctx_flags = SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG;
+		if (opt_gldbg) {
+			ctx_flags |= SDL_GL_CONTEXT_DEBUG_FLAG;
+			VLOGW("Using debug OpenGL context");
+		}
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, ctx_flags);
+		
+		SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
+//		SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
+//		SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
+//		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
+//		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
 		
 		auto wnd_sz = AppSettings::get().wnd_size;
+		if (opt_fullscreen)
+		{
+			SDL_DisplayMode d_dm;
+			SDL_GetDesktopDisplayMode(0, &d_dm);
+			wnd_sz = {d_dm.w, d_dm.h};
+		}
 		old_size = wnd_sz;
 		
-		wnd = SDL_CreateWindow( "Loading...", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, wnd_sz.x, wnd_sz.y, SDL_WINDOW_OPENGL );
+		int wnd_flags = SDL_WINDOW_OPENGL;
+		if (opt_fullscreen) wnd_flags |= SDL_WINDOW_FULLSCREEN;
+		
+		wnd = SDL_CreateWindow( "Loading...", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, wnd_sz.x, wnd_sz.y, wnd_flags );
 		if (!wnd)
 		{
 			VLOGE("SDL_CreateWindow failed - {}", SDL_GetError());
@@ -129,10 +147,11 @@ public:
 		if (glDebugMessageCallback)
 		{
 			struct FOO {
-				static void GLAPIENTRY f(GLenum, GLenum type, GLuint, GLenum, GLsizei length, const GLchar* msg, const void*) {
+				static void GLAPIENTRY f(GLenum, GLenum type, GLuint, GLenum sever, GLsizei length, const GLchar* msg, const void*) {
 //					if (sever == GL_DEBUG_SEVERITY_NOTIFICATION) return;
+					if (sever == GL_DEBUG_SEVERITY_HIGH) rct->crit_error = true;
 					if (type == GL_DEBUG_TYPE_ERROR) VLOGE("GL: {}", std::string_view(msg, length));
-//					else VLOGV("GL ({}): {}", type, msg);
+					else if (opt_gldbg) VLOGV("GL [{}]: {}", type, std::string_view(msg, length));
 				}
 			};
 			
@@ -150,8 +169,6 @@ public:
 
 		
 		
-//		glHint(GL_GENERATE_MIPMAP_HINT, GL_NICEST);
-		
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		
@@ -160,14 +177,7 @@ public:
 		glDepthMask(0);
 		
 //		glEnable(GL_SCISSOR_TEST);
-		
-//		int msaa;
-//		if (!SDL_GL_GetAttribute(SDL_GL_MULTISAMPLESAMPLES, &msaa) && msaa)
-//		{
-//			glEnable(GL_MULTISAMPLE);
-//			VLOGI("MSAA enabled: {}x", msaa);
-//		}
-//		else VLOGI("MSAA disabled");
+//		glHint(GL_GENERATE_MIPMAP_HINT, GL_NICEST);
 		
 		
 		
@@ -298,9 +308,9 @@ public:
 	void set_vsync( bool on )
 	{
 		if (SDL_GL_SetSwapInterval( on? 1 : 0 ))
-			VLOGW( "RenderControl::set_vsync() failed - (tried to set to {})", on );
+			VLOGW( "RenderControl::set_vsync() failed (tried to set {}) - {}", on, SDL_GetError() );
 		else
-			VLOGI( "RenderControl::set_vsync() ok - (tried to set to {})", on );
+			VLOGI( "RenderControl::set_vsync() ok (tried to set {})", on );
 	}
 	bool has_vsync()
 	{
@@ -311,11 +321,26 @@ public:
 		Uint32 fs;
 		switch (val)
 		{
-		case FULLSCREEN_OFF:    fs = 0; break;
+		case FULLSCREEN_OFF:     fs = 0; break;
 		case FULLSCREEN_ENABLED: fs = SDL_WINDOW_FULLSCREEN; break;
 		case FULLSCREEN_DESKTOP: fs = SDL_WINDOW_FULLSCREEN_DESKTOP; break;
 		}
-		SDL_SetWindowFullscreen(wnd, fs);
+
+		if (SDL_SetWindowFullscreen(wnd, fs)) {
+			VLOGE("SDL_SetWindowFullscreen failed - {}", SDL_GetError());
+		}
+		else if (val == FULLSCREEN_ENABLED)
+		{
+			SDL_DisplayMode d_dm;
+			SDL_GetDesktopDisplayMode(0, &d_dm);
+
+			SDL_DisplayMode dm;
+			SDL_GetWindowDisplayMode(wnd, &dm);
+
+			dm.w = d_dm.w, dm.h = d_dm.h;
+			if (SDL_SetWindowDisplayMode(wnd, &dm))
+				VLOGE("SDL_SetWindowDisplayMode failed - {}", SDL_GetError());
+		}
 	}
 	FullscreenValue get_fscreen()
 	{
@@ -436,6 +461,12 @@ RenderControl& RenderControl::get()
 vec2i RenderControl::get_size()
 {
 	if (!rct) return {800, 600};
+	if (rct->get_fscreen() == FULLSCREEN_ENABLED)
+	{
+		SDL_DisplayMode dm;
+		SDL_GetWindowDisplayMode(rct->wnd, &dm);
+		return {dm.w, dm.h};
+	}
 	int w, h;
 	SDL_GetWindowSize(rct->wnd, &w, &h);
 	return {w, h};
