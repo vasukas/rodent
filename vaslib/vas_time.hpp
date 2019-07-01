@@ -59,7 +59,7 @@ private:
 };
 
 
-/// Sleeps current thread
+/// Sleeps current thread (negative-safe)
 void sleep(TimeSpan time);
 
 #endif // TIME_HPP

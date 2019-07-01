@@ -79,7 +79,7 @@ void debugbreak();
 /// Sets signal and termination handlers
 void log_setup_signals();
 
-/// Registers function to be called on ABNORMAL program termination. 
+/// Registers function to be called ONLY on abnormal program termination. 
 /// Guard removes function registration. 
 /// Note: works only if log_setup_signals() was called
 [[nodiscard]] RAII_Guard log_terminate_reg(void(*f)());
