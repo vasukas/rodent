@@ -288,8 +288,8 @@ const char *Console::get_msg(HandleRet ret)
 }
 Console& Console::get()
 {
-	static Console_Impl con;
-	return con;
+	static Console* con = new Console_Impl;
+	return *con;
 }
 
 

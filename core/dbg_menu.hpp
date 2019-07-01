@@ -27,7 +27,7 @@ public:
 	};
 	
 	static DbgMenu& get(); ///< Returns singleton
-	virtual ~DbgMenu();
+	virtual ~DbgMenu() = default;
 	
 	/// Registers new section
 	[[nodiscard]] virtual RAII_Guard reg(Section sec) = 0;

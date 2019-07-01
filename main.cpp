@@ -130,11 +130,13 @@ int main( int argc, char *argv[] )
 		if		(!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help"))
 		{
 			printf("Usage: rodent [OPTIONS]\n");
-			printf("Options:\n");
+			printf("\nOptions:\n");
 			printf("\t--log    <FILE> log will be written to this file instead of default\n");
 			printf("\t--logclr <0/1>  enables or disables colors in log\n");
 			printf("\t--verb   <N>    sets logging verbosity level (1 verbose, 2 debug, 3 info)\n");
 			printf("\t--cfg    <FILE> sets path to settings config\n");
+			printf("\nDebug options:\n");
+			printf("\t--gldbg  creates debug OpenGL context and logs all GL messages as verbose\n");
 			return 0;
 		}
 		else if (!strcmp(argv[i], "--log"))
@@ -182,6 +184,10 @@ int main( int argc, char *argv[] )
 			}
 			AppSettings::cfg_path = argv[++i];
 		}
+		else if (!strcmp(argv[i], "--gldbg"))
+		{
+			RenderControl::opt_gldbg = true;
+		}
 		else {
 			printf("Invalid option: %s\n", argv[i]);
 			return 1;
@@ -195,7 +201,7 @@ int main( int argc, char *argv[] )
 	if (!log_filename.empty())
     {
 		LoggerSettings lsets;
-		lsets.file.reset( File::open( log_filename.c_str(), File::OpenCreate ) );
+		lsets.file.reset( File::open( log_filename.c_str(), File::OpenCreate | File::OpenDisableBuffer ) );
 		if (cli_logclr != -1) lsets.use_clr = (cli_logclr != 0);
 		if (cli_verb != -1) lsets.level = static_cast< LogLevel >( cli_verb );
 		lsets.apply();
@@ -279,7 +285,7 @@ int main( int argc, char *argv[] )
 	VLOGI("Target FPS: {}", target_fps);
 	
 	TimeSpan loop_length = TimeSpan::seconds( 1.f / target_fps );
-	bool loop_limit = !RenderControl::get().has_vsync() || target_fps != vsync_fps;
+	bool loop_limit = true;//!RenderControl::get().has_vsync() || target_fps != vsync_fps;
 	VLOGD("Main loop limiter: {}", loop_limit);
 	
 	log_write_str(LogLevel::Critical, "=== main loop begin ===");
@@ -317,7 +323,7 @@ int main( int argc, char *argv[] )
 						if (RenderControl::get().get_fscreen() != RenderControl::FULLSCREEN_OFF)
 							RenderControl::get().set_fscreen( RenderControl::FULLSCREEN_OFF );
 						else
-							RenderControl::get().set_fscreen( RenderControl::FULLSCREEN_DESKTOP );
+							RenderControl::get().set_fscreen( RenderControl::FULLSCREEN_ENABLED );
 					}
 					continue;
 				}
@@ -386,8 +392,12 @@ int main( int argc, char *argv[] )
 	
 	log_write_str(LogLevel::Critical, "main() normal exit");
 	delete MainLoop::current;
+	delete &Console::get();
 	delete &RenderControl::get();
 	SDL_Quit();
+
+	dbg_g.trigger();
+	delete &DbgMenu::get();
 	
 	VLOGI("main() cleanup finished");
 	return 0;

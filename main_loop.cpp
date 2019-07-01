@@ -184,6 +184,8 @@ public:
 	State state = ST_LOADING;
 	
 	std::mutex pc_lock;
+	std::vector<SDL_Event> pc_evs;
+
 	Camera* cam;
 	EntityIndex cam_ent = 0;
 	
@@ -231,9 +233,9 @@ public:
 			if (k == SDL_SCANCODE_F1) show_help = !show_help;
 		}
 		
-		if (pc_log) {
+		if (pc_log && (ev.type == SDL_KEYDOWN || ev.type == SDL_KEYUP)) {
 			std::unique_lock g(pc_lock);
-			pc_log->on_event(ev);
+			pc_evs.push_back(ev);
 		}
 	}
 	void render(TimeSpan passed)
@@ -242,9 +244,6 @@ public:
 		else if (state == ST_FINISH)  RenImm::get().draw_text({}, "Game finished. Press ESC to exit.", -1, false, 4.f);
 		else {
 			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
-			
-			std::unique_lock g(pc_lock);
-//			if (auto e = core->get_ent(cam_ent)) cam_follow(e); else cam_ent = 0;
 			GamePresenter::get().render(passed);
 			
 			for (float t=0; t<hsize; t += 2) {
@@ -314,7 +313,21 @@ public:
 			ml_game->state = ST_FINISH;
 			ml_game->pc_log = nullptr;
 		}
-		void step() {
+		void step()
+		{
+			{	std::unique_lock g(ml_game->pc_lock);
+				for (auto &ev : ml_game->pc_evs)
+				{
+					const SDL_Scancode cs[key_n] = {
+						SDL_SCANCODE_A, SDL_SCANCODE_W, SDL_SCANCODE_S, SDL_SCANCODE_D, SDL_SCANCODE_SPACE
+					};
+					for (int i = 0; i < key_n; ++i)
+						if (cs[i] == ev.key.keysym.scancode)
+							keyf[i] = (ev.type == SDL_KEYDOWN);
+				}
+				ml_game->pc_evs.clear();
+			}
+
 			const vec2fp kmv[4] = {{-1, 0}, {0, -1}, {0, 1}, {1, 0}};
 			vec2fp mv = {};
 			for (int i=0; i<4; ++i) if (keyf[i]) mv += kmv[i];
@@ -481,10 +494,9 @@ public:
 		state = ST_RUN;
 		while (state != ST_FINISH)
 		{
-			{	std::unique_lock g(pc_lock);
-				core->step();
-			}
-			sleep(core->step_len);
+			auto t0 = TimeSpan::since_start();
+			core->step();
+			sleep(core->step_len - (TimeSpan::since_start() - t0));
 		}
 	}
 	catch (std::exception& e) {
@@ -522,30 +534,6 @@ public:
 		e->get<EC_Physics>()->body->CreateFixture(&fd);
 		
 		e->dbg_name = "terrain";
-	}
-	void cam_follow(Entity* ent)
-	{
-//		b2Body* body = ent->get_phy()->body;
-		
-//		b2Vec2 vel = body->GetLinearVelocity();
-//		float spd = vel.Length();
-//		b2Vec2 fwd = body->GetWorldVector({0, -1});
-//		if (b2Dot(vel, fwd) < 0) fwd = -fwd;
-//		vel = fwd;
-//		vel *= spd;
-		
-//		Camera::Frame cf = cam->get_state();
-		
-//		vec2fp old = cf.pos;
-//		cf.pos = conv( vel + body->GetPosition() );
-		
-//		float d = cf.pos.dist(old);
-//		if (d < 3.f) return; // min dist - 3 m
-		
-//		cf.len = TimeSpan::seconds(0.2) * d; // 5 m / sec
-		
-//		cam->reset_frames();
-//		cam->add_frame(cf);
 	}
 };
 

@@ -1,3 +1,4 @@
+#include <cstring>
 #include <SDL2/SDL_rect.h>
 #include "vas_math.hpp"
 
@@ -64,18 +65,18 @@ uint isqrt(uint n)
 
 float fast_invsqrt(float x)
 {
-	static_assert (sizeof(float) == 4, "Just replace it with usual sqrt");
-	union
+	if constexpr (std::numeric_limits<float>::is_iec559 && sizeof(float) == sizeof(uint32_t))
 	{
+		float x2 = x/2;
 		uint32_t i;
-		float y;
-	};
-	float x2 = x/2;
-	y = x;
-	i = 0x5f3759df - ( i >> 1 );
-	y *= 1.5f - (x2 * y * y);
-//	y *= 1.5f - (x2 * y * y);
-	return y;
+		std::memcpy(&i, &x, 4);
+		i = 0x5f3759df - (i >> 1);
+		std::memcpy(&x, &i, 4);
+		x *= 1.5f - (x2 * x * x);
+//		x *= 1.5f - (x2 * x * x);
+		return x;
+	}
+	else return 1.f / std::sqrt(x);
 }
 
 float wrap_angle_2(float x)

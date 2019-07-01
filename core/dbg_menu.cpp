@@ -5,8 +5,6 @@
 #include "vaslib/vas_log.hpp"
 #include "dbg_menu.hpp"
 
-static RAII_Guard mk_reg(size_t i);
-
 
 
 class DbgMenu_Impl : public DbgMenu
@@ -36,7 +34,7 @@ public:
 			LOG_THROW_X("DbgMenu::reg() name already taken: {}", sec.name);
 		
 		ss.emplace_back( std::move(sec) );
-		return mk_reg(ss.size() - 1);
+		return RAII_Guard([this, i = ss.size() - 1] {ss[i].proc = {}; });
 	}
 	void label(std::string_view s)
 	{
@@ -123,12 +121,7 @@ bool DbgMenu::checkbox(bool& flag, std::string_view s, char hotkey)
 	if (ok) flag = !flag;
 	return ok;
 }
-
-
-
-static DbgMenu_Impl rni;
-static bool rni_ok = true;
-
-DbgMenu& DbgMenu::get() {return rni;}
-DbgMenu::~DbgMenu() {rni_ok = false;}
-RAII_Guard mk_reg(size_t i) {return RAII_Guard([i]{if (rni_ok) rni.ss[i].proc = {};});}
+DbgMenu& DbgMenu::get() {
+	static DbgMenu* rni = new DbgMenu_Impl;
+	return *rni;
+}
