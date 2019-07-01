@@ -50,7 +50,10 @@ public:
 		OpenAlways = 4,
 		
 		/// Even if file exists, re-create it (write is implied)
-		OpenCreate = 8
+		OpenCreate = 8,
+
+		/// Disables stdio buffering
+		OpenDisableBuffer = 16
 	};
 	
 	/// Mode for seek()
@@ -122,9 +125,8 @@ public:
 	/// Default implementation seeks to the end of file, gets position and seeks back
 	virtual int64_t get_size() const;
 	
-	/// Flushes buffered data (returns false if fails, true if not available). 
-	/// Default implementation is no-op, which always returns true
-	virtual bool flush();
+	/// Flushes buffered data (returns true if not available)
+	virtual bool flush() {return true;}
 	
 	
 	

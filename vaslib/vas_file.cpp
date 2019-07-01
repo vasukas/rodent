@@ -174,10 +174,6 @@ int64_t File::get_size() const
 	t->seek( ptr, SeekSet );
 	return sz;
 }
-bool File::flush()
-{
-	return true;
-}
 
 
 
@@ -355,8 +351,8 @@ File* File::open( const char *filename, int flags )
 	return vas_file_open_hook(filename, flags);
 #endif
 	
-	int rw = flags & 3;
-	int ex = flags & (~3);
+	int rw = flags & 0x3;
+	int ex = flags & 0xc;
 	
 	const char *mode;
 	if		(ex == OpenExisting)
@@ -398,6 +394,8 @@ File* File::open( const char *filename, int flags )
 		VLOGE("File::open() fopen failed - [{}] {} (file: \"{}\")", errno, strerror(errno), filename);
 		return nullptr;
 	}
+	if (flags & OpenDisableBuffer)
+		setbuf(f, NULL);
 	
 	std::rewind( f );
 	return open_std( f, true );

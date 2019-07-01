@@ -29,7 +29,7 @@ std::string winc_error( int error )
 std::string winc_strconv( std::wstring_view s )
 {
 	std::string out;
-	int size = WideCharToMultiByte( CP_UTF8, 0, s.data(), s.length(), out.data(), 0, NULL, NULL );
+	size_t size = WideCharToMultiByte( CP_UTF8, 0, s.data(), s.length(), out.data(), 0, NULL, NULL );
 	out.resize( size );
 
 	if (!WideCharToMultiByte( CP_UTF8, 0, s.data(), s.length(), out.data(), size, NULL, NULL ))
@@ -42,7 +42,7 @@ std::string winc_strconv( std::wstring_view s )
 std::wstring winc_strconv( std::string_view s )
 {
 	std::wstring out;
-	int size = MultiByteToWideChar( CP_UTF8, 0, s.data(), s.length(), out.data(), 0 );
+	size_t size = MultiByteToWideChar( CP_UTF8, 0, s.data(), s.length(), out.data(), 0 );
 	out.resize( size );
 
 	if (!MultiByteToWideChar( CP_UTF8, 0, s.data(), s.length(), out.data(), size ))
@@ -76,16 +76,7 @@ bool winc_fexist( const char *fn )
 }
 FILE* winc_fopen( const char *fn, const char *mode )
 {
-	auto w_mode = winc_strconv(mode);
-	FILE* f = _wfopen( winc_filename(fn).c_str(), w_mode.c_str() );
-#ifdef __MINGW32__
-	if (f && (mode[0] == 'w' || mode[0] == 'a'))
-	{
-		setbuf( f, NULL );
-		VLOGW( "File::open() file buffering disabled for \"{}\" (MINGW FIX)", fn );
-	}
-#endif
-	return f;
+	return _wfopen( winc_filename(fn).c_str(), winc_strconv(mode).c_str() );
 }
 
 
