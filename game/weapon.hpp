@@ -28,14 +28,13 @@ struct Projectile : EComp
 		float imp = 0.f; ///< Physical impulse applied to target
 	};
 	
-	EVS_SUBSCR;
 	Params pars;
 	uint32_t src_eid = 0; ///< Source entity (may be 0)
 	std::optional<Transform> target_pos; ///< Target for homing projectiles (NOT IMPLEMENTED)
 	
 	
-	Projectile(Entity* ent);
-	void on_event(const ContactEvent& ev);
+	Projectile();
+	void step();
 };
 
 

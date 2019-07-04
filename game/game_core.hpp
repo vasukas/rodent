@@ -29,6 +29,9 @@ public:
 	
 	
 	
+	/// For speed conversions to 'per step' from 'per second'
+	static float time_mul() {return step_len.seconds();}
+	
 	///
 	virtual PhysicsWorld& get_phy() noexcept = 0;
 	

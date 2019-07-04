@@ -5,25 +5,18 @@
 
 
 
-static const float safety_offset = 0.05;
-
-static bool is_ph_bullet(float spd, float rad)
+Projectile::Projectile()
 {
-	spd *= GameCore::get().step_len.seconds();
-	spd -= rad*2 - safety_offset;
-	return spd > 0;
+	reg(ECompType::StepLogic);
 }
-
-
-
-Projectile::Projectile(Entity* ent)
+void Projectile::step()
 {
-	EVS_CONNECT1(ent->getref<EC_Physics>().ev_contact, on_event);
-}
-void Projectile::on_event(const ContactEvent& ev)
-{
-	if (!ev.other->is_ok() || !ent->is_ok()) return;
-	auto& self = ent->getref<EC_Physics>().body;
+	auto& self = ent->getref<EC_VirtualBody>();
+	const b2Vec2 vel = conv(self.get_vel().pos);
+	const vec2fp ray0 = self.pos.pos, ray1 = ray0 + self.get_vel().pos * GameCore::time_mul();
+	
+	auto hit = GameCore::get().get_phy().raycast_nearest(conv(ray0), conv(ray1));
+	if (!hit) return;
 	
 	auto apply = [&](Entity* tar, float k, b2Vec2 at)
 	{
@@ -36,12 +29,12 @@ void Projectile::on_event(const ContactEvent& ev)
 		{
 			auto pc = tar->get<EC_Physics>();
 			if (pc) {
-				auto vel = self->GetLinearVelocity();
-				vel.Normalize();
-				vel *= k * pars.imp;
+				auto v = vel;
+				v.Normalize();
+				v *= k * pars.imp;
 				
 				GameCore::get().get_phy().post_step(
-					[pc, vel, at]{ pc->body->ApplyLinearImpulse(vel, at, true); }
+					[pc, v, at]{ pc->body->ApplyLinearImpulse(v, at, true); }
 				);
 			}
 		}
@@ -50,13 +43,13 @@ void Projectile::on_event(const ContactEvent& ev)
 	switch (pars.type)
 	{
 	case T_BULLET:
-		apply(ev.other, 1, self->GetWorldCenter());
+		apply(hit->ent, 1, hit->poi);
 		break;
 		
 	case T_AOE:
 	{
 		std::vector<PhysicsWorld::RaycastResult> cr;
-		ent->core.get_phy().circle_cast_nearest(cr, self->GetWorldCenter(), pars.rad);
+		ent->core.get_phy().circle_cast_nearest(cr, hit->poi, pars.rad);
 		for (auto& r : cr) {
 			float k = pars.rad_full ? 1 : std::min(1.f, std::max((pars.rad - r.distance) / pars.rad, pars.rad_min));
 			apply(r.ent, k, r.poi);
@@ -97,21 +90,10 @@ void Weapon::shoot(Transform from, Transform at, Entity* src)
 	Entity* e = GameCore::get().create_ent();
 	e->add(new EC_Render(e, proj_sprite));
 
-	b2BodyDef def;
-	def.type = b2_dynamicBody;
-	def.bullet = is_ph_bullet(proj_spd, proj_radius);
-	def.position = conv(from.pos);
-	def.angle = (at.pos - from.pos).angle();
-	def.linearVelocity = proj_spd * conv((at.pos - from.pos).get_norm());
+	vec2fp vel = proj_spd * (at.pos - from.pos).get_norm();
+	e->add(new EC_VirtualBody(from, true))->set_vel(vel);
 	
-	auto phy = e->add(new EC_Physics(def));
-	b2FixtureDef fd;
-	fd.filter.categoryBits = 0x8000; // disable collision between bullets
-	fd.filter.maskBits = 0x7fff;
-	fd.isSensor = true;
-	phy->add_circle(fd, proj_radius, 0.5);
-	
-	auto prj = e->add(new Projectile(e));
+	auto prj = e->add(new Projectile);
 	prj->pars = pars;
 	if (is_homing) prj->target_pos = at;
 	if (src) prj->src_eid = src->index;
@@ -123,7 +105,7 @@ void Weapon::shoot(Entity* parent, std::optional<Transform> at)
 	Transform p0 = parent->get_pos();
 	
 	vec2fp dir = at? (at->pos - p0.pos).get_norm() : parent->get_norm_dir();
-	p0.pos += dir * (parent->get_radius() + proj_radius + safety_offset);
+	p0.pos += dir * (parent->get_radius() + proj_radius);
 	
 	if (!at) {
 		*at = p0;

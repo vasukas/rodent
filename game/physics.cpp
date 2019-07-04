@@ -3,6 +3,7 @@
 #include "physics.hpp"
 
 #include "render/ren_imm.hpp"
+#include "vaslib/vas_log.hpp"
 #include "presenter.hpp"
 
 const float raycast_zero_dist = 0.05; ///< Square of distance at which raycast not performed
@@ -103,6 +104,22 @@ void EC_Physics::calc_radius()
 		b_radius = std::max(b_radius, r);
 		f = f->GetNext();
 	}
+}
+
+
+
+EC_VirtualBody::EC_VirtualBody(Transform pos, bool has_velocity): pos(pos), has_vel(has_velocity)
+{
+	if (has_vel) reg(ECompType::StepPostUtil);
+}
+void EC_VirtualBody::set_vel(Transform new_vel)
+{
+	if (!has_vel) GAME_THROW("EC_VirtualBody::set_vel() no velocity: {}", ent->index);
+	vel = new_vel;
+}
+void EC_VirtualBody::step()
+{
+	pos.add(vel * GameCore::time_mul());
 }
 
 

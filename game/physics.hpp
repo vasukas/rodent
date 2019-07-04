@@ -60,6 +60,22 @@ inline EC_Physics* getptr(b2Body* b) {return static_cast<EC_Physics*>(b->GetUser
 
 
 
+struct EC_VirtualBody : EComp
+{
+	Transform pos;
+	
+	EC_VirtualBody(Transform pos, bool has_velocity); ///< If doesn't have velocity, it can't be set
+	Transform get_vel() const {return vel;}
+	void set_vel(Transform vel); ///< Throws if doesn't have velocity
+	void step();
+	
+private:
+	Transform vel = {};
+	bool has_vel;
+};
+
+
+
 class PhysicsWorld
 {
 private:
