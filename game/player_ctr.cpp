@@ -17,16 +17,17 @@
 static void init_wpns(EC_Equipment& e)
 {
 	Weapon* wpn;
-	Transform tr({0, -1.5});
+	Transform tr({0, -1.5}, M_PI_2);
 	
 	// mgun
 	
 	wpn = &e.wpns.emplace_back();
 	wpn->pars.dq.amount = 20.f;
 	wpn->pars.imp = 5.f;
-	wpn->shoot_delay.set_seconds(0);
+	wpn->shoot_delay = {};
 	wpn->proj_spd = 18.f;
 	wpn->proj_sprite = PROJ_BULLET;
+	wpn->heat_off = 0.1;
 	wpn->ren_id = ARM_MGUN;
 	wpn->ren_tr = tr;
 	
@@ -50,8 +51,9 @@ static void init_wpns(EC_Equipment& e)
 	wpn->pars.rad = 3.f;
 	wpn->pars.rad_min = 0.f;
 	wpn->pars.imp = 80.f;
-	wpn->shoot_delay.set_seconds(1.5);
-	wpn->proj_spd = 8.f;
+	wpn->pars.trail = true;
+	wpn->shoot_delay.set_seconds(1);
+	wpn->proj_spd = 15.f;
 	wpn->proj_sprite = PROJ_ROCKET;
 	wpn->heat_incr = 0;
 	wpn->ren_id = ARM_ROCKET;
@@ -74,6 +76,7 @@ struct PC_Impl : PlayerControl
 	
 	PC_Impl(Entity* ent, vec2fp pos);
 	void on_event(const SDL_Event& ev);
+	void draw_hud();
 	void draw_ui();
 	void step();
 	void on_cnt(const ContactEvent& ce);
@@ -127,6 +130,11 @@ void PC_Impl::on_event(const SDL_Event& ev)
 	}
 }
 void PC_Impl::draw_ui()
+{
+	if (auto wpn = ent->getref<EC_Equipment>().wpn_ptr())
+		RenImm::get().draw_text({}, std::to_string(wpn->get_heat()), -1);
+}
+void PC_Impl::draw_hud()
 {
 	auto wpn = ent->getref<EC_Equipment>().wpn_ptr();
 	

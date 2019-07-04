@@ -12,7 +12,10 @@ enum FreeEffect
 {
 	FE_EXPLOSION,
 	FE_HIT,
-	FE_SHOOT_DUST
+	FE_SHOOT_DUST,
+	
+	FE_WPN_EXPLOSION,
+	FE_WPN_IMPLOSION
 };
 enum ObjList
 {

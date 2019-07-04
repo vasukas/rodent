@@ -51,7 +51,7 @@ void EC_Movement::step()
 			}
 			else if (d.st == T_ZERO)
 			{
-				d.left -= GameCore::get().step_len;
+				d.left -= GameCore::step_len;
 				if (d.left.is_negative())
 					d.st = T_NONE;
 				

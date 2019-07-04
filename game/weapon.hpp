@@ -26,6 +26,7 @@ struct Projectile : EComp
 		bool rad_full = false; ///< If true, radius ignored in damage calculation; otherwise linear fall-off is used
 		
 		float imp = 0.f; ///< Physical impulse applied to target
+		bool trail = false; ///< If true, leaves particle trail
 	};
 	
 	Params pars;
@@ -68,10 +69,10 @@ struct Weapon
 	
 	void shoot(Transform from, Transform at, Entity* src = nullptr); ///< Does nothing if can't yet shoot
 	void shoot(Entity* parent, std::optional<Transform> at = {}); ///< Gets transforms from parent
-	
 	void reset(); ///< Resets counters (except ammo)
 	
 	bool can_shoot() const; ///< Returns true if capable of shooting now
+	float get_heat() const {return heat_cou;}
 	
 private:
 	TimeSpan del_cou; ///< Delay counter

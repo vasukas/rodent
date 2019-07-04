@@ -12,13 +12,16 @@ Projectile::Projectile()
 void Projectile::step()
 {
 	auto& self = ent->getref<EC_VirtualBody>();
-	const b2Vec2 vel = conv(self.get_vel().pos);
-	const vec2fp ray0 = self.pos.pos, ray1 = ray0 + self.get_vel().pos * GameCore::time_mul();
+	if (pars.trail)
+		ent->getref<EC_Render>().parts(OE_DUST);
 	
-	auto hit = GameCore::get().get_phy().raycast_nearest(conv(ray0), conv(ray1));
+	const b2Vec2 vel = conv(self.get_vel().pos);
+	const vec2fp ray0 = self.pos.pos, rayd = self.get_vel().pos * GameCore::time_mul();
+	
+	auto hit = GameCore::get().get_phy().raycast_nearest(conv(ray0), conv(ray0 + rayd));
 	if (!hit) return;
 	
-	auto apply = [&](Entity* tar, float k, b2Vec2 at)
+	auto apply = [&](Entity* tar, float k, b2Vec2 at, b2Vec2 v)
 	{
 		if (auto hc = tar->get<EC_Health>()) {
 			DamageQuant q = pars.dq;
@@ -29,7 +32,6 @@ void Projectile::step()
 		{
 			auto pc = tar->get<EC_Physics>();
 			if (pc) {
-				auto v = vel;
 				v.Normalize();
 				v *= k * pars.imp;
 				
@@ -43,16 +45,52 @@ void Projectile::step()
 	switch (pars.type)
 	{
 	case T_BULLET:
-		apply(hit->ent, 1, hit->poi);
+		apply(hit->ent, 1, hit->poi, vel);
 		break;
 		
 	case T_AOE:
 	{
-		std::vector<PhysicsWorld::RaycastResult> cr;
-		GameCore::get().get_phy().circle_cast_nearest(cr, hit->poi, pars.rad);
-		for (auto& r : cr) {
-			float k = pars.rad_full ? 1 : std::min(1.f, std::max((pars.rad - r.distance) / pars.rad, pars.rad_min));
-			apply(r.ent, k, r.poi);
+		hit->poi -= conv(rayd * 0.1);
+		
+		GamePresenter::get().effect( pars.rad_full? FE_WPN_IMPLOSION : FE_WPN_EXPLOSION, {conv(hit->poi)}, pars.rad );
+		int num = (2 * M_PI * pars.rad) / 0.7;
+		
+		struct Obj {
+			Entity* ent;
+			b2Vec2 poi;
+			float dist;
+		};
+		std::vector<Obj> os;
+		os.reserve(num);
+		
+		for (int i=0; i<num; ++i)
+		{
+			vec2fp d(pars.rad, 0);
+			d.rotate(2*M_PI*i/num);
+			
+			auto res = GameCore::get().get_phy().raycast_nearest(hit->poi, hit->poi + conv(d));
+			if (!res) continue;
+			
+			auto it = std::find_if(os.begin(), os.end(), [&res](auto&& v){return v.ent == res->ent;});
+			if (it != os.end())
+			{
+				if (it->dist > res->distance) {
+					it->dist = res->distance;
+					it->poi = res->poi;
+				}
+			}
+			else {
+				auto& p = os.emplace_back();
+				p.ent = res->ent;
+				p.dist = res->distance;
+				p.poi = res->poi;
+			}
+		}
+		
+		for (auto& r : os)
+		{
+			float k = pars.rad_full ? 1 : std::min(1.f, std::max((pars.rad - r.dist) / pars.rad, pars.rad_min));
+			apply(r.ent, k, r.poi, r.poi - hit->poi);
 		}
 	}
 	break;
@@ -68,9 +106,9 @@ void Weapon::step()
 	if (!shot_was)
 	{
 		if (!del_cou.is_negative())
-			del_cou -= GameCore::get().step_len;
+			del_cou -= GameCore::step_len;
 		
-		heat_cou -= heat_decr * GameCore::get().step_len.seconds();
+		heat_cou -= heat_decr * GameCore::time_mul();
 		if (heat_cou < heat_off) heat_flag = false;
 		if (heat_cou < 0) heat_cou = 0;
 	}
@@ -124,7 +162,7 @@ void Weapon::reset()
 }
 bool Weapon::can_shoot() const
 {
-	return !heat_flag && del_cou.is_negative() && (!needs_ammo || ammo > 0);
+	return !heat_flag && !del_cou.is_positive() && (!needs_ammo || ammo > 0);
 }
 
 

@@ -228,11 +228,8 @@ public:
 			if (k == SDL_SCANCODE_F1) show_help = !show_help;
 		}
 		
-		if (pc_ent) {
-			auto e = core->get_ent(pc_ent);
-			if (!e) pc_ent = 0;
-			else e->getref<PlayerControl>().on_event(ev);
-		}
+		if (auto e = get_plr())
+			e->getref<PlayerControl>().on_event(ev);
 	}
 	void render(TimeSpan passed)
 	{
@@ -251,14 +248,15 @@ public:
 				RenAAL::get().draw_line({-t, -hsize}, {-t, hsize}, clr, w, a);
 			}
 			
-			if (pc_ent) {
-				auto e = core->get_ent(pc_ent);
-				if (!e) pc_ent = 0;
-				else e->getref<PlayerControl>().draw_ui();
-			}
+			if (auto e = get_plr())
+				e->getref<PlayerControl>().draw_hud();
 			
 			if (ph_debug_draw)
 				core->get_phy().world.DrawDebugData();
+			
+			RenImm::get().set_context(RenImm::DEFCTX_UI);
+			if (auto e = get_plr())
+				e->getref<PlayerControl>().draw_ui();
 			
 			if (show_help) {
 				auto help = "========== HELP ==========\n"
@@ -266,7 +264,6 @@ public:
 				            "WASD  - movement\n"
 				            "Space - (hold) faster movement\n"
 				            "LMB   - (hold) enable push on contact";
-				RenImm::get().set_context(RenImm::DEFCTX_UI);
 				vec2i sz = RenImm::get().text_size(help) * 2;
 				vec2i off = (RenderControl::get_size() - sz) /2;
 				RenImm::get().draw_rect({off - vec2i::one(4), sz + vec2i::one(8), true}, 0xa0);
@@ -409,6 +406,14 @@ public:
 		e->get<EC_Physics>()->body->CreateFixture(&fd);
 		
 		e->dbg_name = "terrain";
+	}
+	Entity* get_plr()
+	{
+		if (pc_ent) {
+			if (auto e = core->get_ent(pc_ent)) return e;
+			pc_ent = 0;
+		}
+		return nullptr;
 	}
 };
 

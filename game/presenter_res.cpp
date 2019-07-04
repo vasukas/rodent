@@ -56,6 +56,64 @@ void GameResBase::init_res()
 //				p.clr.a *= alpha;
 		}
 	};
+	struct WpnExplosion : ParticleGroupGenerator {
+		FColor clr   = FColor(0.2, 0.2, 1);
+		FColor clr_n = FColor(0.1, 0.1, 0.4);
+		FColor clr_p = FColor(0.2, 0.6, 0);
+		bool implode = false;
+		
+		vec2fp ctr;
+		float rad;
+		float t, dt;
+		
+		size_t begin(const Transform& tr_in, ParticleParams& p, float power_in)
+		{
+			p.size = 0.1;
+			
+			size_t num = (2 * M_PI * rad) / (p.size * 0.5);
+			if (!num) num = 3;
+			
+			ctr = tr_in.pos;
+			rad = power_in;
+			t = 0;
+			dt = (M_PI*2) / num;
+			return num;
+		}
+		void gen(ParticleParams& p)
+		{
+			p.lt = rnd_range(1.5, 2.5);
+			p.ft = p.lt * 0.25; p.lt *= 0.75;
+			p.clr = clr;
+			
+			for (int i=0; i<3; ++i) {
+				if (rnd_bool()) p.clr[i] += rnd_range(0, clr_p[i]);
+				else            p.clr[i] -= rnd_range(0, clr_n[i]);
+			}
+			
+			vec2fp r = {rad, 0};
+			r.rotate(t);
+			float vt = (p.lt + p.ft) * 0.75;
+			
+			if (!implode)
+			{
+				p.px = ctr.x;
+				p.py = ctr.y;
+				
+				p.vx = r.x / vt;
+				p.vy = r.y / vt;
+			}
+			else
+			{
+				p.px = ctr.x + r.x;
+				p.py = ctr.y + r.y;
+				
+				p.vx = -r.x / vt * 2;
+				p.vy = -r.y / vt * 2;
+			}
+			
+			t += dt;
+		}
+	};
 	
 	// FE_EXPLOSION
 	{
@@ -85,6 +143,17 @@ void GameResBase::init_res()
 		g->spd_min = 2.f;
 		g->clr0 = FColor(1, 0.5, 0, 0.5);
 		g->clr1 = FColor(1, 1, 0.2, 1.2);
+		pres->add_preset(g);
+	}
+	// FE_WPN_EXPLOSION
+	{
+		auto g = std::make_shared<WpnExplosion>();
+		pres->add_preset(g);
+	}
+	// FE_WPN_IMPLOSION
+	{
+		auto g = std::make_shared<WpnExplosion>();
+		g->implode = true;
 		pres->add_preset(g);
 	}
 	
