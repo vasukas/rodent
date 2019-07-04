@@ -1,26 +1,39 @@
 #include "damage.hpp"
 #include "physics.hpp"
 
-void EC_Health::damage(DamageType type, float val)
+void EC_Health::damage(DamageQuant q, std::optional<DamageType> calc_type)
 {
 	if (invincible) return;
-	if (type == DamageType::Direct)
+	auto type = calc_type? *calc_type : q.type;
+	
+	switch (type)
 	{
-		hp -= val;
+	case DamageType::Direct:
+	{
+		hp -= q.amount;
 		if (hp < 0) {
 			ent->destroy();
 			return;
 		}
 		
-		DamageEvent ev;
-		ev.amount = val;
+		DamageQuant ev = q;
+		ev.type = type;
 		on_damage.signal(ev);
 	}
-	else if (type == DamageType::Physical)
+	break;
+	case DamageType::Physical:
 	{
-		if (val < ph_thr) return;
-		val *= ph_k;
-		damage(DamageType::Direct, val);
+		q.amount -= ph_thr;
+		if (q.amount < 0) return;
+		q.amount *= ph_k;
+		damage(q, DamageType::Direct);
+	}
+	break;
+	case DamageType::Kinetic:
+	{
+		damage(q, DamageType::Direct);
+	}
+	break;
 	}
 }
 void EC_Health::hook(EC_Physics& ph)
@@ -30,5 +43,5 @@ void EC_Health::hook(EC_Physics& ph)
 void EC_Health::on_event(const ContactEvent& ev)
 {
 	if (ev.type == ContactEvent::T_RESOLVE)
-		damage(DamageType::Physical, ev.imp);
+		damage({ DamageType::Physical, ev.imp });
 }

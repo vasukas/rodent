@@ -8,12 +8,14 @@ struct SparseArray
 {
 	std::vector<T> vs; // data
 	std::vector<size_t> fi; // stack of free indices
+	size_t vs_expand = 128; // data is expanded in blocks of such size
 	size_t fi_expand = 128; // stack is expanded in blocks of such size
 	
 	
 	size_t new_index()
 	{
 		if (fi.empty()) {
+			::reserve_more_block(vs, vs_expand);
 			vs.emplace_back();
 			return vs.size() - 1;
 		}

@@ -42,6 +42,7 @@ struct EC_Physics : EComp
 	EC_Physics(const b2BodyDef& def); ///< Creates body
 	~EC_Physics();
 	
+	void add_circle(float radius, float mass);
 	void add_circle(b2FixtureDef& fd, float radius, float mass);
 	void add_box(b2FixtureDef& fd, vec2fp half_extents, float mass);
 	
@@ -64,6 +65,7 @@ class PhysicsWorld
 private:
 	std::unique_ptr<b2Draw> c_draw;
 	std::unique_ptr<b2ContactListener> c_lstr;
+	std::vector<std::function<void()>> post_cbs;
 	
 public:
 	struct CastResult {
@@ -72,7 +74,7 @@ public:
 		float distance; ///< Distance from start
 	};
 	struct RaycastResult : CastResult {
-		vec2fp poi; ///< Point of impact
+		b2Vec2 poi; ///< Point of impact
 	};
 	
 	GameCore& core;
@@ -86,16 +88,19 @@ public:
 	
 	
 	/// Appends result - all object along ray
-	void raycast_all(std::vector<RaycastResult>& es, vec2fp from, vec2fp to);
+	void raycast_all(std::vector<RaycastResult>& es, b2Vec2 from, b2Vec2 to);
 	
 	/// Returns nearest object hit
-	std::optional<RaycastResult> raycast_nearest(vec2fp from, vec2fp to, bool ignore_sensors = true);
+	std::optional<RaycastResult> raycast_nearest(b2Vec2 from, b2Vec2 to, bool ignore_sensors = true);
 	
 	/// Appends result - all objects inside the circle
-	void circle_cast_all(std::vector<CastResult>& es, vec2fp ctr, float radius);
+	void circle_cast_all(std::vector<CastResult>& es, b2Vec2 ctr, float radius);
 	
 	/// Appends result - objects inside the circle which are nearest to center
-	void circle_cast_nearest(std::vector<RaycastResult>& es, vec2fp ctr, float radius);
+	void circle_cast_nearest(std::vector<RaycastResult>& es, b2Vec2 ctr, float radius);
+	
+	/// Executes function after step (or immediatly, if not inside one)
+	void post_step(std::function<void()> f);
 };
 
 #endif // PHYSICS_HPP

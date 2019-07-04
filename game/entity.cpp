@@ -25,8 +25,12 @@ void EComp::unreg(ECompType type) noexcept
 
 
 
+bool Entity::is_ok() const {
+	return !was_destroyed;
+}
 void Entity::destroy() {
 	core.mark_deleted(this);
+	was_destroyed = true;
 }
 Entity::Entity( GameCore& core, EntityIndex index ) : index( index ), core( core ) {}
 Entity::~Entity() {
@@ -50,7 +54,7 @@ Transform Entity::get_vel() const
 vec2fp Entity::get_norm_dir() const
 {
 	vec2fp p{1, 0};
-	p.fastrotate( get_pos().rot );
+	p.rotate( get_pos().rot );
 	return p;
 }
 float Entity::get_radius() const

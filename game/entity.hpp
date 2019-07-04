@@ -21,8 +21,8 @@ typedef uint32_t EntityIndex;
 enum class ECompType
 {
 	// step is called on these at each core step, in same order
-	StepMovement,
 	StepLogic,
+	StepPostUtil,
 	
 	TOTAL_COUNT ///< Do not use
 };
@@ -60,6 +60,7 @@ public:
 	
 	
 	
+	bool is_ok() const; ///< Returns true if entity is active
 	void destroy(); ///< Deletes entity immediatly or at the end of the step. Index garanteed to be not used in next step
 
 	Transform get_pos() const; ///< Returns center position
@@ -74,7 +75,7 @@ public:
 	EComp* get(std::type_index type) const noexcept; ///< Returns component if exists or null
 	EComp& getref(std::type_index type) const; ///< Returns component if exists or throws
 	
-	template<class T> void add(T* c) noexcept {add(typeid(T), c);} ///< Adds new component (throws if already exists)
+	template<class T> T* add(T* c) noexcept {add(typeid(T), c); return c;} ///< Adds new component (throws if already exists)
 	template<class T> void rem() noexcept {rem(typeid(T));} ///< Destroys component if it exists
 	template<class T> T* get() const noexcept {return static_cast<T*>(get(typeid(T)));} ///< Returns component if exists or null
 	template<class T> T& getref() const {return static_cast<T&>(getref(typeid(T)));} ///< Returns component if exists or throws
@@ -84,6 +85,7 @@ private:
 	
 	std::unordered_map<std::type_index, EComp*> cs;
 	std::vector<std::unique_ptr<EComp>> cs_ord;
+	bool was_destroyed = false;
 	
 	Entity(GameCore&, EntityIndex);
 	~Entity();

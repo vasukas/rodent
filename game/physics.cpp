@@ -5,6 +5,8 @@
 #include "render/ren_imm.hpp"
 #include "presenter.hpp"
 
+const float raycast_zero_dist = 0.05; ///< Square of distance at which raycast not performed
+
 
 
 EC_Physics::EC_Physics(const b2BodyDef& def)
@@ -18,6 +20,11 @@ EC_Physics::~EC_Physics()
 {
 	for (auto& j : js) destroy(j);
 	body->GetWorld()->DestroyBody(body);
+}
+void EC_Physics::add_circle(float radius, float mass)
+{
+	b2FixtureDef fd;
+	add_circle(fd, radius, mass);
 }
 void EC_Physics::add_circle(b2FixtureDef& fd, float radius, float mass)
 {
@@ -204,7 +211,8 @@ public:
 		ct->GetWorldManifold(&wm);
 		b2Vec2 p = b2Vec2_zero;
 		for (int i=0; i<pc; ++i) p += wm.points[i];
-		return conv(p) / pc;
+		if (pc) p *= 1.f / pc;
+		return conv(p);
 	}
 	void report(ContactEvent::Type type, b2Contact* ct, float imp)
 	{
@@ -249,8 +257,6 @@ public:
 
 PhysicsWorld::PhysicsWorld(GameCore& core): core(core), world(b2Vec2(0,0))
 {
-//	world.SetContinuousPhysics(true);
-	
 	c_lstr.reset( new PHW_Lstr );
 	world.SetContactListener( c_lstr.get() );
 	
@@ -261,9 +267,14 @@ PhysicsWorld::~PhysicsWorld() = default;
 void PhysicsWorld::step()
 {
 	world.Step(core.step_len.seconds(), 8, 3);
+	
+	for (auto& c : post_cbs) c();
+	post_cbs.clear();
 }
-void PhysicsWorld::raycast_all(std::vector<RaycastResult>& es, vec2fp from, vec2fp to)
+void PhysicsWorld::raycast_all(std::vector<RaycastResult>& es, b2Vec2 from, b2Vec2 to)
 {
+	if ((from - to).LengthSquared() < raycast_zero_dist) return;
+	
 	class Cb : public b2RayCastCallback {
 	public:
 		std::vector<RaycastResult>& es;
@@ -273,15 +284,17 @@ void PhysicsWorld::raycast_all(std::vector<RaycastResult>& es, vec2fp from, vec2
 		{
 			if (fix->IsSensor()) return 1;
 			reserve_more_block(es, 256);
-			es.push_back({ {getptr(fix->GetBody())->ent, fix->GetUserData(), frac * len}, conv(point) });
+			es.push_back({ {getptr(fix->GetBody())->ent, fix->GetUserData(), frac * len}, point });
 			return 1;
 		}
 	};
-	Cb cb(es, from.dist(to));
-	world.RayCast(&cb, conv(from), conv(to));
+	Cb cb(es, (from - to).Length());
+	world.RayCast(&cb, from, to);
 }
-std::optional<PhysicsWorld::RaycastResult> PhysicsWorld::raycast_nearest(vec2fp from, vec2fp to, bool ignore_sensors)
+std::optional<PhysicsWorld::RaycastResult> PhysicsWorld::raycast_nearest(b2Vec2 from, b2Vec2 to, bool ignore_sensors)
 {
+	if ((from - to).LengthSquared() < raycast_zero_dist) return {};
+	
 	class Cb : public b2RayCastCallback {
 	public:
 		RaycastResult res;
@@ -293,20 +306,20 @@ std::optional<PhysicsWorld::RaycastResult> PhysicsWorld::raycast_nearest(vec2fp 
 			res.ent = getptr(fix->GetBody())->ent;
 			res.fix = fix;
 			res.distance = frac;
-			res.poi = conv(point);
+			res.poi = point;
 			return frac;
 		}
 	};
 	Cb cb(ignore_sensors);
-	world.RayCast(&cb, conv(from), conv(to));
+	world.RayCast(&cb, from, to);
 	
 	if (cb.res.ent) {
-		cb.res.distance *= from.dist(to);
+		cb.res.distance *= (from - to).Length();
 		return cb.res;
 	}
 	return {};
 }
-void PhysicsWorld::circle_cast_all(std::vector<CastResult>& es, vec2fp ctr, float radius)
+void PhysicsWorld::circle_cast_all(std::vector<CastResult>& es, b2Vec2 ctr, float radius)
 {
 	class Cb : public b2QueryCallback {
 	public:
@@ -325,26 +338,46 @@ void PhysicsWorld::circle_cast_all(std::vector<CastResult>& es, vec2fp ctr, floa
 			if (d < rad*rad)
 			{
 				reserve_more_block(es, 256);
-				es.push_back({ getptr(fix->GetBody())->ent, fix->GetUserData(), std::sqrt(d) });
+				es.push_back({ getptr(fix->GetBody())->ent, fix->GetUserData(), d > 0 ? std::sqrt(d) : 0 });
 			}
 			return true;
 		}
 	};
-	Cb cb(es, radius, conv(ctr));
+	Cb cb(es, radius, ctr);
 	b2AABB box;
-	box.lowerBound = conv(ctr - vec2fp::one(radius));
-	box.upperBound = conv(ctr + vec2fp::one(radius));
+	box.lowerBound = ctr - b2Vec2(radius, radius);
+	box.upperBound = ctr + b2Vec2(radius, radius);
 	world.QueryAABB(&cb, box);
 }
-void PhysicsWorld::circle_cast_nearest(std::vector<RaycastResult>& es, vec2fp ctr, float radius)
+void PhysicsWorld::circle_cast_nearest(std::vector<RaycastResult>& es, b2Vec2 ctr, float radius)
 {
 	std::vector<CastResult> fc;
 	circle_cast_all(fc, ctr, radius);
 	
 	reserve_more(es, fc.size());
-	for (auto& f : fc) {
-		auto res = raycast_nearest(ctr, conv(f.ent->getref<EC_Physics>().body->GetWorldCenter()));
-		if (res && res->ent == f.ent && res->fix == f.fix)
-			es.push_back({ {f.ent, f.fix, res->distance}, res->poi });
+	for (auto& f : fc)
+	{
+		auto& eb = f.ent->getref<EC_Physics>();
+		auto p = eb.body->GetWorldCenter();
+		float dist = 0;
+		
+		bool ok = (ctr - p).LengthSquared() <= eb.b_radius * eb.b_radius + raycast_zero_dist;
+		if (!ok) {
+			auto res = raycast_nearest(ctr, p);
+			ok = res && res->ent == f.ent && res->fix == f.fix;
+			if (ok) {
+				p = res->poi;
+				dist = res->distance;
+			}
+		}
+		if (ok) es.push_back({ {f.ent, f.fix, dist}, p });
+	}
+}
+void PhysicsWorld::post_step(std::function<void()> f)
+{
+	if (!world.IsLocked()) f();
+	else {
+		reserve_more_block(post_cbs, 32);
+		post_cbs.emplace_back( std::move(f) );
 	}
 }

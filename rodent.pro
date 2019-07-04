@@ -65,8 +65,10 @@ SOURCES += \
 	game/game_core.cpp \
 	game/movement.cpp \
 	game/physics.cpp \
+	game/player_ctr.cpp \
 	game/presenter.cpp \
 	game/presenter_res.cpp \
+	game/weapon.cpp \
 	main.cpp \
 	main_loop.cpp \
 	render/camera.cpp \
@@ -150,8 +152,10 @@ HEADERS += \
 	game/game_core.hpp \
 	game/movement.hpp \
 	game/physics.hpp \
+	game/player_ctr.hpp \
 	game/presenter.hpp \
 	game/presenter_res.hpp \
+	game/weapon.hpp \
 	main_loop.hpp \
 	render/camera.hpp \
 	render/control.hpp \

@@ -1,5 +1,6 @@
 #include <random>
 #include "vaslib/vas_containers.hpp"
+#include "vaslib/vas_log.hpp"
 #include "game_core.hpp"
 #include "physics.hpp"
 #include "presenter.hpp"
@@ -50,7 +51,7 @@ public:
 		// tick systems
 		
 		for (auto& p : get_comp_list(ECompType::StepLogic))    if (p) p->step();
-		for (auto& p : get_comp_list(ECompType::StepMovement)) if (p) p->step();
+		for (auto& p : get_comp_list(ECompType::StepPostUtil)) if (p) p->step();
 		
 		phy->step();
 		GamePresenter::get().submit();
@@ -82,15 +83,12 @@ public:
 	}
 	void mark_deleted( Entity* e ) noexcept
 	{
-		if (is_in_step()) {
-			auto it = std::find_if( e_todel.begin(), e_todel.end(), [&](auto&& v){return v.get() == e;} );
-			if (it != e_todel.end()) return;
-		}
+		if (is_in_step() && e->was_destroyed) return;
 		
 		ents[e->index - 1].release();
 		
 		reserve_more_block( e_next1, 256 );
-		e_next1.push_back( e->index );
+		e_next1.push_back( e->index - 1 );
 		
 		if (!is_in_step()) delete e;
 		else e_todel.emplace_back(e);

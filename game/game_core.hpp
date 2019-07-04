@@ -8,6 +8,8 @@ class PhysicsWorld;
 
 #define GAME_THROW LOG_THROW_X
 
+#define GAME_DEBUG VLOGV
+
 
 
 /// Game entities handler

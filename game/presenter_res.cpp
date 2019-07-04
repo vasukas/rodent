@@ -218,6 +218,14 @@ void GameResBase::init_res()
 	lpt( 1, 1);
 	addobj(FColor(0.2, 1, 0.6, 1.5), vec2fp::one(hsz_proj));
 	
+	// PROJ_RAY
+	
+	// PROJ_BULLET
+	lnn(true);
+	lpt(-1, -1); lpt( 1, -1);
+	lpt( 1,  1); lpt(-1,  1);
+	addobj(FColor(1, 1, 0.2, 1.5), vec2fp(0.4, 0.005));
+	
 	// PROJ_PLASMA
 	lnn(true);
 	lpt(-1, -1); lpt( 1, -1);
@@ -238,6 +246,14 @@ void GameResBase::init_res()
 	lpt(-1, -1); lpt( 1, -1);
 	lpt( 1,  1); lpt(-1,  1);
 	addobj(FColor(1, 0.4, 0, 1), {0.2, 0.7});
+	
+	// ARM_MGUN
+	lnn(true);
+	lpt(-1, -1); lpt( 1, -1);
+	lpt( 1,  1); lpt(-1,  1);
+	addobj(FColor(1, 0.4, 0, 1), {0.4, 0.6});
+	
+	// ARM_RAYGUN
 	
 	// ARM_PLASMA
 	lnn(true);

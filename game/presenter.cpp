@@ -33,6 +33,22 @@ void EC_Render::parts(size_t id, float power, Transform rel)
 	c.power = power;
 	send(c);
 }
+size_t EC_Render::attach(size_t sprite_id, Transform rel)
+{
+	PresCommand c;
+	c.type = PresCommand::T_ATTACH;
+	c.index = sprite_id;
+	c.pos = rel;
+	send(c);
+	return att_id++;
+}
+void EC_Render::detach(size_t id)
+{
+	PresCommand c;
+	c.type = PresCommand::T_DETACH;
+	c.index = id;
+	send(c);
+}
 void EC_Render::send(PresCommand& c)
 {
 	c.obj = ent->index;
@@ -59,6 +75,15 @@ public:
 		
 		float hp = -1;
 		float obj_rad = 0; // radius
+		
+		struct Sub
+		{
+			size_t cmd; // command index
+			size_t oid;
+			Transform tr; // Relative
+		};
+		std::vector<Sub> subs;
+		size_t sub_id = 0;
 	};
 	std::vector<Object> objs;
 	
@@ -104,6 +129,22 @@ public:
 				}
 				break;
 				
+			case PresCommand::T_ATTACH:
+				{	auto& o = objs[e.obj];
+					auto& s = o.subs.emplace_back();
+					s.cmd = o.sub_id++;
+					s.oid = e.index;
+					s.tr = e.pos;
+				}
+				break;
+				
+			case PresCommand::T_DETACH:
+				{	auto& o = objs[e.obj];
+					auto it = std::find_if(o.subs.begin(), o.subs.end(), [i = e.index](auto& v){return v.cmd == i;});
+					if (it != o.subs.end()) o.subs.erase(it);
+				}
+				break;
+				
 			case PresCommand::T_FREEPARTS:
 				p_pars[e.index]->draw(e.pos, e.power);
 				break;
@@ -121,7 +162,8 @@ public:
 			if (!o.ei) continue;
 			ren.draw_inst(o.tr, o.clr, p_objs[o.oid].id);
 			
-			if (o.hp >= 0) {
+			if (o.hp >= 0)
+			{
 				const vec2fp sz = {2, 0.5};
 				
 				vec2fp base = o.tr.pos;
@@ -135,6 +177,14 @@ public:
 				imm.draw_rect(r, 0xc0ff00ff);
 				r.b.x = r.a.x + sz.x;
 				imm.draw_frame(r, 0xc0c0c0ff, 0.07);
+			}
+			
+			if (!o.subs.empty())
+			{
+				for (auto& s : o.subs) {
+					auto& p = p_objs[s.oid];
+					ren.draw_inst(o.tr.get_combined(s.tr), p.clr, p.id);
+				}
 			}
 			
 			o.tr.add(o.vel * tk);
@@ -156,8 +206,11 @@ public:
 		auto& core = GameCore::get();
 		for (auto& e : q_evs)
 		{
-			if (e.type == PresCommand::T_CREATE)
-				e.pos = core.get_ent(e.obj)->get_pos();
+			if (e.type == PresCommand::T_CREATE) {
+				auto ent = core.get_ent(e.obj);
+				if (!ent) continue;
+				e.pos = ent->get_pos();
+			}
 		}
 		for (auto& o : objs)
 		{

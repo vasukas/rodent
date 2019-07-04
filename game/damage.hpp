@@ -12,13 +12,15 @@ struct EC_Physics;
 enum class DamageType
 {
 	Direct, ///< Ignoring all coefficients and thresholds
-	Physical
+	Physical,
+	Kinetic ///< Projectile weapon
 };
 
 
 
-struct DamageEvent
+struct DamageQuant
 {
+	DamageType type;
 	float amount;
 };
 
@@ -34,14 +36,14 @@ struct EC_Health : EComp
 	float ph_k = 0.5; ///< Impulse to damage coeff
 	float ph_thr = 40.f; ///< Minimal physical impulse
 	
-	ev_signal<DamageEvent> on_damage; ///< Signalled after damage calculation
+	ev_signal<DamageQuant> on_damage; ///< Contains original type and final damage
 	
 	
 	
 	EC_Health() = default;
 	
 	void renew_hp(float max) {hp = hp_max = max;}
-	void damage(DamageType type, float value);
+	void damage(DamageQuant q, std::optional<DamageType> calc_type = {});
 	
 	void hook(EC_Physics& ph); ///< Connects to collision event
 	void on_event(const ContactEvent& ev);

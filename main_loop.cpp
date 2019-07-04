@@ -5,6 +5,7 @@
 #include "game/game_core.hpp"
 #include "game/movement.hpp"
 #include "game/physics.hpp"
+#include "game/player_ctr.hpp"
 #include "game/presenter.hpp"
 #include "render/camera.hpp"
 #include "render/control.hpp"
@@ -167,7 +168,6 @@ public:
 
 
 
-
 class ML_Game : public MainLoop
 {
 public:
@@ -182,17 +182,12 @@ public:
 	
 	std::thread thr_core;
 	State state = ST_LOADING;
-	
-	std::mutex pc_lock;
-	std::vector<SDL_Event> pc_evs;
 
 	Camera* cam;
 	EntityIndex cam_ent = 0;
 	
-	struct PC_Logic;
-	
 	std::unique_ptr<GameCore> core;
-	PC_Logic* pc_log = nullptr; // player character
+	uint32_t pc_ent = 0;
 	
 	bool ph_debug_draw = false;
 	bool show_help = false;
@@ -233,9 +228,10 @@ public:
 			if (k == SDL_SCANCODE_F1) show_help = !show_help;
 		}
 		
-		if (pc_log && (ev.type == SDL_KEYDOWN || ev.type == SDL_KEYUP)) {
-			std::unique_lock g(pc_lock);
-			pc_evs.push_back(ev);
+		if (pc_ent) {
+			auto e = core->get_ent(pc_ent);
+			if (!e) pc_ent = 0;
+			else e->getref<PlayerControl>().on_event(ev);
 		}
 	}
 	void render(TimeSpan passed)
@@ -255,23 +251,10 @@ public:
 				RenAAL::get().draw_line({-t, -hsize}, {-t, hsize}, clr, w, a);
 			}
 			
-			if (pc_log) {
-				int mx, my;
-				if ((SDL_GetMouseState(&mx, &my) & SDL_BUTTON_LEFT) == SDL_BUTTON_LEFT) {
-					vec2fp p0 = pc_log->ent->get_pos().pos;
-					
-					vec2fp mp = RenderControl::get().get_world_camera()->mouse_cast({mx, my});
-//					mp -= p0;
-//					mp.norm();
-					
-//					if (auto r = core->get_phy().raycast_nearest(p0, p0 + mp * 1000.f))
-//						mp = r->poi;
-//					else
-//						mp = p0 + mp * 1.5f;
-					
-					p0 += vec2fp(pc_log->ent->get_radius(), 0).get_rotated((mp - p0).angle());
-					RenAAL::get().draw_line(p0, mp, FColor(1, 0, 0, 1).to_px(), 0.07, 1.5f);
-				}
+			if (pc_ent) {
+				auto e = core->get_ent(pc_ent);
+				if (!e) pc_ent = 0;
+				else e->getref<PlayerControl>().draw_ui();
 			}
 			
 			if (ph_debug_draw)
@@ -293,95 +276,6 @@ public:
 	}
 	
 	
-	
-	struct PC_Logic : EComp
-	{
-		EVS_SUBSCR;
-		ML_Game* ml_game;
-		
-		static const int key_n = 5;
-		bool keyf[key_n] = {};
-		
-		const float push_angle = M_PI/3;
-		
-		PC_Logic(ML_Game* ml_game, Entity* ent_): ml_game(ml_game) {
-			ent = ent_;
-			reg(ECompType::StepLogic);
-			EVS_CONNECT1(ent->getref<EC_Physics>().ev_contact, on_cnt);
-		}
-		~PC_Logic() {
-			ml_game->state = ST_FINISH;
-			ml_game->pc_log = nullptr;
-		}
-		void step()
-		{
-			{	std::unique_lock g(ml_game->pc_lock);
-				for (auto &ev : ml_game->pc_evs)
-				{
-					const SDL_Scancode cs[key_n] = {
-						SDL_SCANCODE_A, SDL_SCANCODE_W, SDL_SCANCODE_S, SDL_SCANCODE_D, SDL_SCANCODE_SPACE
-					};
-					for (int i = 0; i < key_n; ++i)
-						if (cs[i] == ev.key.keysym.scancode)
-							keyf[i] = (ev.type == SDL_KEYDOWN);
-				}
-				ml_game->pc_evs.clear();
-			}
-
-			const vec2fp kmv[4] = {{-1, 0}, {0, -1}, {0, 1}, {1, 0}};
-			vec2fp mv = {};
-			for (int i=0; i<4; ++i) if (keyf[i]) mv += kmv[i];
-			if (!mv.is_zero(0.1)) mv.norm();
-			
-			auto& mov = ent->getref<EC_Movement>();
-			mv *= keyf[4] ? 14.f : 8.f;
-			mov.dec_inert = TimeSpan::seconds(keyf[4] ? 2 : 1);
-			mov.set_app_vel(mv);
-			
-			int mx, my;
-			SDL_GetMouseState(&mx, &my);
-			vec2fp mp = RenderControl::get().get_world_camera()->mouse_cast({mx, my});
-			mp -= ent->get_pos().pos;
-			float ma = mp.angle() + M_PI_2;
-			float ca = ent->getref<EC_Physics>().body->GetAngle();
-			if (std::fabs(wrap_angle(ma - ca)) > 0.1)
-			{
-				ma = std::remainder(ma - ca, M_PI*2) / M_PI;
-				ma /= ent->core.step_len.seconds();
-				ent->getref<EC_Physics>().body->ApplyAngularImpulse(ma, true);
-			}
-		}
-		void on_event(SDL_Event& ev) {
-			if (ev.type == SDL_KEYDOWN || ev.type == SDL_KEYUP) {
-				const SDL_Scancode cs[key_n] = {
-				    SDL_SCANCODE_A, SDL_SCANCODE_W, SDL_SCANCODE_S, SDL_SCANCODE_D, SDL_SCANCODE_SPACE
-				};
-				for (int i=0; i<key_n; ++i)
-					if (cs[i] == ev.key.keysym.scancode)
-						keyf[i] = (ev.type == SDL_KEYDOWN);
-			}
-		}
-		void on_cnt(const ContactEvent& ce) {
-			int mx, my;
-			if (ce.type != ContactEvent::T_BEGIN || (SDL_GetMouseState(&mx, &my) & SDL_BUTTON_LEFT) != SDL_BUTTON_LEFT) return;
-			
-			vec2fp mp = RenderControl::get().get_world_camera()->mouse_cast({mx, my});
-			mp -= ent->get_pos().pos;
-			mp.norm();
-			
-			float da = (ce.other->get_pos().pos - ent->get_pos().pos).angle();
-			if (wrap_angle(da - mp.angle()) > push_angle) return;
-			
-			auto b = ce.other->getref<EC_Physics>().body;
-			float k = 120.f;
-			b->ApplyLinearImpulseToCenter(k * conv(mp), true);
-			
-			Transform at;
-			at.rot = mp.angle();
-			at.pos = ent->get_pos().pos + vec2fp(ent->get_radius(), 0).get_rotated(at.rot);
-			GamePresenter::get().effect(FE_SHOOT_DUST, at);
-		}
-	};
 	
 	const float hsize = 15.f; // level
 	
@@ -419,7 +313,7 @@ public:
 				if (hp_show.is_negative())
 					ent->getref<EC_Render>().hp_shown = false;
 			}
-			void on_event(const DamageEvent& )
+			void on_event(const DamageQuant& )
 			{
 				hp_show = TimeSpan::seconds(3);
 				ent->getref<EC_Render>().hp_shown = true;
@@ -465,27 +359,8 @@ public:
 			e->dbg_name = big? "Heavy" : "Box";
 		}
 		{
-			auto e = core->create_ent();
-			e->add(new EC_Render(e, OBJ_PC));
-			
-			b2BodyDef bd;
-			bd.type = b2_dynamicBody;
-			bd.position = {0, 0};
-			e->add(new EC_Physics(bd));
-			
-			b2FixtureDef fd;
-			fd.friction = 0.3;
-			fd.restitution = 0.5;
-			e->get<EC_Physics>()->add_circle(fd, rb.hsz_rat, 15.f);
-			
-			pc_log = new PC_Logic(this, e);
-			e->add(pc_log);
-			
-			auto mov = new EC_Movement;
-			mov->damp_lin = 2.f;
-			e->add(mov);
-			
-			e->dbg_name = "PC";
+			auto e = PlayerControl::create(*core, {});
+			pc_ent = e->index;
 			cam_ent = e->index;
 		}
 		

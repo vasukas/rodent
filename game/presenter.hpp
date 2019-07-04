@@ -23,7 +23,11 @@ struct EC_Render : EComp
 	~EC_Render();
 	void parts(size_t id, float power = 1.f, Transform rel = {});
 	
+	size_t attach(size_t sprite_id, Transform rel); ///< Adds attached object, returns id
+	void detach(size_t id);
+	
 private:
+	size_t att_id = 0;
 	void send(PresCommand& c);
 };
 
@@ -37,6 +41,8 @@ struct PresCommand
 		T_CREATE, ///< new object; [sprite index] (note - internally also uses pos)
 		T_DEL, ///< delete object with post-effect; [pos]
 		T_OBJPARTS, ///< generate particles onto obj [preset index, pos (relative), power]
+		T_ATTACH, ///< attaches object; [sprite index, pos (relative)]
+		T_DETACH, ///< detaches object; [index]
 		
 		// general
 		T_FREEPARTS ///< generate particles [\preset index, pos, power]
