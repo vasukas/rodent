@@ -184,8 +184,7 @@ public:
 	
 	
 	PHW_Draw() {
-		// e_shapeBit | e_jointBit | e_aabbBit | e_pairBit | e_centerOfMassBit
-		SetFlags( e_shapeBit );
+		SetFlags( e_shapeBit | e_centerOfMassBit );
 	}
 	void DrawPolygon(const b2Vec2* vertices, int32 vertexCount, const b2Color& color)
 	{
@@ -207,7 +206,11 @@ public:
 	{
 		draw_line(p1, p2, color);
 	}
-	void DrawTransform(const b2Transform& xf) {(void) xf;}
+	void DrawTransform(const b2Transform& xf)
+	{
+		draw_line(xf.p, xf.p + xf.q.GetXAxis(), b2Color(1, 0, 0));
+		draw_line(xf.p, xf.p + xf.q.GetYAxis(), b2Color(0, 0, 1));
+	}
 	void DrawPoint(const b2Vec2& p, float32 size, const b2Color& color)
 	{
 		b2Vec2 vs[4];

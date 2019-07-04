@@ -50,8 +50,13 @@ public:
 		
 		// tick systems
 		
-		for (auto& p : get_comp_list(ECompType::StepLogic))    if (p) p->step();
-		for (auto& p : get_comp_list(ECompType::StepPostUtil)) if (p) p->step();
+		auto step_comp = [this](ECompType type)
+		{
+			auto& cs = get_comp_list(type);
+			for (size_t i=0; i<cs.size(); ++i) if (cs[i]) cs[i]->step();
+		};
+		step_comp(ECompType::StepLogic);
+		step_comp(ECompType::StepPostUtil);
 		
 		phy->step();
 		GamePresenter::get().submit();
@@ -64,7 +69,7 @@ public:
 	Entity* create_ent() noexcept
 	{
 		size_t i = ents.new_index();
-		auto e = new Entity( *this, i + 1 );
+		auto e = new Entity(i + 1);
 		ents[i].reset( e );
 		return e;
 	}

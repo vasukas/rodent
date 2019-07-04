@@ -245,13 +245,13 @@ void GameResBase::init_res()
 	lnn(true);
 	lpt(-1, -1); lpt( 1, -1);
 	lpt( 1,  1); lpt(-1,  1);
-	addobj(FColor(1, 0.4, 0, 1), {0.2, 0.7});
+	addobj(FColor(1, 0.4, 0, 1), {0.7, 0.2});
 	
 	// ARM_MGUN
 	lnn(true);
 	lpt(-1, -1); lpt( 1, -1);
 	lpt( 1,  1); lpt(-1,  1);
-	addobj(FColor(1, 0.4, 0, 1), {0.4, 0.6});
+	addobj(FColor(1, 0.4, 0, 1), {0.6, 0.4});
 	
 	// ARM_RAYGUN
 	
@@ -262,5 +262,5 @@ void GameResBase::init_res()
 	lnn(true);
 	lpt(-1, -2); lpt( 0, -2);
 	lpt( 0, -1); lpt(-1, -1);
-	addobj(FColor(1, 0.4, 0, 1), {0.25, 0.5});
+	addobj(FColor(1, 0.4, 0, 1), {0.5, 0.25});
 }

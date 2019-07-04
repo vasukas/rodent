@@ -309,7 +309,7 @@ public:
 			void step()
 			{
 				if (hp_too_low) return;
-				hp_show -= ent->core.step_len;
+				hp_show -= GameCore::step_len;
 				if (hp_show.is_negative())
 					ent->getref<EC_Render>().hp_shown = false;
 			}

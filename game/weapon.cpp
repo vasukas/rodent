@@ -49,7 +49,7 @@ void Projectile::step()
 	case T_AOE:
 	{
 		std::vector<PhysicsWorld::RaycastResult> cr;
-		ent->core.get_phy().circle_cast_nearest(cr, hit->poi, pars.rad);
+		GameCore::get().get_phy().circle_cast_nearest(cr, hit->poi, pars.rad);
 		for (auto& r : cr) {
 			float k = pars.rad_full ? 1 : std::min(1.f, std::max((pars.rad - r.distance) / pars.rad, pars.rad_min));
 			apply(r.ent, k, r.poi);
@@ -79,7 +79,7 @@ void Weapon::step()
 void Weapon::shoot(Transform from, Transform at, Entity* src)
 {
 	if (!can_shoot()) return;
-	float shlen = std::max(shoot_delay.seconds(), GameCore::get().step_len.seconds());
+	float shlen = std::max((float)shoot_delay.seconds(), GameCore::time_mul());
 	
 	if (needs_ammo) ammo -= ammo_speed * shlen;
 	del_cou = shoot_delay;
@@ -89,7 +89,8 @@ void Weapon::shoot(Transform from, Transform at, Entity* src)
 	
 	Entity* e = GameCore::get().create_ent();
 	e->add(new EC_Render(e, proj_sprite));
-
+	
+	from.rot = (at.pos - from.pos).angle();
 	vec2fp vel = proj_spd * (at.pos - from.pos).get_norm();
 	e->add(new EC_VirtualBody(from, true))->set_vel(vel);
 	

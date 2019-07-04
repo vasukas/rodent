@@ -29,10 +29,9 @@ bool Entity::is_ok() const {
 	return !was_destroyed;
 }
 void Entity::destroy() {
-	core.mark_deleted(this);
+	GameCore::get().mark_deleted(this);
 	was_destroyed = true;
 }
-Entity::Entity( GameCore& core, EntityIndex index ) : index( index ), core( core ) {}
 Entity::~Entity() {
 	for (auto it = cs_ord.rbegin(); it != cs_ord.rend(); ++it) it->reset();
 }

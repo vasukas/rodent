@@ -38,7 +38,7 @@ struct GameResBase
 	const float hsz_heavy = 1.5;
 	const float hsz_rat = 0.6;
 	const float hsz_proj = 0.2;
-	const vec2fp hsz_shld = {2, 0.7};
+	const vec2fp hsz_shld = {0.7, 2};
 	
 	static GameResBase& get();
 	void init_res();

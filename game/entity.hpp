@@ -54,8 +54,6 @@ class Entity final
 {
 public:
 	const EntityIndex index;
-	GameCore& core;
-	
 	std::string dbg_name = {};
 	
 	
@@ -87,7 +85,7 @@ private:
 	std::vector<std::unique_ptr<EComp>> cs_ord;
 	bool was_destroyed = false;
 	
-	Entity(GameCore&, EntityIndex);
+	Entity(EntityIndex index) : index(index) {}
 	~Entity();
 };
 

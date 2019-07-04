@@ -97,7 +97,7 @@ float wrap_angle(float x)
 
 vec2i vec2i::get_rotated (double angle) const
 {
-	float c = sin(angle + M_PI_2), s = sin(angle);
+	float c = cos(angle), s = sin(angle);
 	return vec2i (
 		c * x - s * y,
 		s * x + c * y
@@ -128,7 +128,7 @@ vec2i::operator vec2fp() const
 
 vec2fp vec2fp::get_rotated (double angle) const
 {
-	float c = sin(angle + M_PI_2), s = sin(angle);
+	float c = cos(angle), s = sin(angle);
 	return vec2fp (
 		c * x - s * y,
 		s * x + c * y

@@ -32,7 +32,7 @@ void EC_Movement::step()
 {
 	b2Body* body = ent->getref<EC_Physics>().body;
 	const b2Vec2 vel = body->GetLinearVelocity();
-	const float tmul = ent->core.step_len.seconds();
+	const float tmul = GameCore::time_mul();
 	
 	b2Vec2 corr{0, 0};
 	bool wake = (tarx.st != T_NONE) || (tary.st != T_NONE);

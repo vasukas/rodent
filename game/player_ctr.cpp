@@ -128,24 +128,29 @@ void PC_Impl::on_event(const SDL_Event& ev)
 }
 void PC_Impl::draw_ui()
 {
+	auto wpn = ent->getref<EC_Equipment>().wpn_ptr();
+	
 	int mx, my;
-	if (SDL_GetMouseState(&mx, &my) & SDL_BUTTON_RIGHT) {
+	if (SDL_GetMouseState(&mx, &my) & SDL_BUTTON_RMASK)
+	{
 		vec2fp p0 = ent->get_pos().pos;
 		
 		vec2fp mp = RenderControl::get().get_world_camera()->mouse_cast({mx, my});
-//		mp -= p0;
-//		mp.norm();
-
-//		if (auto r = ent->core.get_phy().raycast_nearest(p0, p0 + mp * 1000.f))
-//			mp = r->poi;
-//		else
-//			mp = p0 + mp * 1.5f;
+		if (wpn)
+		{
+			mp -= p0;
+			mp.norm();
+	
+			if (auto r = GameCore::get().get_phy().raycast_nearest(conv(p0), conv(p0 + 1000.f * mp)))
+				mp = conv(r->poi);
+			else
+				mp = p0 + mp * 1.5f;
+		}
 		
 		p0 += vec2fp(ent->get_radius(), 0).get_rotated((mp - p0).angle());
 		RenAAL::get().draw_line(p0, mp, FColor(1, 0, 0, 1).to_px(), 0.07, 1.5f);
 	}
 	
-	auto wpn = ent->getref<EC_Equipment>().wpn_ptr();
 	uint32_t wpn_clr;
 	if (!wpn) wpn_clr = 0x2080ffff;
 	else if (wpn->can_shoot()) wpn_clr = 0x20ff20ff;
@@ -175,19 +180,19 @@ void PC_Impl::step()
 	if (std::fabs(wrap_angle(ma - ca)) > 0.1)
 	{
 		ma = std::remainder(ma - ca, M_PI*2) / M_PI;
-		ma /= ent->core.step_len.seconds();
+		ma /= GameCore::time_mul();
 		ent->getref<EC_Physics>().body->ApplyAngularImpulse(ma, true);
 	}
 	
 	auto wpn = ent->getref<EC_Equipment>().wpn_ptr();
-	if (wpn && (mou_st & SDL_BUTTON_LEFT))
+	if (wpn && (mou_st & SDL_BUTTON_LMASK))
 		wpn->shoot(ent, {mp_or});
 }
 void PC_Impl::on_cnt(const ContactEvent& ce)
 {
 	int mx, my;
 	if (ce.type != ContactEvent::T_BEGIN ||
-	    !(SDL_GetMouseState(&mx, &my) & SDL_BUTTON_LEFT) ||
+	    !(SDL_GetMouseState(&mx, &my) & SDL_BUTTON_LMASK) ||
 	    ent->getref<EC_Equipment>().wpn_ptr()) return;
 	
 	vec2fp mp = RenderControl::get().get_world_camera()->mouse_cast({mx, my});
