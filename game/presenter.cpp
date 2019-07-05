@@ -73,8 +73,8 @@ public:
 		FColor clr;
 		size_t oid;
 		
-		float hp = -1;
-		float obj_rad = 0; // radius
+		float hp;
+		float obj_rad; // radius
 		
 		struct Sub
 		{
@@ -83,7 +83,15 @@ public:
 			Transform tr; // Relative
 		};
 		std::vector<Sub> subs;
-		size_t sub_id = 0;
+		size_t sub_id;
+
+		void reset() {
+			vel = {};
+			hp = -1;
+			obj_rad = 0;
+			subs.clear();
+			sub_id = 0;
+		}
 	};
 	std::vector<Object> objs;
 	
@@ -106,10 +114,10 @@ public:
 					auto& o = objs[e.obj];
 					o.ei = e.obj;
 					o.tr = e.pos;
-					o.vel = {};
 					o.oid = e.index;
 					auto& p = p_objs[o.oid];
 					o.clr = p.clr;
+					o.reset();
 				}
 				break;
 				

@@ -515,8 +515,15 @@ MemoryFile::MemoryFile( size_t res_size )
 }
 MemoryFile* MemoryFile::from_copy( const void *data, size_t size, bool writeable )
 {
+	uint8_t *nm = (uint8_t*) malloc(size);
+	if (!nm) {
+		debugbreak();
+		VLOGE("MemoryFile::from_copy() malloc failed on {} bytes", size);
+		return nullptr;
+	}
+
 	MemoryFile* f = new MemoryFile;
-	f->mem = (uint8_t*) malloc( size );
+	f->mem = nm;
 	f->size = f->cap = size;
 	f->ptr = 0;
 	f->a_write = writeable;
@@ -599,8 +606,14 @@ size_t MemoryFile::write( const void *buf, size_t buf_size )
 			return 0;
 		}
 		
-		cap = size + buf_size;
-		mem = (uint8_t*) realloc( mem, cap );
+		if (!realloc(size + buf_size))
+		{
+			error_flag = true;
+			VLOGE("MemoryFile::write() failed");
+			if (error_throw) throw std::runtime_error("MemoryFile::write() realloc failed");
+
+			buf_size = left;
+		}
 	}
 	
 	std::memcpy( mem + ptr, buf, buf_size );
@@ -625,10 +638,9 @@ int64_t MemoryFile::get_size() const
 void MemoryFile::reserve_more( size_t bytes )
 {
 	if (!a_expand || !a_write) return;
-	if (cap < size + bytes)
-	{
-		cap = size + bytes;
-		mem = (uint8_t*) realloc( mem, cap );
+	if (cap < size + bytes) {
+		if (!realloc(size + bytes))
+			VLOGE("MemoryFile::reserve_more() failed");
 	}
 }
 void MemoryFile::reset( bool free_mem )
@@ -665,4 +677,16 @@ std::unique_ptr <uint8_t[], MemoryFile::malloc_deleter> MemoryFile::release( siz
 	reset( true );
 	
 	return std::unique_ptr <uint8_t[], malloc_deleter>( ret );
+}
+bool MemoryFile::realloc(size_t n_cap)
+{
+	if (uint8_t *nm = (uint8_t*) std::realloc(mem, n_cap))
+	{
+		mem = nm;
+		cap = n_cap;
+		return true;
+	}
+	debugbreak();
+	VLOGE("MemoryFile::realloc() failed");
+	return false;
 }

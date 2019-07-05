@@ -49,7 +49,7 @@ class TUI_Surface
 public:
 	vec2i size = {};
 	std::vector<TUI_Char> cs;
-	bool upd_any;
+	bool upd_any = false;
 	
 	
 	TUI_Surface() = default;

@@ -260,6 +260,11 @@ void GameResBase::init_res()
 	auto lnn = [&](bool loop){ ps.emplace_back().loop = loop; };
 	auto lpt = [&](float x, float y){ ps.back().ps.push_back({x, y}); };
 	
+	// OBJ_NONE
+	lnn(false); lpt(-1, -1); lpt(1, 1);
+	lnn(false); lpt(-1, 1); lpt(1, -1);
+	addobj(FColor(1, 0, 0, 1), vec2fp::one(3));
+
 	// OBJ_PC
 	lnn(true);
 	lpt(0, -1);

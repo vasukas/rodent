@@ -19,6 +19,7 @@ enum FreeEffect
 };
 enum ObjList
 {
+	OBJ_NONE,
 	OBJ_PC,
 	OBJ_BOX,
 	OBJ_HEAVY,

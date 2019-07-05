@@ -241,6 +241,7 @@ private:
 	bool a_write, a_expand;
 	
 	MemoryFile() = default;
+	bool realloc(size_t n_cap);
 };
 
 #endif // VAS_FILE_HPP

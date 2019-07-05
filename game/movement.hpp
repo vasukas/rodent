@@ -30,7 +30,7 @@ private:
 	enum TarSt {T_NONE, T_VEL, T_ZERO};
 	struct TarDir {
 		TarSt st = T_NONE;
-		float vel;
+		float vel = 0;
 		TimeSpan left;
 	};
 	TarDir tarx, tary;
