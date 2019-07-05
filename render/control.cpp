@@ -69,6 +69,9 @@ public:
 	
 	std::vector< std::function<void()> > cb_resize;
 	vec2i old_size;
+
+	FullscreenValue fs_cur = FULLSCREEN_OFF;
+	vec2i nonfs_size; // windowed size
 	
 	
 	
@@ -98,8 +101,11 @@ public:
 //		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
 		
 		auto wnd_sz = AppSettings::get().wnd_size;
+		nonfs_size = wnd_sz;
 		if (opt_fullscreen)
 		{
+			fs_cur = FULLSCREEN_ENABLED;
+
 			SDL_DisplayMode d_dm;
 			SDL_GetDesktopDisplayMode(0, &d_dm);
 			wnd_sz = {d_dm.w, d_dm.h};
@@ -246,6 +252,7 @@ public:
 		{
 			for (auto& c : cb_resize) if (c) c();
 			old_size = n_size;
+			if (fs_cur == FULLSCREEN_OFF) nonfs_size = old_size;
 		}
 		
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -318,6 +325,8 @@ public:
 	}
 	void set_fscreen(FullscreenValue val)
 	{
+		if (val == fs_cur) return;
+		
 		Uint32 fs;
 		switch (val)
 		{
@@ -337,17 +346,26 @@ public:
 			SDL_DisplayMode dm;
 			SDL_GetWindowDisplayMode(wnd, &dm);
 
+			SDL_SetWindowSize(wnd, d_dm.w, d_dm.h); // Windows fix
+
 			dm.w = d_dm.w, dm.h = d_dm.h;
 			if (SDL_SetWindowDisplayMode(wnd, &dm))
 				VLOGE("SDL_SetWindowDisplayMode failed - {}", SDL_GetError());
 		}
+		else if (val == FULLSCREEN_OFF)
+		{
+			SDL_SetWindowSize(wnd, nonfs_size.x, nonfs_size.y);
+			SDL_SetWindowPosition(wnd, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+		}
+
+		fs = SDL_GetWindowFlags(wnd);
+		if ((fs & SDL_WINDOW_FULLSCREEN_DESKTOP) == SDL_WINDOW_FULLSCREEN_DESKTOP) fs_cur = FULLSCREEN_DESKTOP;
+		else if ((fs & SDL_WINDOW_FULLSCREEN) == SDL_WINDOW_FULLSCREEN) fs_cur = FULLSCREEN_ENABLED;
+		else fs_cur = FULLSCREEN_OFF;
 	}
 	FullscreenValue get_fscreen()
 	{
-		Uint32 fs = SDL_GetWindowFlags(wnd);
-		if ((fs & SDL_WINDOW_FULLSCREEN_DESKTOP) == SDL_WINDOW_FULLSCREEN_DESKTOP) return FULLSCREEN_DESKTOP;
-		else if ((fs & SDL_WINDOW_FULLSCREEN) == SDL_WINDOW_FULLSCREEN) return FULLSCREEN_ENABLED;
-		return FULLSCREEN_OFF;
+		return fs_cur;
 	}
 	Shader* load_shader( const char *name, std::function <void(Shader&)> reload_cb, bool is_crit )
 	{

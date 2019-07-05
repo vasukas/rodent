@@ -86,12 +86,12 @@ void ParticleGroupStd::gen(ParticleParams& p)
 class ParticleRenderer_Impl : public ParticleRenderer
 {
 public:
+	const int per_part = 5*4; // values per particle
 	const int part_lim_step = 10000;
 	int part_lim = 0; // max number of particles
-	int per_part = 20; // values per particle
 	
-	GLA_VertexArray vao;
-	std::array<std::shared_ptr<GLA_Buffer>, 2> bufs;
+	GLA_VertexArray vao[2];
+	std::shared_ptr<GLA_Buffer> bufs[2];
 	std::vector<float> upd_data; // buffer data
 	
 	std::unique_ptr<Shader> sh_calc;
@@ -111,13 +111,18 @@ public:
 	
 	ParticleRenderer_Impl()
 	{
-		bufs[0].reset( new GLA_Buffer(0) );
-		bufs[1].reset( new GLA_Buffer(0) );
-		resize_bufs(0);
+		for (int i=0; i<2; ++i) {
+			bufs[i].reset( new GLA_Buffer(0) );
+			vao[i].set_attribs(std::vector<GLA_VertexArray::Attrib>(5, {bufs[i], 4}));
+		}
 		
+		resize_bufs(0);
 		sh_draw = RenderControl::get().load_shader("ps_draw");
 		
-		// load program
+		dbgm_g = DbgMenu::get().reg({[this]() {dbgm_label(FMT_FORMAT("{:5} / {:5}", gs_off_max, part_lim));},
+		                             "Particles", DBGMEN_RENDER});
+		
+		// load transform program
 		
 		auto src = readfile((Shader::load_path + "ps_calc").c_str());
 		GLuint vo = Shader::compile(GL_VERTEX_SHADER, src.value());
@@ -141,13 +146,10 @@ public:
 		
 		sh_calc.reset(new Shader(prog));
 		sh_calc->dbg_name = "ps_calc";
-		
-		dbgm_g = DbgMenu::get().reg({[this]() {dbgm_label(FMT_FORMAT("{:5} / {:5}", gs_off_max, part_lim));},
-		                             "Particles", DBGMEN_RENDER});
 	}
 	void resize_bufs(int additional)
 	{
-		int new_lim = part_lim + part_lim_step + additional;
+		int new_lim = part_lim + part_lim_step * (1 + additional / part_lim_step);
 		VLOGD("ParticleRenderer::add_group() limit reached: {} -> {}", part_lim, new_lim);
 		
 		std::vector<float> tmp;
@@ -165,33 +167,42 @@ public:
 		sh_calc->bind();
 		sh_calc->set1f("passed", passed.seconds());
 		
-		vao.set_attribs(std::vector<GLA_VertexArray::Attrib>(5, {bufs[0], 4}));
-		
+		vao[0].bind();
 		glEnable(GL_RASTERIZER_DISCARD);
-		glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, bufs[1]->vbo);
+		glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, vao[1].bufs[0]->vbo);
 		glBeginTransformFeedback(GL_POINTS);
 		
-		int ptr = 0;
-		for (size_t gi=0; gi<gs.size(); gi++) {
+		int ptr = 0, l_off, l_num = 0;
+		for (size_t gi=0; gi<gs.size(); gi++)
+		{
 			Group& g = gs[gi];
 			
 			g.time_left -= passed;
-			if (g.time_left.is_negative()) {
+			if (g.time_left.is_negative())
+			{
+				if (l_num) {
+					glDrawArrays(GL_POINTS, l_off, l_num);
+					l_num = 0;
+				}
+				
 				gs.erase( gs.begin() + gi );
 				--gi;
 				continue;
 			}
 			
-			glDrawArrays(GL_POINTS, g.off, g.num);
+			if (!l_num) l_off = g.off;
+			l_num += g.num;
+			
 			g.off = ptr;
 			ptr += g.num;
 		}
+		if (l_num) glDrawArrays(GL_POINTS, l_off, l_num);
 		gs_off_max = ptr;
 		
 		glEndTransformFeedback();
 		glDisable(GL_RASTERIZER_DISCARD);
 		
-		bufs[0].swap(bufs[1]);
+		vao[0].swap(vao[1]);
 	}
 	
 	
@@ -201,11 +212,12 @@ public:
 		if (gs.empty()) return;
 		
 		update(passed);
+		if (!gs_off_max) return;
 		
 		sh_draw->bind();
 		sh_draw->set4mx("proj", RenderControl::get().get_world_camera()->get_full_matrix());
 		
-		vao.set_attribs(std::vector<GLA_VertexArray::Attrib>(5, {bufs[0], 4}));
+		vao[0].bind();
 		glDrawArrays(GL_POINTS, 0, gs_off_max);
 	}
 	void add(ParticleGroupGenerator& group, const Transform& tr, float power)
@@ -265,7 +277,7 @@ public:
 			d[3] = 1.f / p.ft;
 			d += 4;
 			
-			// color
+			// color (const)
 			d[0] = p.clr.r;
 			d[1] = p.clr.g;
 			d[2] = p.clr.b;
@@ -274,7 +286,7 @@ public:
 		
 		// finish
 		
-		bufs[0]->update_part(gs.back().off * per_part, num * per_part, data);
+		vao[0].bufs[0]->update_part(gs.back().off * per_part, num * per_part, data);
 		gs.back().time_left.set_seconds(max_time);
 		group.end();
 	}

@@ -114,18 +114,18 @@ GLA_VertexArray::~GLA_VertexArray()
 }
 GLA_VertexArray::GLA_VertexArray( GLA_VertexArray&& obj )
 {
-	std::swap( vao, obj.vao );
-	std::swap(bufs, obj.bufs);
+	std::swap(vao, obj.vao);
+	bufs.swap(obj.bufs);
 }
 void GLA_VertexArray::operator =( GLA_VertexArray&& obj )
 {
-	std::swap( vao, obj.vao );
-	std::swap(bufs, obj.bufs);
+	std::swap(vao, obj.vao);
+	bufs.swap(obj.bufs);
 }
 void GLA_VertexArray::swap(GLA_VertexArray& obj)
 {
-	std::swap(vao,  obj.vao);
-	std::swap(bufs, obj.bufs);
+	std::swap(vao, obj.vao);
+	bufs.swap(obj.bufs);
 }
 void GLA_VertexArray::bind()
 {
