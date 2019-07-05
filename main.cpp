@@ -1,5 +1,6 @@
 #include <SDL2/SDL.h>
 #include "core/dbg_menu.hpp"
+#include "core/gamepad.hpp"
 #include "core/tui_layer.hpp"
 #include "render/control.hpp"
 #include "render/gl_utils.hpp" // debug stats
@@ -290,6 +291,8 @@ int main( int argc, char *argv[] )
 	set_wnd_pars();
 	VLOGI("Basic initialization finished in {:6.3} seconds", (TimeSpan::since_start() - time_init).seconds());
 	
+	SDL_PumpEvents(); // just in case
+	
 	MainLoop::init( ml_which );
 	if (!MainLoop::current)
 	{
@@ -391,6 +394,8 @@ int main( int argc, char *argv[] )
 		}
 		
 		if (!run) break;
+		Gamepad::update();
+		
 		MainLoop::current->render( passed );
 		
 		vec2i scr_size = RenderControl::get().get_size();

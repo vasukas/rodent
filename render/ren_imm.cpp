@@ -499,6 +499,58 @@ public:
 		tri.build();
 		draw_text( at, tri, clr, center, size_k );
 	}
+	void draw_text (vec2fp at, std::vector<std::pair<std::string, FColor>> strs)
+	{
+		if (!can_add(true) || strs.empty()) return;
+		const float size_k = 1.f;
+		
+		std::string tmp;
+		tmp.reserve(4096);
+		for (size_t si = 0; si < strs.size(); )
+		{
+			auto& s = strs[si].first;
+			tmp += s;
+			
+			size_t i = 0;
+			while (true) {
+				i = s.find('\n', i);
+				if (i == std::string::npos) break;
+				s.erase(i);
+			}
+			if (s.empty()) strs.erase( strs.begin() + si );
+			else ++si;
+		}
+		
+		TextRenderInfo tri;
+		tri.str_a = tmp.data();
+		tri.length = tmp.length();
+		tri.build();
+		if (tri.cs.empty()) return;
+		
+		auto prev = tri.cs.front().tex.tex;
+		size_t c_cou = 0;
+		size_t clr_i = 0;
+		
+		reserve( tri.cs.size() );
+		for (auto &c : tri.cs)
+		{
+			if (prev != c.tex.tex || c_cou == strs[clr_i].first.length())
+			{
+				add_obj( prev->get_obj(), strs[clr_i].second.to_px(), true );
+				prev = c.tex.tex;
+				
+				if (c_cou == strs[clr_i].first.length() && clr_i != strs.size() - 1) {
+					++clr_i;
+					c_cou = 0;
+				}
+			}
+			
+			vec2fp p = c.pos.lower();
+			add_rect({ p * size_k + at, vec2fp(c.pos.size()) * size_k, true }, c.tex.tc);
+			++c_cou;
+		}
+		add_obj( prev->get_obj(), strs[clr_i].second.to_px(), true );
+	}
 	void draw_vertices(const std::vector<vec2fp>& vs)
 	{
 		reserve(vs.size() / 6);

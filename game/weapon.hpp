@@ -41,7 +41,7 @@ struct Projectile : EComp
 
 
 struct Weapon
-{
+{	
 	Projectile::Params pars;
 	TimeSpan shoot_delay = TimeSpan::seconds(0.5);
 	
@@ -54,13 +54,16 @@ struct Weapon
 	float heat_off = 0.5; ///< Overheating disabled when lower
 	float heat_incr = 0.3; ///< Overheat increase per second of shooting
 	float heat_decr = 0.5; ///< Overheat decrease per second of non-shooting
-	
+
 	size_t ren_id = size_t_inval; ///< Rendering object ID
 	Transform ren_tr = {}; ///< Rendering transform relative to parent
+	std::string name;
 	
 	bool needs_ammo = false; ///< If true, consumes ammo
 	float ammo_speed = 0.f; ///< Ammo per second of shooting
 	float ammo = 1.f; ///< Current ammo value
+	
+	std::optional<float> disp; ///< Dispersion angle. If used, targeting is impossible
 	
 	
 	
@@ -72,9 +75,10 @@ struct Weapon
 	void reset(); ///< Resets counters (except ammo)
 	
 	bool can_shoot() const; ///< Returns true if capable of shooting now
-	float get_heat() const {return heat_cou;}
 	
-private:
+	
+	
+//private:	
 	TimeSpan del_cou; ///< Delay counter
 	float heat_cou; ///< Current heat value
 	bool heat_flag; ///< Is overheated
@@ -93,6 +97,7 @@ struct EC_Equipment : EComp
 	void step();
 	
 	bool set_wpn(size_t index); ///< Returns false if can't
+	size_t wpn_index() {return wpn_cur;} ///< size_t_inval if none
 	
 	Weapon* wpn_ptr(); ///< Returns current weapon (or nullptr if none)
 	Weapon& get_wpn(); ///< Returns current weapon (throws if none)

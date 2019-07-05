@@ -8,6 +8,7 @@
 
 enum class FontIndex;
 class  Camera;
+struct FColor;
 class  Shader;
 struct TextRenderInfo;
 
@@ -107,6 +108,9 @@ public:
 	
 	/// Draw unicode string starting at specified coordinates
 	virtual void draw_text (vec2fp at, std::u32string_view str, uint32_t clr, bool centered = false, float size_k = 1.f) = 0;
+	
+	/// Draw ASCII string, with separately colored characters (count, color)
+	virtual void draw_text (vec2fp at, std::vector<std::pair<std::string, FColor>> strs) = 0;
 	
 	/// Returns size of non-null ASCII string
 	static vec2i text_size (std::string_view str);

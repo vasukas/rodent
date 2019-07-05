@@ -1,11 +1,12 @@
 #include <mutex>
 #include <thread>
+#include "core/plr_control.hpp"
 #include "core/tui_layer.hpp"
 #include "game/damage.hpp"
 #include "game/game_core.hpp"
 #include "game/movement.hpp"
 #include "game/physics.hpp"
-#include "game/player_ctr.hpp"
+#include "game/player.hpp"
 #include "game/presenter.hpp"
 #include "render/camera.hpp"
 #include "render/control.hpp"
@@ -187,6 +188,7 @@ public:
 	EntityIndex cam_ent = 0;
 	
 	std::unique_ptr<GameCore> core;
+	std::shared_ptr<PlayerControl> pc_ctr;
 	uint32_t pc_ent = 0;
 	
 	bool ph_debug_draw = false;
@@ -228,8 +230,10 @@ public:
 			if (k == SDL_SCANCODE_F1) show_help = !show_help;
 		}
 		
-		if (auto e = get_plr())
-			e->getref<PlayerControl>().on_event(ev);
+		if (auto e = get_plr()) {
+			auto g = pc_ctr->lock();
+			pc_ctr->on_event(ev);
+		}
 	}
 	void render(TimeSpan passed)
 	{
@@ -249,21 +253,36 @@ public:
 			}
 			
 			if (auto e = get_plr())
-				e->getref<PlayerControl>().draw_hud();
+				e->getref<PlayerLogic>().draw_hud();
 			
 			if (ph_debug_draw)
 				core->get_phy().world.DrawDebugData();
 			
 			RenImm::get().set_context(RenImm::DEFCTX_UI);
 			if (auto e = get_plr())
-				e->getref<PlayerControl>().draw_ui();
+				e->getref<PlayerLogic>().draw_ui();
 			
 			if (show_help) {
-				auto help = "========== HELP ==========\n"
-				            "F1    - show/hide help\n"
-				            "WASD  - movement\n"
-				            "Space - (hold) faster movement\n"
-				            "LMB   - (hold) enable push on contact";
+				std::string help =
+				        "========== HELP ==========\n"
+						"F1    - show/hide help\n"
+						"WASD  - movement\n"
+						"Space - (hold) acceleration\n"
+						"LMB   - (hold) fire\n"
+						"RMB   - (hold) aim pointer\n"
+						"1-4   - switch weapons\n";
+				
+				if (pc_ctr->gpad)
+				{
+					help += "\n======= Controller =======\n"
+							"L stick - movement\n"
+							"R stick - aim\n"
+							"L trigger  - shoot\n"
+							"R shoulder - acceleration\n"
+							"D Left  - previous weapon\n"
+							"D Right - next weapon";
+				}
+				
 				vec2i sz = RenImm::get().text_size(help) * 2;
 				vec2i off = (RenderControl::get_size() - sz) /2;
 				RenImm::get().draw_rect({off - vec2i::one(4), sz + vec2i::one(8), true}, 0xa0);
@@ -278,6 +297,8 @@ public:
 	
 	void init_game()
 	{
+		pc_ctr.reset( new PlayerControl(Gamepad::open_default()) );
+		
 		GameCore::InitParams core_init;
 		core_init.random_seed = 0;
 		core.reset( GameCore::create(core_init) );
@@ -356,7 +377,7 @@ public:
 			e->dbg_name = big? "Heavy" : "Box";
 		}
 		{
-			auto e = PlayerControl::create(*core, {});
+			auto e = PlayerLogic::create(*core, {}, pc_ctr);
 			pc_ent = e->index;
 			cam_ent = e->index;
 		}

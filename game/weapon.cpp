@@ -1,3 +1,4 @@
+#include "utils/noise.hpp"
 #include "game_core.hpp"
 #include "physics.hpp"
 #include "presenter.hpp"
@@ -144,9 +145,10 @@ void Weapon::shoot(Entity* parent, std::optional<Transform> at)
 	Transform p0 = parent->get_pos();
 	
 	vec2fp dir = at? (at->pos - p0.pos).get_norm() : parent->get_norm_dir();
+	if (disp) dir.rotate( rnd_range(-*disp, *disp) );
 	p0.pos += dir * (parent->get_radius() + proj_radius);
 	
-	if (!at) {
+	if (!at || disp) {
 		*at = p0;
 		at->pos += dir;
 	}

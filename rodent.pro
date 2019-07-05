@@ -58,6 +58,8 @@ SOURCES += \
 	Box2D/Dynamics/b2WorldCallbacks.cpp \
 	console.cpp \
 	core/dbg_menu.cpp \
+	core/gamepad.cpp \
+	core/plr_control.cpp \
 	core/tui_layer.cpp \
 	core/tui_surface.cpp \
 	game/damage.cpp \
@@ -65,7 +67,7 @@ SOURCES += \
 	game/game_core.cpp \
 	game/movement.cpp \
 	game/physics.cpp \
-	game/player_ctr.cpp \
+	game/player.cpp \
 	game/presenter.cpp \
 	game/presenter_res.cpp \
 	game/weapon.cpp \
@@ -145,6 +147,8 @@ HEADERS += \
 	Box2D/Dynamics/b2WorldCallbacks.h \
 	console.hpp \
 	core/dbg_menu.hpp \
+	core/gamepad.hpp \
+	core/plr_control.hpp \
 	core/tui_layer.hpp \
 	core/tui_surface.hpp \
 	game/damage.hpp \
@@ -152,7 +156,7 @@ HEADERS += \
 	game/game_core.hpp \
 	game/movement.hpp \
 	game/physics.hpp \
-	game/player_ctr.hpp \
+	game/player.hpp \
 	game/presenter.hpp \
 	game/presenter_res.hpp \
 	game/weapon.hpp \

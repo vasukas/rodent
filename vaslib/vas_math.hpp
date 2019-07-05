@@ -46,6 +46,8 @@ inline double lint (double a, double b, double t) {return a * (1.0 - t) + b * t;
 
 vec2fp cossin_ft(float rad); ///< Table-lookup cosine (x) + sine (y)
 
+inline float deg_to_rad(float x) {return x / 180.f * M_PI;}
+
 
 
 /// 2D integer vector
