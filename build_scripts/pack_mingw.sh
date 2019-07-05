@@ -1,6 +1,12 @@
 #!/bin/bash
 
-OutFile=build/rodent-mingw32.zip
+if [ "$1" != 32 ] && [ "$1" != 64 ]; then
+	echo "Specify bits (32 or 64)"
+	exit 1
+fi
+
+Bits=$1
+OutFile=build/rodent-mingw$Bits.zip
 
 if [ ! -f ../main.cpp ]; then
 	echo "Not launched from 'build' directory"
@@ -8,7 +14,7 @@ if [ ! -f ../main.cpp ]; then
 fi
 cd ..
 
-Input=rodent-mingw32
+Input=rodent-mingw$Bits
 InputPath=/tmp
 Wp="$InputPath"/"$Input"
 
@@ -19,9 +25,9 @@ fi
 mkdir -p "$Wp"
 
 ln -s "$(pwd)"/res "$Wp"/res
-cp "$(pwd)"/build/vb_bin/rodent.exe "$Wp"
+cp "$(pwd)"/build/vb_bin/rodent_x$Bits.exe "$Wp"
 
-for F in build_libs/mingw/lib32/*.dll; do
+for F in build_libs/mingw/lib$Bits/*.dll; do
 	ln -s "$(pwd)"/"$F" "$Wp"/$(basename "$F")
 done
 

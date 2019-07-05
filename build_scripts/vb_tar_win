@@ -2,7 +2,7 @@ CmpPrefix=i686-w64-mingw32-
 Compiler=${CmpPrefix}g++
 CompilerLnk=${CmpPrefix}ar
 Platform=win
-OutputPostfix=.x32.exe
+OutputPostfix=_x32.exe
 
 Source+=(
 	../build_libs/src/*.c*

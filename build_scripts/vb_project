@@ -19,4 +19,6 @@ Flags=(
 
 	-Wno-unused-local-typedefs
 )
-LnkFlags=()
+LnkFlags=(
+	-Wno-maybe-uninitialized
+)

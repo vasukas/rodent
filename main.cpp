@@ -104,6 +104,46 @@ static std::string get_game_path(GamePath path)
 	VLOGX("get_game_path() invalid enum: {}", (int)path);
 	return {};
 }
+static void platform_info()
+{
+	SDL_version sv_comp;
+	SDL_version sv_link;
+	
+	SDL_VERSION(&sv_comp);
+	SDL_GetVersion(&sv_link);
+	
+	VLOGI("SDL version - compiled {}.{}.{}, linked {}.{}.{}",
+		  sv_comp.major, sv_comp.minor, sv_comp.patch,
+		  sv_link.major, sv_link.minor, sv_link.patch);
+	
+#ifdef __clang__
+	VLOGI("Compiled with clang {}.{}.{}", __clang_major__, __clang_minor__, __clang_patchlevel__);
+#elif defined(__GNUC__)
+	VLOGI("Compiled with GCC {}.{}.{}", __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__);
+#elif defined(_MSC_VER)
+	VLOGI("Compiled with MSVC {}", _MSC_VER);
+#else
+	VLOGI("Compiled with unknown");
+#endif
+	
+#if defined(__linux__)
+	auto ps = "Linux";
+#elif defined(__unix__)
+	auto ps = "UNIX-like";
+#elif defined(_WIN32)
+	auto ps = "Windows";
+#endif
+	
+#if INTPTR_MAX == INT64_MAX
+	int bs = 64;
+#elif INTPTR_MAX == INT32_MAX
+	int bs = 32;
+#else
+	int bs = 0;
+#endif
+	
+	VLOGI("Platform - {} ({} bits)", ps, bs);
+}
 
 
 
@@ -212,16 +252,7 @@ int main( int argc, char *argv[] )
 	VLOGD("CLI ARGUMENTS:");
 	for (int i = 0; i < argc; ++i) VLOGD( "  {}", argv[i] );
 	
-	{	SDL_version sv_comp;
-		SDL_version sv_link;
-		
-		SDL_VERSION(&sv_comp);
-		SDL_GetVersion(&sv_link);
-		
-		VLOGI("SDL version - compiled {}.{}.{}, linked {}.{}.{}",
-		      sv_comp.major, sv_comp.minor, sv_comp.patch,
-		      sv_link.major, sv_link.minor, sv_link.patch);
-	}
+	platform_info();
 	
 	if (!set_current_dir( get_game_path(GAME_PATH_RESOURCES).c_str() )) VLOGW("Can't set resources directory");
 	if (!AppSettings::get_mut().load())

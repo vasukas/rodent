@@ -12,7 +12,7 @@ Source code is licensed under MIT license.
 
 Overly complex, later will be replaced with CMake.
 
-Requires C++17 compiler with support for zero-argument variadic macros, tested only with new GCC and MSVC.
+Requires C++17 compiler with support for zero-argument variadic macros, tested only with GCC 9.1.0 and MSVC 2017.
 
 For vb.sh builds (Linux, MinGW) - call it without arguments to see usage summary.
 
@@ -59,6 +59,8 @@ Required libraries can be downloaded at:
     * MinGW binaries - <http://gnuwin32.sourceforge.net/packages/freetype.htm>
     * source - <https://sourceforge.net/projects/freetype/files/freetype2>
 * SDL2 - <https://www.libsdl.org/download-2.0.php> (binaries & source)
+
+SDL2 2.0.9 can cause lag spikes on Windows. Minimal required version - 2.0.4.
 
 #### Visual Studio
 
