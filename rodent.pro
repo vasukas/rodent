@@ -65,6 +65,7 @@ SOURCES += \
 	game/damage.cpp \
 	game/entity.cpp \
 	game/game_core.cpp \
+	game/level_ctr.cpp \
 	game/movement.cpp \
 	game/physics.cpp \
 	game/player.cpp \
@@ -154,6 +155,7 @@ HEADERS += \
 	game/damage.hpp \
 	game/entity.hpp \
 	game/game_core.hpp \
+	game/level_ctr.hpp \
 	game/movement.hpp \
 	game/physics.hpp \
 	game/player.hpp \

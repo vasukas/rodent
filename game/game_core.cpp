@@ -1,4 +1,4 @@
-#include <random>
+#include "utils/noise.hpp"
 #include "vaslib/vas_containers.hpp"
 #include "vaslib/vas_log.hpp"
 #include "game_core.hpp"
@@ -23,7 +23,7 @@ public:
 	std::vector<std::unique_ptr <Entity, Del_Entity>> e_todel; // freed at the end of step
 	
 	uint32_t step_cou = 1;
-	std::mt19937 rndg;
+	RandomGen rndg;
 	bool step_flag = false;
 	
 	
@@ -32,7 +32,7 @@ public:
 	{
 		ents.fi_expand = 256;
 		phy.reset(new PhysicsWorld(*this));
-		rndg.seed(pars.random_seed);
+		rndg.gen.seed(pars.random_seed);
 	}
 	~GameCore_Impl() = default;
 	
@@ -82,9 +82,9 @@ public:
 	{
 		return cs_list[static_cast<size_t>(type)].vs;
 	}
-	uint32_t get_random() noexcept
+	RandomGen& get_random() noexcept
 	{
-		return rndg();
+		return rndg;
 	}
 	void mark_deleted( Entity* e ) noexcept
 	{

@@ -2,6 +2,8 @@
 #include "game_core.hpp"
 #include "physics.hpp"
 
+void EntityDeleter::operator()(Entity* p) {p->destroy();}
+
 
 
 EComp::~EComp()

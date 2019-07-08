@@ -173,12 +173,12 @@ void vec2fp::rotate (float cos, float sin)
 bool Rect::intersects(const Rect& r) const
 {
 	vec2i a1 = upper(), b1 = r.upper();
-	return p0.x < b1.x && a1.x > r.p0.x && p0.y < b1.y && a1.y > r.p0.y;
+	return off.x < b1.x && a1.x > r.off.x && off.y < b1.y && a1.y > r.off.y;
 }
 bool Rect::contains(vec2i p) const
 {
 	vec2i a1 = upper();
-	return p0.x <= p.x && a1.x >= p.x && p0.y <= p.y && a1.y >= p.y;
+	return off.x <= p.x && a1.x >= p.x && off.y <= p.y && a1.y >= p.y;
 }
 Rect::operator Rectfp() const
 {
@@ -186,49 +186,44 @@ Rect::operator Rectfp() const
 }
 Rect::operator SDL_Rect() const
 {
-	return {
-		lower().x, lower().y,
-		size().x,  size().y
-	};
+	return {off.x, off.y, sz.x, sz.y};
 }
 void Rect::set(const SDL_Rect& r)
 {
-	lower({r.x, r.y});
-	size({r.w, r.h});
+	off = {r.x, r.y};
+	sz  = {r.w, r.h};
 }
 Rect calc_intersection(const Rect& A, const Rect& B)
 {
 	// taken from SDL2
 	
-	if (A.size() == vec2i(0,0) || B.size() == vec2i(0,0)) return {{}, {}, true};
+	if (A.sz == vec2i(0,0) || B.sz == vec2i(0,0)) return {{}, {}, true};
 	
 	int Amin, Amax, Bmin, Bmax;
 	Rect res;
-	vec2i res_size;
 
     Amin = A.lower().x;
-    Amax = Amin + A.size().x;
+    Amax = Amin + A.sz.x;
     Bmin = B.lower().x;
-    Bmax = Bmin + B.size().x;
+    Bmax = Bmin + B.sz.x;
     if (Bmin > Amin)
         Amin = Bmin;
-    res.raw_a().x = Amin;
+    res.off.x = Amin;
     if (Bmax < Amax)
         Amax = Bmax;
-    res_size.x = Amax - Amin;
+    res.sz.x = Amax - Amin;
 
     Amin = A.lower().y;
-    Amax = Amin + A.size().y;
+    Amax = Amin + A.sz.y;
     Bmin = B.lower().y;
-    Bmax = Bmin + B.size().y;
+    Bmax = Bmin + B.sz.y;
     if (Bmin > Amin)
         Amin = Bmin;
-    res.raw_a().y = Amin;
+    res.off.y = Amin;
     if (Bmax < Amax)
         Amax = Bmax;
-    res_size.y = Amax - Amin;
+    res.sz.y = Amax - Amin;
 	
-	res.size( res_size );
 	return res;
 }
 Rect get_bound(const Rect& a, const Rect& b)

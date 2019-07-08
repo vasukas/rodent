@@ -4,6 +4,7 @@
 #include "core/tui_layer.hpp"
 #include "game/damage.hpp"
 #include "game/game_core.hpp"
+#include "game/level_ctr.hpp"
 #include "game/movement.hpp"
 #include "game/physics.hpp"
 #include "game/player.hpp"
@@ -230,7 +231,7 @@ public:
 			if (k == SDL_SCANCODE_F1) show_help = !show_help;
 		}
 		
-		if (auto e = get_plr()) {
+		if (get_plr()) {
 			auto g = pc_ctr->lock();
 			pc_ctr->on_event(ev);
 		}
@@ -302,6 +303,9 @@ public:
 		GameCore::InitParams core_init;
 		core_init.random_seed = 0;
 		core.reset( GameCore::create(core_init) );
+		
+		LevelControl::init();
+		exit(666);
 		
 		RenAAL::get().inst_begin();
 		GameResBase::get().init_res();

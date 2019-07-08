@@ -1,6 +1,7 @@
 #ifndef PLR_CONTROL_HPP
 #define PLR_CONTROL_HPP
 
+#include <optional>
 #include <memory>
 #include <mutex>
 #include <SDL2/SDL_events.h>

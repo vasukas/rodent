@@ -15,6 +15,12 @@ class GameCore;
 /// Unique entity index, always non-zero for existing entity
 typedef uint32_t EntityIndex;
 
+/// Custom deleter (calls destroy)
+struct EntityDeleter {void operator()(Entity*);};
+
+/// Unique entity pointer
+using EntityPtr = std::unique_ptr<Entity, EntityDeleter>;
+
 
 
 /// Type of component list

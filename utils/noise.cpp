@@ -1,30 +1,51 @@
-#include <random>
+#include <sstream>
 #include "noise.hpp"
 
 
 
-bool rnd_bool()
+static RandomGen def_gen;
+
+bool rnd_bool() {return def_gen.flag();}
+double rnd_range(double r0, double r1) {return def_gen.range(r0, r1);}
+size_t rnd_uint(size_t r0, size_t r1) {return def_gen.range_index(r0, r1);}
+double rnd_gauss() {return def_gen.normal();}
+
+
+
+RandomGen::RandomGen(): d_real(0,1), d_norm(-1, 1) {}
+bool RandomGen::flag()
 {
-	static std::mt19937 rnd_gen;
-	static std::uniform_real_distribution<> rnd_dis(-1, 1);
-	return rnd_dis(rnd_gen) < 0;
+	return range_n() < 0.5;
 }
-double rnd_range(double r0, double r1)
+double RandomGen::range_n()
 {
-	static std::mt19937 rnd_gen (4);
-	static std::uniform_real_distribution<> rnd_dis(0, 1);
-	return r0 + (r1 - r0) * rnd_dis(rnd_gen);
+	return d_real(gen);
 }
-size_t rnd_uint(size_t r0, size_t r1)
+double RandomGen::range(double v0, double v1)
 {
-	return round( rnd_range(r0, r1 - 1) );
+	return v0 + range_n() * (v1 - v0);
 }
-double rnd_gauss()
+size_t RandomGen::range_index(size_t num, size_t off)
 {
-	static std::mt19937 rnd_gen;
-	static std::normal_distribution<> rnd_dis(-1, 1);
-	return rnd_dis(rnd_gen);
+	return round (range (off, num - 1));
 }
+double RandomGen::normal()
+{
+	return d_norm(gen);
+}
+std::string RandomGen::save() const
+{
+	std::stringstream ss;
+	ss << gen;
+	return ss.str();
+}
+bool RandomGen::load(const std::string& s)
+{
+	std::stringstream ss(s);
+	ss >> gen;
+	return !ss.fail();
+}
+
 
 
 /*

@@ -4,7 +4,8 @@
 #include "vaslib/vas_time.hpp"
 #include "entity.hpp"
 
-class PhysicsWorld;
+struct RandomGen;
+class  PhysicsWorld;
 
 #define GAME_THROW LOG_THROW_X
 
@@ -57,8 +58,8 @@ public:
 	
 	
 	
-	/// Returns pseudorandom value, advancing generator
-	virtual uint32_t get_random() noexcept = 0;
+	/// Returns generator
+	virtual RandomGen& get_random() noexcept = 0;
 	
 protected:
 	friend Entity;

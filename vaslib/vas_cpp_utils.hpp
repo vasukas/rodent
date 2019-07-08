@@ -6,15 +6,6 @@
 
 
 
-/// Just class with virtual destructor
-class Deletable
-{
-public:
-	virtual ~Deletable() = default;
-};
-
-
-
 /// Calls function before exiting the scope
 struct RAII_Guard
 {

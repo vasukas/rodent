@@ -32,9 +32,6 @@ uint isqrt(uint value);
 /// Quake III
 float fast_invsqrt(float x);
 
-/// 
-inline float fast_sqrt(float x) {return 1.f / fast_invsqrt(x);}
-
 float wrap_angle_2(float x); ///< Returns angle in range [0; 2pi]
 float wrap_angle(float x); ///< Returns angle in range [-pi, +pi]
 
@@ -98,6 +95,7 @@ struct vec2i {
 	void fastrotate (float angle); ///< Rotation by angle (radians) using table functions
 
 	int area() const {return std::abs(x * y);}
+	int perimeter() const {return (x+y)*2;}
 	
 	template <typename T> int& operator() (T) = delete;
 	int& operator() (bool is_x) {return is_x? x : y;}
@@ -184,27 +182,29 @@ inline vec2fp max(const vec2fp &a, const vec2fp &b) {return {std::max(a.x, b.x),
 
 
 
-/// Integer upper/size-agnostic rectangle
+/// Integer rectangle
 struct Rect {
+	vec2i off, sz;
+	
 	Rect() = default;
-	Rect(int ax, int ay, int bx, int by): Rect({ax, ay}, {bx, by}, true) {}
-	Rect    (vec2i p0, vec2i b, bool is_size) {this->p0 = p0, this->b = b; this->is_size = is_size;}
-	void set(vec2i p0, vec2i b, bool is_size) {this->p0 = p0, this->b = b; this->is_size = is_size;}
-	void zero() {p0.zero(); b = p0; is_size = false;}
+	Rect(int ax, int ay, int bx, int by): off(ax, ay), sz(bx, by) {}
+	Rect    (vec2i p0, vec2i b, bool is_size) {off = p0, sz = is_size? b : b - p0;}
+	void set(vec2i p0, vec2i b, bool is_size) {off = p0, sz = is_size? b : b - p0;}
+	void zero() {off.zero(); sz.zero();}
 	
-	const vec2i& lower() const {return p0;}
-	vec2i upper() const {return is_size? b + p0 : b;}
-	vec2i size()  const {return is_size? b : b - p0;}
+	const vec2i& lower() const {return off;}
+	      vec2i  upper() const {return off + sz;}
+	const vec2i& size()  const {return sz;}
 	
-	void lower(vec2i v) {if (is_size) b -= v - p0; p0 = v;}
-	void upper(vec2i v) {b = v; is_size = false;}
-	void size (vec2i v) {b = v; is_size = true;}
+	void lower(vec2i v) {off = v;}
+	void upper(vec2i v) {sz = v - off;}
+	void size (vec2i v) {sz = v;}
 	
-	void shift(vec2i v) {if (!is_size) b += v; p0 += v;}
-	vec2i& raw_a() {return p0;}
-	void enclose(vec2i v) {p0 = min(v, p0); upper(max(upper(), v + vec2i::one(1)));}
+	void shift(vec2i v) {off += v;}
+	void enclose(vec2i v) {off = min(v, off); upper(max(upper(), v + vec2i::one(1)));}
+	vec2i maxpt() const {return off + sz - vec2i::one(1);} ///< Maximum enclosed point
 	
-	bool empty() const {return size() == vec2i();} ///< Returns true if rectangle is of zero size
+	bool empty() const {return sz.x <= 0 || sz.y <= 0;} ///< Returns true if rectangle is of zero size
 	bool intersects(const Rect& r) const; ///< Checks if rectangles overlap, including edges
 	bool contains(vec2i p) const; ///< Checks if point is inside, including edges
 	
@@ -212,12 +212,8 @@ struct Rect {
 	operator SDL_Rect() const;
 	void set(const SDL_Rect& r);
 	
-	bool operator == (const Rect& r) const {return lower() == r.lower() && size() == r.size();}
-	bool operator != (const Rect& r) const {return lower() != r.lower() || size() != r.size();}
-	
-private:
-	vec2i p0, b;
-	bool is_size;
+	bool operator == (const Rect& r) const {return lower() == r.lower() && sz == r.sz;}
+	bool operator != (const Rect& r) const {return lower() != r.lower() || sz != r.sz;}
 };
 
 Rect calc_intersection(const Rect& a, const Rect& b); ///< Returns rectangle representing overlap

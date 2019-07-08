@@ -171,13 +171,14 @@ int main( int argc, char *argv[] )
 		if		(!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help"))
 		{
 			printf("Usage: rodent [OPTIONS]\n");
-			printf("\nOptions:\n");
-			printf("\t--log    <FILE> log will be written to this file instead of default\n");
-			printf("\t--logclr <0/1>  enables or disables colors in log\n");
-			printf("\t--verb   <N>    sets logging verbosity level (1 verbose, 2 debug, 3 info)\n");
-			printf("\t--cfg    <FILE> sets path to settings config\n");
-			printf("\nDebug options:\n");
-			printf("\t--gldbg  creates debug OpenGL context and logs all GL messages as verbose\n");
+			printf("\n");
+			printf("Options:\n");
+			printf("\t--log    <FILE> override default log path\n");
+			printf("\t--logclr <0/1>  enable colors in log\n");
+			printf("\t--verb   <N>    set log verbosity (1 verbose, 2 debug, 3 info)\n");
+			printf("\t--cfg    <FILE> override default config path\n");
+			printf("\n");
+			printf("\t--gldbg  create debug OpenGL context and log all GL messages as verbose\n");
 			return 0;
 		}
 		else if (!strcmp(argv[i], "--log"))
@@ -225,10 +226,7 @@ int main( int argc, char *argv[] )
 			}
 			AppSettings::cfg_path = argv[++i];
 		}
-		else if (!strcmp(argv[i], "--gldbg"))
-		{
-			RenderControl::opt_gldbg = true;
-		}
+		else if (!strcmp(argv[i], "--gldbg"))  RenderControl::opt_gldbg = true;
 		else {
 			printf("Invalid option: %s\n", argv[i]);
 			return 1;
