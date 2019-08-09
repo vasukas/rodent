@@ -306,7 +306,7 @@ void BC_Cmd::val( std::string& value )
 	a.vs = &value;
 	a.type = BCAT_STR;
 }
-bool bc_process( const BC_Block& top, std::vector <BC_Cmd> cmds )
+bool bc_process( const BC_Block& top, std::vector <BC_Cmd> cmds, int flags )
 {
 	for (auto& cm : cmds) cm.already = false;
 	for (auto& ln : top.ls)
@@ -319,10 +319,15 @@ bool bc_process( const BC_Block& top, std::vector <BC_Cmd> cmds )
 		}
 		if (i == cmds.size())
 		{
+			if (flags & BC_Block::F_IGNORE_UNKNOWN)
+			{
+				VLOGW( "bc_process() unknown command: \"{}\" at #{}", ln.args[0], ln.line );
+				continue;
+			}
+			
 			VLOGE( "bc_process() unknown command: \"{}\" at #{}", ln.args[0], ln.line );
 			return false;
 		}
-		
 		
 		auto& cm = cmds[i];
 		if (ln.block.ls.empty() != cm.cmds.empty())
@@ -423,7 +428,7 @@ bool bc_process( const BC_Block& top, std::vector <BC_Cmd> cmds )
 
 #include "vaslib/vas_file.hpp"
 
-bool bc_parsefile( const char *filename, std::vector <BC_Cmd> cmds, int spaces_per_tab )
+bool bc_parsefile( const char *filename, std::vector <BC_Cmd> cmds, int spaces_per_tab, int flags )
 {
 	auto str = readfile( filename );
 	if (!str)
@@ -438,7 +443,7 @@ bool bc_parsefile( const char *filename, std::vector <BC_Cmd> cmds, int spaces_p
 		VLOGE( "bc_parsefile() failed" );
 		return false;
 	}
-	if (!bc_process( top, std::move(cmds) ))
+	if (!bc_process( top, std::move(cmds), flags ))
 	{
 		VLOGE( "bc_parsefile() failed" );
 		return false;

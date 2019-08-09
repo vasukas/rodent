@@ -8,7 +8,9 @@ vec2fp cossin_ft(float x)
 {
 //	return {cos(x), sin(x)};
 	
-	const int table_size = 1023;
+	const int table_size = 1024;
+	static_assert(table_size % 4 == 0);
+	
 	static float table [table_size + 1];
 	static bool is_first = true;
 	
@@ -24,7 +26,7 @@ vec2fp cossin_ft(float x)
 	x /= M_PI*2;
 	
 	x *= table_size;
-	int i = static_cast< int >(x);
+	int i = static_cast<int>(x);
 	x -= i;
 	
 	if (i < 0) i += table_size;
@@ -32,8 +34,8 @@ vec2fp cossin_ft(float x)
 	int j = (i + table_size /4) % table_size;
 	
 	return {
-		lint( table[j], table[j+1], x ), // cosine
-		lint( table[i], table[i+1], x ), // sine
+		lerp( table[j], table[j+1], x ), // cosine
+		lerp( table[i], table[i+1], x ), // sine
 	};
 }
 
@@ -123,9 +125,26 @@ vec2i::operator vec2fp() const
 {
 	return vec2fp (x, y);
 }
+bool is_in_polygon(vec2i p, const vec2i* ps, size_t pn)
+{
+	int side = 0;
+	for (size_t i=0; i<pn; ++i)
+	{
+		int dot = ps[i].x * p.x + ps[i].y * p.y;
+		if (dot < 0) dot = -1; else if (dot > 0) dot = 1;
+		
+		if (!side) side = dot;
+		else if (side != dot) return false;
+	}
+	return true;
+}
 
 
 
+float vec2fp::angle() const {
+	float a = std::atan2(y, x);
+	return std::isfinite(a)? a : 0.f;
+}
 vec2fp vec2fp::get_rotated (double angle) const
 {
 	float c = cos(angle), s = sin(angle);
@@ -166,6 +185,29 @@ void vec2fp::rotate (float cos, float sin)
 	float t = x;
 	x = cos * t - sin * y;
 	y = sin * t + cos * y;
+}
+
+
+
+std::optional<vec2fp> lineseg_intersect(vec2fp a1, vec2fp a2, vec2fp b1, vec2fp b2, float eps)
+{
+	auto t = line_intersect_t(a1, a2 - a1, b1, b2 - b1, eps);
+	if (t &&
+	    t->first  > -eps && t->first  < 1+eps &&
+	    t->second > -eps && t->second < 1+eps
+	   )
+		return lerp(a1, a2, t->first);
+	return {};
+}
+std::optional<std::pair<float, float>> line_intersect_t(vec2fp a, vec2fp at, vec2fp b, vec2fp bt, float eps)
+{
+	float im = cross(at, bt);
+	if (std::fabs(im) < eps) return {};
+	
+	b -= a;
+	float t = cross(b, bt) / im;
+	float u = cross(b, at) / im;
+	return std::make_pair(t, u);
 }
 
 
@@ -293,5 +335,5 @@ void Transform::add(const Transform& t)
 	rot += t.rot;
 }
 Transform Transform::get_add(const Transform& t) const {Transform r = *this; r.add(t); return r;}
-Transform Transform::operator * (float t) const {return {pos * t, rot * t};}
+Transform Transform::operator * (float t) const {return Transform{pos * t, rot * t};}
 void Transform::operator *= (float t) {pos *= t, rot *= t;}

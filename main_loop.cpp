@@ -1,7 +1,7 @@
 #include <mutex>
 #include <thread>
 #include "core/plr_control.hpp"
-#include "core/tui_layer.hpp"
+#include "core/vig.hpp"
 #include "game/damage.hpp"
 #include "game/game_core.hpp"
 #include "game/level_ctr.hpp"
@@ -24,97 +24,8 @@
 class ML_Rentest : public MainLoop
 {
 public:
-	class L : public TUI_Layer
+	void init()
 	{
-	public:
-		struct Head {
-			int x, y, clr;
-			TimeSpan cou, per;
-		};
-		std::array<Head, 35> hs;
-		TimeSpan prev;
-		
-		Field y0, y1;
-		int fd_w = 8;
-		ML_Rentest* mren;
-		
-		L(ML_Rentest* mren): mren(mren) {
-			transparent = false;
-			y0 = mk_field({1,1,fd_w,1});
-			y1 = mk_field({1,3,fd_w,1});
-			
-			for (auto& h : hs) init(h);
-			
-			auto t = TimeSpan::seconds(80);
-			size_t n = 100;
-			for (size_t i=0; i<n; ++i) proc(t*(1.f/n));
-			
-			prev = TimeSpan::since_start();
-		}
-		void on_event(const SDL_Event& ev) {
-			if (ev.type == SDL_MOUSEBUTTONDOWN) {
-				mren->lr = nullptr;
-				delete this;
-			}
-		}
-		void render()
-		{
-			auto next = TimeSpan::since_start();
-			TimeSpan passed = next - prev;
-			prev = next;
-			proc(passed * 2);
-			
-			auto ch = TUI_Char::none();
-			ch.fore = TUI_SET_TEXT;
-			ch.back = TUI_BLACK;
-			ch.alpha = 1.f;
-			sur.change_rect({0,0,fd_w+1,4}, ch);
-			
-			float t = float(hs[0].y + 1) / sur.size.y;
-			y0.set_bar(t);
-			y1.set(FMT_FORMAT("XPos: {}", hs[0].x), 1);
-			
-			TUI_BoxdrawHelper box;
-			box.init(sur);
-			box.box({0,0,fd_w+1,2});
-			box.box({0,2,fd_w+1,2});
-			box.submit();
-		}
-		void proc(TimeSpan passed)
-		{
-			sur.upd_any = true;
-			for (auto& c : sur.cs) {
-				if (c.alpha > 0)
-					c.alpha -= 0.17 * passed.seconds();
-			}
-			
-			for (auto& h : hs) {
-				h.cou += passed;
-				while (h.cou >= h.per) {
-					if (++h.y == sur.size.y) {
-						init(h);
-						continue;
-					}
-					h.cou -= h.per;
-					char32_t sym = 33 + rand() % (126 - 33);
-					sur.set({h.x, h.y}, {sym, h.clr});
-				}
-			}
-		}
-		void init(Head& h) {
-			h.x = rand() % sur.size.x;
-			h.y = -1;
-			h.clr = rand() % 8;
-			h.cou = {};
-			h.per = TimeSpan::seconds( 0.1f * (1 + rand() % 8) );
-		}
-	};
-	L* lr;
-	
-	ML_Rentest()
-	{
-		lr = new L(this);
-		lr->bring_to_top();
 	}
 	void on_event(SDL_Event& ev)
 	{
@@ -160,11 +71,6 @@ public:
 		
 		RenAAL::get().draw_line({-440,  200}, {-260, -200}, 0x6060ffff, 5.f, 60.f, 1.7f);
 		RenAAL::get().draw_line({-440, -200}, {-260,  200}, 0xff2020ff, 5.f, 60.f, 1.7f);
-		
-		if (lr) {
-			RenImm::get().set_context(RenImm::DEFCTX_UI);
-			RenImm::get().draw_rect({0,0,400,200}, 0xff0000ff);
-		}
 	}
 };
 
@@ -197,7 +103,8 @@ public:
 	
 	
 	
-	ML_Game()
+	ML_Game() = default;
+	void init()
 	{
 		cam = RenderControl::get().get_world_camera();
 		Camera::Frame cf = cam->get_state();
@@ -304,8 +211,9 @@ public:
 		core_init.random_seed = 0;
 		core.reset( GameCore::create(core_init) );
 		
-		LevelControl::init();
-		exit(666);
+//#warning test LevelControl again
+//		LevelControl::init();
+//		exit(666);
 		
 		RenAAL::get().inst_begin();
 		GameResBase::get().init_res();
@@ -461,3 +369,4 @@ void MainLoop::init( InitWhich which )
 MainLoop::~MainLoop() {
 	if (current == this) current = nullptr;
 }
+bool MainLoop::parse_arg(ArgvParse&) {return false;}

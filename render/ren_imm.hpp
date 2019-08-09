@@ -29,6 +29,7 @@ public:
 	enum CtxIndex
 	{
 		DEFCTX_WORLD, ///< Draws with RenderControl world camera to default framebuffer with imm* shaders
+//		DEFCTX_BACK,  ///< Same as DEFCTX_WORLD, but drawn before it
 		DEFCTX_UI,    ///< Same as DEFCTX_WORLD, but using RenderControl UI camera
 		
 		DEFCTX_NONE   ///< Doesn't draw anything
@@ -93,24 +94,25 @@ public:
 	virtual void draw_line (vec2fp p0, vec2fp p1, uint32_t clr, float width = 2) = 0;
 	
 	/// Draw outlined circle with lines
-	virtual void draw_radius (vec2fp pos, float radius, uint32_t clr, float width = 2) = 0;
+	virtual void draw_radius (vec2fp pos, float radius, uint32_t clr, float width = 2, int segn = -1) = 0;
 	
 	/// Draw filled circle with triangles
-	virtual void draw_circle (vec2fp pos, float radius, uint32_t clr) = 0;
+	virtual void draw_circle (vec2fp pos, float radius, uint32_t clr, int segn = -1) = 0;
 	
 	/// Draw string starting at specified coordinates (may sort glyphs)
 	virtual void draw_text (vec2fp at, TextRenderInfo& tri, uint32_t clr, bool centered = false, float size_k = 1.f) = 0;
 	
 	
 	
-	/// Draw ASCII string starting at specified coordinates
-	virtual void draw_text (vec2fp at, std::string_view str, uint32_t clr, bool centered = false, float size_k = 1.f, FontIndex font = static_cast<FontIndex>(0)) = 0;
-	
-	/// Draw unicode string starting at specified coordinates
-	virtual void draw_text (vec2fp at, std::u32string_view str, uint32_t clr, bool centered = false, float size_k = 1.f) = 0;
+	/// Draw ASCII string at specified coordinates
+	virtual void draw_text (vec2fp at, std::string_view str, uint32_t clr = 0xffffffff, bool centered = false, float size_k = 1.f, FontIndex font = static_cast<FontIndex>(0)) = 0;
 	
 	/// Draw ASCII string, with separately colored characters (count, color)
 	virtual void draw_text (vec2fp at, std::vector<std::pair<std::string, FColor>> strs) = 0;
+	
+	/// Draw ASCII string at specified coordinates with filled semi-transparent background. 
+	/// Negative coordinates are treated as if offset from screen size - text size
+	virtual void draw_text_hud (vec2fp at, std::string_view str, uint32_t clr = 0xffffffff, bool centered = false, float size_k = 1.f) = 0;
 	
 	/// Returns size of non-null ASCII string
 	static vec2i text_size (std::string_view str);

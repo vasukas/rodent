@@ -19,10 +19,11 @@ struct FmtDescr
 	GLenum in_format, in_type;
 	int bpp;
 };
-static const FmtDescr fmts[2] =
+static const FmtDescr fmts[3] =
 {
     {GL_R8, GL_RED, GL_UNSIGNED_BYTE, 1},
-    {GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE, 4}
+    {GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE, 4},
+    {GL_RGB, GL_RGB, GL_UNSIGNED_BYTE, 3}
 };
 
 
@@ -91,12 +92,22 @@ public:
 		glBindTexture( GL_TEXTURE_2D, tex );
 		glTexSubImage2D( GL_TEXTURE_2D, 0, x, y, w, h, fmt.in_format, fmt.in_type, data );
 	}
+	void update_full( const void *data, std::optional<Format> new_fmt )
+	{
+		if (new_fmt)
+			fmt = fmts[*new_fmt];
+		
+		glPixelStorei( GL_UNPACK_ALIGNMENT, 1 );
+		glBindTexture( GL_TEXTURE_2D, tex );
+		glTexImage2D( GL_TEXTURE_2D, 0, fmt.internal, size.x, size.y, 0, fmt.in_format, fmt.in_type, data );
+	}
 };
 Texture* Texture::load( const char *filename, Format fmt, Filter fil )
 {
 	ImageInfo::Format i_fmt;
-	if      (fmt == FMT_RGBA)   i_fmt = ImageInfo::FMT_RGBA;
-	else if (fmt == FMT_SINGLE) i_fmt = ImageInfo::FMT_ALPHA;
+	if		(fmt == FMT_SINGLE) i_fmt = ImageInfo::FMT_ALPHA;
+	else if (fmt == FMT_RGBA)   i_fmt = ImageInfo::FMT_RGBA;
+	else if (fmt == FMT_RGB)    i_fmt = ImageInfo::FMT_RGB;
 	else {
 		VLOGE("Texture::load() unsupported format");
 		return nullptr;
@@ -123,6 +134,7 @@ Texture* Texture::create_from( const ImageInfo& img, Filter fil )
 	Format fmt;
 	if		(img.get_fmt() == ImageInfo::FMT_ALPHA) fmt = FMT_SINGLE;
 	else if (img.get_fmt() == ImageInfo::FMT_RGBA)  fmt = FMT_RGBA;
+	else if (img.get_fmt() == ImageInfo::FMT_RGB)   fmt = FMT_RGB;
 	else
 	{
 		VLOGE( "Texture::create_from() unsupported format" );
@@ -143,8 +155,9 @@ Texture* Texture::create_from( vec2i size, Format fmt, const void *data, Filter 
 void Texture::debug_save(uint obj, const char *filename, Format fmt, uint target)
 {
 	ImageInfo::Format i_fmt;
-	if      (fmt == FMT_RGBA)   i_fmt = ImageInfo::FMT_RGBA;
-	else if (fmt == FMT_SINGLE) i_fmt = ImageInfo::FMT_ALPHA;
+	if		(fmt == FMT_SINGLE) i_fmt = ImageInfo::FMT_ALPHA;
+	else if (fmt == FMT_RGBA)   i_fmt = ImageInfo::FMT_RGBA;
+	else if (fmt == FMT_RGB)    i_fmt = ImageInfo::FMT_RGB;
 	else {
 		VLOGE("Texture::debug_save() unsupported format");
 		return;

@@ -28,9 +28,10 @@ void GameResBase::init_res()
 		float power;
 		FColor clr_t;
 		
-		size_t begin(const Transform& tr_in, ParticleParams& p, float power_in) {
-			tr = tr_in;
-			power = clampf(power_in, p_min, p_max);
+		size_t begin(const BatchPars& pars, ParticleParams& p)
+		{
+			tr = pars.tr;
+			power = clampf(pars.power, p_min, p_max);
 			clr_t = clr0 + (clr1 - clr0) * clampf(power / p_max - p_min, 0.1, 0.9);
 			
 			p.px = tr.pos.x;
@@ -40,7 +41,8 @@ void GameResBase::init_res()
 			
 			return n_base * power;
 		}
-		void gen(ParticleParams& p) {
+		void gen(ParticleParams& p)
+		{
 			float vk = rnd_range(0.5, 2) * clampf(power, 0.1, 2) + spd_min;
 			vec2fp vel{vk, 0};
 			vel.fastrotate( tr.rot + rnd_range(-a_lim, a_lim) );
@@ -50,7 +52,7 @@ void GameResBase::init_res()
 			p.ft = rnd_range(2, 3.5) * alpha;
 			float t = rnd_range();
 			
-#define RND(A) p.clr.A = t < 0.5 ? lint(clr0.A, clr_t.A, t*2) : lint(clr_t.A, clr1.A, t*2-1)
+#define RND(A) p.clr.A = t < 0.5 ? lerp(clr0.A, clr_t.A, t*2) : lerp(clr_t.A, clr1.A, t*2-1)
 			RND(r); RND(g); RND(b); RND(a);
 #undef RND
 //				p.clr.a *= alpha;
@@ -66,15 +68,15 @@ void GameResBase::init_res()
 		float rad;
 		float t, dt;
 		
-		size_t begin(const Transform& tr_in, ParticleParams& p, float power_in)
+		size_t begin(const BatchPars& pars, ParticleParams& p)
 		{
 			p.size = 0.1;
 			
 			size_t num = (2 * M_PI * rad) / (p.size * 0.5);
 			if (!num) num = 3;
 			
-			ctr = tr_in.pos;
-			rad = power_in;
+			ctr = pars.tr.pos;
+			rad = pars.power;
 			t = 0;
 			dt = (M_PI*2) / num;
 			return num;
@@ -205,7 +207,7 @@ void GameResBase::init_res()
 					}
 				}
 			}
-			size_t begin(const Transform& tr_in, ParticleParams& p, float)
+			size_t begin(const BatchPars& pars, ParticleParams& p)
 			{
 				p.size = 0.1;
 				p.lt = 0;
@@ -213,14 +215,14 @@ void GameResBase::init_res()
 				p.lt = 0;
 				
 				li = lc = 0;
-				tr = tr_in;
+				tr = pars.tr;
 				return total;
 			}
 			void gen(ParticleParams& p)
 			{
 				auto& l = ls[li];
 				float t = (lc + 0.5f) / l.n;
-				vec2fp pos = lint(l.a, l.b, t);
+				vec2fp pos = lerp(l.a, l.b, t);
 				if (++lc == l.n) ++li, lc = 0;
 				
 				vec2fp rp = pos;

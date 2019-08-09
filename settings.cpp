@@ -15,16 +15,19 @@ bool AppSettings::load()
 	
 	int i, i2;
 	std::string s;
-	float f;
+	BC_Cmd* c;
 	
-	auto c = &cs.emplace_back( true, true, "wnd_size", [&](){ wnd_size = {i, i2}; return true; });
+	c = &cs.emplace_back( true, true, "wnd_size", [&](){ wnd_size = {i, i2}; return true; });
 	c->val(i);
 	c->val(i2);
 	
-	c = &cs.emplace_back( true, true, "target_fps", [&](){ target_fps = i; return true; });
+	c = &cs.emplace_back( true, true, "fscreen", [&](){ fscreen = i; return i > -2 && i < 2; });
 	c->val(i);
 	
-	c = &cs.emplace_back( true, true, "set_vsync", [&](){ set_vsync = i; return true; });
+	c = &cs.emplace_back( true, true, "target_fps", [&](){ target_fps = i; return i > 0 && i <= 1000; });
+	c->val(i);
+	
+	c = &cs.emplace_back( true, true, "set_vsync", [&](){ set_vsync = i; return i > -2 && i < 2; });
 	c->val(i);
 	
 #define FONT(NM) \
@@ -34,11 +37,7 @@ bool AppSettings::load()
 	c->val(i) \
 	
 	FONT();
-	FONT(ui_);
 	FONT(dbg_);
 	
-	c = &cs.emplace_back( true, true, "tui_scale", [&](){ tui_scale = f; return true; });
-	c->val(f);
-	
-	return bc_parsefile( cfg_path.c_str(), std::move(cs) );
+	return bc_parsefile( cfg_path.c_str(), std::move(cs), 2, BC_Block::F_IGNORE_UNKNOWN );
 }

@@ -262,6 +262,11 @@ public:
 		ctxs.resize(DEFCTX_NONE);
 		Context* cx;
 		
+//		cx = &ctxs[DEFCTX_BACK].ctx;
+//		cx->sh      = RenderControl::get().load_shader("imm");
+//		cx->sh_text = RenderControl::get().load_shader("imm_text");
+//		cx->cam = RenderControl::get().get_world_camera();
+		
 		cx = &ctxs[DEFCTX_WORLD].ctx;
 		cx->sh      = RenderControl::get().load_shader("imm");
 		cx->sh_text = RenderControl::get().load_shader("imm_text");
@@ -383,7 +388,7 @@ public:
 		add_line(p0, p1, width);
 		add_obj(white_tex, clr, IS_TEXT_WHITE);
 	}
-	void draw_radius (vec2fp pos, float radius, uint32_t clr, float width)
+	void draw_radius (vec2fp pos, float radius, uint32_t clr, float width, int segn)
 	{
 		if (!can_add( IS_TEXT_WHITE )) return;
 		
@@ -392,7 +397,7 @@ public:
 		const int seg_per = 400;
 		
 		float len = M_PI * radius * radius;
-		int segn = len / seg_per;
+		if (segn < 0) segn = len / seg_per;
 		if (segn < seg_min) segn = seg_min;
 		if (segn > seg_max) segn = seg_max;
 		
@@ -409,7 +414,7 @@ public:
 		add_line(segs[segn-1], segs[0], width);
 		add_obj(white_tex, clr, IS_TEXT_WHITE);
 	}
-	void draw_circle (vec2fp pos, float radius, uint32_t clr)
+	void draw_circle (vec2fp pos, float radius, uint32_t clr, int segn)
 	{
 		if (!can_add( IS_TEXT_WHITE )) return;
 		
@@ -418,7 +423,7 @@ public:
 		const int seg_per = 400;
 		
 		float len = M_PI * radius * radius;
-		int segn = len / seg_per;
+		if (segn < 0) segn = len / seg_per;
 		if (segn < seg_min) segn = seg_min;
 		if (segn > seg_max) segn = seg_max;
 		
@@ -435,16 +440,16 @@ public:
 		auto add = [&](vec2fp p1, vec2fp p2)
 		{
 			data.push_back( pos.x ); data.push_back( pos.y );
-			data.push_back( white_tc.lower().x );
-			data.push_back( white_tc.lower().y );
+			data.push_back( white_tc.center().x );
+			data.push_back( white_tc.center().y );
 			
 			data.push_back( p1.x ); data.push_back( p1.y );
-			data.push_back( white_tc.lower().x );
-			data.push_back( white_tc.lower().y );
+			data.push_back( white_tc.center().x );
+			data.push_back( white_tc.center().y );
 			
 			data.push_back( p2.x ); data.push_back( p2.y );
-			data.push_back( white_tc.lower().x );
-			data.push_back( white_tc.lower().y );
+			data.push_back( white_tc.center().x );
+			data.push_back( white_tc.center().y );
 		};
 		
 		for (int i=1; i<segn; i++) add(segs[i-1], segs[i]);
@@ -486,16 +491,6 @@ public:
 		tri.str_a = str.data();
 		tri.length = str.length();
 		tri.font = font;
-		tri.build();
-		draw_text( at, tri, clr, center, size_k );
-	}
-	void draw_text (vec2fp at, std::u32string_view str, uint32_t clr, bool center, float size_k)
-	{
-		if (!can_add( true )) return;
-
-		TextRenderInfo tri;
-		tri.str = str.data();
-		tri.length = str.length();
 		tri.build();
 		draw_text( at, tri, clr, center, size_k );
 	}
@@ -550,6 +545,31 @@ public:
 			++c_cou;
 		}
 		add_obj( prev->get_obj(), strs[clr_i].second.to_px(), true );
+	}
+	void draw_text_hud (vec2fp at, std::string_view str, uint32_t clr, bool centered, float size_k)
+	{
+		const int alpha = 0x80;
+		const int border = 4;
+		
+		if (!can_add(true)) return;
+		
+		TextRenderInfo tri;
+		tri.str_a = str.data();
+		tri.length = str.length();
+		tri.build();
+		if (tri.cs.empty()) return;
+		
+		tri.size += vec2i::one(border * 2);
+		auto sz = RenderControl::get_size();
+		if (at.x < 0) at.x += sz.x - tri.size.x;
+		if (at.y < 0) at.y += sz.y - tri.size.y;
+		
+		if (centered) draw_rect({at - tri.size/2, tri.size, true}, alpha);
+		else {
+			draw_rect({at, tri.size, true}, alpha);
+			at += vec2fp::one(border);
+		}
+		draw_text(at, tri, clr, centered, size_k);
 	}
 	void draw_vertices(const std::vector<vec2fp>& vs)
 	{

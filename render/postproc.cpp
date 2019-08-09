@@ -1,4 +1,4 @@
-#include "core/dbg_menu.hpp"
+#include "core/vig.hpp"
 #include "vaslib/vas_log.hpp"
 #include "control.hpp"
 #include "postproc.hpp"
@@ -63,8 +63,8 @@ struct PPF_Bleed : PP_Filter
 	}
 	std::string descr() {return FMT_FORMAT("Bleed; n: {}", n);}
 	void dbgm_opts() {
-		if (dbgm_button("N-", 'z')) {if (n) --n;}
-		if (dbgm_button("N+", 'x')) ++n;
+		if (vig_button("[z] N-", 'z')) {if (n) --n;}
+		if (vig_button("[x] N+", 'x')) ++n;
 	}
 };
 
@@ -114,18 +114,18 @@ public:
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		};
 		
-		dbgm_g = DbgMenu::get().reg({
+		dbgm_g = vig_reg_menu(VigMenu::DebugRenderer, 
 		[this]() {
-			char c = 'a';
+			vig_label("==== Postproc ====\n");
 			for (auto& f : fts) {
 				bool ok = f->is_ok();
 				bool en = f->enabled && ok;
-				dbgm_check(en, f->descr() + (ok? ". [OK]" : ". [Err]"), c);
+				vig_checkbox(en, f->descr() + (ok? ". [OK]" : ". [Err]"));
 				if (ok) f->enabled = en;
 				f->dbgm_opts();
-				++c;
+				vig_lo_next();
 			}
-		}, "Postproc", DBGMEN_RENDER, 's'});
+		});
 	}
 	void start(TimeSpan passed)
 	{

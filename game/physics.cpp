@@ -267,7 +267,7 @@ public:
 		for (int i=0; i<pc; ++i) imp += res->normalImpulses[i];
 		
 		if (!ct->GetFixtureA()->IsSensor() && !ct->GetFixtureB()->IsSensor())
-			GamePresenter::get().effect(FE_HIT, {avg_point(ct), 0.f}, imp / 20.f);
+			GamePresenter::get().effect(FE_HIT, Transform{avg_point(ct)}, imp / 20.f);
 		
 		report(ContactEvent::T_RESOLVE, ct, imp);
 	}

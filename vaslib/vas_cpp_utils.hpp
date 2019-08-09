@@ -13,15 +13,17 @@ struct RAII_Guard
 	RAII_Guard( std::function <void()> foo ): foo( std::move(foo) ) {}
 	~RAII_Guard()  { if (foo) foo(); }
 	void trigger() { if (foo) foo(); cancel(); } ///< Calls function and resets it
-	void cancel()  { foo = nullptr; } ///< Resets function without executing
+	void cancel()  { foo = {}; } ///< Resets function without executing
 	
 	RAII_Guard( const RAII_Guard& ) = delete;
 	void operator =( const RAII_Guard& ) = delete;
 	
-	RAII_Guard( RAII_Guard&& g ) { std::swap( foo, g.foo ); }
-	void operator =( RAII_Guard&& g ) { std::swap( foo, g.foo ); }
+	RAII_Guard( RAII_Guard&& g ) { foo = std::move(g.foo); g.foo = {}; }
+	void operator =( RAII_Guard&& g ) { foo = std::move(g.foo); g.foo = {}; }
 	
 	operator bool() {return foo.operator bool();}
+	std::function <void()> copy_func() { return foo; }
+	std::function <void()> release() { auto f = std::move(foo); foo = {}; return f; }
 	
 private:
 	std::function <void()> foo;

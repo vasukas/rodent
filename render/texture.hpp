@@ -14,6 +14,9 @@ struct TextureReg
 	Texture* tex = nullptr;
 	Rectfp tc; ///< Texture coordinates, [0-1]
 	
+	TextureReg() = default;
+	TextureReg(Texture* tex): tex(tex), tc(0,0,1,1) {}
+	TextureReg(Texture* tex, const Rectfp& tc): tex(tex), tc(tc) {}
 	uint get_obj() const; ///< Returns texture object or 0
 };
 
@@ -26,7 +29,8 @@ public:
 	enum Format
 	{
 		FMT_SINGLE, ///< Single-channel 8-bit texture. Can be read as red in shaders
-		FMT_RGBA    ///< 32-bit
+		FMT_RGBA,   ///< 32-bit
+		FMT_RGB     ///< 24-bit, fully opaque
 	};
 	enum Filter
 	{
@@ -59,6 +63,9 @@ public:
 	
 	/// This function is slow and unsafe
 	virtual void update( const Rect& part, const void *data ) = 0;
+	
+	/// This function is slow
+	virtual void update_full( const void *data, std::optional<Format> new_fmt = {} ) = 0;
 	
 	/// Saves contents of texture. For debugging only
 	static void debug_save(uint obj, const char *filename, Format fmt, uint target = 0);

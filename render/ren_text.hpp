@@ -9,8 +9,7 @@
 
 enum class FontIndex
 {
-	Default,
-	TUI, ///< monospaced
+	Mono,
 	Debug
 };
 
@@ -24,7 +23,7 @@ struct TextRenderInfo
 	const char* str_a = nullptr; ///< ASCII string (NOT UTF-8!!!). Preferred over 'str'
 	int length = -1; ///< Char count or -1 if null-terminated
 	
-	FontIndex font = FontIndex::Default;
+	FontIndex font = FontIndex::Mono;
 	bool info_only = false; ///< Don't build rendering info, only size
 	bool strict_size = false; ///< Return exact size without any spacing
 	
@@ -57,7 +56,7 @@ public:
 	virtual void build( TextRenderInfo& info ) = 0;
 	virtual vec2i predict_size( vec2i str_size, FontIndex font ) = 0; ///< Most probable size of such string in pixels
 	
-	virtual TextureReg get_white_rect(FontIndex font = FontIndex::Default) = 0; ///< Returns info for 1x1 white rectangle
+	virtual TextureReg get_white_rect(FontIndex font = FontIndex::Mono) = 0; ///< Returns info for 1x1 white rectangle
 	
 	virtual bool  is_mono    (FontIndex font) = 0; ///< Is font (roughly) monowide
 	virtual int   width_mode (FontIndex font) = 0; ///< Average char width

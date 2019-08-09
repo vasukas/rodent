@@ -23,6 +23,9 @@ struct RandomGen
 	
 	std::string save() const;
 	bool load(const std::string& s);
+	
+	template <typename T>
+	T& random_el(std::vector<T> &els) {return els[range_index(els.size())];}
 };
 
 /// Returns random bool

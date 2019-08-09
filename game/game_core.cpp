@@ -44,7 +44,7 @@ public:
 	{
 		// delete entities
 		
-		append( ents.fi, e_next2 );
+		append( ents.raw_free_indices(), e_next2 );
 		e_next2 = std::move( e_next1 );
 		step_flag = true;
 		
@@ -52,8 +52,8 @@ public:
 		
 		auto step_comp = [this](ECompType type)
 		{
-			auto& cs = get_comp_list(type);
-			for (size_t i=0; i<cs.size(); ++i) if (cs[i]) cs[i]->step();
+			for (auto& c : cs_list[static_cast<size_t>(type)])
+				c->step();
 		};
 		step_comp(ECompType::StepLogic);
 		step_comp(ECompType::StepPostUtil);
@@ -80,7 +80,7 @@ public:
 	}
 	std::vector<EComp*>& get_comp_list(ECompType type) noexcept
 	{
-		return cs_list[static_cast<size_t>(type)].vs;
+		return cs_list[static_cast<size_t>(type)].raw_values();
 	}
 	RandomGen& get_random() noexcept
 	{

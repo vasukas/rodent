@@ -10,7 +10,6 @@
 #include "ren_aal.hpp"
 #include "ren_imm.hpp"
 #include "ren_text.hpp"
-#include "ren_tui.hpp"
 #include "shader.hpp"
 
 class RenderControl_Impl;
@@ -63,7 +62,6 @@ public:
 	RenAAL* r_aal = nullptr;
 	RenImm* r_imm = nullptr;
 	RenText* r_text = nullptr;
-	RenTUI* r_tui = nullptr;
 	
 	Postproc* pp_main = nullptr;
 	
@@ -208,7 +206,6 @@ public:
 		INIT(r_text, RenText);
 		INIT(r_imm, RenImm);
 		INIT(r_aal, RenAAL);
-		INIT(r_tui, RenTUI);
 		INIT(r_part, ParticleRenderer);
 		
 		reload_pp();
@@ -222,7 +219,6 @@ public:
 		delete r_aal;
 		delete r_imm;
 		delete r_part;
-		delete r_tui;
 		
 		delete r_text;
 		
@@ -275,19 +271,18 @@ public:
 			if (pp_main && use_pp) pp_main->start(passed);
 			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
 			
+			RenImm::get().render_pre();
+//			RenImm::get().render(RenImm::DEFCTX_BACK);
+
 			RenAAL::get().render();
 			ParticleRenderer::get().render(passed);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			
-			RenImm::get().render_pre();
 			RenImm::get().render(RenImm::DEFCTX_WORLD);
 			if (pp_main && use_pp) pp_main->finish();
 			
 			RenImm::get().render(RenImm::DEFCTX_UI);
 			RenImm::get().render_post();
-			
-			if (!draw_tui)
-				RenTUI::get().render();
 			
 			cam.step(passed);
 		}

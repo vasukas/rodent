@@ -1,5 +1,5 @@
-#ifndef EXT_MATH_HPP
-#define EXT_MATH_HPP
+#ifndef VAS_MATH_HPP
+#define VAS_MATH_HPP
 
 #ifdef __unix__ // on Windows it should be defined in project parameters
 #define _USE_MATH_DEFINES
@@ -36,14 +36,19 @@ float wrap_angle_2(float x); ///< Returns angle in range [0; 2pi]
 float wrap_angle(float x); ///< Returns angle in range [-pi, +pi]
 
 /// Linear interpolation between two angles, expressed in radians. Handles all cases
-inline double lint_angle (double a, double b, double t) {return a + t * std::remainder(b - a, M_PI*2);}
+template <typename T, typename U>
+typename std::enable_if<std::is_floating_point<T>::value && std::is_floating_point<U>::value, T>::type
+lerp_angle (T a, T b, U t) {return a + t * std::remainder(b - a, M_PI*2);}
 
-inline float  lint (float  a, float  b, float  t) {return a * (1.f - t) + b * t;}
-inline double lint (double a, double b, double t) {return a * (1.0 - t) + b * t;}
+inline float  lerp (float  a, float  b, float  t) {return a * (1.f - t) + b * t;}
+inline double lerp (double a, double b, double t) {return a * (1.0 - t) + b * t;}
 
 vec2fp cossin_ft(float rad); ///< Table-lookup cosine (x) + sine (y)
 
 inline float deg_to_rad(float x) {return x / 180.f * M_PI;}
+
+template <typename T>
+typename std::enable_if<std::is_floating_point<T>::value, T>::type fracpart(T x) {return std::fmod(x, 1);}
 
 
 
@@ -78,7 +83,7 @@ struct vec2i {
 	bool is_zero() const {return x == 0 && y == 0;}
 	
 	float len() const {return std::sqrt(x*x + y*y);} ///< Length
-	float angle() const {return std::atan2( y, x );} ///< Rotation angle (radians)
+	float angle() const {return y && x? std::atan2( y, x ) : 0;} ///< Rotation angle (radians)
 	uint len2() const {return x*x + y*y;} ///< Square of length
 	
 	uint ilen() const {return isqrt(x*x + y*y);} ///< Integer length (approximate)
@@ -105,12 +110,15 @@ struct vec2i {
 };
 
 inline vec2i operator * (double f, const vec2i& v) {return vec2i(std::floor(v.x * f), std::floor(v.y * f));}
-inline vec2i lint (const vec2i& a, const vec2i& b, double t) {return a * (1. - t) + b * t;}
+inline vec2i lerp (const vec2i& a, const vec2i& b, double t) {return a * (1. - t) + b * t;}
 
 inline vec2i min(const vec2i& a, const vec2i& b) {return {std::min(a.x, b.x), std::min(a.y, b.y)};}
 inline vec2i max(const vec2i& a, const vec2i& b) {return {std::max(a.x, b.x), std::max(a.y, b.y)};}
 
 inline bool any_gtr(const vec2i& p, const vec2i& ref) {return p.x > ref.x || p.y > ref.y;}
+
+/// Returns true if point lies in polygon or on it's edge
+bool is_in_polygon(vec2i p, const vec2i* ps, size_t pn);
 
 
 
@@ -146,8 +154,8 @@ struct vec2fp {
 	
 	float fastlen() const {return 1.f / fast_invsqrt(x*x + y*y);} ///< Length should be non-zero!
 	float len() const {return std::sqrt(x*x + y*y);} ///< Length
-	float angle() const {return std::atan2(y, x);} ///< Rotation angle (radians)
-	float len2() const {return x*x + y*y;} ///< Square of length
+	float angle() const; ///< Rotation angle (radians)
+	float len2() const {return x*x + y*y;} ///< Squared length
 	
 	float dist(const vec2fp& v) const {return (*this - v).len();} ///< Straight distance
 	float ndg_dist(const vec2fp& v) const {return std::fabs(x - v.x) + std::fabs(y - v.y);} ///< Manhattan distance
@@ -171,14 +179,24 @@ struct vec2fp {
 	vec2i int_round() const {return vec2i(std::round(x), std::round(y));}
 	vec2i int_ceil () const {return vec2i(std::ceil (x), std::ceil (y));}
 	
-	float dot( const vec2fp& v ) const {return x * v.x + y * v.y;}
+	template <typename T> int& operator() (T) = delete;
+	float& operator() (bool is_x) {return is_x? x : y;}
 };
 
+inline float dot  (const vec2fp& a, const vec2fp& b) {return a.x * b.x + a.y * b.y;}
+inline float cross(const vec2fp& a, const vec2fp& b) {return a.x * b.y - a.y * b.x;}
+
 inline vec2fp operator * (double f, const vec2fp& v) {return vec2fp(v.x * f, v.y * f);}
-inline vec2fp lint (const vec2fp &a, const vec2fp &b, double t) {return a * (1. - t) + b * t;}
+inline vec2fp lerp (const vec2fp &a, const vec2fp &b, double t) {return a * (1. - t) + b * t;}
 
 inline vec2fp min(const vec2fp &a, const vec2fp &b) {return {std::min(a.x, b.x), std::min(a.y, b.y)};}
 inline vec2fp max(const vec2fp &a, const vec2fp &b) {return {std::max(a.x, b.x), std::max(a.y, b.y)};}
+
+/// Returns line segment intersection point, if any
+std::optional<vec2fp> lineseg_intersect(vec2fp a1, vec2fp a2, vec2fp b1, vec2fp b2, float eps = 1e-10);
+
+/// Returns t,u of intersection point a+at*t = b+bt*u if lines aren't collinear or parallel
+std::optional<std::pair<float, float>> line_intersect_t(vec2fp a, vec2fp at, vec2fp b, vec2fp bt, float eps = 1e-10);
 
 
 
@@ -227,7 +245,7 @@ struct Rectfp
 	vec2fp a, b; // lower and upper bounds
 	
 	Rectfp() = default;
-	Rectfp( int ax, int ay, int bx, int by ) {a.set( ax, ay ), b.set( ax + bx, ay + by );}
+	Rectfp( int ax, int ay, int sz_x, int sz_y ) {a.set( ax, ay ), b.set( ax + sz_x, ay + sz_y );}
 	Rectfp  (vec2fp a, vec2fp b, bool is_size) {this->a = a, this->b = is_size? b + a : b;}
 	void set(vec2fp a, vec2fp b, bool is_size) {this->a = a, this->b = is_size? b + a : b;}
 	void zero() { a.zero(); b.zero(); }
@@ -263,7 +281,7 @@ struct Transform
 	float rot;
 	
 	Transform() = default;
-	Transform(vec2fp pos, float rot = 0.f): pos(pos), rot(rot) {}
+	explicit Transform(vec2fp pos, float rot = 0.f): pos(pos), rot(rot) {}
 	
 	vec2fp apply(vec2fp p) const; ///< Applies transform to point
 	vec2fp reverse(vec2fp p) const; ///< Applies reverse transform to point
@@ -280,4 +298,7 @@ struct Transform
 	void operator *= (float t);
 };
 
-#endif // EXT_MATH_HPP
+inline Transform lerp (const Transform &a, const Transform &b, float t) {
+	return Transform{lerp(a.pos, b.pos, t), lerp_angle(a.rot, b.rot, t)};}
+
+#endif // VAS_MATH_HPP

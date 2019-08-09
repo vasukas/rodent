@@ -6,7 +6,7 @@
 
 
 
-/// Enables class as event subscriber
+/// Enables class as event subscriber. Note: should be in the beginning of declaration
 #define EVS_SUBSCR \
 	ev_signal_detail::Subscr _ev_signal_subscr
 
@@ -21,6 +21,10 @@
 /// Connects freestanding function to signal
 #define EVS_FREEFUNC( SIG, FUNC )\
 	SIG.connect(nullptr, FUNC)
+
+/// Disconnects subscriber from everything
+#define EVS_SUBSCR_FORCE_ALL \
+	_ev_signal_subscr.rem_all()
 
 
 
@@ -49,6 +53,11 @@ namespace ev_signal_detail
 			for (size_t i=0; i<rs.size(); )
 				if (rs[i].first == p) rs.erase( rs.begin() + i );
 				else ++i;
+		}
+		void rem_all()
+		{
+			for (auto& r : rs) r.first->rem(r.second);
+			rs.clear();
 		}
 	};
 }

@@ -81,7 +81,7 @@ public:
 		VLOGI("Time elapsed: {:6.3} seconds", (TimeSpan::since_start() - time0).seconds());
 		
 		ImageInfo img;
-		img.reset(size(), ImageInfo::FMT_RGB);
+		img.reset(size(), ImageInfo::FMT_ALPHA);
 		for (auto& c : get_all_cs()) {
 			int v = 0;
 			if (auto r = get_room(c.room_i)) {
@@ -139,6 +139,15 @@ public:
 			mark_border({x, r.area.sz.y}, {0,1});
 		}
 		
+		auto room_ptr = [this](size_t i)
+		{
+			return i == std::string::npos ? nullptr : &g_rooms[i];
+		};
+		auto cor_ptr = [this](size_t i)
+		{
+			return i == std::string::npos ? nullptr : &g_cors[i];
+		};
+		
 		auto gen_corridor = [&]()
 		{
 			if (g_cors.size() == g_cors.capacity()) return;
@@ -147,9 +156,9 @@ public:
 			auto& c0 = bord[i];
 			
 			{	vec2i p = c0.second; p.rot90cw(); p += c0.first->pos;
-				if (cref(p).cor || cref(p).room) return;
+				if (cor_ptr(cref(p).cor_i) || room_ptr(cref(p).room_i)) return;
 				p = c0.second; p.rot90ccw(); p += c0.first->pos;
-				if (cref(p).cor || cref(p).room) return;
+				if (cor_ptr(cref(p).cor_i) || room_ptr(cref(p).room_i)) return;
 			}
 			
 			std::vector<Cell*> cs;
@@ -175,7 +184,7 @@ public:
 				if (!c) return;
 				
 				cs.push_back(c);
-				if (c->cor || c->room) {
+				if (cor_ptr(c->cor_i) || room_ptr(c->room_i)) {
 					if (rnd.range_n() > cor_cnt_f) return;
 					break;
 				}
@@ -184,7 +193,7 @@ public:
 					const vec2i ds[] = {{0,1}, {0,-1}, {1,0}, {-1,0}};
 					for (auto& d : ds) {
 						c = getc(np + d);
-						if (c->cor || c->room) {
+						if (cor_ptr(c->cor_i) || room_ptr(c->room_i)) {
 							if (n) return;
 							if (rnd.range_n() > cor_cnt_f) return;
 							n = c;
@@ -197,30 +206,33 @@ public:
 			}
 			
 			Corridor* cor;
+			size_t cor_ix;
 			
-			if		(cs.back()->cor)
+			if		(cor_ptr(cs.back()->cor_i))
 			{
-				cor = cs.back()->cor;
+				cor_ix = cs.back()->cor_i;
+				cor = cor_ptr(cor_ix);
 				cs.pop_back();
 			}
-			else if (cs.back()->room)
+			else if (room_ptr(cs.back()->room_i))
 			{
 				for (auto& c : g_cors) {
 					bool a = false, b = false;
 					for (auto& e : c.ents) {
-						if (e.room == &r)              a = true;
-						if (e.room == cs.back()->room) b = true;
+						if (room_ptr(e.room_i) == &r) a = true;
+						if (room_ptr(e.room_i) == room_ptr(cs.back()->room_i)) b = true;
 					}
 					if (a && b && c.ents.size() == 2) {
 						if (rnd.range_n() > cor_dup_f) return;
 					}
 				}
 				
+				cor_ix = g_cors.size();
 				cor = &g_cors.emplace_back();
 				
 				auto& en = cor->ents.emplace_back();
 				en.pos = cs.back()->pos;
-				en.room = cs.back()->room;
+				en.room_i = cs.back()->room_i;
 				
 				cs.pop_back();
 			}
@@ -252,7 +264,7 @@ public:
 				for (int x=0; x<ar.sz.x; ++x)
 				{
 					auto& c = cref(vec2i{x,y} + ar.off);
-					if (c.is_border || c.cor || c.room) return;
+					if (c.is_border || cor_ptr(c.cor_i) || room_ptr(c.room_i)) return;
 				}
 				
 				auto nr = &g_rooms.emplace_back();
@@ -261,21 +273,22 @@ public:
 				mark_room(*nr);
 				place_q.push_back(nr);
 				
+				cor_ix = g_cors.size();
 				cor = &g_cors.emplace_back();
 				auto& en = cor->ents.emplace_back();
 				en.pos = cs.back()->pos;
-				en.room = nr;
+				en.room_i = nr->index;
 			}
 			
 			reserve_more(cor->cells, cs.size());
 			for (auto& c : cs) {
 				cor->cells.push_back(c->pos);
-				c->cor = cor;
+				c->cor_i = cor_ix;
 			}
 			
 			auto& en = cor->ents.emplace_back();
 			en.pos = cs.front()->pos;
-			en.room = &r;
+			en.room_i = r.index;
 		};
 		
 		int cor_perim = r.area.size().perimeter() / rm_cor_per;
@@ -290,7 +303,8 @@ public:
 const vec2fp LevelControl::cell_size = {8,8};
 LevelControl::LevelControl()
 {
-	grid_size = (vec2fp(4000, 3000) / cell_size).int_round();
+//	grid_size = (vec2fp(4000, 3000) / cell_size).int_round();
+	grid_size = {80, 50};
 //	grid_size = {1366, 768};
 	cs.resize(grid_size.area());
 	

@@ -80,6 +80,10 @@ static uint64_t seek_ptr( uint64_t ptr, uint64_t size, int64_t val, File::SeekWh
 #undef u_val
 	return ptr;
 }
+static std::string errno_str( int err = errno )
+{
+	return FMT_FORMAT("[errno: {}] {}", err, strerror(err));
+}
 
 
 
@@ -88,7 +92,7 @@ bool set_current_dir( const char *str )
 #ifndef VAS_WINCOMPAT
 	if (chdir( str ))
 	{
-		VLOGE("set_current_dir() chdir: {} [errno: {}] (path: \"{}\")", strerror(errno), errno, str);
+		VLOGE("set_current_dir() chdir: {} (path: \"{}\")", errno_str(), str);
 		return false;
 	}
 #else
@@ -112,6 +116,7 @@ std::optional<std::string> readfile( const char *filename )
 {
 	File* f = File::open( filename );
 	if (!f) return {};
+	f->error_throw = false;
 	
 	int an = f->get_size();
 	if (an < 0) return {};
@@ -126,13 +131,13 @@ std::optional<std::string> readfile( const char *filename )
 		VLOGE("readfile() read failed (file: \"{}\")", filename);
 		return {};
 	}
-	
 	return a;
 }
 bool writefile( const char *filename, const void *data, size_t size )
 {
 	File* f = File::open( filename, File::OpenCreate );
 	if (!f) return false;
+	f->error_throw = false;
 	
 	if (size == std::string::npos) size = strlen( static_cast< const char * >(data) );
 	size_t rn = f->write( data, size );
@@ -155,6 +160,14 @@ void* open_stdio_file( const char *filename, const char *mode )
 #else
 	return winc_fopen( filename, mode );
 #endif
+}
+std::string get_file_ext(std::string_view filename)
+{
+	size_t i = filename.rfind('.');
+	if (i == std::string::npos) return {};
+	std::string s(filename.substr(i + 1));
+	for (auto& c : s) if (c <= 'Z' && c >= 'A') c = (c - 'A') + 'a';
+	return s;
 }
 
 
@@ -182,21 +195,13 @@ int64_t File::get_size() const
 	{\
 		TYPE x;	\
 		if (read( &x, BYTES ) != BYTES) \
-		{\
-			error_flag = true; \
-			VLOGE( "File::r" #NAME "() read error or not enough data" ); \
-			if (error_throw) throw std::runtime_error( "File::r" #NAME "() read error or not enough data" ); \
-		}\
+			LOG_THROW( "File::r" #NAME "() read error or not enough data" ); \
 		return x; \
 	}\
 	void File::w##NAME( TYPE x ) \
 	{\
 		if (write( &x, BYTES ) != BYTES) \
-		{\
-			error_flag = true; \
-			VLOGE( "File::w" #NAME "() write error" ); \
-			if (error_throw) throw std::runtime_error( "File::w" #NAME "() write error" ); \
-		}\
+			LOG_THROW( "File::w" #NAME "() write error" ); \
 	}
 
 #define FILE_RW_END_SUB( TYPE, BITS )\
@@ -210,9 +215,7 @@ int64_t File::get_size() const
 		case EndLittle: return r##BITS##L(); \
 		case EndBig:    return r##BITS##B(); \
 		}\
-		error_flag = true; \
-		VLOGE( "File::r" #BITS "D() invalid enum" ); \
-		if (error_throw) throw std::runtime_error( "File::r" #BITS "D() invalid enum" ); \
+		LOG_THROW( "File::r" #BITS "D() invalid enum" ); \
 		return 0; \
 	}\
 	void File::w##BITS##L( TYPE x ) { return w##BITS##N( swapL_##BITS( x ) ); } \
@@ -225,9 +228,7 @@ int64_t File::get_size() const
 		case EndLittle: return w##BITS##L( x ); \
 		case EndBig:    return w##BITS##B( x ); \
 		}\
-		error_flag = true; \
-		VLOGE( "File::w" #BITS "D() invalid enum" ); \
-		if (error_throw) throw std::runtime_error( "File::w" #BITS "D() invalid enum" ); \
+		LOG_THROW( "File::w" #BITS "D() invalid enum" ); \
 	}\
 
 #define FILE_RW_END( BITS )\
@@ -289,7 +290,7 @@ public:
 	~File_STD()
 	{
 		if (free_src && std::fclose( src ))
-			VLOGE( "File_STD:: fclose failed - [{}] {}", errno, strerror(errno) );
+			VLOGE( "File_STD:: fclose failed - {}", errno_str() );
 	}
 	size_t read( void *buf, size_t buf_size )
 	{
@@ -297,10 +298,8 @@ public:
 		size_t n = std::fread( buf, 1, buf_size, src );
 		if (n != buf_size && errno)
 		{
-			auto str = FMT_FORMAT( "File_STD::read() failed - [{}] {}", errno, strerror(errno) );
-			error_flag = true;
-			VLOGE( "{}", str );
-			if (error_throw) THROW_FMTSTR( "{}", str );
+			VLOGE( "File_STD::read() failed - {}", errno_str() );
+			if (error_throw) THROW_FMTSTR( "File::read() failed" );
 		}
 		return n;
 	}
@@ -309,10 +308,8 @@ public:
 		size_t n = std::fwrite( buf, 1, buf_size, src );
 		if (n != buf_size)
 		{
-			auto str = FMT_FORMAT( "File_STD::write() failed - [{}] {}", errno, strerror(errno) );
-			error_flag = true;
-			VLOGE( "{}", str );
-			if (error_throw) THROW_FMTSTR( "{}", str );
+			VLOGE( "File_STD::write() failed - {}", errno_str() );
+			if (error_throw) THROW_FMTSTR( "File::write() failed" );
 		}
 		return n;
 	}
@@ -320,7 +317,8 @@ public:
 	{
 		if (std::fseek( src, ptr, whence ))
 		{
-			VLOGD( "File_STD::seek() failed - [{}] {}", errno, strerror(errno) );
+			VLOGD( "File_STD::seek() failed - {}", errno_str() );
+			if (error_throw) THROW_FMTSTR( "File::seek() failed" );
 			return -1;
 		}
 		return tell();
@@ -330,7 +328,8 @@ public:
 		auto ret = std::ftell( src );
 		if (ret == -1)
 		{
-			VLOGD( "File_STD::tell() failed - [{}] {}", errno, strerror(errno) );
+			VLOGD( "File_STD::tell() failed - {}", errno_str() );
+			if (error_throw) THROW_FMTSTR( "File::tell() failed" );
 			return -1;
 		}
 		return ret;
@@ -339,13 +338,18 @@ public:
 	{
 		if (std::fflush( src ))
 		{
-			VLOGD( "File_STD::fflush() failed - [{}] {}", errno, strerror(errno) );
+			VLOGD( "File_STD::fflush() failed - {}", errno_str() );
+			if (error_throw) THROW_FMTSTR( "File::flush() failed" );
 			return false;
 		}
 		return true;
 	}
 };
-File* File::open( const char *filename, int flags )
+std::unique_ptr<File> File::open_ptr( const char *filename, int flags )
+{
+	return std::unique_ptr<File> (open(filename, flags, true));
+}
+File* File::open( const char *filename, int flags, bool throw_on_error )
 {
 #if VAS_FILE_USE_OPEN_HOOK
 	return vas_file_open_hook(filename, flags);
@@ -359,7 +363,8 @@ File* File::open( const char *filename, int flags )
 	{
 		if (!fexist( filename ))
 		{
-			VLOGE( "File::open() not accessible (file: \"{}\")", filename );
+			VLOGE( "File::open() failed - only existing: \"{}\"", filename );
+			if (throw_on_error) THROW_FMTSTR( "File::open() failed - only existing: \"{}\"", filename );
 			return nullptr;
 		}
 		if		(rw == OpenRead)  mode = "rb";
@@ -376,22 +381,23 @@ File* File::open( const char *filename, int flags )
 	{
 		if		(rw == OpenRead)
 		{
-			VLOGE( "File::open() invalid flags - create & read-only (file: \"{}\")", filename );
-			return nullptr;
+			VLOGE("File::open() failed: \"{}\"", filename);
+			throw std::logic_error("File::open() invalid flags - create & read-only");
 		}
 		else if (rw == OpenWrite) mode = "wb";
 		else                      mode = "w+b";
 	}
 	else
 	{
-		VLOGE( "File::open() invalid flags - {} (file: \"{}\")", flags, filename );
-		return nullptr;
+		VLOGE("File::open() failed: \"{}\"", filename);
+		throw std::logic_error("File::open() invalid flags");
 	}
 	
 	FILE* f = static_cast<FILE*>( open_stdio_file(filename, mode) );
 	if (!f)
 	{
-		VLOGE("File::open() fopen failed - [{}] {} (file: \"{}\")", errno, strerror(errno), filename);
+		VLOGE("File::open() fopen failed - {} (file: \"{}\")", errno_str(), filename);
+		if (throw_on_error) THROW_FMTSTR( "File::open() failed - can't open \"{}\"", filename );
 		return nullptr;
 	}
 	if (flags & OpenDisableBuffer)
@@ -431,7 +437,6 @@ public:
 		int64_t sp = f->tell();
 		if (sp < 0)
 		{
-			error_flag = true;
 			VLOGE( "File_PROXY::read() seek failed" );
 			if (error_throw) throw std::runtime_error( "File_PROXY::read() seek failed" );
 			return 0;
@@ -448,7 +453,6 @@ public:
 	{
 		if (!writeable)
 		{
-			error_flag = true;
 			VLOGE( "File_PROXY::write() not writeable" );
 			if (error_throw) throw std::runtime_error( "File_PROXY::write() not writeable" );
 			return 0;
@@ -457,7 +461,6 @@ public:
 		int64_t sp = f->tell();
 		if (sp < 0)
 		{
-			error_flag = true;
 			VLOGE( "File_PROXY::write() seek failed" );
 			if (error_throw) throw std::runtime_error( "File_PROXY::write() seek failed" );
 			return 0;
@@ -488,7 +491,7 @@ File* File::proxy_region( uint64_t from, uint64_t length, bool writeable )
 {
 	if (get_size() < 0)
 	{
-		VLOGE( "File::proxy_region() is unseekable" );
+		VLOGE( "File::proxy_region() file is unseekable" );
 		return nullptr;
 	}
 	auto usz = static_cast< uint64_t >( get_size() );
@@ -561,6 +564,15 @@ MemoryFile* MemoryFile::from_file( File& file )
 	f->size = n;
 	return f;
 }
+MemoryFile* MemoryFile::from_copy( const MemoryFile& file, size_t offset, size_t size, bool writeable )
+{
+	size = std::min(size, static_cast<size_t>(file.size) - offset);
+	MemoryFile* f = new MemoryFile(size);
+	std::memcpy(f->mem, file.mem + offset, size);
+	f->size = size;
+	f->a_write = writeable;
+	return f;
+}
 MemoryFile::~MemoryFile()
 {
 	if (a_expand)
@@ -589,7 +601,6 @@ size_t MemoryFile::write( const void *buf, size_t buf_size )
 {
 	if (!a_write)
 	{
-		error_flag = true;
 		VLOGE( "MemoryFile::write() not writeable" );
 		if (error_throw) throw std::runtime_error( "MemoryFile::write() not writeable" );
 		return 0;
@@ -600,7 +611,6 @@ size_t MemoryFile::write( const void *buf, size_t buf_size )
 	{
 		if (!a_expand)
 		{
-			error_flag = true;
 			VLOGE( "MemoryFile::write() not resizable" );
 			if (error_throw) throw std::runtime_error( "MemoryFile::write() not resizable" );
 			return 0;
@@ -608,7 +618,6 @@ size_t MemoryFile::write( const void *buf, size_t buf_size )
 		
 		if (!realloc(size + buf_size))
 		{
-			error_flag = true;
 			VLOGE("MemoryFile::write() failed");
 			if (error_throw) throw std::runtime_error("MemoryFile::write() realloc failed");
 

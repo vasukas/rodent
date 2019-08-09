@@ -28,7 +28,7 @@ void Camera::add_frame (Frame frm)
 		fst = cur;
 		fst.len = TimeSpan();
 	}
-	ans.push(frm);
+	ans.push_back(frm);
 }
 void Camera::add_shift_frame (Frame frm)
 {
@@ -39,7 +39,11 @@ void Camera::add_shift_frame (Frame frm)
 }
 void Camera::reset_frames()
 {
-	while (!ans.empty()) ans.pop();
+	ans.clear();
+}
+Camera::Frame Camera::last_frame()
+{
+	return !ans.empty() ? ans.back() : cur;
 }
 void Camera::step (TimeSpan passed)
 {
@@ -53,12 +57,12 @@ void Camera::step (TimeSpan passed)
 		{
 			cur.len = fst.len - ans.front().len;
 			fst = cur;
-			ans.pop();
+			ans.pop_front();
 		}
 		else
 		{
 			cur = ans.front();
-			ans.pop();
+			ans.pop_front();
 			return;
 		}
 	}
@@ -66,15 +70,15 @@ void Camera::step (TimeSpan passed)
 	float t = fst.len / ans.front().len;
 	auto& n = ans.front();
 	
-	cur.pos = lint(fst.pos, n.pos, t);
-	cur.rot = lint(fst.rot, n.rot, t);
-	cur.mag = lint(fst.mag, n.mag, t);
+	cur.pos = lerp(fst.pos, n.pos, t);
+	cur.rot = lerp(fst.rot, n.rot, t);
+	cur.mag = lerp(fst.mag, n.mag, t);
 }
 
 
 
 static void mx_mul(float *m, float *s) {
-	float t[16] = {0};
+	float t[16] = {};
 	for (int i=0; i<4; i++) {
 		for (int j=0; j<4; j++) {
 			for (int k=0; k<4; k++)
@@ -84,7 +88,7 @@ static void mx_mul(float *m, float *s) {
 	for (int i=0; i<16; i++) m[i] = t[i];
 }
 static void mx_mul_vec(const float *m, float *v) {
-	float t[4] = {0};
+	float t[4] = {};
 	for (int i=0; i<4; i++) {
 		for (int k=0; k<4; k++)
 			t[i] += m[i*4+k] * v[k];
@@ -182,4 +186,18 @@ vec2fp Camera::mouse_cast(vec2i mou) const
 	float v[4] = {(float) mou.x - w/2, (float) mou.y - h/2, 0, 1};
 	mx_mul_vec(m, v);
 	return {v[0], v[1]};
+}
+vec2i Camera::direct_cast( vec2fp p ) const
+{
+	auto m = get_full_matrix();
+	vec2i sz = vport.size();
+	int w = sz.x, h = sz.y;
+	
+	p -= cur.pos;
+	p.y = -p.y;
+	
+	float v[4] = {p.x, p.y, 0, 1};
+	mx_mul_vec(m, v);
+	return vec2i(std::roundf((v[0] + 1)*(w/2)),
+	             std::roundf((v[1] + 1)*(h/2)));
 }

@@ -31,20 +31,30 @@ struct ParticleParams
 
 struct ParticleGroupGenerator
 {
+	struct BatchPars
+	{
+		Transform tr;
+		float power = 1.f;
+		FColor clr = {1, 1, 1, 1};
+	};
+	
 	virtual ~ParticleGroupGenerator() = default;
+	
+	/// Generates group with specified transformation
+	void draw(const BatchPars& pars);
+	
+protected:
+	friend class ParticleRenderer_Impl;
 	
 	/// Begins generating new group. Returns number of particles. 
 	/// Params are already inited with zero rotations and acceleration, everything else is unset
-	virtual size_t begin(const Transform& tr, ParticleParams& p, float power) = 0;
+	virtual size_t begin(const BatchPars& pars, ParticleParams& p) = 0;
 	
 	/// Fills params, value is same since last call and call to begin
 	virtual void gen(ParticleParams& p) = 0;
 	
 	/// Group generation finished 
 	virtual void end() {}
-	
-	/// Generates group with specified transformation
-	void draw(const Transform& tr, float power = 1.f);
 };
 
 
@@ -78,7 +88,7 @@ private:
 	Transform t_tr;
 	float t_spdmax, t_rotmax, t_lmax, t_fmax;
 	
-	size_t begin(const Transform& tr, ParticleParams& p, float);
+	size_t begin(const BatchPars& pars, ParticleParams& p);
 	void gen(ParticleParams& p);
 };
 
@@ -95,7 +105,7 @@ protected:
 	virtual void render(TimeSpan passed) = 0;
 	
 	friend ParticleGroupGenerator;
-	virtual void add(ParticleGroupGenerator& group, const Transform& tr, float power) = 0;
+	virtual void add(ParticleGroupGenerator& group, const ParticleGroupGenerator::BatchPars& pars) = 0;
 };
 
 #endif // PARTICLES_HPP

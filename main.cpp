@@ -1,7 +1,6 @@
 #include <SDL2/SDL.h>
-#include "core/dbg_menu.hpp"
 #include "core/gamepad.hpp"
-#include "core/tui_layer.hpp"
+#include "core/vig.hpp"
 #include "render/control.hpp"
 #include "render/gl_utils.hpp" // debug stats
 #include "render/ren_imm.hpp"
@@ -11,15 +10,11 @@
 #include "vaslib/vas_file.hpp"
 #include "vaslib/vas_log.hpp"
 #include "vaslib/vas_time.hpp"
-#include "console.hpp"
 #include "main_loop.hpp"
 #include "settings.hpp"
 
-#ifndef GAME_VERSION
-#define GAME_VERSION "unspecified (alpha)"
-#endif
-
-// #define USE_RELEASE_PATHS 1
+// from ratlaunch/config.hpp
+#define FN_TIMESTAMP    "ratlaunch.timestamp" // client-only
 
 
 
@@ -150,7 +145,7 @@ static void platform_info()
 
 int main( int argc, char *argv[] )
 {
-	printf("RAT game prototype, version: " GAME_VERSION "\n");
+	printf("RAT game prototype (alpha)\n");
 #if !USE_RELEASE_PATHS
 	printf("Using local paths\n");
 #else
@@ -158,79 +153,61 @@ int main( int argc, char *argv[] )
 #endif
 	
 	TimeSpan time_init = TimeSpan::since_start();
-	
-	auto ml_which = MainLoop::INIT_DEFAULT;
-	int cli_logclr = -1;
-	int cli_verb = -1;
+	std::optional<bool>     cli_logclr;
+	std::optional<LogLevel> cli_verb;
 	
 	std::string log_filename = get_game_path(GAME_PATH_LOG);
 	AppSettings::cfg_path = get_game_path(GAME_PATH_SETTINGS);
 
-	for (int i = 1; i < argc; ++i)
+	ArgvParse arg;
+	arg.set(argc-1, argv+1);
+	try {
+		while (!arg.ended())
+		{
+			if (arg.is("--help"))
+			{
+				printf("%s", R"(
+Usage: rodent [OPTIONS] [MODE [MODE_OPTS]]
+
+Options:
+  --log    <FILE> override default log path
+  --logclr <0/1>  enable colors in log
+  --cfg    <FILE> override default config path
+
+  -v0 -v -vv  different log verbosity level, from default (info) to verbose
+  --gldbg     create debug OpenGL context and log all GL messages as verbose
+				       
+Modes (to see options use --modehelp):
+  --rentest   renderer test
+  --game      default
+)");
+			}
+			else if (arg.is("--log")) log_filename = arg.str();
+			else if (arg.is("--logclr")) cli_logclr = arg.flag();
+			else if (arg.is("--cfg")) AppSettings::cfg_path = arg.str();
+			else if (arg.is("-v0")) cli_verb = LogLevel::Info;
+			else if (arg.is("-v"))  cli_verb = LogLevel::Debug;
+			else if (arg.is("-vv")) cli_verb = LogLevel::Verbose;
+			else if (arg.is("--gldbg")) RenderControl::opt_gldbg = true;
+			else if (arg.is("--rentest")) MainLoop::init(MainLoop::INIT_RENTEST);
+			else if (arg.is("--game")) MainLoop::init(MainLoop::INIT_GAME);
+			else if (arg.is("--modehelp"))
+			{
+				if (!MainLoop::current) printf("No mode selected ('--modehelp')\n");
+				else if (!MainLoop::current->parse_arg(arg)) printf("Mode has no options\n");
+				return 1;
+			}
+			else if (MainLoop::current && MainLoop::current->parse_arg(arg)) continue;
+			else {
+				printf("Invalid option: %s\n", arg.cur().c_str());
+				return 1;
+			}
+		}
+	}
+	catch (std::exception& e)
 	{
-		if		(!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help"))
-		{
-			printf("Usage: rodent [OPTIONS]\n");
-			printf("\n");
-			printf("Options:\n");
-			printf("\t--log    <FILE> override default log path\n");
-			printf("\t--logclr <0/1>  enable colors in log\n");
-			printf("\t--verb   <N>    set log verbosity (1 verbose, 2 debug, 3 info)\n");
-			printf("\t--cfg    <FILE> override default config path\n");
-			printf("\n");
-			printf("\t--gldbg  create debug OpenGL context and log all GL messages as verbose\n");
-			return 0;
-		}
-		else if (!strcmp(argv[i], "--log"))
-		{
-			if (i == argc-1) {
-				printf("Invalid option value: %s\n", argv[i]);
-				return 1;
-			}
-			log_filename = argv[++i];
-		}
-		else if (!strcmp(argv[i], "--logclr"))
-		{
-			bool ok = (i != argc-1) && (argv[i+1][1] == 0);
-			if (ok)
-			{
-				++i;
-				if		(argv[i][0] == '0') cli_logclr = 0;
-				else if (argv[i][0] == '1') cli_logclr = 1;
-				else ok = false;
-			}
-			if (!ok) {
-				printf("Invalid option value: %s\n", argv[i]);
-				return 1;
-			}
-		}
-		else if (!strcmp(argv[i], "--verb"))
-		{
-			if (i == argc-1) {
-				printf("Invalid option value: %s\n", argv[i]);
-				return 1;
-			}
-			
-			cli_verb = atoi( argv[++i] );
-			if (cli_verb < 1 || cli_verb > 3)
-			{
-				printf("Invalid option value: %s\n", argv[i]);
-				return 1;
-			}
-		}
-		else if (!strcmp(argv[i], "--cfg"))
-		{
-			if (i == argc-1) {
-				printf("Invalid option value: %s\n", argv[i]);
-				return 1;
-			}
-			AppSettings::cfg_path = argv[++i];
-		}
-		else if (!strcmp(argv[i], "--gldbg"))  RenderControl::opt_gldbg = true;
-		else {
-			printf("Invalid option: %s\n", argv[i]);
-			return 1;
-		}
+		printf("%s\nFailed to parse arguments\n", e.what());
+		return 1;
 	}
 	
 	
@@ -241,12 +218,22 @@ int main( int argc, char *argv[] )
     {
 		LoggerSettings lsets;
 		lsets.file.reset( File::open( log_filename.c_str(), File::OpenCreate | File::OpenDisableBuffer ) );
-		if (cli_logclr != -1) lsets.use_clr = (cli_logclr != 0);
-		if (cli_verb != -1) lsets.level = static_cast< LogLevel >( cli_verb );
+		if (!lsets.file) VLOGW("Log not written to file!");
+		
+		if (cli_verb) lsets.level = *cli_verb;
+		if (cli_logclr) lsets.use_clr = *cli_logclr;
+#ifdef _WIN32
+		else lsets.use_clr = false;
+#endif
 		lsets.apply();
     }
 	VLOGI("Launched at {}", date_time_str());
-	VLOGI("Game version: " GAME_VERSION);
+	
+	if (File* f = File::open(FN_TIMESTAMP)) {
+		VLOGI("Launcher timestamp: {}", f->r64B());
+		delete f;
+	}
+	else VLOGW("Launcher timestamp: none");
 	
 	VLOGD("CLI ARGUMENTS:");
 	for (int i = 0; i < argc; ++i) VLOGD( "  {}", argv[i] );
@@ -263,42 +250,69 @@ int main( int argc, char *argv[] )
 	
 	
 	
-	TUI_Layer::char_sz_mul = AppSettings::get().tui_scale;
+	std::unique_ptr<vigAverage> avg_passed;
 	
-	auto dbg_g = DbgMenu::get().reg({[&]()
+	auto dbg_g = vig_reg_menu(VigMenu::DebugRenderer, [&]()
 	{
-		dbgm_label(FMT_FORMAT(
+		vig_label_a(
 			"Buffer : max {:4} KB, current {:4} KB\n"
 			"Texture : {:4} KB\n",
-			GLA_Buffer::dbg_size_max >>10, GLA_Buffer::dbg_size_now >>10,
-			Texture::dbg_total_size >>10));
-		dbgm_check(RenderControl::get().use_pp, "Postproc", 'p');
-		if (dbgm_button("Reload postproc chain", 'm')) RenderControl::get().reload_pp();
-	}, "General"});
+			GLA_Buffer::dbg_size_max >> 10, GLA_Buffer::dbg_size_now >> 10,
+			Texture::dbg_total_size >> 10);
+		vig_checkbox(RenderControl::get().use_pp, "[p] Postproc", 'p');
+		if (vig_button("[m] Reload postproc chain", 'm')) RenderControl::get().reload_pp();
+		vig_lo_next();
+		avg_passed->draw();
+		vig_lo_next();
+	});
 	
 	
+	
+	if (AppSettings::get().fscreen == 1)
+		RenderControl::opt_fullscreen = true;
 	
 	log_write_str(LogLevel::Critical, "=== Starting renderer initialization ===");
 	if (!RenderControl::init()) return 1;
 	log_write_str(LogLevel::Critical, "=== Renderer initialization finished ===");
+	
+	if (AppSettings::get().fscreen == -1)
+		RenderControl::get().set_fscreen( RenderControl::FULLSCREEN_DESKTOP );
 	
 	if (int set = AppSettings::get().set_vsync; set != -1)
 		RenderControl::get().set_vsync(set);
 	else VLOGI("set_vsync = ignored");
 	
 	set_wnd_pars();
-	VLOGI("Basic initialization finished in {:6.3} seconds", (TimeSpan::since_start() - time_init).seconds());
-	
 	SDL_PumpEvents(); // just in case
 	
-	MainLoop::init( ml_which );
-	if (!MainLoop::current)
-	{
-		VLOGE("MainLoop::init() failed");
+	VLOGI("Basic initialization finished in {:6.3} seconds", (TimeSpan::since_start() - time_init).seconds());
+	
+	
+	
+	if (!MainLoop::current) MainLoop::init(MainLoop::INIT_DEFAULT);
+	try {MainLoop::current->init();}
+	catch (std::exception& e) {
+		VLOGE("MainLoop::init() failed: {}", e.what());
 		return 1;
 	}
 	
 	VLOGI("Full initialization finished in {:6.3} seconds", (TimeSpan::since_start() - time_init).seconds());
+	
+	
+	
+//	static const float loglines_mul = 11.f / RenText::get().line_height( FontIndex::Debug );
+	static const float loglines_mul = 1;
+	
+	auto loglines_upd = []
+	{
+		vec2i sz = RenderControl::get_size() / (RenText::get().mxc_size( FontIndex::Debug ) * loglines_mul);
+		LoggerSettings lsets;
+		lsets.lines = sz.y;
+		lsets.lines_width = sz.x;
+		lsets.apply();
+	};
+	auto loglines_g = RenderControl::get().add_size_cb(loglines_upd);
+	loglines_upd();
 	
 	
 	
@@ -316,7 +330,7 @@ int main( int argc, char *argv[] )
 	const int target_fps = AppSettings::get().target_fps;
 	VLOGI("Target FPS: {}", target_fps);
 	
-	TimeSpan loop_length = TimeSpan::seconds( 1.f / target_fps );
+	TimeSpan loop_length = TimeSpan::fps( target_fps );
 	bool loop_limit = true;//!RenderControl::get().has_vsync() || target_fps != vsync_fps;
 	VLOGD("Main loop limiter: {}", loop_limit);
 	
@@ -324,17 +338,18 @@ int main( int argc, char *argv[] )
 	
 	TimeSpan passed = loop_length; // render time
 	TimeSpan last_time = loop_length; // processing time (for info)
+	avg_passed = std::make_unique<vigAverage>(5, 1.f/target_fps);
 	
 	
 	
-	bool cons_shown = false;
-	bool& dbg_show = RenderControl::get().draw_tui;
-	bool dbg_input = false;
+//	bool cons_shown = false;
+	bool log_shown = false;
 	
 	bool run = true;
 	while (run)
 	{
 		TimeSpan loop_0 = TimeSpan::since_start();
+		vig_begin();
 		
 		SDL_Event ev;
 		while (SDL_PollEvent(&ev))
@@ -345,44 +360,34 @@ int main( int argc, char *argv[] )
 				auto &ks = ev.key.keysym;
 				if (ks.mod & KMOD_CTRL)
 				{
-					if		(ks.scancode == SDL_SCANCODE_Q) run = false;
-					else if (ks.scancode == SDL_SCANCODE_R) RenderControl::get().reload_shaders();
-					else if (ks.scancode == SDL_SCANCODE_D) {
-						if (dbg_show && !dbg_input) dbg_input = true;
-						else {dbg_input = dbg_show = !dbg_show; cons_shown = false;}
+					if		(ks.scancode == SDL_SCANCODE_Q) {
+						run = false;
+						continue;
+					}
+					else if (ks.scancode == SDL_SCANCODE_R) {
+						RenderControl::get().reload_shaders();
+						continue;
 					}
 					else if (ks.scancode == SDL_SCANCODE_F) {
 						if (RenderControl::get().get_fscreen() != RenderControl::FULLSCREEN_OFF)
 							RenderControl::get().set_fscreen( RenderControl::FULLSCREEN_OFF );
 						else
 							RenderControl::get().set_fscreen( RenderControl::FULLSCREEN_ENABLED );
+						continue;
 					}
-					continue;
 				}
-				else if (ks.scancode == SDL_SCANCODE_GRAVE) {cons_shown = !cons_shown; dbg_show = false;}
-				
-				if (dbg_input && !(ks.mod & (KMOD_CTRL | KMOD_ALT | KMOD_SHIFT)))
-					continue;
-			}
-			else if (ev.type == SDL_KEYUP)
-			{
-				auto &ks = ev.key.keysym;
-				if (dbg_input && !(ks.mod & (KMOD_CTRL | KMOD_ALT | KMOD_SHIFT)))
-				{
-					if (ks.scancode == SDL_SCANCODE_TAB) dbg_input = false;
-					DbgMenu::get().on_key(ks.scancode);
-					continue;
-				}
+//				else if (ks.scancode == SDL_SCANCODE_GRAVE) {cons_shown = !cons_shown; dbg_show = false;}
+				else if (ks.scancode == SDL_SCANCODE_F2) log_shown = !log_shown;
 			}
 			
 			RenderControl::get().on_event( ev );
-			if (cons_shown) {
-				Console::get().on_event( ev );
-				continue;
-			}
 			
-			if (auto t = TUI_Layer::get_stack_top())
-				t->on_event(ev);
+//			if (cons_shown) {
+//				Console::get().on_event( ev );
+//				continue;
+//			}
+			
+			vig_on_event(&ev);
 			
 			MainLoop::current->on_event(ev);
 			if (!MainLoop::current) {
@@ -394,19 +399,47 @@ int main( int argc, char *argv[] )
 		if (!run) break;
 		Gamepad::update();
 		
-		MainLoop::current->render( passed );
+		RenImm::get().set_context(RenImm::DEFCTX_UI);
+		vig_draw_start();
+		vig_draw_menues();
 		
-		vec2i scr_size = RenderControl::get().get_size();
+		MainLoop::current->render( passed );
+		if (!MainLoop::current) break;
+		
+		vig_draw_end();
+		
 		RenImm::get().set_context( RenImm::DEFCTX_UI );
 		
 		auto dbg_str = FMT_FORMAT( "{:6.3f}\n{:6.3f}", passed.micro() / 1000.f, last_time.micro() / 1000.f );
-		vec2i dbg_size = RenImm::text_size( dbg_str ) + vec2i::one(4);
-		vec2i dbg_rpos = { scr_size.x - dbg_size.x, 0 };
-		RenImm::get(). draw_rect( {dbg_rpos, dbg_size, true}, 0x80 );
-		RenImm::get(). draw_text( dbg_rpos, dbg_str, 0x00ff00ff );
+		RenImm::get(). draw_text_hud( {-1,0}, dbg_str, 0x00ff00ff );
+		avg_passed->add( last_time.micro() / 1000.f, passed.seconds() );
 		
-		if (dbg_show) DbgMenu::get().render(passed, dbg_input);
-		if (cons_shown) Console::get().render();
+//		if (cons_shown) Console::get().render();
+		if (log_shown)
+		{
+			vec2i cz = RenText::get().mxc_size(FontIndex::Debug);
+			std::vector<std::pair<LogLevel, std::string>> ls;
+			size_t ptr = log_get_lines(ls);
+			
+			for (size_t i=0; i<ls.size(); ++i)
+			{
+				uint32_t clr;
+				switch (ls[i].first)
+				{
+				case LogLevel::Ignored: clr = 0; break;
+				case LogLevel::Verbose: clr = 0xffffffff; break;
+				case LogLevel::Debug:   clr = 0x00ffffff; break;
+				case LogLevel::Info:    clr = 0x00ff00ff; break;
+				case LogLevel::Warning: clr = 0xff8000ff; break;
+				case LogLevel::Error:   clr = 0xff0000ff; break;
+				case LogLevel::Critical:clr = 0xff00ffff; break;
+				}
+				
+				int y = i * cz.y;
+				RenImm::get().draw_rect({0, y, (int) ls[i].second.length() * cz.x, cz.y}, i == ptr? 0x00800080 : 0x80);
+				RenImm::get().draw_text(vec2i{0, y}, ls[i].second, clr, false, loglines_mul, FontIndex::Debug);
+			}
+		}
 		
 		last_time = TimeSpan::since_start() - loop_0;
 		if (!RenderControl::get().render( passed ))
@@ -425,14 +458,17 @@ int main( int argc, char *argv[] )
 	}
 	
 	log_write_str(LogLevel::Critical, "main() normal exit");
+	
+	dbg_g.trigger();
+	loglines_g.trigger();
+	avg_passed.reset();
+	
 	delete MainLoop::current;
-	delete &Console::get();
+//	delete &Console::get();
 	delete &RenderControl::get();
 	SDL_Quit();
-
-	dbg_g.trigger();
-	delete &DbgMenu::get();
 	
 	VLOGI("main() cleanup finished");
+	log_terminate_h_reset();
 	return 0;
 }

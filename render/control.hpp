@@ -75,7 +75,7 @@ public:
 	
 	
 	/// Loads shader and stores it internally. Never returns null. 
-	/// Reload callback is called every time when shader is loaded, including first. 
+	/// Reload callback is called every time when shader is loaded, including first one. 
 	/// Shader is already bound before calling callback. 
 	/// If is_crit is false, shader treated as optional and doesn't cause internal renderer errors
 	virtual Shader* load_shader( const char *name, std::function <void(Shader&)> reload_cb = {}, bool is_crit = true ) = 0;

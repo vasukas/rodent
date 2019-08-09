@@ -25,6 +25,11 @@ struct BC_Line;
 
 struct BC_Block
 {
+	enum ParseFlags
+	{
+		F_IGNORE_UNKNOWN = 1
+	};
+	
 	std::vector <BC_Line> ls; ///< Can be empty
 	int tab_level = 0; ///< For lines inside block
 };
@@ -51,7 +56,7 @@ struct BC_Cmd
 {
 	/// Callback called when such line is encountered after processing arguments (may be null). 
 	/// If single is true, only one such command allowed per block
-	BC_Cmd( bool optional, bool single, std::string name, std::function <bool()> cb );
+	BC_Cmd( bool optional, bool single, std::string name, std::function <bool()> cb = []{return true;} );
 	
 	/// Adds new command to block
 	void add( BC_Cmd c );
@@ -85,16 +90,16 @@ private:
 	
 	bool already = false;
 	
-	friend bool bc_process( const BC_Block&, std::vector <BC_Cmd> );
+	friend bool bc_process( const BC_Block&, std::vector <BC_Cmd>, int );
 };
 
 /// Processes block using commands
-bool bc_process( const BC_Block& top, std::vector <BC_Cmd> cmds );
+bool bc_process( const BC_Block& top, std::vector <BC_Cmd> cmds, int flags = 0 );
 
 
 
 /// Loads, parses and processes file
-bool bc_parsefile( const char *filename, std::vector <BC_Cmd> cmds, int spaces_per_tab = 2 );
+bool bc_parsefile( const char *filename, std::vector <BC_Cmd> cmds, int spaces_per_tab = 2, int flags = 0 );
 
 /// Saves block to file
 bool bc_dumpfile( const char *filename, const BC_Block& top, int spaces_per_tab = 2 );

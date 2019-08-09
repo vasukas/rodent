@@ -1,4 +1,4 @@
-#include "core/dbg_menu.hpp"
+#include "core/vig.hpp"
 #include "utils/noise.hpp"
 #include "vaslib/vas_cpp_utils.hpp"
 #include "vaslib/vas_file.hpp"
@@ -21,16 +21,16 @@ void ParticleParams::decel_to_zero()
 	ay = vy / (ft + lt);
 	ar = vr / (ft + lt);
 }
-void ParticleGroupGenerator::draw(const Transform& tr, float power)
+void ParticleGroupGenerator::draw(const BatchPars& pars)
 {
-	ParticleRenderer::get().add(*this, tr, power);
+	ParticleRenderer::get().add(*this, pars);
 }
 
 
 
-size_t ParticleGroupStd::begin(const Transform& tr, ParticleParams& p, float)
+size_t ParticleGroupStd::begin(const BatchPars &pars, ParticleParams& p)
 {
-	t_tr = tr;
+	t_tr = pars.tr;
 	t_spdmax = speed_max < 0 ? speed_min : speed_max;
 	t_rotmax = rot_speed_max < 0 ? rot_speed_min : rot_speed_max;
 	t_lmax = (TTL_max.ms() < 0 ? TTL : TTL_max).seconds();
@@ -111,41 +111,41 @@ public:
 	
 	ParticleRenderer_Impl()
 	{
+		auto load_calc = [this]()
+		{
+			auto src = readfile((Shader::load_path + "ps_calc").c_str());
+			GLuint vo = Shader::compile(GL_VERTEX_SHADER, src.value());
+			if (!vo) throw std::runtime_error("check log for details");
+			
+			GLuint prog = glCreateProgram();
+			glAttachShader(prog, vo);
+			
+			const char *vars[] = {
+			    "newd[0]",
+			    "newd[1]",
+			    "newd[2]",
+			    "newd[3]",
+			    "newd[4]"
+			};
+			glTransformFeedbackVaryings(prog, 5, vars, GL_INTERLEAVED_ATTRIBS);
+			
+			bool ok = Shader::link_fin(prog);
+			glDeleteShader(vo);
+			if (!ok) throw std::runtime_error("check log for details");
+			
+			sh_calc.reset(new Shader(prog));
+			sh_calc->dbg_name = "ps_calc";
+		};
+		
 		for (int i=0; i<2; ++i) {
 			bufs[i].reset( new GLA_Buffer(0) );
 			vao[i].set_attribs(std::vector<GLA_VertexArray::Attrib>(5, {bufs[i], 4}));
 		}
 		
 		resize_bufs(0);
-		sh_draw = RenderControl::get().load_shader("ps_draw");
+		sh_draw = RenderControl::get().load_shader("ps_draw", [&](Shader&){load_calc();});
 		
-		dbgm_g = DbgMenu::get().reg({[this]() {dbgm_label(FMT_FORMAT("{:5} / {:5}", gs_off_max, part_lim));},
-		                             "Particles", DBGMEN_RENDER});
-		
-		// load transform program
-		
-		auto src = readfile((Shader::load_path + "ps_calc").c_str());
-		GLuint vo = Shader::compile(GL_VERTEX_SHADER, src.value());
-		if (!vo) throw std::runtime_error("check log for details");
-		
-		GLuint prog = glCreateProgram();
-		glAttachShader(prog, vo);
-		
-		const char *vars[] = {
-		    "newd[0]",
-		    "newd[1]",
-		    "newd[2]",
-		    "newd[3]",
-		    "newd[4]"
-		};
-		glTransformFeedbackVaryings(prog, 5, vars, GL_INTERLEAVED_ATTRIBS);
-		
-		bool ok = Shader::link_fin(prog);
-		glDeleteShader(vo);
-		if (!ok) throw std::runtime_error("check log for details");
-		
-		sh_calc.reset(new Shader(prog));
-		sh_calc->dbg_name = "ps_calc";
+		dbgm_g = vig_reg_menu(VigMenu::DebugRenderer, [this](){vig_label_a("Particles: {:5} / {:5}\n", gs_off_max, part_lim);});
 	}
 	void resize_bufs(int additional)
 	{
@@ -220,13 +220,13 @@ public:
 		vao[0].bind();
 		glDrawArrays(GL_POINTS, 0, gs_off_max);
 	}
-	void add(ParticleGroupGenerator& group, const Transform& tr, float power)
+	void add(ParticleGroupGenerator& group, const ParticleGroupGenerator::BatchPars& pars)
 	{
 		ParticleParams p;
 		p.pr = p.vr = 0;
 		p.ax = p.ay = p.ar = 0;
 		
-		int num = group.begin(tr, p, power);
+		int num = group.begin(pars, p);
 		if (!num) {
 			group.end();
 			return;

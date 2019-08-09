@@ -19,25 +19,22 @@ static std::mutex buf_lock;
 static void write_lines(LogLevel level, const char *str, int length)
 {
 	std::unique_lock lock (buf_lock);
-	size_t cur = 0;
+	
+	auto newline = [&]()
+	{
+		buf_cur = (buf_cur + 1) % buf_lines.size();
+		buf_lines[buf_cur].first = level;
+		buf_lines[buf_cur].second.clear();
+	};
+	newline();
 	
 	for (int i = 0; i < length; ++i)
 	{
-		if (str[i] == '\n')
-		{
-			cur = 0;
-			buf_lines[buf_cur].first = level;
-			buf_lines[buf_cur].second[cur] = 0;
-		}
-		else  if (cur != lsets.lines_width)
-		{
-			buf_lines[buf_cur].second[cur] = str[i];
-			++cur;
-		}
+		if (str[i] == '\n') newline();
+		else if (auto& s = buf_lines[buf_cur].second; s.length() < lsets.lines_width) s.push_back( str[i] );
+		else if (auto p = strchr(str + i, '\n')) i = p - str;
+		else break;
 	}
-		
-	buf_lines[buf_cur].first = level;
-	buf_lines[buf_cur].second[cur] = 0;
 }
 
 
@@ -51,6 +48,7 @@ void debugbreak() {raise(SIGTRAP);}
 
 
 static std::vector<void(*)()> term_fs;
+static std::terminate_handler term_default;
 
 void log_setup_signals()
 {
@@ -62,13 +60,19 @@ void log_setup_signals()
 		std::terminate();
 	});
 	
+	term_default = std::get_terminate();
 	std::set_terminate([]()
 	{
 		VLOGI("!!std::terminate()!!");
 		log_critical_flush();
 		for (auto& f : term_fs) if (f) f();
-		std::abort();
+		
+		term_default();
 	});
+}
+void log_terminate_h_reset()
+{
+	std::set_terminate( std::move(term_default) );
 }
 RAII_Guard log_terminate_reg(void(*f)())
 {
@@ -220,7 +224,7 @@ void log_critical_flush()
 size_t log_get_lines(std::vector <std::pair <LogLevel, std::string>> &lines)
 {
 	lines = buf_lines;
-	return (buf_cur - 1) % lines.size();
+	return buf_cur;
 }
 void log_assert_throw( const std::string& s )
 {

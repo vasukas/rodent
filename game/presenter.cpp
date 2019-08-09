@@ -126,14 +126,14 @@ public:
 					o.ei = 0;
 					auto& p = p_objs[o.oid];
 					if (!p.ps.empty() && p.ps[0])
-						p.ps[0]->draw(o.tr);
+						p.ps[0]->draw({o.tr});
 				}
 				break;
 				
 			case PresCommand::T_OBJPARTS:
 				{	auto& o = objs[e.obj];
 					auto& p = p_objs[o.oid];
-					p.ps[e.index]->draw(o.tr.get_combined(e.pos), e.power);
+					p.ps[e.index]->draw({o.tr.get_combined(e.pos), e.power});
 				}
 				break;
 				
@@ -154,7 +154,7 @@ public:
 				break;
 				
 			case PresCommand::T_FREEPARTS:
-				p_pars[e.index]->draw(e.pos, e.power);
+				p_pars[e.index]->draw({e.pos, e.power});
 				break;
 			}
 		}

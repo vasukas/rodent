@@ -17,9 +17,10 @@ std::string date_time_fn();
 /// Amount of time
 struct TimeSpan
 {
-	TimeSpan() { mks_value = 0; } ///< Inits to zero
+	TimeSpan() { mks_value = 0; }
 	
 	static TimeSpan since_start(); ///< Returns amount of time passed since program start using steady clock
+	[[nodiscard]] static TimeSpan fps(int t) {return seconds( 1.f / t );}
 	
 	[[nodiscard]] static TimeSpan seconds( double  t ) { return TimeSpan( t * 1000 * 1000 ); }
 	[[nodiscard]] static TimeSpan ms     ( int     t ) { return TimeSpan( t * 1000 ); }

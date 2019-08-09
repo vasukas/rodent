@@ -1,7 +1,7 @@
 #ifndef CAMERA_HPP
 #define CAMERA_HPP
 
-#include <queue>
+#include <deque>
 #include "vaslib/vas_math.hpp"
 #include "vaslib/vas_time.hpp"
 
@@ -31,14 +31,16 @@ public:
 	void add_frame      ( Frame frm ); ///< Adds new frame with absolute values
 	void add_shift_frame( Frame frm ); ///< Adds new frame with position and rotation offseted from previous
 	void reset_frames(); ///< Clears all queued frames
+	Frame last_frame(); ///< Returns last queued frame (or current if none)
 	
 	const float* get_full_matrix () const; ///< Returns 4x4 OpenGL projection & view matrix
 	vec2fp mouse_cast( vec2i mou ) const; ///< Returns world position from screen coords
+	vec2i direct_cast( vec2fp p ) const; ///< Returns screen coords from world position
 	
 	void step( TimeSpan passed ); ///< Step animation
 	
 private:
-	std::queue <Frame> ans;
+	std::deque <Frame> ans;
 	Frame fst;
 	
 	Rect vport = {};

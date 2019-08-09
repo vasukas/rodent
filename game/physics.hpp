@@ -8,7 +8,7 @@
 inline b2Vec2 conv(const vec2fp& p) {return {p.x, p.y};}
 inline vec2fp conv(const b2Vec2& p) {return {p.x, p.y};}
 inline b2Transform conv(const Transform& t) {return {conv(t.pos), b2Rot(t.rot)};}
-inline Transform conv(const b2Transform& t) {return {conv(t.p), t.q.GetAngle()};}
+inline Transform conv(const b2Transform& t) {return Transform{conv(t.p), t.q.GetAngle()};}
 
 
 

@@ -1,7 +1,7 @@
 #ifndef VAS_LOG_HPP
 #define VAS_LOG_HPP
 
-// Contains optional custom formatters, which enabled only if included after headers with such types
+// Contains optional custom formatters, which enabled if included after headers with such types
 
 #include <fmt/format.h>
 #include <memory>
@@ -78,6 +78,9 @@ void debugbreak();
 
 /// Sets signal and termination handlers
 void log_setup_signals();
+
+/// Unsets handler
+void log_terminate_h_reset();
 
 /// Registers function to be called ONLY on abnormal program termination. 
 /// Guard removes function registration. 
@@ -163,3 +166,32 @@ extern thread_local fmt::memory_buffer log_fmt_buffer; ///< (Internal usage)
 	 log_write_str(LEVEL, log_fmt_buffer.data(), log_fmt_buffer.size())) : void() )
 
 #endif // VAS_LOG_HPP
+
+
+
+#if defined(VAS_MATH_HPP) && !defined(VAS_MATH_LOGFORMAT)
+#define VAS_MATH_LOGFORMAT
+
+namespace fmt {
+template<> struct formatter<vec2i> {
+	template <typename ParseContext>
+	constexpr auto parse(ParseContext& ctx) {return ctx.begin();}
+	
+	template <typename FormatContext>
+	auto format(const vec2i& p, FormatContext& ctx) {
+		return format_to(ctx.begin(), "{}:{}", p.x, p.y);
+	}
+};
+
+template<> struct formatter<vec2fp> {
+	template <typename ParseContext>
+	constexpr auto parse(ParseContext& ctx) {return ctx.begin();}
+	
+	template <typename FormatContext>
+	auto format(const vec2fp& p, FormatContext& ctx) {
+		return format_to(ctx.begin(), "{}:{}", p.x, p.y);
+	}
+};
+}
+
+#endif // VAS_MATH_HPP

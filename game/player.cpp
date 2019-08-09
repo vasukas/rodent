@@ -232,7 +232,7 @@ void PC_Impl::step()
 	auto wpn = eqp.wpn_ptr();
 	if (wpn && shooting) {
 		if (!pi_hack) tar->rotate(-M_PI_2);
-		wpn->shoot(ent, {*tar + spos});
+		wpn->shoot(ent, Transform{*tar + spos});
 	}
 }
 void PC_Impl::on_cnt(const ContactEvent& ce)

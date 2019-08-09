@@ -8,8 +8,6 @@
 class LevelControl
 {
 public:
-	struct Room;
-	
 	struct CorridorEntry
 	{
 		vec2i pos; ///< Inside corridor

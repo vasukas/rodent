@@ -51,7 +51,7 @@ Transform Entity::get_pos() const
 Transform Entity::get_vel() const
 {
 	if (auto c = get<EC_Physics>())
-		return {conv(c->body->GetLinearVelocity()), c->body->GetAngularVelocity()};
+		return Transform{conv(c->body->GetLinearVelocity()), c->body->GetAngularVelocity()};
 	if (auto c = get<EC_VirtualBody>())
 		return c->get_vel();
 	return {};

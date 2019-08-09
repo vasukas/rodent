@@ -31,6 +31,9 @@ bool writefile( const char *filename, const void *data, size_t size = std::strin
 /// Cross-platform UTF-8 fopen
 void* open_stdio_file( const char *filename, const char *mode );
 
+/// Returns filename extension
+std::string get_file_ext(std::string_view filename);
+
 
 
 /// Abstract file interface with endianess and bit support
@@ -75,14 +78,16 @@ public:
 	bool free_src = true; ///< Free source then object deleted
 	Endianess def_endian = EndNative; ///< Default endianess (used by r\w*D functions)
 	
-	// Note: all opening and internal errors are logged
-	bool error_throw = false; ///< Raise exception on any error
-	bool error_flag = false; ///< Set by read\write functions to true if any I\O error occurs
+	// Note: all errors are logged in any case
+	bool error_throw = true; ///< Raise exception on any error (Note: endianess functions always throw)
 	
 	
+	
+	/// Opens file, throws on error
+	static std::unique_ptr<File> open_ptr( const char *filename, int flags = OpenExisting | OpenRead );
 	
 	/// Opens file
-	static File* open( const char *filename, int flags = OpenExisting | OpenRead );
+	static File* open( const char *filename, int flags = OpenExisting | OpenRead, bool throw_on_error = false );
 	
 	/// Create proxy from std::FILE*
 	static File* open_std( void* src, bool free_src );
@@ -133,10 +138,10 @@ public:
 	// Endianess access functions
 	// If read error occurs, sets error_flag (and may throw) and returns 0
 	
-	// Read/write in native endianess
-	
 	uint8_t r8();
 	void    w8(uint8_t x);
+	
+	// Read/write in native endianess
 	
 	uint16_t r16N();
 	uint32_t r32N();
@@ -198,6 +203,9 @@ public:
 	
 	/// Loads file to memory completely. Returns null on error
 	static MemoryFile* from_file( File& file );
+	
+	/// Copies data from another file
+	static MemoryFile* from_copy( const MemoryFile& file, size_t offset = 0, size_t size = std::string::npos, bool writeable = true );
 	
 	/// Frees owned memory
 	~MemoryFile();

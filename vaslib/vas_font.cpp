@@ -125,7 +125,7 @@ static int lib_ft_cou = 0; ///< library reference count
 
 
 Font_FT::Font_FT(bool &ok, const char* filename, float pt, uint32_t index) {
-	VLOGD("Font::load() {}", filename);
+	VLOGI("Font::load() {}", filename);
 	if (!load_ft_lib()) { // increase refcount
 		VLOGE("Font::load() failed");
 		return;
@@ -397,37 +397,38 @@ static const char vas_font_head[] = {"vasfont\0"};
 
 Font* Font::load_vas(File& f)
 {
-	char head[9];
-	if (9 != f.read(head, 9) || memcmp(head, vas_font_head, 9)) {
-		VLOGE("Font::load_vas() invalid header (or newer version)");
+	try {
+		char head[9];
+		if (f.read(head, 9) || memcmp(head, vas_font_head, 9)) {
+			VLOGE("Font::load_vas() invalid header");
+			return nullptr;
+		}
+		
+		std::vector<Glyph> gs;
+		gs.resize( f.r16L() );
+		int x = f.r8();
+		int y = f.r8();
+		
+		for (auto& g : gs)
+		{
+			g.cp = f.r16L();
+			g.off.x = static_cast<int8_t>(f.r8());
+			g.off.y = static_cast<int8_t>(f.r8());
+			g.size.x = f.r8();
+			g.size.y = f.r8();
+			g.image.resize( g.size.area() );
+			f.read( g.image.data(), g.size.area() );
+		}
+		
+		Font_Bitmap* ft = new Font_Bitmap;
+		ft->lds = std::move(gs);
+		ft->cz = {x, y};
+		return ft;
+	}
+	catch (std::exception& e) {
+		VLOGE("Font::load_vas() file error - {}", e.what());
 		return nullptr;
 	}
-	
-	std::vector<Glyph> gs;
-	gs.resize( f.r16L() );
-	int x = f.r8();
-	int y = f.r8();
-	
-	for (auto& g : gs)
-	{
-		g.cp = f.r16L();
-		g.off.x = static_cast<int8_t>(f.r8());
-		g.off.y = static_cast<int8_t>(f.r8());
-		g.size.x = f.r8();
-		g.size.y = f.r8();
-		g.image.resize( g.size.area() );
-		f.read( g.image.data(), g.size.area() );
-	}
-	
-	if (f.error_flag) {
-		VLOGE("Font::load_vas() file error");
-		return nullptr;
-	}
-	
-	Font_Bitmap* ft = new Font_Bitmap;
-	ft->lds = std::move(gs);
-	ft->cz = {x, y};
-	return ft;
 }
 bool Font::save_vas(File& f)
 {
@@ -442,24 +443,24 @@ bool Font::save_vas(File& f)
 	update_info(inf);
 	
 	auto gs = get_glyphs();
-	
-	f.write(vas_font_head, 9); // two zero bytes
-	f.w16L( gs.size() );
-	f.w8( inf.mode );
-	f.w8( inf.line );
-	
-	for (auto& g : gs)
-	{	
-		f.w32L( g.cp );
-		f.w8( g.off.x );
-		f.w8( g.off.y );
-		f.w8( g.size.x );
-		f.w8( g.size.y );
-		f.write( g.image.data(), g.size.area() );
+	try {
+		f.write(vas_font_head, 9); // two zero bytes
+		f.w16L( gs.size() );
+		f.w8( inf.mode );
+		f.w8( inf.line );
+		
+		for (auto& g : gs)
+		{	
+			f.w32L( g.cp );
+			f.w8( g.off.x );
+			f.w8( g.off.y );
+			f.w8( g.size.x );
+			f.w8( g.size.y );
+			f.write( g.image.data(), g.size.area() );
+		}
 	}
-	
-	if (f.error_flag) {
-		VLOGE("Font::save_vas() file error");
+	catch (std::exception& e) {
+		VLOGE("Font::save_vas() file error - {}", e.what());
 		return false;
 	}
 	return true;

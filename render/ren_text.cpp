@@ -70,44 +70,21 @@ public:
 			throw std::runtime_error("see log for details");
 		}
 		
-		if ((sets.font_path == sets.font_ui_path && sets.font_pt == sets.font_ui_pt) || sets.font_ui_path.empty()) {
-			VLOGW("Using primary font for UI");
-			fonts[1] = fonts[0];
-		}
-		else {
-			VLOGD("Loading TUI font");
-			fonts[1] = load_font( sets.font_ui_path.c_str(), sets.font_ui_pt );
-			if (!fonts[1]) {
-				VLOGW("Can't load UI font, using primary");
-				fonts[1] = fonts[0];
-			}
+		if (!fonts[0]->is_mono_flag) {
+			VLOGE("Only monowide font can be used as primary");
+			throw std::runtime_error("see log for details");
 		}
 		
 		if ((sets.font_path == sets.font_dbg_path && sets.font_pt == sets.font_dbg_pt) || sets.font_dbg_path.empty()) {
 			VLOGW("Using primary font for debug");
-			fonts[2] = fonts[0];
-		}
-		else if (sets.font_ui_path == sets.font_dbg_path && sets.font_ui_pt == sets.font_dbg_pt) {
-			VLOGW("Using UI font for debug");
-			fonts[2] = fonts[1];
+			fonts[1] = fonts[0];
 		}
 		else {
 			VLOGD("Loading debug font");
-			fonts[2] = load_font( sets.font_dbg_path.c_str(), sets.font_dbg_pt );
-			if (!fonts[2]) {
-				VLOGW("Can't load debug font, using UI");
-				fonts[2] = fonts[1];
-			}
-		}
-		
-		if (!fonts[1]->is_mono_flag) {
-			if (fonts[2]->is_mono_flag) {
-				VLOGW("Can't load UI font, using debug");
-				fonts[1] = fonts[2];
-			}
-			else {
-				VLOGE("Only monowide font can be used for UI");
-				throw std::runtime_error("check log for details");
+			fonts[1] = load_font( sets.font_dbg_path.c_str(), sets.font_dbg_pt );
+			if (!fonts[1]) {
+				VLOGW("Can't load debug font, using primary");
+				fonts[1] = fonts[0];
 			}
 		}
 		
@@ -218,7 +195,7 @@ public:
 		font->load_glyphs(32, 126);
 		
 		size_t alt_c = 0;
-		std::vector<std::vector<char32_t>> alts = tui_char_get_alts();
+		std::vector<std::vector<char32_t>> alts = {};//tui_char_get_alts();
 		std::vector<std::pair<char32_t, char32_t>> alt_add;
 		alt_add.reserve(alts.size());
 		
@@ -341,6 +318,10 @@ public:
 			
 			rg.off = {};
 			rg.xadv = fd->w_mode;
+			
+			vec2fp c = rg.tex.tc.center();
+			rg.tex.tc.lower(c);
+			rg.tex.tc.upper(c);
 		}
 		
 		VLOGV("RenText::load_font() OK");

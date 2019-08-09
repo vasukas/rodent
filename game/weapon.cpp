@@ -53,7 +53,7 @@ void Projectile::step()
 	{
 		hit->poi -= conv(rayd * 0.1);
 		
-		GamePresenter::get().effect( pars.rad_full? FE_WPN_IMPLOSION : FE_WPN_EXPLOSION, {conv(hit->poi)}, pars.rad );
+		GamePresenter::get().effect( pars.rad_full? FE_WPN_IMPLOSION : FE_WPN_EXPLOSION, Transform{conv(hit->poi)}, pars.rad );
 		int num = (2 * M_PI * pars.rad) / 0.7;
 		
 		struct Obj {
@@ -131,7 +131,7 @@ void Weapon::shoot(Transform from, Transform at, Entity* src)
 	
 	from.rot = (at.pos - from.pos).angle();
 	vec2fp vel = proj_spd * (at.pos - from.pos).get_norm();
-	e->add(new EC_VirtualBody(from, true))->set_vel(vel);
+	e->add(new EC_VirtualBody(from, true))->set_vel(Transform{vel});
 	
 	auto prj = e->add(new Projectile);
 	prj->pars = pars;
