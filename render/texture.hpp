@@ -17,7 +17,9 @@ struct TextureReg
 	TextureReg() = default;
 	TextureReg(Texture* tex): tex(tex), tc(0,0,1,1) {}
 	TextureReg(Texture* tex, const Rectfp& tc): tex(tex), tc(tc) {}
+	
 	uint get_obj() const; ///< Returns texture object or 0
+	vec2i px_size() const; ///< Returns size in pixels (may be zero)
 };
 
 

@@ -109,6 +109,9 @@ static vec2i vig_text_size(std::string_view s) {
 static int vig_text_height() {
 	return RenText::get().line_height( FontIndex::Mono );
 }
+static void vig_draw_image(vec2i pos, vec2i size, const TextureReg& tex, uint32_t clr = 0xffffffff) {
+	RenImm::get().draw_image({pos, size, true}, tex, clr);
+}
 
 
 
@@ -728,6 +731,18 @@ void vig_label(std::string_view text) {
 	vig_draw_text(pos + vig_element_decor(), text);
 	if (!text.empty() && text.back() == '\n') vig_lo_next();
 }
+void vig_image(TextureReg tex, std::string_view text, vec2i pos, vec2i size) {
+	vig_draw_image(pos, size, tex);
+	if (!text.empty()) {
+		pos.y += size.y - vig_text_size(text).y;
+		vig_draw_text(pos, text);
+	}
+}
+void vig_image(TextureReg tex, std::string_view text) {
+	vec2i pos, size = tex.px_size();
+	if (!vig_lo_place(pos, size)) return;
+	return vig_image(tex, text, pos, size);
+}
 
 
 
@@ -980,6 +995,7 @@ void vigAverage::add(float v, std::optional<float> time_opt)
 void vigAverage::draw()
 {
 	const int tex_k = 1; // texture width multiplier
+	const int tex_alpha = 0xa0; // texture transparency
 	
 	float avg = 0,
 	      min = std::numeric_limits<float>::max(),
@@ -1029,12 +1045,11 @@ void vigAverage::draw()
 		tex->update_full(px.get());
 	}
 	
-	Rect dst;
-	dst.off = pos;
-	dst.off.x += (size.x - tex_k * vals.size());
-	dst.sz.x = tex_k * vals.size();
-	dst.sz.y = size.y;
-	RenImm::get().draw_image(dst, tex.get(), 0xffffffa0);
+	pos.x += (size.x - tex_k * vals.size());
+	vec2i sz;
+	sz.x = tex_k * vals.size();
+	sz.y = size.y;
+	vig_draw_image(pos, sz, tex.get(), 0xffffff00 | tex_alpha);
 }
 
 

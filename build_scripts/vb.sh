@@ -60,8 +60,12 @@ FlagsOpt=(
 	-flto
 )
 
-ObjDirPrefix=../build/vb_obj
-BinDirPrefix=../build/vb_bin
+if [ -z "$ObjDirPrefix"]; then
+	ObjDirPrefix=../build/vb_obj
+fi
+if [ -z "$BinDirPrefix"]; then
+	BinDirPrefix=../build/vb_bin
+fi
 OutputPostfix=
 
 
@@ -242,4 +246,11 @@ else
 	else
 		info "OK finished"
 	fi
+fi
+
+if [[ "$(type -t postbuild)" == "function" ]]; then
+	info "Calling postbuild function"
+	postbuild
+else
+	info "No postbuild function"
 fi

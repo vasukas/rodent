@@ -4,12 +4,13 @@ CompilerLnk=${CmpPrefix}ar
 Platform=win
 OutputPostfix=_x32.exe
 
+LibsDir="../external/mingw32"
+
 Source+=(
-	../build_libs/src/*.c*
+	"$LibsDir"/*.c*
 )
 Flags+=(
-	-I../build_libs/mingw/include
-	-I../build_libs/include
+	-I"$LibsDir"/include
 
 	-mconsole
 	-mwindows
@@ -21,7 +22,7 @@ Flags+=(
 	-D_USE_MATH_DEFINES
 )
 LnkFlags+=(
-	-L../build_libs/mingw/lib32
+	-L"$LibsDir"/lib
 
 	-mconsole
 	-mwindows
@@ -35,3 +36,22 @@ LnkFlags+=(
 FlagsDbg+=(
 	-ggdb
 )
+
+function postbuild {
+	Input=rodent-mingw32
+	Wp=/tmp/"$Input"
+	Output="$(pwd)/../build/${Input}".zip
+
+	mkdir -p "$Wp"
+	ln -s "$(pwd)/../res" "$Wp"/res
+	ln -s "$(realpath $BinDirPrefix)/rodent_x32.exe" "$Wp"/
+
+	for F in ../external/mingw32/bin/*.dll; do
+		ln -s "$(pwd)/$F" "$Wp"/$(basename "$F")
+	done
+
+	cd "$Wp"/..
+	zip -r -0 "$Output" "$Input"
+	rm -r "$Wp"
+}
+

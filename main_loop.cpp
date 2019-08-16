@@ -1,5 +1,6 @@
 #include <mutex>
 #include <thread>
+#include "client/presenter.hpp"
 #include "core/plr_control.hpp"
 #include "core/vig.hpp"
 #include "game/damage.hpp"
@@ -8,7 +9,6 @@
 #include "game/movement.hpp"
 #include "game/physics.hpp"
 #include "game/player.hpp"
-#include "game/presenter.hpp"
 #include "render/camera.hpp"
 #include "render/control.hpp"
 #include "render/particles.hpp"
@@ -211,7 +211,7 @@ public:
 		core_init.random_seed = 0;
 		core.reset( GameCore::create(core_init) );
 		
-//#warning test LevelControl again
+#warning test LevelControl
 //		LevelControl::init();
 //		exit(666);
 		

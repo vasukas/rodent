@@ -1,9 +1,9 @@
 /.vs
-/Box2D/
 /build/
-/build_libs
+/external/*/
 /stuff/
 /rodent.*.user
 /rod.*
 /rodent
 /*.sh
+

@@ -8,8 +8,9 @@
 #include "vaslib/vas_log.hpp"
 #include "vaslib/vas_math.hpp"
 
-class Texture;
-union SDL_Event;
+class  Texture;
+struct TextureReg;
+union  SDL_Event;
 
 
 
@@ -235,6 +236,12 @@ void vig_label(std::string_view text);
 /// Formatted text display
 #define vig_label_a(Format, ...) vig_label(fmt::format(FMT_STRING(Format), ##__VA_ARGS__))
 
+/// Image with label at the bottom left corner 
+void vig_image(TextureReg tex, std::string_view text, vec2i pos, vec2i size);
+
+/// Image with label at the bottom left corner 
+void vig_image(TextureReg tex, std::string_view text = {});
+
 
 
 /* Buttons */
@@ -289,6 +296,7 @@ bool vig_num_selector(size_t& index, size_t num, int key_minus = 0, int key_plus
 
 /* Stateful widgets */
 
+
 /// Displays average absolute value with min/max and graphic
 struct vigAverage
 {
@@ -310,6 +318,7 @@ private:
 	bool upd_tex = false;
 	float tex_range = 1;
 };
+
 
 /// Single-line without selection
 struct vigTextbox

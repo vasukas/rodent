@@ -1,18 +1,22 @@
-ProName=rodent
+ProName=mrat
 IsLibrary=0
 
+ObjDirPrefix=../build/vb
+BinDirPrefix=../build/vb
+
 Source=(
+	../client/*.cpp
 	../core/*.cpp
 	../game/*.cpp
 	../render/*.cpp
 	../utils/*.cpp
 	../vaslib/*.cpp
 	../*.cpp
-	$(find ../Box2D -name "*.cpp")
+	$(find ../external/Box2D -name "*.cpp")
 )
 Flags=(
 	-I..
-	-Icommon
+	-I../external
 	-std=c++17
 	-fexceptions
 	-Wextra
@@ -22,3 +26,4 @@ Flags=(
 LnkFlags=(
 	-Wno-maybe-uninitialized
 )
+

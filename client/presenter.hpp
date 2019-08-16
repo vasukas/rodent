@@ -3,14 +3,12 @@
 
 #include <memory>
 #include <vector>
+#include "game/entity.hpp"
 #include "render/particles.hpp"
 #include "utils/color_manip.hpp"
 #include "vaslib/vas_time.hpp"
-#include "presenter_res.hpp"
-#include "entity.hpp"
+#include "resbase.hpp"
 
-class  Entity;
-class  GameCore;
 struct PresCommand;
 
 

@@ -3,7 +3,7 @@
 #include "vaslib/vas_log.hpp"
 #include "game_core.hpp"
 #include "physics.hpp"
-#include "presenter.hpp"
+#include "client/presenter.hpp"
 
 const TimeSpan GameCore::step_len = TimeSpan::seconds(1./30);
 

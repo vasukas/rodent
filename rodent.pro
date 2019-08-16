@@ -33,6 +33,8 @@ linux-g++:gcc_flto {
 }
 
 SOURCES += \
+	client/presenter.cpp \
+	client/resbase.cpp \
 	core/gamepad.cpp \
 	core/plr_control.cpp \
 	core/vig.cpp \
@@ -88,8 +90,6 @@ SOURCES += \
 	game/movement.cpp \
 	game/physics.cpp \
 	game/player.cpp \
-	game/presenter.cpp \
-	game/presenter_res.cpp \
 	game/weapon.cpp \
 	main.cpp \
 	main_loop.cpp \
@@ -119,6 +119,8 @@ SOURCES += \
 	vaslib/wincompat.cpp
 
 HEADERS += \
+	client/presenter.hpp \
+	client/resbase.hpp \
 	core/gamepad.hpp \
 	core/plr_control.hpp \
 	core/vig.hpp \
@@ -175,8 +177,6 @@ HEADERS += \
 	game/movement.hpp \
 	game/physics.hpp \
 	game/player.hpp \
-	game/presenter.hpp \
-	game/presenter_res.hpp \
 	game/weapon.hpp \
 	main_loop.hpp \
 	render/camera.hpp \

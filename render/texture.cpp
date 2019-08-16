@@ -3,12 +3,17 @@
 #include "gl_utils.hpp"
 #include "texture.hpp"
 
-
 size_t Texture::dbg_total_size = 0;
+
+
 
 uint TextureReg::get_obj() const
 {
 	return tex? tex->get_obj() : 0;
+}
+vec2i TextureReg::px_size() const
+{
+	return tex? (tc.size() * tex->get_size()).int_round() : vec2i{};
 }
 
 

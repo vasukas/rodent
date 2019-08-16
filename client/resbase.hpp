@@ -1,5 +1,5 @@
-#ifndef PRESENTER_RES_HPP
-#define PRESENTER_RES_HPP
+#ifndef RESBASE_HPP
+#define RESBASE_HPP
 
 #include "vaslib/vas_math.hpp"
 
@@ -48,4 +48,4 @@ struct GameResBase
 	void init_res();
 };
 
-#endif // PRESENTER_RES_HPP
+#endif // RESBASE_HPP

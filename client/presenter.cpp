@@ -1,11 +1,11 @@
 #include <mutex>
 #include "render/ren_aal.hpp"
 #include "vaslib/vas_cpp_utils.hpp"
-#include "game_core.hpp"
+#include "game/game_core.hpp"
 #include "presenter.hpp"
 
 #include "render/ren_imm.hpp"
-#include "damage.hpp"
+#include "game/damage.hpp"
 
 
 
