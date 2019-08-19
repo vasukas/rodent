@@ -1,7 +1,24 @@
 #include "damage.hpp"
 #include "physics.hpp"
 
-void EC_Health::damage(DamageQuant q, std::optional<DamageType> calc_type)
+bool EC_Health::is_alive() const
+{
+	return hp > 0;
+}
+float EC_Health::get_t_state() const
+{
+	return std::min( 1.f, static_cast<float>(hp) / hp_max );
+}
+void EC_Health::add_hp(int amount)
+{
+	hp = std::max(hp + amount, hp_max);
+}
+void EC_Health::renew_hp(std::optional<int> new_max)
+{
+	if (new_max) hp_max = *new_max;
+	add_hp(hp_max);
+}
+void EC_Health::apply(DamageQuant q, std::optional<DamageType> calc_type)
 {
 	if (invincible) return;
 	auto type = calc_type? *calc_type : q.type;
@@ -26,12 +43,12 @@ void EC_Health::damage(DamageQuant q, std::optional<DamageType> calc_type)
 		q.amount -= ph_thr;
 		if (q.amount < 0) return;
 		q.amount *= ph_k;
-		damage(q, DamageType::Direct);
+		apply(q, DamageType::Direct);
 	}
 	break;
 	case DamageType::Kinetic:
 	{
-		damage(q, DamageType::Direct);
+		apply(q, DamageType::Direct);
 	}
 	break;
 	}
@@ -43,5 +60,5 @@ void EC_Health::hook(EC_Physics& ph)
 void EC_Health::on_event(const ContactEvent& ev)
 {
 	if (ev.type == ContactEvent::T_RESOLVE)
-		damage({ DamageType::Physical, ev.imp });
+		apply({ DamageType::Physical, static_cast<int>(ev.imp) });
 }

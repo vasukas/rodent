@@ -10,10 +10,10 @@ const float raycast_zero_dist = 0.05; ///< Square of distance at which raycast n
 
 
 
-EC_Physics::EC_Physics(const b2BodyDef& def)
+EC_Physics::EC_Physics(Entity* ent, const b2BodyDef& def):
+    ECompPhysics(ent)
 {
 	auto& ph = GameCore::get().get_phy();
-	
 	body = ph.world.CreateBody(&def);
 	body->SetUserData(this);
 }
@@ -37,7 +37,8 @@ void EC_Physics::add_circle(b2FixtureDef& fd, float radius, float mass)
 	fd.density = mass / area;
 	fd.shape = &shp;
 	body->CreateFixture(&fd);
-	calc_radius();
+	
+	b_radius.reset();
 }
 void EC_Physics::add_box(b2FixtureDef& fd, vec2fp half_extents, float mass)
 {
@@ -50,7 +51,8 @@ void EC_Physics::add_box(b2FixtureDef& fd, vec2fp half_extents, float mass)
 	fd.density = mass / area;
 	fd.shape = &shp;
 	body->CreateFixture(&fd);
-	calc_radius();
+	
+	b_radius.reset();
 }
 void EC_Physics::attach_to(EC_Physics& target)
 {
@@ -83,43 +85,54 @@ void EC_Physics::destroy(b2Joint* j)
 	p->js.erase(it);
 	body->GetWorld()->DestroyJoint(j);
 }
-void EC_Physics::calc_radius()
+float EC_Physics::get_radius() const
 {
-	b_radius = 0;
-	auto f = body->GetFixtureList();
-	while (f)
+	if (!b_radius)
 	{
-		float r = 0.f;
-		auto sa = f->GetShape();
+		b_radius = 0.f;
 		
-		if      (sa->GetType() == b2Shape::e_circle) r = sa->m_radius;
-		else if (sa->GetType() == b2Shape::e_polygon)
+		auto f = body->GetFixtureList();
+		while (f)
 		{
-			auto s = static_cast<b2PolygonShape*>(sa);
-			for (int i=0; i<s->m_count; ++i)
-				r = std::max(r, s->m_vertices[i].LengthSquared());
-			r = sqrt(r);
+			float r = 0.f;
+			auto sa = f->GetShape();
+			
+			if      (sa->GetType() == b2Shape::e_circle) r = sa->m_radius;
+			else if (sa->GetType() == b2Shape::e_polygon)
+			{
+				auto s = static_cast<b2PolygonShape*>(sa);
+				for (int i=0; i<s->m_count; ++i)
+					r = std::max(r, s->m_vertices[i].LengthSquared());
+				r = sqrt(r);
+			}
+			
+			b_radius = std::max(*b_radius, r);
+			f = f->GetNext();
 		}
-		
-		b_radius = std::max(b_radius, r);
-		f = f->GetNext();
 	}
+	return *b_radius;
 }
 
 
 
-EC_VirtualBody::EC_VirtualBody(Transform pos, bool has_velocity): pos(pos), has_vel(has_velocity)
+EC_VirtualBody::EC_VirtualBody(Entity *ent, Transform pos, std::optional<Transform> vel):
+    ECompPhysics(ent), pos(pos), vel(vel)
 {
-	if (has_vel) reg(ECompType::StepPostUtil);
+	if (vel) reg(ECompType::StepPostUtil);
 }
-void EC_VirtualBody::set_vel(Transform new_vel)
+void EC_VirtualBody::set_vel(std::optional<Transform> new_vel)
 {
-	if (!has_vel) GAME_THROW("EC_VirtualBody::set_vel() no velocity: {}", ent->index);
+	bool had = !!vel;
 	vel = new_vel;
+	if (had != !!vel)
+	{
+		if (vel) reg(ECompType::StepPostUtil);
+		else   unreg(ECompType::StepPostUtil);
+	}
 }
 void EC_VirtualBody::step()
 {
-	pos.add(vel * GameCore::time_mul());
+	pos.add(*vel * GameCore::time_mul);
 }
 
 
@@ -267,7 +280,7 @@ public:
 		for (int i=0; i<pc; ++i) imp += res->normalImpulses[i];
 		
 		if (!ct->GetFixtureA()->IsSensor() && !ct->GetFixtureB()->IsSensor())
-			GamePresenter::get().effect(FE_HIT, Transform{avg_point(ct)}, imp / 20.f);
+			GamePresenter::get()->effect(FE_HIT, { Transform{avg_point(ct)}, imp / 20.f });
 		
 		report(ContactEvent::T_RESOLVE, ct, imp);
 	}
@@ -352,7 +365,7 @@ void PhysicsWorld::circle_cast_all(std::vector<CastResult>& es, b2Vec2 ctr, floa
 			if (fix->IsSensor()) return true;
 			float d = (fix->GetBody()->GetWorldCenter() - ctr).LengthSquared();
 			
-			float z = getptr(fix->GetBody())->b_radius;
+			float z = getptr(fix->GetBody())->get_radius();
 			d -= z*z;
 			
 			if (d < rad*rad)
@@ -377,11 +390,11 @@ void PhysicsWorld::circle_cast_nearest(std::vector<RaycastResult>& es, b2Vec2 ct
 	reserve_more(es, fc.size());
 	for (auto& f : fc)
 	{
-		auto& eb = f.ent->getref<EC_Physics>();
+		auto& eb = f.ent->get_phobj();
 		auto p = eb.body->GetWorldCenter();
 		float dist = 0;
 		
-		bool ok = (ctr - p).LengthSquared() <= eb.b_radius * eb.b_radius + raycast_zero_dist;
+		bool ok = (ctr - p).LengthSquared() <= eb.get_radius() * eb.get_radius() + raycast_zero_dist;
 		if (!ok) {
 			auto res = raycast_nearest(ctr, p);
 			ok = res && res->ent == f.ent && res->fix == f.fix;

@@ -2,16 +2,8 @@
 #define PLAYER_HPP
 
 #include "entity.hpp"
+class PlayerController;
 
-class PlayerControl;
-
-
-
-struct PlayerLogic : EComp
-{
-	static Entity* create(GameCore& core, vec2fp pos, std::shared_ptr<PlayerControl> ctr); ///< Creates player entity
-	virtual void draw_hud() = 0;
-	virtual void draw_ui() = 0;
-};
+Entity* create_player(vec2fp pos, std::shared_ptr<PlayerController> ctr);
 
 #endif // PLAYER_HPP

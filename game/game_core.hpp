@@ -22,19 +22,25 @@ public:
 		uint32_t random_seed = 0;
 	};
 	
-	static const TimeSpan step_len;
-	
 	static GameCore& get(); ///< Returns singleton
 	static GameCore* create( const InitParams& pars ); ///< Creates empty handler and inits all systems
 	virtual ~GameCore(); ///< Destroys all systems
 	
 	
 	
-	/// For speed conversions to 'per step' from 'per second'
-	static float time_mul() {return step_len.seconds();}
+	/// Logic step length
+	inline static const TimeSpan step_len = TimeSpan::fps(30);
+	
+	/// For 'per second' -> 'per step' conversions
+	inline static const float time_mul = step_len.seconds();
 	
 	///
 	virtual PhysicsWorld& get_phy() noexcept = 0;
+	
+	/// Returns generator
+	virtual RandomGen& get_random() noexcept = 0;
+	
+	
 	
 	/// Returns index number of the next step (starting with 1)
 	virtual uint32_t get_step_counter() const noexcept = 0;
@@ -47,23 +53,15 @@ public:
 	
 	
 	
-	/// Creates new entity. Never fails
-	virtual Entity* create_ent() noexcept = 0;
-	
 	/// Returns entity with such ID or nullptr
-	virtual Entity* get_ent( EntityIndex uid ) const noexcept = 0;
-	
-	/// Returns list of components of such type. May contain nullptrs
-	virtual std::vector<EComp*>& get_comp_list(ECompType type) noexcept = 0;
+	virtual Entity* get_ent(EntityIndex uid) const noexcept = 0;
 	
 	
-	
-	/// Returns generator
-	virtual RandomGen& get_random() noexcept = 0;
 	
 protected:
 	friend Entity;
-	virtual void mark_deleted( Entity* e ) noexcept = 0;
+	virtual EntityIndex create_ent(Entity* e) noexcept = 0;
+	virtual void mark_deleted(Entity* e) noexcept = 0;
 	
 	friend EComp;
 	virtual size_t reg_c(ECompType type, EComp* c) noexcept = 0;

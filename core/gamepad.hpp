@@ -10,6 +10,8 @@ class Gamepad
 public:
 	enum Button
 	{
+		B_NONE, ///< Never reported
+		
 		B_Y, ///< up - Y, triangle, 1
 		B_B, ///< right - B, circle, 2
 		B_A, ///< down - A, cross, 3
@@ -26,7 +28,7 @@ public:
 		B_SHLD_RIGHT,
 		
 		/// Do not use
-		TOTAL_BUTTONS
+		TOTAL_BUTTONS_INTERNAL
 	};
 
 	static Gamepad* open_default();

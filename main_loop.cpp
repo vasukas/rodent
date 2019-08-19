@@ -3,12 +3,11 @@
 #include "client/presenter.hpp"
 #include "core/plr_control.hpp"
 #include "core/vig.hpp"
-#include "game/damage.hpp"
 #include "game/game_core.hpp"
 #include "game/level_ctr.hpp"
-#include "game/movement.hpp"
-#include "game/physics.hpp"
 #include "game/player.hpp"
+#include "game/s_objs.hpp"
+#include "game/weapon.hpp"
 #include "render/camera.hpp"
 #include "render/control.hpp"
 #include "render/particles.hpp"
@@ -79,65 +78,45 @@ public:
 class ML_Game : public MainLoop
 {
 public:
-	enum State
-	{
-		ST_LOADING,
-		ST_RUN,
-		ST_FINISH
-	};
-	
 	std::unique_ptr<GamePresenter> pres;
-	
-	std::thread thr_core;
-	State state = ST_LOADING;
-
-	Camera* cam;
-	EntityIndex cam_ent = 0;
-	
 	std::unique_ptr<GameCore> core;
-	std::shared_ptr<PlayerControl> pc_ctr;
-	uint32_t pc_ent = 0;
+	std::shared_ptr<PlayerController> pc_ctr;
 	
+	bool thr_term = false;
+	std::thread thr_serv;
+	std::mutex ren_lock;
+
+	std::optional<GamePresenter::InitParams> gp_init;
+	EntityIndex pc_ent = 0; // player	
 	bool ph_debug_draw = false;
-	bool show_help = false;
 	
 	
 	
 	ML_Game() = default;
 	void init()
 	{
-		cam = RenderControl::get().get_world_camera();
+		Camera* cam = RenderControl::get().get_world_camera();
 		Camera::Frame cf = cam->get_state();
 		cf.mag = 18.f;
 		cam->set_state(cf);
 		
-		pres.reset( &GamePresenter::get() );
-		init_game();
-		thr_core = std::thread([this](){thr_func();});
-		
+		pc_ctr.reset (new PlayerController (std::unique_ptr<Gamepad> (Gamepad::open_default())));
 		VLOGI("Box2D version: {}.{}.{}", b2_version.major, b2_version.minor, b2_version.revision);
+		
+		thr_serv = std::thread([this] {thr_func();});
 	}
 	~ML_Game()
 	{
-		state = ST_FINISH;
-		thr_core.join();
+		thr_term = true;
+		if (thr_serv.joinable())
+			thr_serv.join();
 	}
 	void on_event(SDL_Event& ev)
 	{
-		if (state == ST_FINISH)
-		{
-			if (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_ESCAPE)
-				delete this;
-			return;
-		}
-		if (state != ST_RUN) return;
-		
 		if (ev.type == SDL_KEYUP) {
 			int k = ev.key.keysym.scancode;
 			if (k == SDL_SCANCODE_0) ph_debug_draw = !ph_debug_draw;
-			if (k == SDL_SCANCODE_F1) show_help = !show_help;
 		}
-		
 		if (get_plr()) {
 			auto g = pc_ctr->lock();
 			pc_ctr->on_event(ev);
@@ -145,201 +124,102 @@ public:
 	}
 	void render(TimeSpan passed)
 	{
-		if		(state == ST_LOADING) RenImm::get().draw_text({}, "Loading...", -1, false, 4.f);
-		else if (state == ST_FINISH)  RenImm::get().draw_text({}, "Game finished. Press ESC to exit.", -1, false, 4.f);
-		else {
-			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
-			GamePresenter::get().render(passed);
+		std::unique_lock lock(ren_lock);
+		if (thr_term) LOG_THROW_X("Game failed");
+		if (!pres) {
+			RenImm::get().draw_text(RenderControl::get_size() /2, "Loading...", -1, true, 4.f);
 			
-			for (float t=0; t<hsize; t += 2) {
-				uint32_t clr = FColor(0, 0.8, 1, 0.3).to_px();
-				float w = 0.07f, a = 1.5f;
-				RenAAL::get().draw_line({-hsize,  t}, {hsize,  t}, clr, w, a);
-				RenAAL::get().draw_line({-hsize, -t}, {hsize, -t}, clr, w, a);
-				RenAAL::get().draw_line({ t, -hsize}, { t, hsize}, clr, w, a);
-				RenAAL::get().draw_line({-t, -hsize}, {-t, hsize}, clr, w, a);
+			if (gp_init)
+			{
+				GamePresenter::init(*gp_init);
+				pres.reset( GamePresenter::get() );
+				gp_init.reset();
 			}
+		}
+		else {
+/*
+			if (auto ent = get_plr())
+			{
+				const float tar_thr = 8.f; // distance after which targeting enables
+				const float tar_dist = 15.f; // targeting camera distance
+				const float max_dist = 15.f; // max dist of player from camera
+				const float corr_thr = 3.f; // correction distance
+				const float corr_angle = deg_to_rad(20); // max frame deviation
+				const float zero_thr = 0.5f; // stops animation
+				
+				auto cam = RenderControl::get().get_world_camera();
+				const vec2fp scr = cam->mouse_cast(RenderControl::get_size() /2) - cam->mouse_cast({});
+				
+				auto frm = cam->get_state();
+				const vec2fp pos = ent->get_phy().get_pos();
+				
+				auto& pctr = *pc_ctr;
+				vec2fp tar = pctr.is_enabled( PlayerController::A_CAM_FOLLOW )? pctr.get_tar_pos() : pos;
+				
+				vec2fp tar_d = tar - pos;
+				if (tar_d.len() < tar_thr) tar = pos;
+				else tar = pos + tar_d.get_norm() * tar_dist;
+				
+				vec2fp edir = frm.pos - pos;
+				if (edir.len() > max_dist)
+					tar = pos + edir.get_norm() * corr_thr;
+				
+				vec2fp corr = tar - frm.pos;
+				if (std::fabs(corr.x) > scr.x ||
+				    std::fabs(corr.y) > scr.y)
+				{
+					frm.pos = tar;
+					cam->set_state(frm);
+					cam->reset_frames();
+				}
+				else if (corr.len() > corr_thr)
+				{
+					frm.pos = tar;
+					frm.len = TimeSpan::seconds(0.3);
+					cam->reset_frames();
+					cam->add_frame(frm);
+				}
+				else if (corr.len() < zero_thr) cam->reset_frames();
+				else {
+					vec2fp old_corr = cam->last_frame().pos - frm.pos;
+					if (wrap_angle_2 (old_corr.angle() - corr.angle()) > corr_angle)
+						cam->reset_frames();
+				}
+			}
+*/
 			
-			if (auto e = get_plr())
-				e->getref<PlayerLogic>().draw_hud();
+			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
+			GamePresenter::get()->render(passed);
 			
 			if (ph_debug_draw)
 				core->get_phy().world.DrawDebugData();
 			
 			RenImm::get().set_context(RenImm::DEFCTX_UI);
-			if (auto e = get_plr())
-				e->getref<PlayerLogic>().draw_ui();
 			
-			if (show_help) {
-				std::string help =
-				        "========== HELP ==========\n"
-						"F1    - show/hide help\n"
-						"WASD  - movement\n"
-						"Space - (hold) acceleration\n"
-						"LMB   - (hold) fire\n"
-						"RMB   - (hold) aim pointer\n"
-						"1-4   - switch weapons\n";
-				
-				if (pc_ctr->gpad)
+			if (auto ent = get_plr())
+			{
+				if (auto wpn = ent->get_eqp()->wpn_ptr())
 				{
-					help += "\n======= Controller =======\n"
-							"L stick - movement\n"
-							"R stick - aim\n"
-							"L trigger  - shoot\n"
-							"R shoulder - acceleration\n"
-							"D Left  - previous weapon\n"
-							"D Right - next weapon";
+					vig_label_a("{}\n", wpn->get_reninfo().name);
+					if (auto m = wpn->get_ammo()) vig_label_a("Ammo: {} / {}\n", (int) m->cur, (int) m->max);
+					if (auto m = wpn->get_heat())
+					{
+						double val = m->value;
+						vig_slider(m->ok()? "         " : "COOLDOWN", val);
+					}
+					if (auto m = wpn->get_rof())
+					{
+						double val = 1 - m->wait / m->delay;
+						vig_slider("R", val);
+					}
 				}
-				
-				vec2i sz = RenImm::get().text_size(help) * 2;
-				vec2i off = (RenderControl::get_size() - sz) /2;
-				RenImm::get().draw_rect({off - vec2i::one(4), sz + vec2i::one(8), true}, 0xa0);
-				RenImm::get().draw_text(off, help, -1, false, 2.f);
+				else vig_label("No weapon equipped");
 			}
 		}
 	}
 	
 	
 	
-	const float hsize = 15.f; // level
-	
-	void init_game()
-	{
-		pc_ctr.reset( new PlayerControl(Gamepad::open_default()) );
-		
-		GameCore::InitParams core_init;
-		core_init.random_seed = 0;
-		core.reset( GameCore::create(core_init) );
-		
-#warning test LevelControl
-//		LevelControl::init();
-//		exit(666);
-		
-		RenAAL::get().inst_begin();
-		GameResBase::get().init_res();
-		init_terrain(hsize);
-		RenAAL::get().inst_end();
-	}
-	void thr_func() try
-	{
-		struct DL : EComp
-		{
-			EVS_SUBSCR;
-			TimeSpan hp_show = TimeSpan::ms(-1);
-			bool hp_too_low = false;
-			
-			DL(Entity* e) {
-				reg(ECompType::StepLogic);
-				EVS_CONNECT1(e->getref<EC_Health>().on_damage, on_event);
-			}
-			~DL() {
-				float pow = ent->getref<EC_Health>().hp_max / 100.f;
-				GamePresenter::get().effect(FE_EXPLOSION, ent->get_pos(), pow);
-			}
-			void step()
-			{
-				if (hp_too_low) return;
-				hp_show -= GameCore::step_len;
-				if (hp_show.is_negative())
-					ent->getref<EC_Render>().hp_shown = false;
-			}
-			void on_event(const DamageQuant& )
-			{
-				hp_show = TimeSpan::seconds(3);
-				ent->getref<EC_Render>().hp_shown = true;
-				
-				auto& hc = ent->getref<EC_Health>();
-				hp_too_low = hc.hp / hc.hp_max < 0.4;
-			}
-		};
-		
-		auto& rb = GameResBase::get();
-		
-		for (int i=0; i<25; ++i)
-		{
-			bool big = (i%4 == 0);
-			float rn = hsize - 1;
-			vec2fp pos(rnd_range(-rn, rn), rnd_range(-rn, rn));
-			
-			auto e = core->create_ent();
-			e->add(new EC_Render(e, big? OBJ_HEAVY : OBJ_BOX));
-			
-			b2BodyDef bd;
-			bd.type = b2_dynamicBody;
-			bd.position = conv(pos);
-			auto phy = new EC_Physics(bd);
-			e->add(phy);
-			
-			b2FixtureDef fd;
-			fd.friction = 0.1;
-			fd.restitution = big? 0.1 : 0.5;
-			phy->add_box(fd, vec2fp::one(big? rb.hsz_heavy : rb.hsz_box), big? 25.f : 8.f);
-			
-			auto mov = new EC_Movement;
-			mov->damp_lin = 1.5f;
-			mov->dust_vel = 12.f;
-			e->add(mov);
-			
-			auto hp = new EC_Health;
-			hp->renew_hp( big? 300.f : 200.f );
-			hp->hook(*phy);
-			e->add(hp);
-			        
-			e->add(new DL(e));
-			e->dbg_name = big? "Heavy" : "Box";
-		}
-		{
-			auto e = PlayerLogic::create(*core, {}, pc_ctr);
-			pc_ent = e->index;
-			cam_ent = e->index;
-		}
-		
-		VLOGI("Game initialized");
-		
-		state = ST_RUN;
-		while (state != ST_FINISH)
-		{
-			auto t0 = TimeSpan::since_start();
-			core->step();
-			sleep(core->step_len - (TimeSpan::since_start() - t0));
-		}
-	}
-	catch (std::exception& e) {
-		state = ST_FINISH;
-		VLOGE("Game failed: {}", e.what());
-	}
-	
-	
-	
-	void init_terrain(float hsize)
-	{
-		std::vector<vec2fp> ps = {{-hsize,-hsize}, {hsize,-hsize}, {hsize,hsize}, {-hsize,hsize}};
-		RenAAL::get().inst_add(ps, true);
-		
-		PresObject p;
-		p.id = RenAAL::get().inst_add_end();
-		p.clr = FColor(0.75, 0.75, 0.75, 1);
-		pres->add_preset(p);
-		
-		auto e = core->create_ent();
-		e->add(new EC_Render(e, OBJ_ALL_WALLS));
-		
-		b2BodyDef def;
-		e->add(new EC_Physics(def));
-		
-		b2ChainShape shp;
-		b2Vec2 vs[4];
-		for (int i=0; i<4; ++i) vs[i] = conv(ps[i]);
-		shp.CreateLoop(vs, 4);
-		
-		b2FixtureDef fd;
-		fd.friction = 0.15;
-		fd.restitution = 0.1;
-		fd.shape = &shp;
-		e->get<EC_Physics>()->body->CreateFixture(&fd);
-		
-		e->dbg_name = "terrain";
-	}
 	Entity* get_plr()
 	{
 		if (pc_ent) {
@@ -347,6 +227,66 @@ public:
 			pc_ent = 0;
 		}
 		return nullptr;
+	}
+	void init_game()
+	{	
+		core.reset( GameCore::create({}) );
+		
+		std::vector<std::vector<vec2fp>> ls_grid;
+		std::vector<std::vector<vec2fp>> ls_level;
+		
+		float hsize = 15.f;
+		{	
+			ls_level = {{{-hsize,-hsize}, {hsize,-hsize}, {hsize,hsize}, {-hsize,hsize}}};
+			ls_level.front().push_back( ls_level.front().front() );
+			
+			for (float i = 2; i < hsize; i += 2)
+			{
+				ls_grid.emplace_back() = {{-hsize,  i}, {hsize,  i}};
+				ls_grid.emplace_back() = {{-hsize, -i}, {hsize, -i}};
+				ls_grid.emplace_back() = {{ i, -hsize}, { i, hsize}};
+				ls_grid.emplace_back() = {{-i, -hsize}, {-i, hsize}};
+			}
+			ls_grid.emplace_back() = {{-hsize, 0}, {hsize, 0}};
+			ls_grid.emplace_back() = {{0, -hsize}, {0, hsize}};
+		}
+		
+		gp_init = GamePresenter::InitParams{ ls_level, std::move(ls_grid) };
+		while (!pres)
+		{
+			if (thr_term) throw std::runtime_error("init_game() interrupted");
+			sleep(TimeSpan::fps(30));
+		}
+		
+		new EWall(ls_level);
+		pc_ent = create_player({}, pc_ctr)->index;
+		
+		for (int i=0; i<25; ++i)
+		{
+			float rn = hsize - 1;
+			vec2fp pos(rnd_range(-rn, rn), rnd_range(-rn, rn));
+			(new EPhyBox(pos))->dbg_name = "Box";
+		}
+	}
+	void thr_func() try
+	{
+		init_game();
+		VLOGI("Game initialized");
+		
+		while (!thr_term)
+		{
+			auto t0 = TimeSpan::since_start();
+			{
+				std::unique_lock lock(ren_lock);
+				core->step();
+				GamePresenter::get()->sync();
+			}
+			sleep(core->step_len - (TimeSpan::since_start() - t0));
+		}
+	}
+	catch (std::exception& e) {
+		thr_term = true;
+		VLOGE("Game failed: {}", e.what());
 	}
 };
 

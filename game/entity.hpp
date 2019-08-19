@@ -3,11 +3,9 @@
 
 #include <memory>
 #include <optional>
-#include <typeindex>
-#include <unordered_map>
-#include "utils/ev_signal.hpp"
 #include "vaslib/vas_math.hpp"
 #include "vaslib/vas_types.hpp"
+#include "common_defs.hpp"
 
 class Entity;
 class GameCore;
@@ -38,15 +36,17 @@ enum class ECompType
 /// Entity component
 struct EComp
 {
-	Entity* ent = nullptr;
+	Entity* ent;
 	
 	
-	virtual const char *get_typename() const {return "Unknown";}
 	virtual void step() {} // unused by most
-	virtual ~EComp();
+	virtual ~EComp(); ///< Removes component from all lists
 	
 	void   reg(ECompType type) noexcept; ///< Adds component to list (safe)
 	void unreg(ECompType type) noexcept; ///< Removes component from list (safe)
+	
+protected:
+	EComp(Entity* ent): ent(ent) {}
 	
 private:
 	struct ComponentRegistration {ECompType type; size_t index;};
@@ -55,44 +55,60 @@ private:
 
 
 
+/// Entity component with physics world properties
+struct ECompPhysics : EComp
+{
+	ECompPhysics(Entity* ent): EComp(ent) {}
+	virtual ~ECompPhysics() = default;
+	virtual Transform get_trans() const = 0; 
+	virtual vec2fp    get_pos() const {return get_trans().pos;}
+	virtual Transform get_vel() const {return {};}
+	virtual float get_radius() const = 0; ///< Returns approximate radius of object
+	vec2fp get_norm_dir() const; ///< Returns normalized face direction
+};
+
+
+
+struct ECompRender;
+struct EC_Equipment;
+struct EC_Health;
+struct EC_Physics;
+
+
+
 /// Game object
-class Entity final
+class Entity
 {
 public:
 	const EntityIndex index;
 	std::string dbg_name = {};
 	
 	
+	virtual EC_Physics&   get_phobj(); ///< Throws if wrong type
+	virtual ECompPhysics& get_phy(); ///< Throws if doesn't exist
+	virtual ECompRender*  get_ren() {return nullptr;}
+	virtual EC_Health*    get_hlc() {return nullptr;}
+	virtual EC_Equipment* get_eqp() {return nullptr;}
 	
-	bool is_ok() const; ///< Returns true if entity is active
-	void destroy(); ///< Deletes entity immediatly or at the end of the step. Index garanteed to be not used in next step
-
-	Transform get_pos() const; ///< Returns center position
-	Transform get_vel() const; ///< Returns velocity per second
-	vec2fp get_norm_dir() const; ///< Returns normalized face direction
-	float get_radius() const; ///< Returns approximate radius of object
+	virtual size_t get_team() const {return 0;}
 	
-	// Note: components are deleted in reverse order of addition
 	
-	void add(std::type_index type, EComp* c); ///< Adds new component (throws if already exists)
-	void rem(std::type_index type) noexcept; ///< Destroys component if exists
-	EComp* get(std::type_index type) const noexcept; ///< Returns component if exists or null
-	EComp& getref(std::type_index type) const; ///< Returns component if exists or throws
+	/// Deletes entity immediatly or at the end of the step. Index garanteed to be not used in next step
+	void destroy();
 	
-	template<class T> T* add(T* c) noexcept {add(typeid(T), c); return c;} ///< Adds new component (throws if already exists)
-	template<class T> void rem() noexcept {rem(typeid(T));} ///< Destroys component if it exists
-	template<class T> T* get() const noexcept {return static_cast<T*>(get(typeid(T)));} ///< Returns component if exists or null
-	template<class T> T& getref() const {return static_cast<T&>(getref(typeid(T)));} ///< Returns component if exists or throws
+	/// Returns true if entity is not destroyed
+	bool is_ok() const;
+	
+	/// Returns ID string
+	std::string dbg_id() const;
+	
+protected:
+	Entity();
+	virtual ~Entity() = default;
 	
 private:
-	friend class GameCore_Impl;
-	
-	std::unordered_map<std::type_index, EComp*> cs;
-	std::vector<std::unique_ptr<EComp>> cs_ord;
 	bool was_destroyed = false;
-	
-	Entity(EntityIndex index) : index(index) {}
-	~Entity();
+	friend class GameCore_Impl;
 };
 
 #endif // ENTITY_HPP

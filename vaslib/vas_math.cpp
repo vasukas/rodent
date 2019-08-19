@@ -174,6 +174,11 @@ void vec2fp::norm()
 	float t = len();
 	x /= t; y /= t;
 }
+void vec2fp::norm_to(float n)
+{
+	float t = n / len();
+	x *= t; y *= t;
+}
 vec2fp vec2fp::get_rotate (float cos, float sin)
 {
 	return {

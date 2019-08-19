@@ -1,100 +1,100 @@
 #ifndef WEAPON_HPP
 #define WEAPON_HPP
 
+#include "client/resbase.hpp"
 #include "vaslib/vas_time.hpp"
 #include "damage.hpp"
 
-struct ContactEvent;
 
 
-
-struct Projectile : EComp
+enum class WeaponIndex
 {
-	enum Type
-	{
-		T_BULLET, ///< Only direct hit
-		T_AOE, ///< Explosion
-//		T_RAY ///< Direct hit ray (does not produce projectile object)
-	};
-	struct Params
-	{
-		DamageQuant dq = {DamageType::Kinetic, 0.f};
-		Type type = T_BULLET;
-		
-		float rad = 1.f; ///< Area-of-effect radius
-		float rad_min = 0.3f; ///< Minimal radius in damage calculation
-		bool rad_full = false; ///< If true, radius ignored in damage calculation; otherwise linear fall-off is used
-		
-		float imp = 0.f; ///< Physical impulse applied to target
-		bool trail = false; ///< If true, leaves particle trail
-	};
-	
-	Params pars;
-	uint32_t src_eid = 0; ///< Source entity (may be 0)
-	std::optional<Transform> target_pos; ///< Target for homing projectiles (NOT IMPLEMENTED)
-	
-	
-	Projectile();
-	void step();
+	Bat,
+	Handgun,
+	Bolter,
+	Grenade,
+	Minigun,
+	Rocket,
+	Electro
 };
 
 
 
-struct Weapon
-{	
-	Projectile::Params pars;
-	TimeSpan shoot_delay = TimeSpan::seconds(0.5);
+class Weapon
+{
+public:
+	static Weapon* create_std(WeaponIndex i);
+	virtual ~Weapon() = default;
 	
-	bool is_homing = false; ///< If true, projectiles are homing onto target (NOT IMPLEMENTED)
-	float proj_spd = 20.f; ///< Per second
-	float proj_radius = 0.2f;
-	size_t proj_sprite = 0;
-	
-	float heat_on  = 1; ///< Overheating enabled when higher
-	float heat_off = 0.5; ///< Overheating disabled when lower
-	float heat_incr = 0.3; ///< Overheat increase per second of shooting
-	float heat_decr = 0.5; ///< Overheat decrease per second of non-shooting
-
-	size_t ren_id = size_t_inval; ///< Rendering object ID
-	Transform ren_tr = {}; ///< Rendering transform relative to parent
-	std::string name;
-	
-	bool needs_ammo = false; ///< If true, consumes ammo
-	float ammo_speed = 0.f; ///< Ammo per second of shooting
-	float ammo = 1.f; ///< Current ammo value
-	
-	std::optional<float> disp; ///< Dispersion angle. If used, targeting is impossible
+	/// Returns false if not possible atm (by internal conditions)
+	virtual bool shoot(Entity* ent, vec2fp target) = 0;
 	
 	
-	
-	Weapon() {reset();}
-	void step();
-	
-	void shoot(Transform from, Transform at, Entity* src = nullptr); ///< Does nothing if can't yet shoot
-	void shoot(Entity* parent, std::optional<Transform> at = {}); ///< Gets transforms from parent
-	void reset(); ///< Resets counters (except ammo)
-	
-	bool can_shoot() const; ///< Returns true if capable of shooting now
+	struct RenInfo
+	{
+		std::string name;
+		ModelType model;
+	};
+	virtual RenInfo get_reninfo() const = 0;
 	
 	
+	struct ModRof
+	{
+		TimeSpan delay, wait;
+		
+		ModRof(TimeSpan delay): delay(delay) {}
+		bool ok() const {return !wait.is_positive();}
+		void shoot() {wait = delay;}
+	};
 	
-//private:	
-	TimeSpan del_cou; ///< Delay counter
-	float heat_cou; ///< Current heat value
-	bool heat_flag; ///< Is overheated
-	bool shot_was; ///< Is shooting ray now
+	struct ModAmmo
+	{
+		float per_shot, max, cur;
+		
+		ModAmmo(float per_shot = 1, float max = 100, float cur = 0):
+		    per_shot(per_shot), max(max), cur(cur) {}
+		
+		bool ok() const {return cur != 0.f;}
+		void shoot();
+		bool add(float amount); ///< Returns false if already at max
+	};
+	
+	struct ModOverheat
+	{
+		float shots_per_second = 1;
+		float thr_off = 0.5; ///< Overheating disabled when lower
+		float v_incr = 0.3; ///< Overheat increase per second of shooting
+		float v_decr = 0.5; ///< Overheat decrease per second of cooling
+		
+		float value = 0.f;
+		bool flag = false; ///< Is overheated
+		
+		bool ok() const {return !flag;}
+		void shoot();
+		void cool();
+	};
+	
+	// Note: must be stepped outside
+	virtual ModRof* get_rof() {return nullptr;}
+	virtual ModAmmo* get_ammo() {return nullptr;}
+	virtual ModOverheat* get_heat() {return nullptr;}
 };
 
 
 
 struct EC_Equipment : EComp
 {
-	std::vector<Weapon> wpns;
+	std::vector<std::unique_ptr<Weapon>> wpns;
+	int hand = 1; // 1 right, 0 center, -1 left
 	
 	
-	EC_Equipment();
+	EC_Equipment(Entity* ent);
+	EC_Equipment(const EC_Equipment&) = delete;
 	~EC_Equipment();
-	void step();
+	void step() override;
+	
+	/// Returns false if not possible atm
+	bool shoot(vec2fp target);
 	
 	bool set_wpn(size_t index); ///< Returns false if can't
 	size_t wpn_index() {return wpn_cur;} ///< size_t_inval if none
@@ -104,7 +104,8 @@ struct EC_Equipment : EComp
 	
 private:
 	size_t wpn_cur = size_t_inval;
-	size_t wpn_ren_id = size_t_inval;
+	std::optional<size_t> last_req;
+	bool has_shot = false;
 };
 
 #endif // WEAPON_HPP

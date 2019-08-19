@@ -50,6 +50,9 @@ inline float deg_to_rad(float x) {return x / 180.f * M_PI;}
 template <typename T>
 typename std::enable_if<std::is_floating_point<T>::value, T>::type fracpart(T x) {return std::fmod(x, 1);}
 
+template <typename T>
+int int_round(T value) {return static_cast<int>(std::round(value));}
+
 
 
 /// 2D integer vector
@@ -172,6 +175,7 @@ struct vec2fp {
 	
 	vec2fp get_norm() const; ///< Returns normalized vector
 	void norm(); ///< Normalizes vector
+	void norm_to(float n); ///< Normalizes vector to specified length
 	
 	float area() const {return std::fabs(x * y);}
 	

@@ -1,58 +1,89 @@
-#include <mutex>
-#include "render/ren_aal.hpp"
-#include "vaslib/vas_cpp_utils.hpp"
 #include "game/game_core.hpp"
+#include "render/ren_aal.hpp"
+#include "render/ren_imm.hpp"
+#include "vaslib/vas_containers.hpp"
+#include "vaslib/vas_log.hpp"
 #include "presenter.hpp"
 
-#include "render/ren_imm.hpp"
-#include "game/damage.hpp"
 
 
-
-EC_Render::EC_Render(Entity *ent, size_t sprite_id)
+ECompRender::ECompRender(Entity* ent):
+    EComp(ent)
 {
-	this->ent = ent;
-	
 	PresCommand c;
 	c.type = PresCommand::T_CREATE;
-	c.index = sprite_id;
 	send(c);
 }
-EC_Render::~EC_Render()
+ECompRender::~ECompRender()
 {
 	PresCommand c;
 	c.type = PresCommand::T_DEL;
+	c.ix0 = _comp_id;
 	send(c);
 }
-void EC_Render::parts(size_t id, float power, Transform rel)
+void ECompRender::parts(ModelType model, ModelEffect effect, const ParticleGroupGenerator::BatchPars& pars)
 {
 	PresCommand c;
 	c.type = PresCommand::T_OBJPARTS;
-	c.index = id;
-	c.pos = rel;
-	c.power = power;
+	c.ix0 = model;
+	c.ix1 = effect;
+	c.set(pars);
 	send(c);
 }
-size_t EC_Render::attach(size_t sprite_id, Transform rel)
+void ECompRender::parts(FreeEffect effect, ParticleGroupGenerator::BatchPars pars)
+{
+	pars.tr = get_pos().get_combined(pars.tr);
+	GamePresenter::get()->effect(effect, pars);
+}
+void ECompRender::attach(AttachType type, Transform at, ModelType model, FColor clr)
 {
 	PresCommand c;
 	c.type = PresCommand::T_ATTACH;
-	c.index = sprite_id;
-	c.pos = rel;
-	send(c);
-	return att_id++;
-}
-void EC_Render::detach(size_t id)
-{
-	PresCommand c;
-	c.type = PresCommand::T_DETACH;
-	c.index = id;
+	c.ix0 = type;
+	c.ix1 = model;
+	c.pos = at;
+	c.clr = clr;
 	send(c);
 }
-void EC_Render::send(PresCommand& c)
+void ECompRender::send(PresCommand& c)
 {
-	c.obj = ent->index;
-	GamePresenter::get().add_cmd(c);
+	c.ptr = this;
+	GamePresenter::get()->add_cmd(c);
+}
+void ECompRender::proc(const PresCommand& )
+{
+	THROW_FMTSTR("ECompRender::proc() not implemented ({})", ent->dbg_id());
+}
+
+
+
+EC_RenderSimple::EC_RenderSimple(Entity* ent, ModelType model, FColor clr):
+    ECompRender(ent), model(model), clr(clr)
+{}
+EC_RenderSimple::~EC_RenderSimple()
+{
+	parts(model, ME_DEATH, {get_pos(), 1, clr});
+}
+void EC_RenderSimple::step()
+{
+	RenAAL::get().draw_inst(get_pos(), clr, model);	
+}
+
+
+
+void PresCommand::set(const ParticleGroupGenerator::BatchPars& pars)
+{
+	pos = pars.tr;
+	power = pars.power;
+	clr = pars.clr;
+}
+ParticleGroupGenerator::BatchPars PresCommand::get_pp()
+{
+	ParticleGroupGenerator::BatchPars pars;
+	pars.tr = pos;
+	pars.power = power;
+	pars.clr = clr;
+	return pars;
 }
 
 
@@ -60,214 +91,127 @@ void EC_Render::send(PresCommand& c)
 class GamePresenter_Impl : public GamePresenter
 {
 public:
-	std::vector<PresCommand> q_evs, q_next;
-	std::mutex q_lock;
+	std::vector<PresCommand> cmds_queue;
+	std::vector<std::vector<PresCommand>> cmds;
 	
-	std::vector<std::shared_ptr<ParticleGroupGenerator>> p_pars;
-	std::vector<PresObject> p_objs;
+	SparseArray<ECompRender*> cs;
+	TimeSpan last;
 	
-	struct Object
+	
+	
+	GamePresenter_Impl(InitParams pars)
 	{
-		EntityIndex ei;
-		Transform tr, vel;
-		FColor clr;
-		size_t oid;
+		RenAAL::get().inst_begin();
 		
-		float hp;
-		float obj_rad; // radius
+		for (auto& l : pars.grid_lines) RenAAL::get().inst_add(l, false, 0.07f, 1.5f);
+		RenAAL::get().inst_add_end();
 		
-		struct Sub
-		{
-			size_t cmd; // command index
-			size_t oid;
-			Transform tr; // Relative
-		};
-		std::vector<Sub> subs;
-		size_t sub_id;
-
-		void reset() {
-			vel = {};
-			hp = -1;
-			obj_rad = 0;
-			subs.clear();
-			sub_id = 0;
-		}
-	};
-	std::vector<Object> objs;
-	
-	
-	
-	void render(TimeSpan passed)
-	{
-		std::vector<PresCommand> evs;
-		{
-			std::unique_lock g(q_lock);
-			evs.swap(q_evs);
+		for (auto& l : pars.lvl_lines) RenAAL::get().inst_add(l, false);
+		RenAAL::get().inst_add_end();
+		
+		try {ResBase::get().init_ren();}
+		catch (std::exception& e) {
+			THROW_FMTSTR("GamePresenter::init() ResBase failed: {}", e.what());
 		}
 		
-		for (auto& e : evs)
+		RenAAL::get().inst_end();
+	}
+	void sync()
+	{
+		bool any = false;
+		for (auto& c : cmds_queue)
 		{
-			switch (e.type)
+			switch (c.type)
 			{
+			case PresCommand::T_ERROR:
+				throw std::logic_error("GamePresenter::sync() no type");
+				
 			case PresCommand::T_CREATE:
-				{	if (e.obj >= objs.size()) objs.resize( e.obj + 1 );
-					auto& o = objs[e.obj];
-					o.ei = e.obj;
-					o.tr = e.pos;
-					o.oid = e.index;
-					auto& p = p_objs[o.oid];
-					o.clr = p.clr;
-					o.reset();
-				}
+				if (c.ptr->ent->is_ok())
+					c.ptr->_comp_id = cs.emplace_new(c.ptr);
 				break;
 				
 			case PresCommand::T_DEL:
-				{	auto& o = objs[e.obj];
-					o.ei = 0;
-					auto& p = p_objs[o.oid];
-					if (!p.ps.empty() && p.ps[0])
-						p.ps[0]->draw({o.tr});
-				}
-				break;
-				
-			case PresCommand::T_OBJPARTS:
-				{	auto& o = objs[e.obj];
-					auto& p = p_objs[o.oid];
-					p.ps[e.index]->draw({o.tr.get_combined(e.pos), e.power});
-				}
+				cs.free_and_null(c.ix0);
 				break;
 				
 			case PresCommand::T_ATTACH:
-				{	auto& o = objs[e.obj];
-					auto& s = o.subs.emplace_back();
-					s.cmd = o.sub_id++;
-					s.oid = e.index;
-					s.tr = e.pos;
-				}
+			case PresCommand::T_OBJPARTS:
+			case PresCommand::T_FREEPARTS:
+				any = true;
+				break;
+			}
+		}
+		
+		if (any) cmds.emplace_back().swap(cmds_queue);
+		else cmds_queue.clear();
+		
+		for (auto& c : cs)
+		{
+			auto& phy = c->ent->get_phy();
+			c->_pos = phy.get_trans();
+			c->_vel = phy.get_vel();
+			c->sync();
+		}
+	}
+	void add_cmd(const PresCommand& c)
+	{
+		reserve_more_block(cmds_queue, 1024);
+		cmds_queue.emplace_back(c);
+	}
+	void render(TimeSpan passed)
+	{
+		for (auto& cline : cmds)
+		for (auto& c : cline)
+		{
+			switch (c.type)
+			{
+			case PresCommand::T_ERROR:
+			case PresCommand::T_CREATE:
+			case PresCommand::T_DEL:
 				break;
 				
-			case PresCommand::T_DETACH:
-				{	auto& o = objs[e.obj];
-					auto it = std::find_if(o.subs.begin(), o.subs.end(), [i = e.index](auto& v){return v.cmd == i;});
-					if (it != o.subs.end()) o.subs.erase(it);
-				}
+			case PresCommand::T_ATTACH:
+				c.ptr->proc(c);
+				break;
+				
+			case PresCommand::T_OBJPARTS:
+				if (auto gen = ResBase::get().get_eff(static_cast<ModelType>(c.ix0), static_cast<ModelEffect>(c.ix1)))
+					gen->draw(c.get_pp());
 				break;
 				
 			case PresCommand::T_FREEPARTS:
-				p_pars[e.index]->draw({e.pos, e.power});
+				if (auto gen = ResBase::get().get_eff(static_cast<FreeEffect>(c.ix0)))
+					gen->draw(c.get_pp());
 				break;
 			}
 		}
-
-		auto& ren = RenAAL::get();
-		float tk = passed.seconds();
+		cmds.clear();
 		
-		auto& imm = RenImm::get();
-		imm.set_context(RenImm::DEFCTX_WORLD);
-		
-		for (auto& o : objs)
+		last = passed;
+		for (auto& c : cs)
 		{
-			if (!o.ei) continue;
-			ren.draw_inst(o.tr, o.clr, p_objs[o.oid].id);
-			
-			if (o.hp >= 0)
-			{
-				const vec2fp sz = {2, 0.5};
-				
-				vec2fp base = o.tr.pos;
-				base.y -= o.obj_rad + sz.y/2 + 0.5;
-				
-				Rectfp r;
-				r.from_center(base, sz/2);
-				
-				imm.draw_rect(r, 0xff0000ff);
-				r.b.x = r.a.x + sz.x * o.hp;
-				imm.draw_rect(r, 0xc0ff00ff);
-				r.b.x = r.a.x + sz.x;
-				imm.draw_frame(r, 0xc0c0c0ff, 0.07);
-			}
-			
-			if (!o.subs.empty())
-			{
-				for (auto& s : o.subs) {
-					auto& p = p_objs[s.oid];
-					ren.draw_inst(o.tr.get_combined(s.tr), p.clr, p.id);
-				}
-			}
-			
-			o.tr.add(o.vel * tk);
+			c->step();
+			c->_pos.add(c->_vel * passed.seconds());
 		}
 	}
-	void add_cmd(const PresCommand& cmd)
+	TimeSpan get_passed()
 	{
-		reserve_more_block(q_next, 256);
-		q_next.emplace_back(cmd);
-	}
-	void submit()
-	{
-		std::unique_lock g(q_lock);
-		if (q_evs.empty()) q_evs.swap(q_next);
-		else {
-			q_evs.insert( q_evs.end(), q_next.begin(), q_next.end() );
-			q_next.clear();
-		}
-		auto& core = GameCore::get();
-		for (auto& e : q_evs)
-		{
-			if (e.type == PresCommand::T_CREATE) {
-				auto ent = core.get_ent(e.obj);
-				if (!ent) continue;
-				e.pos = ent->get_pos();
-			}
-		}
-		for (auto& o : objs)
-		{
-			if (!o.ei) continue;
-			if (auto e = core.get_ent(o.ei)) {
-				o.tr = e->get_pos();
-				o.vel = e->get_vel();
-				
-				auto& rc = e->getref<EC_Render>();
-				if (rc.hp_shown)
-				{
-					auto hc = e->get<EC_Health>();
-					if (hc && !hc->invincible)
-						o.hp = hc->hp / hc->hp_max;
-					else
-						o.hp = -1;
-				}
-				else o.hp = -1;
-				
-				o.obj_rad = e->get_radius();
-			}
-		}
-	}
-	size_t add_preset(std::shared_ptr<ParticleGroupGenerator> p)
-	{
-		reserve_more_block(p_pars, 64);
-		p_pars.emplace_back(p);
-		return p_pars.size() - 1;
-	}
-	size_t add_preset(const PresObject& p)
-	{
-		reserve_more_block(p_objs, 128);
-		p_objs.emplace_back(p);
-		return p_objs.size() - 1;
-	}
-	void effect(size_t preset_id, Transform at, float power)
-	{
-		PresCommand c;
-		c.type = PresCommand::T_FREEPARTS;
-		c.index = preset_id;
-		c.pos = at;
-		c.power = power;
-		add_cmd(c);
+		return last;
 	}
 };
+void GamePresenter::effect(FreeEffect effect, const ParticleGroupGenerator::BatchPars &pars)
+{
+	PresCommand c;
+	c.type = PresCommand::T_FREEPARTS;
+	c.ix0 = effect;
+	c.set(pars);
+	add_cmd(c);
+}
+
+
 
 static GamePresenter* rni;
-GamePresenter& GamePresenter::get() {
-	if (!rni) rni = new GamePresenter_Impl;
-	return *rni;
-}
+void GamePresenter::init(InitParams pars) {rni = new GamePresenter_Impl (std::move(pars));}
+GamePresenter* GamePresenter::get() {return rni;}
 GamePresenter::~GamePresenter() {rni = nullptr;}

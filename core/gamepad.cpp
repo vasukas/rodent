@@ -38,7 +38,10 @@ public:
 #undef X
 		case B_SHLD_LEFT:  i = SDL_CONTROLLER_BUTTON_LEFTSHOULDER; break;
 		case B_SHLD_RIGHT: i = SDL_CONTROLLER_BUTTON_RIGHTSHOULDER; break;
-		case TOTAL_BUTTONS: return 0;
+			
+		case B_NONE:
+		case TOTAL_BUTTONS_INTERNAL:
+			return 0;
 		}
 		return 0 != SDL_GameControllerGetButton(gc, i);
 	}
@@ -58,6 +61,9 @@ public:
 	{
 		return get_axis(SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
 	}
+	
+	
+	
 	float get_axis(SDL_GameControllerAxis i)
 	{
 		float v = SDL_GameControllerGetAxis(gc, i);

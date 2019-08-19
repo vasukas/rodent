@@ -20,11 +20,15 @@ class SparseArray
 	IsNull is_null;
 	
 public:
-	size_t vs_expand = 128; // data is expanded in blocks of such size
-	size_t fi_expand = 128; // stack is expanded in blocks of such size
+	size_t vs_expand; // data is expanded in blocks of such size
+	size_t fi_expand; // stack is expanded in blocks of such size
 	
 	
 	
+	SparseArray(int default_expand = 128):
+	    vs_expand(default_expand),
+		fi_expand(default_expand)
+	{}
 	size_t new_index()
 	{
 		if (fixs.empty()) {
@@ -56,15 +60,15 @@ public:
 	{
 		return vals.size() == fixs.size();
 	}
-	/// Total objects (including free)
+	/// Existing (non-free) objects
 	size_t size() const
 	{
-		return vals.size();
-	}
-	/// Existing (non-free) objects
-	size_t count() const
-	{
 		return vals.size() - fixs.size();
+	}
+	/// Total objects (including free)
+	size_t capacity() const
+	{
+		return vals.size();
 	}
 	
 	
@@ -106,25 +110,17 @@ public:
 	
 	
 	
-	size_t insert_new(const T& x)
-	{
-		size_t i = new_index();
-		vals[i] = x;
-		return i;
-	}
-	size_t insert_new(T&& x)
-	{
-		size_t i = new_index();
-		vals[i] = std::move(x);
-		return i;
-	}
-	
 	template<typename... Args>
 	size_t emplace_new(Args&&... args)
 	{
 		size_t i = new_index();
 		vals[i] = T( std::forward<Args>(args)... );
 		return i;
+	}
+	void free_and_null(size_t i)
+	{
+		free_index(i);
+		vals[i] = nullptr;
 	}
 	
 	

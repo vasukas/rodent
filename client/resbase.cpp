@@ -1,19 +1,49 @@
+#include "game/common_defs.hpp"
 #include "render/ren_aal.hpp"
+#include "render/particles.hpp"
 #include "utils/noise.hpp"
+#include "utils/svg_simple.hpp"
 #include "presenter.hpp"
 
+// just looks better
+#define PLAYER_MODEL_RADIUS_INCREASE 0.1
+
+// will be changed to param later
+#define MODEL_FILENAME "res/models.svg"
+
+//
+using namespace GameConst;
 
 
-GameResBase& GameResBase::get()
+
+class ResBase_Impl : public ResBase
 {
-	static GameResBase b;
+public:
+	std::array <std::array<std::unique_ptr<ParticleGroupGenerator>, ME_TOTAL_COUNT_INTERNAL>, MODEL_TOTAL_COUNT_INTERNAL> ld_me;
+	std::array <std::unique_ptr<ParticleGroupGenerator>, FE_TOTAL_COUNT_INTERNAL> ld_es;
+	
+	ParticleGroupGenerator* get_eff(ModelType type, ModelEffect eff)
+	{
+		return ld_me[type][eff].get();
+	}
+	ParticleGroupGenerator* get_eff(FreeEffect eff)
+	{
+		return ld_es[eff].get();
+	}
+	void init_ren();
+};
+ResBase& ResBase::get()
+{
+	static ResBase_Impl b;
 	return b;
 }
-void GameResBase::init_res()
+
+
+
+void ResBase_Impl::init_ren()
 {
-	auto pres = &GamePresenter::get();
-	
-	struct Explosion : ParticleGroupGenerator {
+	struct Explosion : ParticleGroupGenerator
+	{
 		size_t n_base; // base count
 		FColor clr0, clr1; // color range
 		
@@ -58,7 +88,8 @@ void GameResBase::init_res()
 //				p.clr.a *= alpha;
 		}
 	};
-	struct WpnExplosion : ParticleGroupGenerator {
+	struct WpnExplosion : ParticleGroupGenerator
+	{
 		FColor clr   = FColor(0.2, 0.2, 1);
 		FColor clr_n = FColor(0.1, 0.1, 0.4);
 		FColor clr_p = FColor(0.2, 0.6, 0);
@@ -72,12 +103,12 @@ void GameResBase::init_res()
 		{
 			p.size = 0.1;
 			
-			size_t num = (2 * M_PI * rad) / (p.size * 0.5);
-			if (!num) num = 3;
-			
 			ctr = pars.tr.pos;
 			rad = pars.power;
 			t = 0;
+			
+			size_t num = (2 * M_PI * rad) / (p.size * 0.5);
+			if (!num) num = 3;
 			dt = (M_PI*2) / num;
 			return num;
 		}
@@ -116,227 +147,310 @@ void GameResBase::init_res()
 			t += dt;
 		}
 	};
-	
-	// FE_EXPLOSION
+	struct Death : ParticleGroupGenerator
 	{
-		auto g = std::make_shared<Explosion>();
+		struct Ln {
+			vec2fp a, b;
+			size_t n;
+		};
+		std::vector<Ln> ls;
+		size_t total = 0;
+		std::optional<FColor> clr;
+		
+		Transform tr;
+		size_t li, lc;
+		
+		Death(const std::vector<std::vector<vec2fp>>& ps)
+		{
+			for (auto& s : ps)
+			{
+				size_t n = s.size();
+				for (size_t i=1; i<n; ++i)
+				{
+					auto& l = ls.emplace_back();
+					l.a = s[i-1];
+					l.b = s[i];
+					l.n = l.a.dist(l.b) * 5;
+					if (l.n < 2) l.n = 2;
+					total += l.n;
+				}
+			}
+		}
+		size_t begin(const BatchPars& pars, ParticleParams& p)
+		{
+			p.size = 0.1;
+			p.lt = 0;
+			p.clr = clr? *clr : pars.clr;
+			p.lt = 0;
+			
+			li = lc = 0;
+			tr = pars.tr;
+			return total;
+		}
+		void gen(ParticleParams& p)
+		{
+			auto& l = ls[li];
+			float t = (lc + 0.5f) / l.n;
+			vec2fp pos = lerp(l.a, l.b, t);
+			if (++lc == l.n) ++li, lc = 0;
+			
+			vec2fp rp = pos;
+			rp.fastrotate(tr.rot);
+			p.px = rp.x + tr.pos.x;
+			p.py = rp.y + tr.pos.y;
+			
+			vec2fp rv = vec2fp(0, rnd_range(0.1, 0.5));
+			rv.fastrotate( rnd_range(-M_PI, M_PI) );
+			p.vx = rv.x;
+			p.vy = rv.y;
+			
+			p.ft = rnd_range(3, 5);
+		}
+	};
+
+
+
+	{
+		auto g = new Explosion;
+		ld_es[FE_EXPLOSION].reset(g);
+		
 		g->n_base = 30;
 		g->p_max = 3.f;
 		g->size = 0.3;
 		g->spd_min = 1.;
 		g->clr0 = FColor(0.5, 0, 0, 0.5);
 		g->clr1 = FColor(1.2, 1, 0.8, 1);
-		pres->add_preset(g);
-	}
-	// FE_HIT
-	{
-		auto g = std::make_shared<Explosion>();
+	}{
+		auto g = new Explosion;
+		ld_es[FE_HIT].reset(g);
+		
 		g->n_base = 20;
 		g->clr0 = FColor(1, 0, 0, 0.1);
 		g->clr1 = FColor(1.2, 0.2, 0.2, 1);
-		pres->add_preset(g);
-	}
-	// FE_SHOOT_DUST
-	{
-		auto g = std::make_shared<Explosion>();
+	}{
+		auto g = new Explosion;
+		ld_es[FE_HIT_SHIELD].reset(g);
+		
+		g->n_base = 20;
+		g->clr0 = FColor(0, 0.5, 1, 0.1);
+		g->clr1 = FColor(0.2, 1, 1.2, 1);
+	}{
+		auto g = new WpnExplosion;
+		ld_es[FE_WPN_EXPLOSION].reset(g);
+		
+		g->clr   = FColor(1, 0.3, 0.1);
+		g->clr_n = FColor(0, 0.2, 0.1);
+		g->clr_p = FColor(0.2, 0.8, 0.3);
+	}{
+		auto g = new Explosion;
+		ld_es[FE_SHOT_DUST].reset(g);
+		
 		g->n_base = 40;
 		g->a_lim = M_PI * 0.2;
 		g->p_min = 0.5, g->p_max = 2.f;
 		g->spd_min = 2.f;
 		g->clr0 = FColor(1, 0.5, 0, 0.5);
 		g->clr1 = FColor(1, 1, 0.2, 1.2);
-		pres->add_preset(g);
-	}
-	// FE_WPN_EXPLOSION
-	{
-		auto g = std::make_shared<WpnExplosion>();
-		pres->add_preset(g);
-	}
-	// FE_WPN_IMPLOSION
-	{
-		auto g = std::make_shared<WpnExplosion>();
-		g->implode = true;
-		pres->add_preset(g);
-	}
-	
-	// OE_DUST
-	auto dust_ps = std::make_shared<Explosion>();
-	{
-		auto& g = dust_ps;
+	}{
+		auto g = new Explosion;
+		ld_es[FE_SPEED_DUST].reset(g);
+		
 		g->n_base = 8;
 		g->p_min = 0.2f, g->p_max = 2.f;
 		g->alpha = 0.45;
 		g->clr0 = FColor(0.4, 1, 1, 0.8);
 		g->clr1 = FColor(0.9, 1, 1, 0.8);
+	}{
+		auto g = new WpnExplosion;
+		ld_es[FE_SPAWN].reset(g);
+		
+		g->implode = true;
 	}
 	
-	struct RenShape {
-		std::vector<vec2fp> ps;
-		bool loop = true;
-	};
-	std::vector<RenShape> ps;
 	
-	auto addobj = [&](FColor clr, vec2fp size)
+	
+	struct ModelInfo
 	{
-		struct Death : ParticleGroupGenerator {
-			struct Ln {
-				vec2fp a, b;
-				size_t n;
-			};
-			std::vector<Ln> ls;
-			size_t total = 0;
-			Transform tr;
-			FColor clr;
-			
-			size_t li, lc;
-			
-			Death(const std::vector<RenShape>& ps, FColor clr): clr(clr)
+		std::vector<std::vector<vec2fp>> ls;
+	};
+	ModelInfo mlns[MODEL_TOTAL_COUNT_INTERNAL];
+	
+	
+	
+	std::pair<ModelType, std::string> md_ns[] =
+	{
+	    {MODEL_ERROR, "error"},
+	    
+	    {MODEL_PC_RAT, "rat"},
+	    {MODEL_BOX_SMALL, "box_small"},
+	    
+	    {MODEL_MEDKIT, "medkit"},
+	    {MODEL_ARMOR, "armor"},
+	    
+	    {MODEL_BAT, "bat"},
+	    {MODEL_HANDGUN, "claw"},
+	    {MODEL_BOLTER, "bolter"},
+	    {MODEL_GRENADE, "grenade"},
+	    {MODEL_MINIGUN, "mgun"},
+	    {MODEL_ROCKET, "rocket"},
+	    {MODEL_ELECTRO, "electro"},
+	    
+	    {MODEL_HANDGUN_AMMO, "claw_ammo"},
+	    {MODEL_BOLTER_AMMO, "bolter_ammo"},
+	    {MODEL_GRENADE_AMMO, "grenade_ammo"},
+	    {MODEL_MINIGUN_AMMO, "mgun_ammo"},
+	    {MODEL_ROCKET_AMMO, "rocket_ammo"},
+	    {MODEL_ELECTRO_AMMO, "electro_ammo"},
+	    
+	    {MODEL_SPHERE, "sphere"}
+	};
+	
+	// load models
+	
+	{	SVG_File svg = svg_read(MODEL_FILENAME);
+		
+		for (auto& p : svg.paths)
+		{
+			size_t ni = p.id.length() - 1;
+			for (; ni; --ni) {
+				char c = p.id[ni];
+				if (c > '9' || c < '0') break;
+			}
+			p.id.erase(ni + 1);
+		}
+		
+		for (auto& md : md_ns)
+		{
+			bool any = false;
+			for (auto& p : svg.paths)
 			{
-				for (auto& s : ps)
-				{
-					size_t n = s.ps.size();
-					if (s.loop) ++n;
-					for (size_t i=1; i<n; ++i)
-					{
-						auto& l = ls.emplace_back();
-						l.a = s.ps[i-1];
-						l.b = s.ps[i % s.ps.size()];
-						l.n = l.a.dist(l.b) * 5;
-						if (l.n < 2) l.n = 2;
-						total += l.n;
-					}
+				if (p.id == md.second) {
+					mlns[md.first].ls.emplace_back( std::move(p.ps) );
+					any = true;
 				}
 			}
-			size_t begin(const BatchPars& pars, ParticleParams& p)
-			{
-				p.size = 0.1;
-				p.lt = 0;
-				p.clr = clr;
-				p.lt = 0;
-				
-				li = lc = 0;
-				tr = pars.tr;
-				return total;
-			}
-			void gen(ParticleParams& p)
-			{
-				auto& l = ls[li];
-				float t = (lc + 0.5f) / l.n;
-				vec2fp pos = lerp(l.a, l.b, t);
-				if (++lc == l.n) ++li, lc = 0;
-				
-				vec2fp rp = pos;
-				rp.fastrotate(tr.rot);
-				p.px = rp.x + tr.pos.x;
-				p.py = rp.y + tr.pos.y;
-				
-				vec2fp rv = vec2fp(0, rnd_range(0.1, 0.5));
-				rv.fastrotate( rnd_range(-M_PI, M_PI) );
-				p.vx = rv.x;
-				p.vy = rv.y;
-				
-				p.ft = rnd_range(3, 5);
-			}
-		};
-		
-		vec2fp maxcd = {};
-		for (auto& s : ps) for (auto& p : s.ps) {
-			maxcd.x = std::max(maxcd.x, std::fabs(p.x));
-			maxcd.y = std::max(maxcd.y, std::fabs(p.y));
+			if (!any)
+				throw std::runtime_error(md.second + " - model not found");
 		}
-		maxcd = size / maxcd;
-		for (auto& s : ps) for (auto& p : s.ps) p *= maxcd;
-		
-		auto& ren = RenAAL::get();
-		for (auto& p : ps) ren.inst_add(p.ps, p.loop);
-		
-		PresObject p;
-		p.id = ren.inst_add_end();
-		p.clr = clr;
-		p.ps.emplace_back(new Death(ps, clr));
-		p.ps.emplace_back(dust_ps);
-		pres->add_preset(p);
-		
-		ps.clear();
+	}
+	
+	// center models
+	
+	for (auto& m : mlns)
+	{
+		vec2fp ctr = {};
+		size_t ctr_n = 0;
+		for (auto& s : m.ls) {
+			for (auto& p : s) ctr += p;
+			ctr_n += s.size();
+		}
+		ctr /= ctr_n;
+		for (auto& s : m.ls)
+			for (auto& p : s) p -= ctr;
+	}
+	
+	// rotate models (0 angle: top -> right)
+	
+	for (auto& m : mlns) {
+		for (auto& s : m.ls)
+			for (auto& p : s)
+				p.rot90ccw();
+	}
+	
+	
+	
+	// scale
+	
+	auto scale_to = [&](ModelType t, float radius) {
+		auto& m = mlns[t];
+		float mr = 0.f;
+		for (auto& s : m.ls)
+			for (auto& p : s)
+				mr = std::max(mr, std::max(std::fabs(p.x), std::fabs(p.y)));
+		for (auto& s : m.ls)
+			for (auto& p : s)
+				p *= radius / mr;
 	};
-	auto lnn = [&](bool loop){ ps.emplace_back().loop = loop; };
-	auto lpt = [&](float x, float y){ ps.back().ps.push_back({x, y}); };
 	
-	// OBJ_NONE
-	lnn(false); lpt(-1, -1); lpt(1, 1);
-	lnn(false); lpt(-1, 1); lpt(1, -1);
-	addobj(FColor(1, 0, 0, 1), vec2fp::one(3));
-
-	// OBJ_PC
-	lnn(true);
-	lpt(0, -1);
-	lpt(1, 1);
-	lpt(0, 0.7);
-	lpt(-1, 1);
-	addobj(FColor(0.4, 0.9, 1, 1), vec2fp::one(hsz_rat));
+	scale_to(MODEL_PC_RAT, hsz_rat + PLAYER_MODEL_RADIUS_INCREASE);
+	scale_to(MODEL_BOX_SMALL, hsz_box_small);
 	
-	// OBJ_BOX
-	lnn(true);
-	lpt(-1, -1); lpt( 1, -1);
-	lpt( 1,  1); lpt(-1,  1);
-	addobj(FColor(1, 0.4, 0, 1), vec2fp::one(hsz_box));
+	scale_to(MODEL_MEDKIT, hsz_supply);
+	scale_to(MODEL_ARMOR, hsz_supply);
 	
-	// OBJ_HEAVY
-	lnn(true);
-	lpt(-1, -1); lpt( 1, -1);
-	lpt( 1,  1); lpt(-1,  1);
-	addobj(FColor(1, 0.4, 0, 1), vec2fp::one(hsz_heavy));
 	
-	// PROJ_ROCKET
-	lnn(true);
-	lpt(0, -1);
-	lpt(-1, 1);
-	lpt( 1, 1);
-	addobj(FColor(0.2, 1, 0.6, 1.5), vec2fp::one(hsz_proj));
 	
-	// PROJ_RAY
+	// generate projs
 	
-	// PROJ_BULLET
-	lnn(true);
-	lpt(-1, -1); lpt( 1, -1);
-	lpt( 1,  1); lpt(-1,  1);
-	addobj(FColor(1, 1, 0.2, 1.5), vec2fp(0.4, 0.005));
+	auto ln_proj = [&](ModelType t, float n) {
+		auto& m = mlns[t];
+		if (m.ls.empty()) {
+			auto& v = m.ls.emplace_back();
+			v.push_back({0, 0});
+			v.push_back({n, 0});
+		}
+	};
+	auto sp_proj = [&](ModelType t, float r) {
+		auto& m = mlns[t];
+		if (m.ls.empty()) {
+			m.ls = mlns[MODEL_SPHERE].ls;
+			scale_to(t, r);
+		}
+	};
 	
-	// PROJ_PLASMA
-	lnn(true);
-	lpt(-1, -1); lpt( 1, -1);
-	lpt( 1,  1); lpt(-1,  1);
-	addobj(FColor(0.4, 1, 0.4, 1.5), vec2fp::one(hsz_proj));
+	ln_proj(MODEL_HANDGUN_PROJ, 0.3);
+	ln_proj(MODEL_BOLTER_PROJ,  1.5);
+	ln_proj(MODEL_MINIGUN_PROJ, 0.7);
+	sp_proj(MODEL_GRENADE_PROJ, hsz_proj);
 	
-	// ARM_SHIELD
-	lnn(true);
-	lpt(-1, -1  ); lpt( 0, -1.2);
-	lpt( 0,  0.8); lpt(-1,  1  );
-	lnn(true);
-	lpt( 0, -1.2); lpt( 1, -1  );
-	lpt( 1,  1  ); lpt( 0,  0.8);
-	addobj(FColor(1, 0.4, 0, 1), hsz_shld);
+	sp_proj(MODEL_BOLTER_PROJ_ALT, hsz_proj);
+	sp_proj(MODEL_GRENADE_PROJ_ALT, hsz_proj_big);
+	sp_proj(MODEL_MINIGUN_PROJ_ALT, hsz_proj);
+	sp_proj(MODEL_ELECTRO_PROJ_ALT, hsz_proj_big);
 	
-	// ARM_ROCKET
-	lnn(true);
-	lpt(-1, -1); lpt( 1, -1);
-	lpt( 1,  1); lpt(-1,  1);
-	addobj(FColor(1, 0.4, 0, 1), {0.7, 0.2});
+	mlns[MODEL_ROCKET_PROJ] = mlns[MODEL_ROCKET_AMMO];
+	scale_to(MODEL_ROCKET_PROJ, hsz_proj);
 	
-	// ARM_MGUN
-	lnn(true);
-	lpt(-1, -1); lpt( 1, -1);
-	lpt( 1,  1); lpt(-1,  1);
-	addobj(FColor(1, 0.4, 0, 1), {0.6, 0.4});
 	
-	// ARM_RAYGUN
 	
-	// ARM_PLASMA
-	lnn(true);
-	lpt(-1, -1); lpt( 1, -1);
-	lpt( 1,  1); lpt(-1,  1);
-	lnn(true);
-	lpt(-1, -2); lpt( 0, -2);
-	lpt( 0, -1); lpt(-1, -1);
-	addobj(FColor(1, 0.4, 0, 1), {0.5, 0.25});
+	// offset weapons
+	
+	for (auto i : {
+	     MODEL_BAT,
+	     MODEL_HANDGUN,
+	     MODEL_BOLTER,
+	     MODEL_GRENADE,
+		 MODEL_MINIGUN,
+		 MODEL_ROCKET,
+		 MODEL_ELECTRO})
+	{
+		float xmin = std::numeric_limits<float>::max();
+		for (auto& s : mlns[i].ls) for (auto& p : s) xmin = std::min(xmin, p.x);
+		for (auto& s : mlns[i].ls) for (auto& p : s) p.x -= xmin;
+	}
+	
+	
+	
+	// fin
+	
+	auto& ren = RenAAL::get();
+	
+	for (size_t i = MODEL_LEVEL_STATIC + 1; i < MODEL_TOTAL_COUNT_INTERNAL; ++i)
+	{
+		if (mlns[i].ls.empty() && i != MODEL_NONE)
+			throw std::logic_error(std::to_string(i) + " - no model data (internal error)");
+		
+		ld_me[i][ME_DEATH].reset( new Death(mlns[i].ls) );
+		
+		for (auto& s : mlns[i].ls) ren.inst_add(s, false);
+		if (i != ren.inst_add_end())
+			throw std::logic_error(std::to_string(i) + " - index mismatch (internal error)");
+	}
+	
+	// generate parts
+	
+	{	auto g = new Death(mlns[MODEL_PC_RAT].ls);
+		g->clr = FColor(0.3, 0.7, 1, 2);
+		ld_me[MODEL_PC_RAT][ME_POWERED].reset(g);
+	}
 }

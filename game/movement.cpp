@@ -7,7 +7,8 @@ const float tar_near = 0.01;
 
 
 
-EC_Movement::EC_Movement()
+EC_Movement::EC_Movement(Entity* ent):
+    EComp(ent)
 {
 	reg(ECompType::StepPostUtil);
 }
@@ -30,9 +31,10 @@ void EC_Movement::set_app_vel(vec2fp v)
 }
 void EC_Movement::step()
 {
-	b2Body* body = ent->getref<EC_Physics>().body;
+	auto& phy = ent->get_phobj();
+	b2Body* body = phy.body;
 	const b2Vec2 vel = body->GetLinearVelocity();
-	const float tmul = GameCore::time_mul();
+	const float tmul = GameCore::time_mul;
 	
 	b2Vec2 corr{0, 0};
 	bool wake = (tarx.st != T_NONE) || (tary.st != T_NONE);
@@ -99,7 +101,7 @@ void EC_Movement::step()
 	
 	
 	if (dust_vel == 0.f) return;
-	auto rc = ent->get<EC_Render>();
+	auto rc = ent->get_ren();
 	if (!rc) return;
 	
 	float amp = vel.Length();
@@ -108,8 +110,8 @@ void EC_Movement::step()
 		float p = amp - dust_vel;
 		Transform tr;
 		tr.rot = std::atan2(vel.y, vel.x) - body->GetAngle();
-		tr.pos = {-(ent->get_radius() + 0.1f), 0};
+		tr.pos = {-(phy.get_radius() + 0.1f), 0};
 		tr.pos.fastrotate(tr.rot);
-		rc->parts(OE_DUST, p, tr);
+		rc->parts(FE_SPEED_DUST, {tr, p});
 	}
 }

@@ -90,6 +90,7 @@ SOURCES += \
 	game/movement.cpp \
 	game/physics.cpp \
 	game/player.cpp \
+	game/s_objs.cpp \
 	game/weapon.cpp \
 	main.cpp \
 	main_loop.cpp \
@@ -108,6 +109,7 @@ SOURCES += \
 	utils/color_manip.cpp \
 	utils/noise.cpp \
 	utils/res_image.cpp \
+	utils/svg_simple.cpp \
 	vaslib/vas_atlas_packer.cpp \
 	vaslib/vas_file.cpp \
 	vaslib/vas_font.cpp \
@@ -170,6 +172,7 @@ HEADERS += \
 	external/Box2D/Dynamics/b2TimeStep.h \
 	external/Box2D/Dynamics/b2World.h \
 	external/Box2D/Dynamics/b2WorldCallbacks.h \
+	game/common_defs.hpp \
 	game/damage.hpp \
 	game/entity.hpp \
 	game/game_core.hpp \
@@ -177,6 +180,7 @@ HEADERS += \
 	game/movement.hpp \
 	game/physics.hpp \
 	game/player.hpp \
+	game/s_objs.hpp \
 	game/weapon.hpp \
 	main_loop.hpp \
 	render/camera.hpp \
@@ -195,6 +199,7 @@ HEADERS += \
 	utils/ev_signal.hpp \
 	utils/noise.hpp \
 	utils/res_image.hpp \
+	utils/svg_simple.hpp \
 	vaslib/vas_atlas_packer.hpp \
 	vaslib/vas_containers.hpp \
 	vaslib/vas_cpp_utils.hpp \

@@ -33,7 +33,7 @@ struct ParticleGroupGenerator
 {
 	struct BatchPars
 	{
-		Transform tr;
+		Transform tr = {};
 		float power = 1.f;
 		FColor clr = {1, 1, 1, 1};
 	};

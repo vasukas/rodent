@@ -48,9 +48,9 @@ void reserve_more( T& vs, size_t required )
 
 /// Inserts second container to the end of first
 template <typename T>
-void append( T& vs, const T& as )
+void append( T& target, const T& from )
 {
-	vs.insert( vs.end(), as.begin(), as.end() );
+	target.insert( target.end(), from.begin(), from.end() );
 }
 
 #endif // VAS_CPP_UTILS_HPP

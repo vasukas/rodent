@@ -9,56 +9,96 @@
 
 
 
-class PlayerControl
+class PlayerController
 {
 public:
-	enum Action
+	enum KeyState
 	{
-		A_NONE,
-		A_LEFT, A_UP, A_DOWN, A_RIGHT, // used internally
-		A_SHOOT,
-		
-		A_ACCEL, A_NEXTWPN, A_PREVWPN,
-		A_WPN_FLAG = 0x100 ///< OR'ed with index
+		K_OFF,
+		K_HELD, ///< for some time
+		K_JUST, ///< just pressed
+		K_ONCE  ///< pressed & depressed at same step
 	};
+	
+	enum BindType
+	{
+		BT_ONESHOT,
+		BT_HELD
+	};
+	
+	enum {
+		MOUSE_NONE = 0,
+		MOUSE_WHEELDOWN = 16,
+		MOUSE_WHEELUP
+	};
+	
 	struct Bind
 	{
-		int act;
+		BindType type = BT_ONESHOT;
 		std::string name, descr;
 		
 		SDL_Scancode key = SDL_SCANCODE_UNKNOWN;
-		Gamepad::Button but = Gamepad::TOTAL_BUTTONS;
-		bool heldable = false; ///< If true, can be held
+		int mou = MOUSE_NONE; // SDL_BUTTON_* or MOUSE_*
+		Gamepad::Button but = Gamepad::B_NONE;
 		
-		bool value = false;
+		// state
+		KeyState st_key = K_OFF;
+		KeyState st_mou = K_OFF;
+		KeyState st_but = K_OFF;
 	};
 	
-	std::unique_ptr<Gamepad> gpad;
-	std::vector<Bind> binds; ///< Used automatically
+	enum Action
+	{
+		A_ACCEL,
+		A_SHOOT,
+		A_CAM_FOLLOW,
+		
+		A_WPN_PREV,
+		A_WPN_NEXT,
+		A_WPN_1,
+		A_WPN_2,
+		A_WPN_3,
+		A_WPN_4,
+		
+		// internal
+		AX_MOV_Y_NEG,
+		AX_MOV_X_NEG,
+		AX_MOV_Y_POS,
+		AX_MOV_X_POS,
+		
+		/// Do not use
+		ACTION_TOTAL_COUNT_INTERNAL
+	};
 	
-	float aim_dead_zone = 0.5; ///< Minimal target distance
+	struct State
+	{
+		std::array<bool, ACTION_TOTAL_COUNT_INTERNAL> is = {}; ///< Is enabled
+		vec2fp mov = {}; ///< Movement delta [-1; 1]
+		vec2fp tar_pos = {}; ///< Target position (world)
+	};
+	
 	float gpad_aim_dist = 20; ///< Maximum target distance with gamepad
 	
 	
 	
-	PlayerControl(Gamepad* gpad = nullptr); ///< Inits all binds with defaults
+	PlayerController(std::unique_ptr<Gamepad> gpad = {}); ///< Inits all binds with defaults
 	
 	void on_event(const SDL_Event& ev);
-	std::vector<int> update(); ///< Before quering state. Returns actions
+	void update(); ///< Must be called after getting all events
 	
-	/// Note: lock NOT used by default
-	[[nodiscard]] std::unique_lock<std::mutex> lock() {return std::unique_lock(evs_lock);}
+	const State& get_state() const {return state;} ///< Last updated state
+	std::vector<Action> get_acts() const; ///< Returns oneshot actions triggered
 	
-	vec2fp get_move(); ///< Returns movement direction (normalized)
-	std::optional<vec2fp> get_tarp(); ///< Returns target position
-	
-	bool is_aiming(); ///< Returns true if aiming (get_tarp still may return false)
-	bool is_tar_rel(); ///< Returns true if tarp and aiming return relative positions instead of absolute
+	[[nodiscard]] auto lock() {return std::unique_lock(mutex);} ///< Not used internally
 	
 private:
-	std::mutex evs_lock;
-	std::vector<int> as_list;
-	vec2fp kmov = {}; // keyboard move
+	std::array<Bind, ACTION_TOTAL_COUNT_INTERNAL> binds;
+	std::unique_ptr<Gamepad> gpad;
+	
+	State state;
+	std::mutex mutex;
+	
+	bool is_enabled(size_t i) const;
 };
 
 #endif // PLR_CONTROL_HPP

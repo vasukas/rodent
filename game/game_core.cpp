@@ -3,9 +3,6 @@
 #include "vaslib/vas_log.hpp"
 #include "game_core.hpp"
 #include "physics.hpp"
-#include "client/presenter.hpp"
-
-const TimeSpan GameCore::step_len = TimeSpan::seconds(1./30);
 
 
 
@@ -22,7 +19,7 @@ public:
 	std::vector<size_t> e_next2; // stack of indices which would be free on the next cycle
 	std::vector<std::unique_ptr <Entity, Del_Entity>> e_todel; // freed at the end of step
 	
-	uint32_t step_cou = 1;
+	uint32_t step_cou = 0;
 	RandomGen rndg;
 	bool step_flag = false;
 	
@@ -36,12 +33,16 @@ public:
 	}
 	~GameCore_Impl() = default;
 	
-	PhysicsWorld& get_phy()                noexcept {return *phy;}
+	PhysicsWorld& get_phy()    noexcept {return *phy;}
+	RandomGen&    get_random() noexcept {return rndg;}
+	
 	uint32_t      get_step_counter() const noexcept {return step_cou;}
 	bool          is_in_step()       const noexcept {return step_flag;}
 	
 	void step()
 	{
+		++step_cou;
+		
 		// delete entities
 		
 		append( ents.raw_free_indices(), e_next2 );
@@ -52,59 +53,57 @@ public:
 		
 		auto step_comp = [this](ECompType type)
 		{
-			for (auto& c : cs_list[static_cast<size_t>(type)])
-				c->step();
+			Entity* ent = nullptr;
+			try {
+				for (auto& c : cs_list[static_cast<size_t>(type)]) {
+					ent = c->ent;
+					c->step();
+				}
+			}
+			catch (std::exception& e) {
+				THROW_FMTSTR("Failed to step component of type {} on ({}) - {}",
+				             static_cast<int>(type), ent? ent->dbg_id() : "null", e.what());
+			}
 		};
 		step_comp(ECompType::StepLogic);
 		step_comp(ECompType::StepPostUtil);
 		
 		phy->step();
-		GamePresenter::get().submit();
 		
 		// finish
 		
 		step_flag = false;
 		e_todel.clear();
 	}
-	Entity* create_ent() noexcept
-	{
-		size_t i = ents.new_index();
-		auto e = new Entity(i + 1);
-		ents[i].reset( e );
-		return e;
-	}
 	Entity* get_ent( EntityIndex i ) const noexcept
 	{
 		--i;
 		return i < ents.size() ? ents[i].get() : nullptr;
 	}
-	std::vector<EComp*>& get_comp_list(ECompType type) noexcept
+	EntityIndex create_ent(Entity* ent) noexcept
 	{
-		return cs_list[static_cast<size_t>(type)].raw_values();
+		return ents.emplace_new(ent) + 1;
 	}
-	RandomGen& get_random() noexcept
+	void mark_deleted(Entity* e) noexcept
 	{
-		return rndg;
-	}
-	void mark_deleted( Entity* e ) noexcept
-	{
-		if (is_in_step() && e->was_destroyed) return;
+		size_t ix = e->index - 1;
 		
-		ents[e->index - 1].release();
+		ents[ix].release();
 		
 		reserve_more_block( e_next1, 256 );
-		e_next1.push_back( e->index - 1 );
+		e_next1.push_back( ix );
 		
 		if (!is_in_step()) delete e;
 		else e_todel.emplace_back(e);
 	}
 	size_t reg_c(ECompType type, EComp* c) noexcept
 	{
-		return cs_list[static_cast<size_t>(type)].insert_new(c);
+		return cs_list[static_cast<size_t>(type)].emplace_new(c);
 	}
 	void unreg_c(ECompType type, size_t i) noexcept
 	{
 		cs_list[static_cast<size_t>(type)][i] = nullptr;
+		cs_list[static_cast<size_t>(type)].free_index(i);
 	}
 };
 

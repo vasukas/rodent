@@ -27,73 +27,38 @@ void EComp::unreg(ECompType type) noexcept
 
 
 
-bool Entity::is_ok() const {
-	return !was_destroyed;
-}
-void Entity::destroy() {
-	GameCore::get().mark_deleted(this);
-	was_destroyed = true;
-}
-Entity::~Entity() {
-	for (auto it = cs_ord.rbegin(); it != cs_ord.rend(); ++it) it->reset();
-}
-
-
-
-Transform Entity::get_pos() const
-{
-	if (auto c = get<EC_Physics>())
-		return conv(c->body->GetTransform());
-	if (auto c = get<EC_VirtualBody>())
-		return c->pos;
-	return {};
-}
-Transform Entity::get_vel() const
-{
-	if (auto c = get<EC_Physics>())
-		return Transform{conv(c->body->GetLinearVelocity()), c->body->GetAngularVelocity()};
-	if (auto c = get<EC_VirtualBody>())
-		return c->get_vel();
-	return {};
-}
-vec2fp Entity::get_norm_dir() const
+vec2fp ECompPhysics::get_norm_dir() const
 {
 	vec2fp p{1, 0};
-	p.rotate( get_pos().rot );
+	p.rotate( get_trans().rot );
 	return p;
 }
-float Entity::get_radius() const
+
+
+
+EC_Physics& Entity::get_phobj()
 {
-	if (auto c = get<EC_Physics>())
-		return c->b_radius;
-	return 0.5f;
+	return dynamic_cast<EC_Physics&>(get_phy());
 }
-void Entity::add(std::type_index type, EComp* c)
+ECompPhysics& Entity::get_phy()
 {
-	if (!c) return;
-	if (get(type)) GAME_THROW("Entity::add() already exists: {} in {} ({})", c->get_typename(), index, dbg_name);
-	
-	c->ent = this;
-	cs.emplace(type, c);
-	cs_ord.emplace_back(c);
+	THROW_FMTSTR("Entity::get_phy() null ({})", dbg_id());
 }
-void Entity::rem(std::type_index type) noexcept
+std::string Entity::dbg_id() const
 {
-	auto it = cs.find(type);
-	if (it == cs.end()) return;
-	
-	auto pi = std::find_if( cs_ord.begin(), cs_ord.end(), [&it](auto&& v){return v.get() == it->second;} );
-	cs_ord.erase(pi);
-	cs.erase(it);
+	return FMT_FORMAT("eid {} \"{}\"", index, dbg_name);
 }
-EComp* Entity::get(std::type_index type) const noexcept
+bool Entity::is_ok() const
 {
-	auto it = cs.find(type);
-	return it != cs.end() ? it->second : nullptr;
+	return !was_destroyed;
 }
-EComp& Entity::getref(std::type_index type) const
+void Entity::destroy()
 {
-	EComp* p = get(type);
-	if (!p) GAME_THROW("Entity::getref() not exists: in {} ({})", index, dbg_name);
-	return *p;
+	if (was_destroyed) return;
+	was_destroyed = true;
+	GameCore::get().mark_deleted(this);
+}
+Entity::Entity():
+    index(GameCore::get().create_ent(this))
+{
 }

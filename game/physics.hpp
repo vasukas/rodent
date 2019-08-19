@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <Box2D/Box2D.h>
+#include "utils/ev_signal.hpp"
 #include "entity.hpp"
 
 inline b2Vec2 conv(const vec2fp& p) {return {p.x, p.y};}
@@ -30,16 +31,16 @@ struct ContactEvent
 
 
 
-struct EC_Physics : EComp
+struct EC_Physics : ECompPhysics
 {
 	b2Body* body;
-	float b_radius = 0.f; ///< Approximate radius, calculated from fixtures
 	
 	ev_signal<ContactEvent> ev_contact;
 	
 	
 	
-	EC_Physics(const b2BodyDef& def); ///< Creates body
+	EC_Physics(Entity* ent, const b2BodyDef& def); ///< Creates body
+	EC_Physics(const EC_Physics&) = delete;
 	~EC_Physics();
 	
 	void add_circle(float radius, float mass);
@@ -49,29 +50,39 @@ struct EC_Physics : EComp
 	void attach_to(EC_Physics& target); ///< Fixed
 	void detach(); ///< Detaches self
 	
-	void calc_radius(); ///< Recalculates radius
+	Transform get_trans() const override {return conv(body->GetTransform());}
+	vec2fp    get_pos() const override {return conv(body->GetWorldCenter());}
+	Transform get_vel() const override {return Transform{conv(body->GetLinearVelocity()), body->GetAngularVelocity()};}
+	float get_radius()  const override; ///< Approximate radius, calculated from fixtures
 	
 private:
 	std::vector<b2Joint*> js;
 	void destroy(b2Joint* j);
+	
+	mutable std::optional<float> b_radius;
 };
 
 inline EC_Physics* getptr(b2Body* b) {return static_cast<EC_Physics*>(b->GetUserData());}
 
 
 
-struct EC_VirtualBody : EComp
+struct EC_VirtualBody : ECompPhysics
 {
 	Transform pos;
+	float radius = 0.5f;
 	
-	EC_VirtualBody(Transform pos, bool has_velocity); ///< If doesn't have velocity, it can't be set
-	Transform get_vel() const {return vel;}
-	void set_vel(Transform vel); ///< Throws if doesn't have velocity
-	void step();
+	EC_VirtualBody(Entity* ent, Transform pos, std::optional<Transform> vel = {});
+	EC_VirtualBody(const EC_VirtualBody&) = delete;
+	void set_vel(std::optional<Transform> vel);
+	void step() override;
+	
+	Transform get_trans() const override {return pos;}
+	vec2fp    get_pos() const override {return pos.pos;}
+	Transform get_vel() const override {return vel? *vel : Transform{};}
+	float get_radius()  const override {return radius;}
 	
 private:
-	Transform vel = {};
-	bool has_vel;
+	std::optional<Transform> vel;
 };
 
 

@@ -6,6 +6,7 @@
 
 
 
+/// Dynamic physics controller
 struct EC_Movement : EComp
 {
 	TimeSpan app_inert = TimeSpan::seconds(0.5); ///< How much time takes to reach control velocity
@@ -24,7 +25,7 @@ struct EC_Movement : EComp
 	/// Sets applied (control) velocity
 	void set_app_vel(vec2fp v);
 	
-	EC_Movement();
+	EC_Movement(Entity* ent);
 	
 private:
 	enum TarSt {T_NONE, T_VEL, T_ZERO};

@@ -1,4 +1,4 @@
-#ifndef GAME_PRESENTER_HPP
+﻿#ifndef GAME_PRESENTER_HPP
 #define GAME_PRESENTER_HPP
 
 #include <memory>
@@ -13,20 +13,45 @@ struct PresCommand;
 
 
 
-struct EC_Render : EComp
+struct ECompRender : EComp
 {
-	bool hp_shown = false;
+	enum AttachType
+	{
+		ATT_WEAPON,
+		ATT_TOTAL_COUNT ///< Do not use
+	};
 	
-	EC_Render(Entity* ent, size_t sprite_id);
-	~EC_Render();
-	void parts(size_t id, float power = 1.f, Transform rel = {});
+	ECompRender(Entity* ent);
+	virtual ~ECompRender();
 	
-	size_t attach(size_t sprite_id, Transform rel); ///< Adds attached object, returns id
-	void detach(size_t id);
+	void parts(ModelType model, ModelEffect effect, const ParticleGroupGenerator::BatchPars& pars);
+	void parts(FreeEffect effect, ParticleGroupGenerator::BatchPars pars);
+	void attach(AttachType type, Transform at, ModelType model, FColor clr);
+	void detach(AttachType type) {attach(type, {}, MODEL_NONE, {});}
+	const Transform& get_pos() const {return _pos;} ///< Current rendering position
 	
-private:
-	size_t att_id = 0;
+protected:
 	void send(PresCommand& c);
+	virtual void proc(const PresCommand& c); ///< Applies non-standard command to component
+	virtual void sync() {} ///< Performs additional synchronization
+
+private:
+	Transform _pos, _vel;
+	size_t _comp_id;
+	friend class GamePresenter_Impl;
+};
+
+
+
+struct EC_RenderSimple : ECompRender
+{
+	ModelType model;
+	FColor clr;
+	
+	EC_RenderSimple(Entity* ent, ModelType model = MODEL_ERROR, FColor clr = FColor(1,1,1,1));
+	EC_RenderSimple(const EC_RenderSimple&) = delete;
+	~EC_RenderSimple();
+	void step() override;
 };
 
 
@@ -35,51 +60,56 @@ struct PresCommand
 {
 	enum Type
 	{
+		T_ERROR,
+		
 		// object
-		T_CREATE, ///< new object; [sprite index] (note - internally also uses pos)
-		T_DEL, ///< delete object with post-effect; [pos]
-		T_OBJPARTS, ///< generate particles onto obj [preset index, pos (relative), power]
-		T_ATTACH, ///< attaches object; [sprite index, pos (relative)]
-		T_DETACH, ///< detaches object; [index]
+		T_CREATE,
+		T_DEL, // ix0 comp_id
+		T_OBJPARTS, // ix0 model, ix1 effect, pars
+		
+		// object non-standard
+		T_ATTACH, // ix0 type, ix1 model, pos, clr
 		
 		// general
-		T_FREEPARTS ///< generate particles [\preset index, pos, power]
+		T_FREEPARTS // ix0 effect, pars
 	};
-	Type type;
-	size_t obj; ///< non-zero EntityIndex
 	
-	size_t index;
+	Type type = T_ERROR;
+	ECompRender* ptr = nullptr;
+	
+	size_t ix0, ix1;
 	Transform pos;
 	float power;
+	FColor clr;
+	
+	// uses: pos, power, clr
+	void set(const ParticleGroupGenerator::BatchPars& pars);
+	ParticleGroupGenerator::BatchPars get_pp();
 };
 
 
 
-struct PresObject
-{
-	size_t id = 0; ///< RenInstanced id
-	FColor clr = FColor(1, 1, 1, 1);
-	std::vector<std::shared_ptr<ParticleGroupGenerator>> ps; ///< [0] must be null or contain death, or ps must be empty
-};
-
-
-
-/// Runs in separate thread
 class GamePresenter
 {
+	// Intended to run in separate thread with external sync
 public:
-	static GamePresenter& get(); ///< Returns singleton (inits if needed)
+	struct InitParams
+	{
+		std::vector<std::vector<vec2fp>> lvl_lines;
+		std::vector<std::vector<vec2fp>> grid_lines;
+	};
+	
+	static void init(InitParams pars); ///< Creates singleton (must be called from render thread)
+	static GamePresenter* get(); ///< Returns singleton
 	virtual ~GamePresenter();
 	
-	virtual void render(TimeSpan passed) = 0; ///< Renders everything
+	virtual void sync() = 0; ///< Synchronizes with GameCore (must be called from logic thread)
+	virtual void add_cmd(const PresCommand& c) = 0;
 	
-	virtual void add_cmd(const PresCommand& cmd) = 0; ///< Adds command to queue
-	virtual void submit() = 0; ///< Applies new commands asynchronously
+	virtual void render(TimeSpan passed) = 0; ///< Renders everything (must be called from render thread)
+	virtual TimeSpan get_passed() = 0; ///< Returns last passed time (for components)
 	
-	virtual size_t add_preset(std::shared_ptr<ParticleGroupGenerator> p) = 0; ///< Adds new preset, returns internal index
-	virtual size_t add_preset(const PresObject& p) = 0; ///< Adds new preset, returns internal index
-	
-	virtual void effect(size_t preset_id, Transform at, float power = 1.f) = 0; ///< Plays particle effect
+	void effect(FreeEffect effect, const ParticleGroupGenerator::BatchPars& pars);
 };
 
 #endif // GAME_PRESENTER_HPP

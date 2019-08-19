@@ -1,109 +1,190 @@
 #include "render/camera.hpp"
 #include "render/control.hpp"
+#include "vaslib/vas_log.hpp"
 #include "plr_control.hpp"
 
-PlayerControl::PlayerControl(Gamepad* gpad): gpad(gpad)
+
+
+PlayerController::PlayerController(std::unique_ptr<Gamepad> gpad):
+    gpad(std::move(gpad))
 {
-	Bind* b;
-	
-	b = &binds.emplace_back();
-	b->act = A_LEFT, b->name = "Move left";
-	b->key = SDL_SCANCODE_A, b->heldable = true;
-	
-	b = &binds.emplace_back();
-	b->act = A_RIGHT, b->name = "Move rught";
-	b->key = SDL_SCANCODE_D, b->heldable = true;
-	
-	b = &binds.emplace_back();
-	b->act = A_UP, b->name = "Move up";
-	b->key = SDL_SCANCODE_W, b->heldable = true;
-	
-	b = &binds.emplace_back();
-	b->act = A_DOWN, b->name = "Move down";
-	b->key = SDL_SCANCODE_S, b->heldable = true;
-	
-	b = &binds.emplace_back();
-	b->act = A_ACCEL, b->name = "Acceleration", b->descr = "Faster movement while held";
-	b->key = SDL_SCANCODE_SPACE, b->heldable = true;
-	b->but = Gamepad::B_SHLD_RIGHT;
-	
-	b = &binds.emplace_back();
-	b->act = A_PREVWPN, b->name = "Previous weapon";
-	b->key = SDL_SCANCODE_LEFTBRACKET;
-	b->but = Gamepad::B_LEFT;
-	
-	b = &binds.emplace_back();
-	b->act = A_NEXTWPN, b->name = "Next weapon";
-	b->key = SDL_SCANCODE_RIGHTBRACKET;
-	b->but = Gamepad::B_RIGHT;
-	
-	for (int i=0; i<4; ++i) {
-		b = &binds.emplace_back();
-		b->act = A_WPN_FLAG | i, b->name = std::string("Weapon ") + std::to_string(i+1);
-		b->key = static_cast<SDL_Scancode>(SDL_SCANCODE_1 + i);
-	}
-}
-void PlayerControl::on_event(const SDL_Event& ev)
-{
-	if (ev.type != SDL_KEYDOWN && ev.type != SDL_KEYUP) return;
-	if (ev.type == SDL_KEYDOWN && ev.key.repeat) return;
-	for (auto& b : binds)
 	{
-		if (b.key != ev.key.keysym.scancode) continue;
-		if (b.heldable) b.value = (ev.type == SDL_KEYDOWN);
-		else if (ev.type != SDL_KEYUP && b.act != A_NONE) as_list.push_back(b.act);
-		break;
+		Bind& b = binds[A_ACCEL];
+		b.name = "Acceleration";
+		b.descr = "Enables faster movement when held";
+		b.type = BT_HELD;
+		b.key = SDL_SCANCODE_SPACE;
+		b.but = Gamepad::B_SHLD_RIGHT;
+	}{
+		Bind& b = binds[A_SHOOT];
+		b.name = "Shoot";
+		b.type = BT_HELD;
+		b.mou = SDL_BUTTON_LEFT;
+	}{
+		Bind& b = binds[A_CAM_FOLLOW];
+		b.name = "Camera follow";
+		b.descr = "Enables camera tracking when held";
+		b.type = BT_HELD;
+		b.key = SDL_SCANCODE_LCTRL;
+		b.but = Gamepad::B_SHLD_LEFT;
+	}{
+		Bind& b = binds[A_WPN_PREV];
+		b.name = "Previous weapon";
+		b.type = BT_HELD;
+		b.key = SDL_SCANCODE_LEFTBRACKET;
+		b.mou = MOUSE_WHEELDOWN;
+		b.but = Gamepad::B_LEFT;
+	}{
+		Bind& b = binds[A_WPN_NEXT];
+		b.name = "Next weapon";
+		b.type = BT_HELD;
+		b.key = SDL_SCANCODE_RIGHTBRACKET;
+		b.mou = MOUSE_WHEELUP;
+		b.but = Gamepad::B_RIGHT;
 	}
-}
-std::vector<int> PlayerControl::update()
-{
-	kmov = {};
-	for (auto& b : binds)
+	
+	for (int i = A_WPN_1, cou = 0; i <= A_WPN_4; ++i, ++cou)
 	{
-		if (b.but && gpad)
-		{
-			bool st = gpad->get_state(b.but);
-			if (st && (!b.value || b.heldable) && b.act != A_NONE) as_list.push_back(b.act);
-			b.value = st;
-		}
-		else if (b.value)
-		{
-			if		(b.act == A_LEFT)  kmov.x -= 1;
-			else if (b.act == A_RIGHT) kmov.x += 1;
-			else if (b.act == A_UP)    kmov.y -= 1;
-			else if (b.act == A_DOWN)  kmov.y += 1;
-			else if (b.heldable && b.act != A_NONE) as_list.push_back(b.act);
-		}
+		Bind& b = binds[i];
+		b.name = FMT_FORMAT("Weapon {}", cou + 1);
+		b.type = BT_ONESHOT;
+		b.key = static_cast<SDL_Scancode>(SDL_SCANCODE_1 + cou);
 	}
 	
-	if ((gpad && gpad->trig_left() > 0.1) || SDL_GetMouseState(NULL, NULL) & SDL_BUTTON_LMASK)
-		as_list.push_back(A_SHOOT);
+	{
+		Bind& b = binds[AX_MOV_Y_NEG];
+		b.name = "Move up";
+		b.type = BT_HELD;
+		b.key = SDL_SCANCODE_W;
+	}{
+		Bind& b = binds[AX_MOV_X_NEG];
+		b.name = "Move left";
+		b.type = BT_HELD;
+		b.key = SDL_SCANCODE_A;
+	}{
+		Bind& b = binds[AX_MOV_Y_POS];
+		b.name = "Move down";
+		b.type = BT_HELD;
+		b.key = SDL_SCANCODE_S;
+	}{
+		Bind& b = binds[AX_MOV_X_POS];
+		b.name = "Move right";
+		b.type = BT_HELD;
+		b.key = SDL_SCANCODE_D;
+	}
+}
+void PlayerController::on_event(const SDL_Event& ev)
+{
+	if		(ev.type == SDL_KEYDOWN)
+	{
+		if (ev.key.repeat) return;
+		auto& ks = ev.key.keysym;
+		for (auto& b : binds)
+		{
+			if (b.key == ks.scancode) {
+				b.st_key = K_JUST;
+				break;
+			}
+		}
+	}
+	else if (ev.type == SDL_KEYUP)
+	{
+		auto& ks = ev.key.keysym;
+		for (auto& b : binds)
+			if (b.key == ks.scancode) {
+				if		(b.st_key == K_JUST) b.st_key = K_ONCE;
+				else if (b.st_key != K_ONCE) b.st_key = K_OFF;
+				break;
+			}
+	}
+	else if (ev.type == SDL_MOUSEBUTTONDOWN)
+	{
+		for (auto& b : binds)
+			if (b.mou == ev.button.button) {
+				b.st_mou = K_JUST;
+				break;
+			}
+	}
+	else if (ev.type == SDL_MOUSEBUTTONUP)
+	{
+		for (auto& b : binds)
+			if (b.mou == ev.button.button) {
+				if		(b.st_mou == K_JUST) b.st_mou = K_ONCE;
+				else if (b.st_mou != K_ONCE) b.st_mou = K_OFF;
+				break;
+			}
+	}
+}
+void PlayerController::update()
+{
+	auto& p_mov = state.mov;
+	auto& p_tar = state.tar_pos;
 	
-	std::vector<int> as;
-	as.swap(as_list);
-	return as;
-}
-vec2fp PlayerControl::get_move()
-{
-	return gpad? gpad->get_left() : kmov;
-}
-std::optional<vec2fp> PlayerControl::get_tarp()
-{
-	vec2fp p;
-	if (gpad) p = gpad->get_right() * gpad_aim_dist;
-	else {
+	if (gpad)
+	{
+		auto upd_st = [](Bind& b, bool ok)
+		{
+			if (ok) b.st_but = (b.st_but == K_OFF) ? K_JUST : K_HELD;
+			else b.st_but = K_OFF;
+		};
+		for (auto& b : binds)
+			upd_st(b, gpad->get_state(b.but));
+		
+		upd_st(binds[A_SHOOT], gpad->trig_left() > 0.1);
+		
+		p_mov = gpad->get_left();
+		p_tar = gpad->get_right() * gpad_aim_dist;
+	}
+	else
+	{
+		p_mov = {};
+		if (is_enabled(AX_MOV_Y_NEG)) --p_mov.y;
+		if (is_enabled(AX_MOV_X_NEG)) --p_mov.x;
+		if (is_enabled(AX_MOV_Y_POS)) ++p_mov.y;
+		if (is_enabled(AX_MOV_X_POS)) ++p_mov.x;
+		
 		int mx, my;
 		SDL_GetMouseState(&mx, &my);
-		p = RenderControl::get().get_world_camera()->mouse_cast({mx, my});
+		p_tar = RenderControl::get().get_world_camera()->mouse_cast({mx, my});
 	}
-	if (std::fabs(p.x) < aim_dead_zone && std::fabs(p.y) < aim_dead_zone) return {};
-	return p;
+	
+	for (size_t i=0; i<ACTION_TOTAL_COUNT_INTERNAL; ++i)
+		state.is[i] = is_enabled(i);
+	
+	for (auto& b : binds)
+	{
+		if (b.st_key == K_ONCE) b.st_key = K_OFF;
+		if (b.st_mou == K_ONCE) b.st_mou = K_OFF;
+	}
 }
-bool PlayerControl::is_aiming()
+std::vector<PlayerController::Action> PlayerController::get_acts() const
 {
-	return gpad? true : SDL_GetMouseState(NULL, NULL) & SDL_BUTTON_RMASK;
+	std::vector<Action> as;
+	as.reserve(16);
+	
+	for (size_t i=0; i<ACTION_TOTAL_COUNT_INTERNAL; ++i)
+	{
+		if (binds[i].type == BT_ONESHOT && state.is[i])
+			as.push_back( static_cast<Action>(i) );
+	}
+	return as;
 }
-bool PlayerControl::is_tar_rel()
+bool PlayerController::is_enabled(size_t i) const
 {
-	return gpad.operator bool();
+	auto& b = binds[i];
+	switch (b.type)
+	{
+	case BT_ONESHOT:
+		if (b.st_key == K_JUST || b.st_key == K_ONCE) return true;
+		if (b.st_mou == K_JUST || b.st_mou == K_ONCE) return true;
+		if (b.st_but == K_JUST || b.st_but == K_ONCE) return true;
+		return false;
+		
+	case BT_HELD:
+		if (b.st_key) return true;
+		if (b.st_mou) return true;
+		if (b.st_but) return true;
+		return false;
+	}
+	return false;
 }

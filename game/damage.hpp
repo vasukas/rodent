@@ -11,7 +11,7 @@ struct EC_Physics;
 
 enum class DamageType
 {
-	Direct, ///< Ignoring all coefficients and thresholds
+	Direct, ///< Ignoring armor, thresholds etc
 	Physical,
 	Kinetic ///< Projectile weapon
 };
@@ -21,7 +21,7 @@ enum class DamageType
 struct DamageQuant
 {
 	DamageType type;
-	float amount;
+	int amount;
 };
 
 
@@ -29,24 +29,30 @@ struct DamageQuant
 struct EC_Health : EComp
 {
 	EVS_SUBSCR;
+	ev_signal<DamageQuant> on_damage; ///< Contains original type and final damage
 	
-	float hp = 1.f, hp_max = 1.f;
-	bool invincible = false;
-	
+	bool invincible = false; ///< Ignores all damage
 	float ph_k = 0.5; ///< Impulse to damage coeff
 	float ph_thr = 40.f; ///< Minimal physical impulse
 	
-	ev_signal<DamageQuant> on_damage; ///< Contains original type and final damage
 	
 	
+	EC_Health(Entity* ent, int hp = 100.f): EComp(ent), hp(hp), hp_max(hp) {}
+	EC_Health(const EC_Health&) = delete;
 	
-	EC_Health() = default;
+	bool is_alive() const;
+	float get_t_state() const; ///< Returns 0-1 current hp value
 	
-	void renew_hp(float max) {hp = hp_max = max;}
-	void damage(DamageQuant q, std::optional<DamageType> calc_type = {});
+	void add_hp(int amount);
+	void renew_hp(std::optional<int> new_max); ///< Sets current hp to max
+	
+	void apply(DamageQuant q, std::optional<DamageType> calc_type = {});
 	
 	void hook(EC_Physics& ph); ///< Connects to collision event
 	void on_event(const ContactEvent& ev);
+	
+private:
+	int hp = 1, hp_max = 100;
 };
 
 #endif // DAMAGE_HPP

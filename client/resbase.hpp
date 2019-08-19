@@ -1,51 +1,93 @@
 #ifndef RESBASE_HPP
 #define RESBASE_HPP
 
+#include <string>
+#include <vector>
 #include "vaslib/vas_math.hpp"
 
-enum ObjEffect
+struct ParticleGroupGenerator;
+
+
+
+enum ModelType
 {
-	OE_DEATH,
-	OE_DUST
+	MODEL_LEVEL_GRID,
+	MODEL_LEVEL_STATIC,
+	
+	MODEL_ERROR, ///< Model-not-found model
+	MODEL_NONE, ///< Displays nothing
+	
+	MODEL_PC_RAT, ///< Player character
+	MODEL_BOX_SMALL,
+	
+	MODEL_MEDKIT,
+	MODEL_ARMOR,
+	
+	MODEL_BAT,
+	MODEL_HANDGUN,
+	MODEL_BOLTER,
+	MODEL_GRENADE,
+	MODEL_MINIGUN,
+	MODEL_ROCKET,
+	MODEL_ELECTRO,
+	
+	MODEL_HANDGUN_AMMO,
+	MODEL_BOLTER_AMMO,
+	MODEL_GRENADE_AMMO,
+	MODEL_MINIGUN_AMMO,
+	MODEL_ROCKET_AMMO,
+	MODEL_ELECTRO_AMMO,
+	
+	MODEL_HANDGUN_PROJ,
+	MODEL_BOLTER_PROJ,
+	MODEL_GRENADE_PROJ,
+	MODEL_MINIGUN_PROJ,
+	MODEL_ROCKET_PROJ,
+	
+	MODEL_BOLTER_PROJ_ALT,
+	MODEL_GRENADE_PROJ_ALT,
+	MODEL_MINIGUN_PROJ_ALT,
+	MODEL_ELECTRO_PROJ_ALT,
+	
+	MODEL_SPHERE,
+	MODEL_TOTAL_COUNT_INTERNAL ///< Do not use
 };
+
+enum ModelEffect
+{
+	ME_DEATH,
+	ME_POWERED,
+	
+	ME_TOTAL_COUNT_INTERNAL ///< Do not use
+};
+
 enum FreeEffect
 {
 	FE_EXPLOSION,
 	FE_HIT,
-	FE_SHOOT_DUST,
-	
+	FE_HIT_SHIELD,
 	FE_WPN_EXPLOSION,
-	FE_WPN_IMPLOSION
-};
-enum ObjList
-{
-	OBJ_NONE,
-	OBJ_PC,
-	OBJ_BOX,
-	OBJ_HEAVY,
-	PROJ_ROCKET,
-//	PROJ_RAY,
-	PROJ_BULLET,
-	PROJ_PLASMA,
-	ARM_SHIELD,
-	ARM_ROCKET,
-	ARM_MGUN,
-//	ARM_RAYGUN,
-	ARM_PLASMA,
+	FE_SHOT_DUST,
+	FE_SPEED_DUST,
+	FE_SPAWN,
 	
-	OBJ_ALL_WALLS
+	FE_TOTAL_COUNT_INTERNAL ///< Do not use
 };
 
-struct GameResBase
+
+
+class ResBase
 {
-	const float hsz_box = 0.7;
-	const float hsz_heavy = 1.5;
-	const float hsz_rat = 0.6;
-	const float hsz_proj = 0.2;
-	const vec2fp hsz_shld = {0.7, 2};
+public:
+	static ResBase& get(); ///< Returns singleton
+	virtual ~ResBase() = default;
 	
-	static GameResBase& get();
-	void init_res();
+	virtual ParticleGroupGenerator* get_eff(ModelType type, ModelEffect eff) = 0;	
+	virtual ParticleGroupGenerator* get_eff(FreeEffect eff) = 0;
+	
+protected:
+	friend class GamePresenter_Impl;
+	virtual void init_ren() = 0;
 };
 
 #endif // RESBASE_HPP
