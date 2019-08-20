@@ -25,7 +25,7 @@ public:
 	
 	
 	
-	SparseArray(int default_expand = 128):
+	SparseArray(size_t default_expand = 128):
 	    vs_expand(default_expand),
 		fi_expand(default_expand)
 	{}

@@ -1,3 +1,4 @@
+#include "client/presenter.hpp"
 #include "utils/noise.hpp"
 #include "vaslib/vas_containers.hpp"
 #include "vaslib/vas_log.hpp"
@@ -70,6 +71,9 @@ public:
 		
 		phy->step();
 		
+		if (auto gp = GamePresenter::get())
+			gp->sync();
+		
 		// finish
 		
 		step_flag = false;
@@ -86,6 +90,9 @@ public:
 	}
 	void mark_deleted(Entity* e) noexcept
 	{
+		if (auto ren = e->get_ren())
+			ren->on_destroy_ent();
+		
 		size_t ix = e->index - 1;
 		
 		ents[ix].release();

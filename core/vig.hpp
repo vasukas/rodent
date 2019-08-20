@@ -236,11 +236,21 @@ void vig_label(std::string_view text);
 /// Formatted text display
 #define vig_label_a(Format, ...) vig_label(fmt::format(FMT_STRING(Format), ##__VA_ARGS__))
 
+
+
+/* Display widgets */
+
 /// Image with label at the bottom left corner 
 void vig_image(TextureReg tex, std::string_view text, vec2i pos, vec2i size);
 
 /// Image with label at the bottom left corner 
 void vig_image(TextureReg tex, std::string_view text = {});
+
+/// Shows [0-1] progress with label
+void vig_progress(std::string_view text, float t, vec2i pos, vec2i size);
+
+/// Shows [0-1] progress with label
+void vig_progress(std::string_view text, float t);
 
 
 

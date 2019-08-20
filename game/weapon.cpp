@@ -67,9 +67,9 @@ bool EC_Equipment::shoot(vec2fp target)
 	if (auto m = wpn->get_ammo(); m && !m->ok()) return false;
 	if (!wpn->shoot(ent, target)) return false;
 	
-	if (auto m = wpn->get_rof())  m->shoot();
+	if (auto m = wpn->get_rof()) m->shoot();
 	if (auto m = wpn->get_heat()) m->shoot();
-	if (auto m = wpn->get_ammo()) m->shoot();
+	if (auto m = wpn->get_ammo(); m && !infinite_ammo) m->shoot();
 	
 	has_shot = true;
 	return true;
@@ -302,7 +302,7 @@ public:
 		p += v * ent->get_phy().get_radius();
 		
 		v *= 18.f;
-		v.rotate( GameCore::get().get_random().range_n() * deg_to_rad(10) );
+		v.rotate( GameCore::get().get_random().range(-1, 1) * deg_to_rad(10) );
 		
 		new ProjectileEntity(p, v, ent->get_team(), pars, MODEL_MINIGUN_PROJ, FColor(1, 1, 0.2, 1.5));
 		return true;

@@ -87,6 +87,10 @@ struct EC_Equipment : EComp
 	std::vector<std::unique_ptr<Weapon>> wpns;
 	int hand = 1; // 1 right, 0 center, -1 left
 	
+	/// If true, ammo not consumed for any weapon
+	bool infinite_ammo = false;
+	
+	
 	
 	EC_Equipment(Entity* ent);
 	EC_Equipment(const EC_Equipment&) = delete;

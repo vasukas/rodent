@@ -201,17 +201,12 @@ public:
 				if (auto wpn = ent->get_eqp()->wpn_ptr())
 				{
 					vig_label_a("{}\n", wpn->get_reninfo().name);
-					if (auto m = wpn->get_ammo()) vig_label_a("Ammo: {} / {}\n", (int) m->cur, (int) m->max);
-					if (auto m = wpn->get_heat())
-					{
-						double val = m->value;
-						vig_slider(m->ok()? "         " : "COOLDOWN", val);
+					if (auto m = wpn->get_ammo()) {
+						if (ent->get_eqp()->infinite_ammo) vig_label("AMMO CHEAT ENABLED\n");
+						else vig_label_a("Ammo: {} / {}\n", (int) m->cur, (int) m->max);
 					}
-					if (auto m = wpn->get_rof())
-					{
-						double val = 1 - m->wait / m->delay;
-						vig_slider("R", val);
-					}
+					if (auto m = wpn->get_heat()) vig_progress(m->ok()? "Overheat" : "COOLDOWN", m->value);
+					if (auto m = wpn->get_rof())  vig_progress(" Ready ", 1 - m->wait / m->delay);
 				}
 				else vig_label("No weapon equipped");
 			}
@@ -260,6 +255,7 @@ public:
 		
 		new EWall(ls_level);
 		pc_ent = create_player({}, pc_ctr)->index;
+		core->get_ent(pc_ent)->get_eqp()->infinite_ammo = true;
 		
 		for (int i=0; i<25; ++i)
 		{
@@ -279,7 +275,6 @@ public:
 			{
 				std::unique_lock lock(ren_lock);
 				core->step();
-				GamePresenter::get()->sync();
 			}
 			sleep(core->step_len - (TimeSpan::since_start() - t0));
 		}

@@ -731,6 +731,9 @@ void vig_label(std::string_view text) {
 	vig_draw_text(pos + vig_element_decor(), text);
 	if (!text.empty() && text.back() == '\n') vig_lo_next();
 }
+
+
+
 void vig_image(TextureReg tex, std::string_view text, vec2i pos, vec2i size) {
 	vig_draw_image(pos, size, tex);
 	if (!text.empty()) {
@@ -742,6 +745,27 @@ void vig_image(TextureReg tex, std::string_view text) {
 	vec2i pos, size = tex.px_size();
 	if (!vig_lo_place(pos, size)) return;
 	return vig_image(tex, text, pos, size);
+}
+
+
+
+void vig_progress(std::string_view text, float t, vec2i pos, vec2i size) {
+	// draw background
+	vig_fill_rect(pos, size, vig_CLR(Back));
+	
+	int x = round(t * size.x);
+	x = std::max(0, x);
+	x = std::min(size.x, x);
+	vig_fill_rect(pos, {x, size.y}, vig_CLR(Active));
+	
+	// draw frame and text
+	vig_draw_rect(pos, size, vig_CLR(Frame), vig_FrameWidth);
+	vig_draw_text(pos + vig_element_decor(), text);
+}
+void vig_progress(std::string_view text, float t) {
+	vec2i pos, size = vig_element_size(text);
+	if (!vig_lo_place(pos, size)) return;
+	return vig_progress(text, t, pos, size);
 }
 
 

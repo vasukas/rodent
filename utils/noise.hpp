@@ -16,10 +16,10 @@ struct RandomGen
 	
 	RandomGen();
 	bool flag();
-	double range_n(); ///< [0; 1]
+	double range_n(); ///< uniform distribution [0; 1]
 	double range(double v0, double v1);
 	size_t range_index(size_t num, size_t off = 0); ///< [off, num)
-	double normal(); ///< [-1; 1]
+	double normal(); ///< normal distribution [-1; 1]
 	
 	std::string save() const;
 	bool load(const std::string& s);

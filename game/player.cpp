@@ -26,7 +26,10 @@ struct PlayerRender : ECompRender
 	
 	
 	PlayerRender(Entity* ent): ECompRender(ent) {}
-	~PlayerRender() {parts(MODEL_PC_RAT, ME_DEATH, {get_pos()});}
+	void on_destroy() override
+	{
+		parts(MODEL_PC_RAT, ME_DEATH, {});
+	}
 	void step() override
 	{
 		RenAAL::get().draw_inst(get_pos(), FColor(0.4, 0.9, 1, 1), MODEL_PC_RAT);

@@ -22,10 +22,10 @@ struct ECompRender : EComp
 	};
 	
 	ECompRender(Entity* ent);
-	virtual ~ECompRender();
+	virtual ~ECompRender() = default;
 	
 	void parts(ModelType model, ModelEffect effect, const ParticleGroupGenerator::BatchPars& pars);
-	void parts(FreeEffect effect, ParticleGroupGenerator::BatchPars pars);
+	void parts(FreeEffect effect, const ParticleGroupGenerator::BatchPars& pars);
 	void attach(AttachType type, Transform at, ModelType model, FColor clr);
 	void detach(AttachType type) {attach(type, {}, MODEL_NONE, {});}
 	const Transform& get_pos() const {return _pos;} ///< Current rendering position
@@ -34,11 +34,15 @@ protected:
 	void send(PresCommand& c);
 	virtual void proc(const PresCommand& c); ///< Applies non-standard command to component
 	virtual void sync() {} ///< Performs additional synchronization
-
+	virtual void on_destroy() {} ///< Called once before destroying entity
+	
 private:
-	Transform _pos, _vel;
-	size_t _comp_id;
 	friend class GamePresenter_Impl;
+	Transform _pos, _vel;
+	size_t _comp_id = size_t_inval;
+	
+	friend class GameCore_Impl;
+	void on_destroy_ent();
 };
 
 
@@ -50,7 +54,7 @@ struct EC_RenderSimple : ECompRender
 	
 	EC_RenderSimple(Entity* ent, ModelType model = MODEL_ERROR, FColor clr = FColor(1,1,1,1));
 	EC_RenderSimple(const EC_RenderSimple&) = delete;
-	~EC_RenderSimple();
+	void on_destroy() override;
 	void step() override;
 };
 
@@ -66,12 +70,13 @@ struct PresCommand
 		T_CREATE,
 		T_DEL, // ix0 comp_id
 		T_OBJPARTS, // ix0 model, ix1 effect, pars
-		
-		// object non-standard
-		T_ATTACH, // ix0 type, ix1 model, pos, clr
+		T_FREEPARTS, // ix0 effect, pars
 		
 		// general
-		T_FREEPARTS // ix0 effect, pars
+		T_EFFECT, // ix0 effect, pars
+		
+		// object non-standard
+		T_ATTACH // ix0 type, ix1 model, pos, clr
 	};
 	
 	Type type = T_ERROR;
@@ -84,7 +89,7 @@ struct PresCommand
 	
 	// uses: pos, power, clr
 	void set(const ParticleGroupGenerator::BatchPars& pars);
-	ParticleGroupGenerator::BatchPars get_pp();
+	void get(ParticleGroupGenerator::BatchPars& pars);
 };
 
 

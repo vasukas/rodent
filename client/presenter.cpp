@@ -14,13 +14,6 @@ ECompRender::ECompRender(Entity* ent):
 	c.type = PresCommand::T_CREATE;
 	send(c);
 }
-ECompRender::~ECompRender()
-{
-	PresCommand c;
-	c.type = PresCommand::T_DEL;
-	c.ix0 = _comp_id;
-	send(c);
-}
 void ECompRender::parts(ModelType model, ModelEffect effect, const ParticleGroupGenerator::BatchPars& pars)
 {
 	PresCommand c;
@@ -30,10 +23,13 @@ void ECompRender::parts(ModelType model, ModelEffect effect, const ParticleGroup
 	c.set(pars);
 	send(c);
 }
-void ECompRender::parts(FreeEffect effect, ParticleGroupGenerator::BatchPars pars)
+void ECompRender::parts(FreeEffect effect, const ParticleGroupGenerator::BatchPars& pars)
 {
-	pars.tr = get_pos().get_combined(pars.tr);
-	GamePresenter::get()->effect(effect, pars);
+	PresCommand c;
+	c.type = PresCommand::T_FREEPARTS;
+	c.ix0 = effect;
+	c.set(pars);
+	send(c);
 }
 void ECompRender::attach(AttachType type, Transform at, ModelType model, FColor clr)
 {
@@ -54,15 +50,24 @@ void ECompRender::proc(const PresCommand& )
 {
 	THROW_FMTSTR("ECompRender::proc() not implemented ({})", ent->dbg_id());
 }
+void ECompRender::on_destroy_ent()
+{
+	on_destroy();
+	
+	PresCommand c;
+	c.type = PresCommand::T_DEL;
+	c.ix0 = _comp_id;
+	send(c);
+}
 
 
 
 EC_RenderSimple::EC_RenderSimple(Entity* ent, ModelType model, FColor clr):
     ECompRender(ent), model(model), clr(clr)
 {}
-EC_RenderSimple::~EC_RenderSimple()
+void EC_RenderSimple::on_destroy()
 {
-	parts(model, ME_DEATH, {get_pos(), 1, clr});
+	parts(model, ME_DEATH, {{}, 1, clr});
 }
 void EC_RenderSimple::step()
 {
@@ -77,13 +82,11 @@ void PresCommand::set(const ParticleGroupGenerator::BatchPars& pars)
 	power = pars.power;
 	clr = pars.clr;
 }
-ParticleGroupGenerator::BatchPars PresCommand::get_pp()
+void PresCommand::get(ParticleGroupGenerator::BatchPars& pars)
 {
-	ParticleGroupGenerator::BatchPars pars;
 	pars.tr = pos;
 	pars.power = power;
 	pars.clr = clr;
-	return pars;
 }
 
 
@@ -91,8 +94,15 @@ ParticleGroupGenerator::BatchPars PresCommand::get_pp()
 class GamePresenter_Impl : public GamePresenter
 {
 public:
+	struct PartDelay
+	{
+		ParticleGroupGenerator* gen;
+		ParticleGroupGenerator::BatchPars pars;
+	};
+	
 	std::vector<PresCommand> cmds_queue;
-	std::vector<std::vector<PresCommand>> cmds;
+	std::vector<PresCommand> cmds;
+	std::vector<PartDelay> part_del;
 	
 	SparseArray<ECompRender*> cs;
 	TimeSpan last;
@@ -118,33 +128,60 @@ public:
 	}
 	void sync()
 	{
-		bool any = false;
-		for (auto& c : cmds_queue)
+		auto add_pd = [this](auto& cmd, ECompRender* ptr, auto gen)
 		{
+			if (!gen) return;
+			auto& pd = part_del.emplace_back();
+			pd.gen = gen;
+			cmd.get(pd.pars);
+			if (ptr) pd.pars.tr = ptr->get_pos().get_combined(pd.pars.tr);
+		};
+		
+		for (auto& c : cmds_queue)
+		{			
 			switch (c.type)
 			{
 			case PresCommand::T_ERROR:
-				throw std::logic_error("GamePresenter::sync() no type");
+				throw std::logic_error("GamePresenter::sync() no command type");
 				
 			case PresCommand::T_CREATE:
 				if (c.ptr->ent->is_ok())
+				{
 					c.ptr->_comp_id = cs.emplace_new(c.ptr);
+					c.ptr->_pos = c.ptr->ent->get_phy().get_trans();
+				}
 				break;
 				
 			case PresCommand::T_DEL:
-				cs.free_and_null(c.ix0);
+				if (c.ix0 != size_t_inval)
+					cs.free_and_null(c.ix0);
+				
+				for (size_t i = 0; i < cmds.size(); )
+				{
+					if (cmds[i].ptr == c.ptr) cmds.erase( cmds.begin() + i );
+					else ++i;
+				}
+				break;
+				
+			case PresCommand::T_OBJPARTS:
+				add_pd(c, c.ptr, ResBase::get().get_eff(static_cast<ModelType>(c.ix0), static_cast<ModelEffect>(c.ix1)));
+				break;
+				
+			case PresCommand::T_FREEPARTS:
+				add_pd(c, c.ptr, ResBase::get().get_eff(static_cast<FreeEffect>(c.ix0)));
+				break;
+				
+			case PresCommand::T_EFFECT:
+				add_pd(c, nullptr, ResBase::get().get_eff(static_cast<FreeEffect>(c.ix0)));
 				break;
 				
 			case PresCommand::T_ATTACH:
-			case PresCommand::T_OBJPARTS:
-			case PresCommand::T_FREEPARTS:
-				any = true;
+				reserve_more_block(cmds, 1024);
+				cmds.emplace_back(c);
 				break;
 			}
 		}
-		
-		if (any) cmds.emplace_back().swap(cmds_queue);
-		else cmds_queue.clear();
+		cmds_queue.clear();
 		
 		for (auto& c : cs)
 		{
@@ -161,32 +198,12 @@ public:
 	}
 	void render(TimeSpan passed)
 	{
-		for (auto& cline : cmds)
-		for (auto& c : cline)
-		{
-			switch (c.type)
-			{
-			case PresCommand::T_ERROR:
-			case PresCommand::T_CREATE:
-			case PresCommand::T_DEL:
-				break;
-				
-			case PresCommand::T_ATTACH:
-				c.ptr->proc(c);
-				break;
-				
-			case PresCommand::T_OBJPARTS:
-				if (auto gen = ResBase::get().get_eff(static_cast<ModelType>(c.ix0), static_cast<ModelEffect>(c.ix1)))
-					gen->draw(c.get_pp());
-				break;
-				
-			case PresCommand::T_FREEPARTS:
-				if (auto gen = ResBase::get().get_eff(static_cast<FreeEffect>(c.ix0)))
-					gen->draw(c.get_pp());
-				break;
-			}
-		}
+		for (auto& c : cmds) c.ptr->proc(c);
 		cmds.clear();
+		
+		for (auto& d : part_del)
+			d.gen->draw(d.pars);
+		part_del.clear();
 		
 		last = passed;
 		for (auto& c : cs)
@@ -203,7 +220,7 @@ public:
 void GamePresenter::effect(FreeEffect effect, const ParticleGroupGenerator::BatchPars &pars)
 {
 	PresCommand c;
-	c.type = PresCommand::T_FREEPARTS;
+	c.type = PresCommand::T_EFFECT;
 	c.ix0 = effect;
 	c.set(pars);
 	add_cmd(c);
