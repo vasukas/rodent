@@ -1,6 +1,6 @@
-/.vs
+/.vs/
 /build/
-/external/*/
+/external/
 /rodent.*.user
 /rod.*
 /rodent

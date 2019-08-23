@@ -15,7 +15,6 @@ CONFIG(release, debug|release) {
 unix {
 	CONFIG += link_pkgconfig
 	PKGCONFIG += glew
-	PKGCONFIG += fmt
 	PKGCONFIG += freetype2
 	PKGCONFIG += sdl2
 }
@@ -31,6 +30,8 @@ linux-g++:gcc_flto {
 	QMAKE_CXXFLAGS += $${COMP_FLAGS}
 	QMAKE_LFLAGS += $${COMP_FLAGS}
 }
+
+QMAKE_CXXFLAGS += -Wno-unused-local-typedefs
 
 SOURCES += \
 	client/presenter.cpp \
@@ -83,6 +84,8 @@ SOURCES += \
 	external/Box2D/Dynamics/b2Island.cpp \
 	external/Box2D/Dynamics/b2World.cpp \
 	external/Box2D/Dynamics/b2WorldCallbacks.cpp \
+	external/fmt/format.cc \
+	external/fmt/posix.cc \
 	game/damage.cpp \
 	game/entity.cpp \
 	game/game_core.cpp \

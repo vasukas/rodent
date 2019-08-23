@@ -19,21 +19,23 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="client\*.cpp" />
     <ClCompile Include="core\*.cpp" />
     <ClCompile Include="game\*.cpp" />
     <ClCompile Include="render\*.cpp" />
     <ClCompile Include="utils\*.cpp" />
     <ClCompile Include="vaslib\*.cpp" />
     <ClCompile Include="*.cpp" />
-    <ClCompile Include="build_libs\src\*.c*" />
-    <ClCompile Include="Box2D\Collision\*.cpp" />
-    <ClCompile Include="Box2D\Collision\Shapes\*.cpp" />
-    <ClCompile Include="Box2D\Common\*.cpp" />
-    <ClCompile Include="Box2D\Dynamics\*.cpp" />
-    <ClCompile Include="Box2D\Dynamics\Contacts\*.cpp" />
-    <ClCompile Include="Box2D\Dynamics\Joints\*.cpp" />
+    <ClCompile Include="external\Box2D\Collision\*.cpp" />
+    <ClCompile Include="external\Box2D\Collision\Shapes\*.cpp" />
+    <ClCompile Include="external\Box2D\Common\*.cpp" />
+    <ClCompile Include="external\Box2D\Dynamics\*.cpp" />
+    <ClCompile Include="external\Box2D\Dynamics\Contacts\*.cpp" />
+    <ClCompile Include="external\Box2D\Dynamics\Joints\*.cpp" />
+    <ClCompile Include="external\fmt\*.cc" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="client\*.hpp" />
     <Content Include="core\*.hpp" />
     <Content Include="game\*.hpp" />
     <Content Include="render\*.hpp" />
@@ -94,39 +96,39 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ExecutablePath>$(ExecutablePath)</ExecutablePath>
-    <IncludePath>$(SolutionDir)build_libs\msvc\include;$(SolutionDir)build_libs\include;$(SolutionDir)build_scripts\common;$(SolutionDir);$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)external;$(SolutionDir)external\include;$(SolutionDir);$(IncludePath)</IncludePath>
     <ReferencePath>$(ReferencePath)</ReferencePath>
-    <LibraryPath>$(SolutionDir)build_libs\msvc\lib32;$(LibraryPath)</LibraryPath>
-    <OutDir>$(SolutionDir)build\msvc_$(Configuration)\</OutDir>
+    <LibraryPath>$(SolutionDir)external\msvc32;$(LibraryPath)</LibraryPath>
+    <OutDir>$(SolutionDir)build\</OutDir>
     <IntDir>$(SolutionDir)build\msvc_$(Platform)_$(Configuration)\</IntDir>
-    <TargetName>$(ProjectName)_$(Platform)</TargetName>
+    <TargetName>$(ProjectName)_x86d</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ExecutablePath>$(ExecutablePath)</ExecutablePath>
-    <IncludePath>$(SolutionDir)build_libs\msvc\include;$(SolutionDir)build_libs\include;$(SolutionDir)build_scripts\common;$(SolutionDir);$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)external;$(SolutionDir)external\include;$(SolutionDir);$(IncludePath)</IncludePath>
     <ReferencePath>$(ReferencePath)</ReferencePath>
-    <LibraryPath>$(SolutionDir)build_libs\msvc\lib32;$(LibraryPath)</LibraryPath>
-    <OutDir>$(SolutionDir)build\msvc_$(Configuration)\</OutDir>
+    <LibraryPath>$(SolutionDir)external\msvc32;$(LibraryPath)</LibraryPath>
+    <OutDir>$(SolutionDir)build\</OutDir>
     <IntDir>$(SolutionDir)build\msvc_$(Platform)_$(Configuration)\</IntDir>
-    <TargetName>$(ProjectName)_$(Platform)</TargetName>
+    <TargetName>$(ProjectName)_x86</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ExecutablePath>$(ExecutablePath)</ExecutablePath>
-    <IncludePath>$(SolutionDir)build_libs\msvc\include;$(SolutionDir)build_libs\include;$(SolutionDir)build_scripts\common;$(SolutionDir);$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)external;$(SolutionDir)external\include;$(SolutionDir);$(IncludePath)</IncludePath>
     <ReferencePath>$(ReferencePath)</ReferencePath>
-    <LibraryPath>$(SolutionDir)build_libs\msvc\lib64;$(LibraryPath)</LibraryPath>
-    <OutDir>$(SolutionDir)build\msvc_$(Configuration)\</OutDir>
+    <LibraryPath>$(SolutionDir)external\msvc64;$(LibraryPath)</LibraryPath>
+    <OutDir>$(SolutionDir)build\</OutDir>
     <IntDir>$(SolutionDir)build\msvc_$(Platform)_$(Configuration)\</IntDir>
-    <TargetName>$(ProjectName)_$(Platform)</TargetName>
+    <TargetName>$(ProjectName)_x64d</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ExecutablePath>$(ExecutablePath)</ExecutablePath>
-    <IncludePath>$(SolutionDir)build_libs\msvc\include;$(SolutionDir)build_libs\include;$(SolutionDir)build_scripts\common;$(SolutionDir);$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)external;$(SolutionDir)external\include;$(SolutionDir);$(IncludePath)</IncludePath>
     <ReferencePath>$(ReferencePath)</ReferencePath>
-    <LibraryPath>$(SolutionDir)build_libs\msvc\lib64;$(LibraryPath)</LibraryPath>
-    <OutDir>$(SolutionDir)build\msvc_$(Configuration)\</OutDir>
+    <LibraryPath>$(SolutionDir)external\msvc64;$(LibraryPath)</LibraryPath>
+    <OutDir>$(SolutionDir)build\</OutDir>
     <IntDir>$(SolutionDir)build\msvc_$(Platform)_$(Configuration)\</IntDir>
-    <TargetName>$(ProjectName)_$(Platform)</TargetName>
+    <TargetName>$(ProjectName)_x64</TargetName>
   </PropertyGroup>
   <PropertyGroup />
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">

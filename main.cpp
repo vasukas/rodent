@@ -13,9 +13,6 @@
 #include "main_loop.hpp"
 #include "settings.hpp"
 
-// from ratlaunch/config.hpp
-#define FN_TIMESTAMP    "ratlaunch.timestamp" // client-only
-
 
 
 #ifdef __unix__
@@ -228,12 +225,6 @@ Modes (to see options use --modehelp):
 		lsets.apply();
     }
 	VLOGI("Launched at {}", date_time_str());
-	
-	if (File* f = File::open(FN_TIMESTAMP)) {
-		VLOGI("Launcher timestamp: {}", f->r64B());
-		delete f;
-	}
-	else VLOGW("Launcher timestamp: none");
 	
 	VLOGD("CLI ARGUMENTS:");
 	for (int i = 0; i < argc; ++i) VLOGD( "  {}", argv[i] );

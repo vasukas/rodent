@@ -1180,7 +1180,7 @@ void vigTextbox::draw()
 	// draw pointer
 	if (sel) {
 		ptr = std::min(ptr, max_chars);
-		vig_fill_rect(pos + vec2i(vig_element_decor().x + ptr * ftw, 0), {vig_FrameWidth, size.y}, -1);
+		vig_fill_rect(pos + vec2i(vig_element_decor().x + ptr * ftw, 0), {static_cast<int>(vig_FrameWidth), size.y}, -1);
 	}
 }
 void vigTextbox::on_enter(bool Enter_or_focuslost) {

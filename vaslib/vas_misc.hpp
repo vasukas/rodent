@@ -23,6 +23,8 @@ struct ArgvParse
 	bool is(std::string_view s, bool incr = true); ///< Checks if equal to current. If is, increases counter
 	const std::string& cur(); ///< Doesn't increase count
 	
+	void skip(size_t n = 1); ///< Throws if too many
+	
 	const std::string& str(); ///< Increases count
 	int i32(int radix = 10);
 	float fp();

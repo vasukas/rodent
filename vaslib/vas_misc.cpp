@@ -41,7 +41,7 @@ void ArgvParse::set(int argc, char **argv)
 }
 bool ArgvParse::ended() const
 {
-	return i == args.size();
+	return i >= args.size();
 }
 bool ArgvParse::is(std::string_view s, bool incr)
 {
@@ -62,6 +62,12 @@ const std::string& ArgvParse::cur()
 		throw std::logic_error(e);
 	}
 	return args[i];
+}
+void ArgvParse::skip(size_t n)
+{
+	i += n;
+	if (i > args.size())
+		throw std::logic_error("argument skip out-of-range");
 }
 const std::string& ArgvParse::str()
 {

@@ -6,11 +6,8 @@ OutputPostfix=_x32.exe
 
 LibsDir="../external/mingw32"
 
-Source+=(
-	"$LibsDir"/*.c*
-)
 Flags+=(
-	-I"$LibsDir"/include
+	-I../external/include
 
 	-mconsole
 	-mwindows
@@ -22,22 +19,22 @@ Flags+=(
 	-D_USE_MATH_DEFINES
 )
 LnkFlags+=(
-	-L"$LibsDir"/lib
+	-L"$LibsDir"
 
 	-mconsole
 	-mwindows
 	-static-libgcc -static-libstdc++
 
+	-l:freetype.lib
+	-l:glew.lib
 	-lopengl32
-	-l:glew32.lib
 	-lSDL2
-	-l:freetype271.lib
 )
 FlagsDbg+=(
 	-ggdb
 )
 
-function postbuild {
+function postbuild_DISABLED {
 	Input=rodent-mingw32
 	Wp=/tmp/"$Input"
 	Output="$(pwd)/../build/${Input}".zip
@@ -46,7 +43,7 @@ function postbuild {
 	ln -s "$(pwd)/../res" "$Wp"/res
 	ln -s "$(realpath $BinDirPrefix)/rodent_x32.exe" "$Wp"/
 
-	for F in ../external/mingw32/bin/*.dll; do
+	for F in "$LibsDir"/*.dll; do
 		ln -s "$(pwd)/$F" "$Wp"/$(basename "$F")
 	done
 

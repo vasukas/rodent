@@ -9,6 +9,7 @@
 #include <array>
 #include <cinttypes>
 #include <cmath>
+#include <optional>
 
 using uint = unsigned int;
 

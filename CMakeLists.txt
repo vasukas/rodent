@@ -1,12 +1,17 @@
-cmake_minimum_required(VERSION 3.9)
+cmake_minimum_required(VERSION 3.12)
 
 project(rodent VERSION 0.0.1
                LANGUAGES CXX)
 
-option(USE_RELEASE_PATHS "Use system-defined paths for user data instead of current directory" OFF)
-set(FMT_SOURCE_PATH "" CACHE STRING "Path to fmt library source root - build into executable if set")
+set(default_build_type "MinSizeRel")
 
-set(default_build_type "Release")
+
+
+option(USE_RELEASE_PATHS "Use system-defined paths for user data instead of current directory" OFF)
+
+if (USE_RELEASE_PATHS)
+	add_compile_definitions(USE_RELEASE_PATHS=1)
+endif()
 
 
 
@@ -15,7 +20,6 @@ if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt AND NOT CMAKE_BUILD_TYPE)
 	set(CMAKE_BUILD_TYPE ${default_build_type} CACHE STRING "" FORCE)
 endif()
 
-set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 
@@ -39,43 +43,36 @@ endif()
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 	if ("${CMAKE_BUILD_TYPE}" STREQUAL "Release" OR "${CMAKE_BUILD_TYPE}" STREQUAL "MinSizeRel")
 		target_link_options(${TARGET} PRIVATE -s)
-		message("Build stripped")
+		message("Built stripped")
 	elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
 		target_compile_options(${TARGET} PRIVATE -fsanitize=address -fsanitize=undefined)
 		target_link_options(${TARGET} PRIVATE -fsanitize=address -fsanitize=undefined)
-		message("Build with sanitizers")
+		message("Built with sanitizers")
 	endif()
 endif()
 
-
-
-if (NOT FMT_SOURCE_PATH)
-	find_package(fmt REQUIRED)
-else()
-	add_subdirectory(${FMT_SOURCE_PATH})
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+	target_compile_options(${TARGET} PRIVATE -Wno-unused-local-typedefs)
 endif()
+
+
 
 find_package(Freetype REQUIRED)
 find_package(GLEW     REQUIRED)
 find_package(OpenGL   REQUIRED)
 find_package(SDL2     REQUIRED)
 
-target_include_directories(${TARGET} PRIVATE
-	${FREETYPE_INCLUDE_DIRS}
-	${GLEW_INCLUDE_DIRS}
-)
 target_link_libraries(${TARGET} PRIVATE
-	fmt::fmt
-	${FREETYPE_LIBRARIES}
-	${GLEW_LIBRARIES}
-	${OPENGL_LIBRARIES}
+	Freetype::Freetype
+	GLEW::GLEW
+	OpenGL::GL
 	SDL2::SDL2
 )
 
 
 
 function(add_src DIR)
-	file(GLOB SRC "${PROJECT_SOURCE_DIR}/${DIR}/*.cpp")
+	file(GLOB SRC "${PROJECT_SOURCE_DIR}/${DIR}/*.cpp" "${PROJECT_SOURCE_DIR}/${DIR}/*.cc")
 	target_sources(${TARGET} PRIVATE ${SRC})
 endfunction()
 
@@ -93,6 +90,7 @@ add_src(external/Box2D/Common)
 add_src(external/Box2D/Dynamics)
 add_src(external/Box2D/Dynamics/Contacts)
 add_src(external/Box2D/Dynamics/Joints)
+add_src(external/fmt)
 
 target_include_directories(${TARGET} PRIVATE "${PROJECT_SOURCE_DIR}")
 target_include_directories(${TARGET} PRIVATE "${PROJECT_SOURCE_DIR}/external")

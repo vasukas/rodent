@@ -1,4 +1,4 @@
-ProName=mrat
+ProName=rodent
 IsLibrary=0
 
 ObjDirPrefix=../build/vb
@@ -13,6 +13,7 @@ Source=(
 	../vaslib/*.cpp
 	../*.cpp
 	$(find ../external/Box2D -name "*.cpp")
+	../external/fmt/*.cc
 )
 Flags=(
 	-I..

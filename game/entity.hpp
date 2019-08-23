@@ -2,7 +2,7 @@
 #define ENTITY_HPP
 
 #include <memory>
-#include <optional>
+#include <vector>
 #include "vaslib/vas_math.hpp"
 #include "vaslib/vas_types.hpp"
 #include "common_defs.hpp"
