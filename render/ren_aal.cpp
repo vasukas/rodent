@@ -1,3 +1,6 @@
+#include <future>
+#include "client/resbase.hpp"
+#include "utils/noise.hpp"
 #include "vaslib/vas_cpp_utils.hpp"
 #include "vaslib/vas_log.hpp"
 #include "ren_aal.hpp"
@@ -6,7 +9,104 @@
 #include "shader.hpp"
 #include "texture.hpp"
 
-#define USE_NORM_INT 0
+#define USE_NORM_INT 0 // caused bugs on old AMD card
+
+
+
+struct Noise
+{
+	static const int tex_depth = 16;
+	
+	GLA_Texture tex;
+	float t = 0.f;
+	
+	std::optional <std::future <std::pair <std::vector <uint8_t>, int>>> tex_async;
+	
+	Noise()
+	{
+		tex.target = GL_TEXTURE_3D;
+		
+		tex_async = std::async(std::launch::async, []
+		{
+			double k = 0.13;
+			const int tex_size = 16 / k;
+			
+			std::vector<uint8_t> img_px( tex_size * tex_size * tex_depth * 3 );
+			TimeSpan time0 = TimeSpan::since_start();
+			
+			for (int i = 0; i < tex_size * tex_size * tex_depth; ++i)
+			{
+				double x = k * (i / (tex_size * tex_size) * 2);
+				double y = k * (i / tex_size % tex_size);
+				double z = k * (i % tex_size);
+				
+	#define noise(x,y,z) perlin_noise_oct(x,y,z, 0.5, 2.0, 2)
+	//#define noise(x,y,z) perlin_noise(x,y,z)
+				double H = noise(x, y, z) * 0.5 + 0.5;
+				double v = noise(x, y, z + 16.) * 0.5 + 0.5;
+	#undef noise
+				H = lerp(170, 210, H); // 0 - 360
+				v = lerp(15, 30, v); // 0 - 100
+				double S = 100; // 0 - 100
+				
+				int hi = H / 60;
+				double vm = (100. - S) * v / 100.;
+				double a = (v - vm) * (H - hi * 60) / 60.;
+				double vi = vm + a;
+				double vd = v - a;
+				v *= 2.55;
+				vi *= 2.55;
+				vd *= 2.55;
+				
+				double r, g, b;
+				if		(hi == 0) r = v,  g = vi, b = vm;
+				else if (hi == 1) r = vd, g = v,  b = vm;
+				else if (hi == 2) r = vm, g = v,  b = vi;
+				else if (hi == 3) r = vm, g = vd, b = v;
+				else if (hi == 4) r = vi, g = vm, b = v;
+				else if (hi == 5) r = v,  g = vm, b = vd;
+				else r = g = b = 255.;
+				
+				img_px[i*3+0] = r;
+				img_px[i*3+1] = g;
+				img_px[i*3+2] = b;
+			}
+			
+			VLOGI("RenAAL generation time: {:.3f} seconds", (TimeSpan::since_start() - time0).seconds());
+			
+			return std::make_pair(std::move(img_px), tex_size);
+		});
+	}
+	void setup(Shader* sh, TimeSpan passed)
+	{
+		glActiveTexture(GL_TEXTURE1);
+		tex.bind();
+		
+		if (tex_async && tex_async->wait_for (std::chrono::seconds(0)) == std::future_status::ready)
+		{
+			auto res = tex_async->get();
+			tex_async.reset();
+			
+			tex.bind();
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
+			glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+			glTexImage3D(GL_TEXTURE_3D, 0, GL_RGB, res.second, res.second, tex_depth, 0, GL_RGB, GL_UNSIGNED_BYTE, res.first.data());
+			
+			tex.set_byte_size( res.second * res.second * tex_depth * 3 );
+		}
+		
+		sh->set1f("t", t / tex_depth * 1.3);
+		t += passed.seconds();
+		
+		auto& cam = RenderControl::get().get_world_camera()->get_state();
+		sh->set2f("offset", cam.pos * 0.12);
+		auto ssz = RenderControl::get().get_size();
+		sh->set2f("scrk", float(ssz.x) / ssz.y, 1);
+	}
+};
 
 
 
@@ -39,12 +139,19 @@ public:
 	Shader* sh_inst;
 	uint32_t prev_clr = 0;
 	
+	GLA_Texture tex;
+	
 	// for instanced drawing
 	GLA_VertexArray inst_vao;
 	std::vector<std::pair<size_t, size_t>> inst_objs;
 	std::vector<InstObj> inst_q;
 	
-	GLA_Texture tex;
+	// for grid
+	GLA_Framebuffer fbo;
+	GLA_Texture fbo_clr;
+	Shader* fbo_sh;
+	RAII_Guard fbo_g;
+	Noise fbo_noi;
 	
 	
 	
@@ -165,7 +272,7 @@ public:
 		auto buf = std::make_shared<GLA_Buffer>(0);
 		vao.set_attribs({ {buf, 4}, {buf, 3} });
 #endif
-		sh = RenderControl::get().load_shader("aal");
+		sh      = RenderControl::get().load_shader("aal");
 		sh_inst = RenderControl::get().load_shader("aal_inst");
 		
 		const int n = 200;
@@ -196,6 +303,15 @@ public:
 		
 //		Texture::debug_save(tex.tex, "test.png", Texture::FMT_SINGLE);
 //		exit(1);
+		
+		// for grid
+		
+		fbo_sh = RenderControl::get().load_shader("pp/aal_grid", [](Shader& sh){ sh.set1i("noi", 1); });
+		fbo_g = RenderControl::get().add_size_cb([this]{ fbo_clr.set(GL_RGBA, RenderControl::get_size(), 0, 4); }, true);
+
+		fbo.bind();
+		fbo.attach_tex(GL_COLOR_ATTACHMENT0, fbo_clr);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 	void draw_line(vec2fp p0, vec2fp p1, uint32_t clr, float width, float aa_width, float clr_mul)
 	{
@@ -258,7 +374,7 @@ public:
 			objs.clear();
 			prev_clr = 0;
 		}
-		if (!inst_q.empty())
+		if (!inst_q.empty() || draw_grid)
 		{
 			inst_vao.bind();
 			
@@ -269,7 +385,7 @@ public:
 			for (auto& o : inst_q)
 			{
 				auto cs = cossin_ft(o.tr.rot);
-				sh_inst->set4f("pr", o.tr.pos.x, o.tr.pos.y, cs.x, cs.y);
+				sh_inst->set4f("obj_tr", o.tr.pos.x, o.tr.pos.y, cs.x, cs.y);
 				sh_inst->set_clr("clr", o.clr);
 				
 				auto& p = inst_objs[o.id];
@@ -278,6 +394,48 @@ public:
 			
 			inst_q.clear();
 		}
+	}
+	void render_grid(TimeSpan passed)
+	{
+		if (!draw_grid) return;
+		
+		// draw to buffer
+		
+		fbo.bind();
+		glClearColor(0, 0, 0, 0);
+		glClear(GL_COLOR_BUFFER_BIT);
+		
+		glBlendFuncSeparate(GL_ONE, GL_ONE, GL_ONE, GL_ONE);
+		glBlendEquation(GL_MAX);
+		
+//		FColor clr(0, 0.8, 1, 0.3);
+//		clr *= clr.a;
+		const FColor clr(1, 1, 1, 1);
+		
+		inst_vao.bind();
+		
+		sh_inst->bind(); // other params was set in render()
+		sh_inst->set4f("obj_tr", 0, 0, 1, 0);
+		sh_inst->set_clr("clr", clr);
+		
+		auto& p = inst_objs[MODEL_LEVEL_GRID];
+		glDrawArrays(GL_TRIANGLES, p.first, p.second);
+		
+		// draw to screen
+		
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		
+		glBlendFuncSeparate(GL_ONE_MINUS_DST_ALPHA, GL_ONE, GL_ONE, GL_ONE);
+		glBlendEquation(GL_FUNC_ADD);
+		
+		fbo_sh->bind();
+		fbo_noi.setup(fbo_sh, passed);
+		
+		glActiveTexture(GL_TEXTURE0);
+		fbo_clr.bind();
+		
+		RenderControl::get().ndc_screen2().bind();
+		glDrawArrays(GL_TRIANGLES, 0, 6);
 	}
 	
 	

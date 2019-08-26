@@ -276,7 +276,9 @@ Modes (to see options use --modehelp):
 	set_wnd_pars();
 	SDL_PumpEvents(); // just in case
 	
-	VLOGI("Basic initialization finished in {:6.3} seconds", (TimeSpan::since_start() - time_init).seconds());
+	VLOGI("Basic initialization finished in {:.3f} seconds", (TimeSpan::since_start() - time_init).seconds());
+	VLOGI("Texture mem: {:.3f} MB", Texture::dbg_total_size / (1024.f * 1024.f));
+	VLOGI("GPU: {}", RenderControl::get().get_gpu_state());
 	
 	
 	
@@ -287,7 +289,7 @@ Modes (to see options use --modehelp):
 		return 1;
 	}
 	
-	VLOGI("Full initialization finished in {:6.3} seconds", (TimeSpan::since_start() - time_init).seconds());
+	VLOGI("Full initialization finished in {:.3f} seconds", (TimeSpan::since_start() - time_init).seconds());
 	
 	
 	
@@ -296,7 +298,7 @@ Modes (to see options use --modehelp):
 	
 	auto loglines_upd = []
 	{
-		vec2i sz = RenderControl::get_size() / (RenText::get().mxc_size( FontIndex::Debug ) * loglines_mul);
+		vec2i sz = RenderControl::get_size() / (RenText::get().mxc_size( FontIndex::Debug ).int_ceil() * loglines_mul);
 		LoggerSettings lsets;
 		lsets.lines = sz.y;
 		lsets.lines_width = sz.x;
@@ -335,6 +337,7 @@ Modes (to see options use --modehelp):
 	
 //	bool cons_shown = false;
 	bool log_shown = false;
+	int input_lock = 0;
 	
 	bool run = true;
 	while (run)
@@ -368,7 +371,13 @@ Modes (to see options use --modehelp):
 					}
 				}
 //				else if (ks.scancode == SDL_SCANCODE_GRAVE) {cons_shown = !cons_shown; dbg_show = false;}
+				else if (ks.scancode == SDL_SCANCODE_GRAVE) ++input_lock;
 				else if (ks.scancode == SDL_SCANCODE_F2) log_shown = !log_shown;
+			}
+			else if (ev.type == SDL_KEYUP)
+			{
+				auto &ks = ev.key.keysym;
+				if (ks.scancode == SDL_SCANCODE_GRAVE) --input_lock;
 			}
 			
 			RenderControl::get().on_event( ev );
@@ -379,6 +388,7 @@ Modes (to see options use --modehelp):
 //			}
 			
 			vig_on_event(&ev);
+			if (vig_current_menu() != VigMenu::Default || input_lock) continue;
 			
 			MainLoop::current->on_event(ev);
 			if (!MainLoop::current) {
@@ -408,7 +418,7 @@ Modes (to see options use --modehelp):
 //		if (cons_shown) Console::get().render();
 		if (log_shown)
 		{
-			vec2i cz = RenText::get().mxc_size(FontIndex::Debug);
+			vec2fp cz = RenText::get().mxc_size(FontIndex::Debug);
 			std::vector<std::pair<LogLevel, std::string>> ls;
 			size_t ptr = log_get_lines(ls);
 			
@@ -426,9 +436,9 @@ Modes (to see options use --modehelp):
 				case LogLevel::Critical:clr = 0xff00ffff; break;
 				}
 				
-				int y = i * cz.y;
-				RenImm::get().draw_rect({0, y, (int) ls[i].second.length() * cz.x, cz.y}, i == ptr? 0x00800080 : 0x80);
-				RenImm::get().draw_text(vec2i{0, y}, ls[i].second, clr, false, loglines_mul, FontIndex::Debug);
+				float y = i * cz.y;
+				RenImm::get().draw_rect({{0, y}, {ls[i].second.length() * cz.x, cz.y}, true}, i == ptr? 0x00800080 : 0x80);
+				RenImm::get().draw_text({0, y}, ls[i].second, clr, false, loglines_mul, FontIndex::Debug);
 			}
 		}
 		

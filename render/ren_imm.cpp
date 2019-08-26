@@ -18,7 +18,7 @@ vec2i RenImm::text_size( std::string_view str )
 	tri.length = str.length();
 	tri.info_only = true;
 	tri.build();
-	return tri.size;
+	return tri.size.int_ceil();
 }
 
 
@@ -461,7 +461,7 @@ public:
 	{
 		if (tri.cs.empty()) return;
 		if (!can_add( true )) return;
-		if (center) at -= vec2fp(tri.size) * size_k / 2;
+		if (center) at -= tri.size * size_k / 2;
 		
 		// reduce number of texture switches for multiple atlases
 		auto cmp = [](auto &&a, auto &&b) {return a.tex.get_obj() < b.tex.get_obj();};
@@ -479,7 +479,7 @@ public:
 				prev = c.tex.tex;
 			}
 			vec2fp p = c.pos.lower();
-			add_rect({ p * size_k + at, vec2fp(c.pos.size()) * size_k, true }, c.tex.tc);
+			add_rect({ p * size_k + at, c.pos.size() * size_k, true }, c.tex.tc);
 		}
 		add_obj( prev->get_obj(), clr, true );
 	}
@@ -541,7 +541,7 @@ public:
 			}
 			
 			vec2fp p = c.pos.lower();
-			add_rect({ p * size_k + at, vec2fp(c.pos.size()) * size_k, true }, c.tex.tc);
+			add_rect({ p * size_k + at, c.pos.size() * size_k, true }, c.tex.tc);
 			++c_cou;
 		}
 		add_obj( prev->get_obj(), strs[clr_i].second.to_px(), true );

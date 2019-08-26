@@ -139,7 +139,8 @@ ImageInfo ImageInfo::subimg( Rect r ) const
 	upp = max( {0,0}, min( size, upp ) );
 	vec2i nz = upp - low;
 	
-	if (nz.x <= 0 || nz.y <= 0) return {};
+	if (nz.x <= 0 || nz.y <= 0)
+		return {};
 	
 	ImageInfo ii;
 	ii.reset( nz, fmt );

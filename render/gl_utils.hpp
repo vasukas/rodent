@@ -119,9 +119,15 @@ struct GLA_Texture
 	
 	/// Allocates storage for 2D; binds texture. 
 	/// Sets filtering to linear and enables clamping
-	void set(GLenum internal_format, vec2i size, int level = 0);
+	void set(GLenum internal_format, vec2i size, int level = 0, int dbg_bpp = 0);
 	
 	operator GLuint() {return tex;}
+	
+	/// For debug output
+	void set_byte_size(size_t new_byte_size);
+	
+private:
+	size_t byte_size = 0;
 };
 
 

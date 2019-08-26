@@ -41,13 +41,15 @@ enum class VigMenu
 {
 	Default,
 	DebugRenderer,
-	DebugGame,
 	
 	TOTAL_COUNT ///< Do not use
 };
 
 /// Registers new menu
 [[nodiscard]] RAII_Guard vig_reg_menu(VigMenu type, std::function<void()> draw);
+
+///
+VigMenu vig_current_menu();
 
 
 

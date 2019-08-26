@@ -1,6 +1,7 @@
 #include <unordered_map>
 #include "vaslib/vas_log.hpp"
 #include "gl_utils.hpp"
+#include "texture.hpp"
 
 
 
@@ -213,6 +214,7 @@ GLA_Texture::GLA_Texture()
 GLA_Texture::~GLA_Texture()
 {
 	glDeleteTextures(1, &tex);
+	set_byte_size(0);
 }
 GLA_Texture::GLA_Texture( GLA_Texture&& obj )
 {
@@ -232,7 +234,7 @@ void GLA_Texture::bind(GLenum target)
 	if (target == GL_NONE) target = this->target;
 	glBindTexture(target, tex);
 }
-void GLA_Texture::set(GLenum internal_format, vec2i size, int level)
+void GLA_Texture::set(GLenum internal_format, vec2i size, int level, int dbg_bpp)
 {
 	glBindTexture(target, tex);
 	glTexImage2D(target, level, internal_format, size.x, size.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
@@ -242,4 +244,13 @@ void GLA_Texture::set(GLenum internal_format, vec2i size, int level)
 	
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	
+	if (dbg_bpp)
+		set_byte_size(size.area() * dbg_bpp);
+}
+void GLA_Texture::set_byte_size(size_t new_byte_size)
+{
+	Texture::dbg_total_size -= byte_size;
+	byte_size = new_byte_size;
+	Texture::dbg_total_size += byte_size;
 }

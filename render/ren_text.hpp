@@ -34,11 +34,11 @@ struct TextRenderInfo
 	
 	struct GlyphInfo
 	{
-		Rect pos; ///< Draw position (starting from zero)
+		Rectfp pos; ///< Draw position (starting from zero)
 		TextureReg tex; ///< Always valid
 	};
 	
-	vec2i size = {}; ///< Output dimensions, in pixels
+	vec2fp size = {}; ///< Output dimensions, in pixels
 	std::vector <GlyphInfo> cs; ///< Each represents single character from input string
 	
 	// funcs
@@ -58,10 +58,10 @@ public:
 	
 	virtual TextureReg get_white_rect(FontIndex font = FontIndex::Mono) = 0; ///< Returns info for 1x1 white rectangle
 	
-	virtual bool  is_mono    (FontIndex font) = 0; ///< Is font (roughly) monowide
-	virtual int   width_mode (FontIndex font) = 0; ///< Average char width
-	virtual int   line_height(FontIndex font) = 0; ///< Not character height
-	virtual vec2i mxc_size   (FontIndex font) = 0; ///< width_mode + line_height
+	virtual bool   is_mono    (FontIndex font) = 0; ///< Is font (roughly) monowide
+	virtual float  width_mode (FontIndex font) = 0; ///< Average char width
+	virtual float  line_height(FontIndex font) = 0; ///< Not character height
+	virtual vec2fp mxc_size   (FontIndex font) = 0; ///< width_mode + line_height
 	
 	/// Returns glyph info as if it would be rendered at {0,0}
 	virtual TextRenderInfo::GlyphInfo get_glyph(char32_t cp, FontIndex font) = 0;

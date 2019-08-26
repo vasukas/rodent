@@ -270,12 +270,16 @@ public:
 			
 			if (pp_main && use_pp) pp_main->start(passed);
 			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
+			glBlendEquation(GL_MAX);
 			
 			RenImm::get().render_pre();
 //			RenImm::get().render(RenImm::DEFCTX_BACK);
 
 			RenAAL::get().render();
+			glBlendEquation(GL_FUNC_ADD);
+			
 			ParticleRenderer::get().render(passed);
+			RenAAL::get().render_grid(passed); // changes blending
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			
 			RenImm::get().render(RenImm::DEFCTX_WORLD);
@@ -437,8 +441,10 @@ public:
 	{
 		return *ndc_screen2_obj;
 	}
-	RAII_Guard add_size_cb(std::function<void()> cb)
+	RAII_Guard add_size_cb(std::function<void()> cb, bool call_now)
 	{
+		if (call_now) cb();
+		
 		size_t i=0;
 		for (; i<cb_resize.size(); ++i) if (!cb_resize[i]) break;
 		if (i == cb_resize.size()) cb_resize.emplace_back();
@@ -448,6 +454,20 @@ public:
 			if (!rct) return;
 			static_cast<RenderControl_Impl*>(rct)->cb_resize[i] = {};
 		});
+	}
+	std::string get_gpu_state()
+	{
+		if (SDL_GL_ExtensionSupported("GL_NVX_gpu_memory_info"))
+		{
+#define GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX 0x9048
+#define GL_GPU_MEM_INFO_CURRENT_AVAILABLE_MEM_NVX 0x9049
+			
+			GLint total = 0, avail = 0;
+			glGetIntegerv( GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX, &total );
+			glGetIntegerv( GL_GPU_MEM_INFO_CURRENT_AVAILABLE_MEM_NVX, &avail );
+			return FMT_FORMAT("memory: {:.3f} MB / {:.3f} MB", (total - avail) / 1024.f, total / 1024.f);
+		}
+		return {};
 	}
 };
 bool RenderControl::init()

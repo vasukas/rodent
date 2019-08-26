@@ -48,9 +48,7 @@ bool RandomGen::load(const std::string& s)
 
 
 
-/*
-
-/// adapted code from http://mrl.nyu.edu/~perlin/noise/
+/// adapted from http://mrl.nyu.edu/~perlin/noise/
 /// // JAVA REFERENCE IMPLEMENTATION OF IMPROVED NOISE - COPYRIGHT 2002 KEN PERLIN.
 double perlin_noise(double x, double y, double z) {
 	static const int p[512] = {
@@ -123,4 +121,3 @@ double perlin_noise_oct(double x, double y, double z, double pers, double frqm, 
 	}
 	return s / as;
 }
-*/

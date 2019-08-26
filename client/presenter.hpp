@@ -28,6 +28,7 @@ struct ECompRender : EComp
 	void parts(FreeEffect effect, const ParticleGroupGenerator::BatchPars& pars);
 	void attach(AttachType type, Transform at, ModelType model, FColor clr);
 	void detach(AttachType type) {attach(type, {}, MODEL_NONE, {});}
+	
 	const Transform& get_pos() const {return _pos;} ///< Current rendering position
 	
 protected:

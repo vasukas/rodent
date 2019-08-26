@@ -41,9 +41,9 @@ size_t rnd_uint(size_t min, size_t max);
 double rnd_gauss();
 
 /// Returns value in range [-1; 1]
-//double perlin_noise(double x, double y, double z);
+double perlin_noise(double x, double y, double z);
 
 /// Returns value in range [-1; 1]
-//double perlin_noise_oct(double x, double y, double z, double pers, double frqm, int octaves);
+double perlin_noise_oct(double x, double y, double z, double pers, double frqm, int octaves);
 
 #endif // NOISE_HPP

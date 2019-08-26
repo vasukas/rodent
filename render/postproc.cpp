@@ -90,7 +90,7 @@ public:
 		{
 			for (int i=0; i<2; ++i)
 			{
-				tex_s[i].set(GL_RGBA, RenderControl::get_size());
+				tex_s[i].set(GL_RGBA, RenderControl::get_size(), 0, 4);
 				fbo_s[i].attach_tex(GL_COLOR_ATTACHMENT0, tex_s[i]);
 			}
 		};

@@ -7,12 +7,13 @@
 #include "ren_text.hpp"
 #include "texture.hpp"
 
-std::vector<std::vector<char32_t>> tui_char_get_alts(); // core/tui_surface.cpp
+static std::vector<std::vector<char32_t>> tui_char_get_alts() {return {};}
 
-// #define DEBUG_ATLAS 1
+#define FONT_SUPERSAMPLE 2 // upscales texture
+#define DEBUG_ATLAS 0 // terminates after building atlas
 
-#ifdef DEBUG_ATLAS
-#include "core/res_image.hpp"
+#if DEBUG_ATLAS
+#include "utils/res_image.hpp"
 #endif
 
 
@@ -32,11 +33,11 @@ public:
 	{
 		// rendering params
 		TextureReg tex;
-		vec2i size; ///< pixels
+		vec2fp size; ///< pixels
 		
 		// composition params
-		vec2i off; ///< Drawing offset, pixels
-		int xadv; ///< Horizontal advance
+		vec2fp off; ///< Drawing offset, pixels
+		float xadv; ///< Horizontal advance
 	};
 	
 	struct FontData
@@ -47,8 +48,8 @@ public:
 		Glyph white; ///< white rectangle
 		
 		bool is_mono_flag;
-		uint w_mode;
-		uint line_ht;
+		float w_mode;
+		float line_ht;
 	};
 	
 	std::vector <std::shared_ptr<FontData>> fonts;
@@ -88,9 +89,9 @@ public:
 			}
 		}
 		
-		VLOGI("Fonts loaded in {:6.3} seconds", (TimeSpan::since_start() - is_t0).seconds());
+		VLOGI("Fonts loaded in {:.3f} seconds", (TimeSpan::since_start() - is_t0).seconds());
 	}
-	void build (TextRenderInfo& b)
+	void build (TextRenderInfo& b) override
 	{
 		b.size = {};
 		if (b.cs_clear) b.cs.clear();
@@ -104,8 +105,8 @@ public:
 			else          for (len = 0; b.str_a[len]; ++len) ;
 		}
 		
-		vec2i pos = {}, max = {};
-		vec2i a_size = {};
+		vec2fp pos = {}, max = {};
+		vec2fp a_size = {};
 		
 		if (!b.info_only)
 			b.cs.reserve( b.cs.size() + len );
@@ -133,7 +134,7 @@ public:
 			auto it = ft.glyphs.find( ch );
 			auto& g = (it != ft.glyphs.end()) ? it->second : ft.miss;
 			
-			vec2i p1 = pos + g.off + g.size;
+			vec2fp p1 = pos + g.off + g.size;
 			if (std::max(p1.x, pos.x + g.xadv) > b.max_width)
 			{
 				newline();
@@ -155,20 +156,20 @@ public:
 		a_size.x = std::max( a_size.x, pos.x );
 		b.size = b.strict_size ? max : a_size;
 	}
-	vec2i predict_size( vec2i str_size, FontIndex i )
+	vec2i predict_size( vec2i str_size, FontIndex i ) override
 	{
-		return str_size * vec2i( gf(i).w_mode, gf(i).line_ht );
+		return (mxc_size(i) * str_size).int_ceil();
 	}
-	TextureReg get_white_rect(FontIndex font)
+	TextureReg get_white_rect(FontIndex font) override
 	{
 		return gf(font).white.tex;
 	}
-	bool is_mono   ( FontIndex i ) {return gf(i).is_mono_flag;}
-	int width_mode ( FontIndex i ) {return gf(i).w_mode;}
-	int line_height( FontIndex i ) {return gf(i).line_ht;}
-	vec2i mxc_size ( FontIndex i ) {return vec2i(gf(i).w_mode, gf(i).line_ht);}
+	bool   is_mono    ( FontIndex i ) override {return gf(i).is_mono_flag;}
+	float  width_mode ( FontIndex i ) override {return gf(i).w_mode;}
+	float  line_height( FontIndex i ) override {return gf(i).line_ht;}
+	vec2fp mxc_size   ( FontIndex i ) override {return {gf(i).w_mode, gf(i).line_ht};}
 	
-	TextRenderInfo::GlyphInfo get_glyph(char32_t cp, FontIndex font)
+	TextRenderInfo::GlyphInfo get_glyph(char32_t cp, FontIndex font) override
 	{
 		auto& ft = gf(font);
 		auto it = ft.glyphs.find(cp);
@@ -182,10 +183,12 @@ public:
 	{
 		return *fonts[static_cast<size_t>(i)];
 	}
-	std::shared_ptr<FontData> load_font(const char *fname, float pt)
+	static std::shared_ptr<FontData> load_font(const char *fname, float pt)
 	{
-		VLOGV("RenText::load_font() called: {}pt \"{}\"", pt, fname);
-		std::unique_ptr <vas::Font> font (vas::Font::load_auto (fname, pt));
+		const float ss_k = FONT_SUPERSAMPLE;
+		
+		VLOGV("RenText::load_font() called: {}px (scaled to {}px) \"{}\"", pt, pt * ss_k, fname);
+		std::unique_ptr <vas::Font> font (vas::Font::load_auto (fname, pt * ss_k));
 		if (!font) {
 			VLOGE("Can't load font");
 			return {};
@@ -195,7 +198,7 @@ public:
 		font->load_glyphs(32, 126);
 		
 		size_t alt_c = 0;
-		std::vector<std::vector<char32_t>> alts = {};//tui_char_get_alts();
+		std::vector<std::vector<char32_t>> alts = tui_char_get_alts();
 		std::vector<std::pair<char32_t, char32_t>> alt_add;
 		alt_add.reserve(alts.size());
 		
@@ -223,8 +226,8 @@ public:
 		
 		auto fd = std::make_shared<FontData>();
 		fd->is_mono_flag = inf.width != 0;
-		fd->w_mode = inf.mode;
-		fd->line_ht = inf.line;
+		fd->w_mode  = inf.mode /ss_k;
+		fd->line_ht = inf.line /ss_k;
 		
 		
 		// create packed alpha atlas
@@ -235,7 +238,7 @@ public:
 		abd.pk->bpp = 1;
 		abd.pk->min_size = 1;
 		abd.pk->max_size = RenderControl::get().get_max_tex();
-		abd.pk->space_size = 4;
+		abd.pk->space_size = 1;
 		
 		// white pixel image (used for rectangles)
 		uint8_t wpx[9];
@@ -244,6 +247,7 @@ public:
 		
 		// add glyphs
 		auto gs = font->get_glyphs();
+		
 		for (auto &g : gs)
 			abd.add_static( {g.cp, g.size.x, g.size.y}, g.image.data() );
 		
@@ -251,7 +255,7 @@ public:
 	TimeSpan is_t0 = TimeSpan::since_start();
 		auto is = abd.build();
 	TimeSpan is_t1 = TimeSpan::since_start() - is_t0;
-	VLOGD("Atlas built in {:6.3} seconds", is_t1.seconds());
+	VLOGD("Atlas built in {:.3f} seconds", is_t1.seconds());
 		
 		
 		// generate textures
@@ -263,8 +267,9 @@ public:
 			VLOGV("  {}: {}x{}, sprites: {}", i, img.info.w, img.info.h, img.info.sprs.size());
 			
 			fd->texs[i].reset( Texture::create_from({ img.info.w, img.info.h }, Texture::FMT_SINGLE,
-			                                        img.px.data(), Texture::FIL_NEAREST ) );
-#ifdef DEBUG_ATLAS
+			                                        img.px.data(), Texture::FIL_LINEAR ) );			
+			
+#if DEBUG_ATLAS
 			static int fi = 0; ++fi;
 			if (!i && fi == DEBUG_ATLAS+1)
 			{
@@ -291,10 +296,10 @@ public:
 			
 			auto tex = fd->texs[ spr->index ].get();
 			rg.tex = { tex, tex->to_texcoord({ {spr->x, spr->y}, {spr->w, spr->h}, true }) };
-			rg.size = {spr->w, spr->h};
+			rg.size = vec2fp(spr->w, spr->h) / ss_k;
 			
-			rg.off = fg.off;
-			rg.xadv = fg.xadv;
+			rg.off = vec2fp(fg.off) / ss_k;
+			rg.xadv = fg.xadv /ss_k;
 //			if (fd->is_mono_flag) rg.xadv = w_mode;
 			
 			if (fg.cp == (char32_t) -1) fd->miss = rg;
@@ -314,7 +319,7 @@ public:
 			
 			auto tex = fd->texs[ spr->index ].get();
 			rg.tex = { tex, tex->to_texcoord({ {spr->x, spr->y}, {spr->w, spr->h}, true }) };
-			rg.size = {spr->w, spr->h};
+			rg.size = vec2fp(spr->w, spr->h);
 			
 			rg.off = {};
 			rg.xadv = fd->w_mode;

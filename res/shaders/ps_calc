@@ -16,7 +16,7 @@ void main() {
 
 	// color
 	float alpha = data[0].w * data[3].w;
-	newd[2] = data[4] * clamp(alpha, 0, 1);
+	newd[2] = vec4(data[4].rgb, data[4].a * clamp(alpha, 0, 1));
 
 	// time -= passed
 	newd[0].w = data[0].w - passed;

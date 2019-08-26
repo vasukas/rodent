@@ -1,0 +1,21 @@
+// ==================
+#vert_pass
+#frag
+#version 330 core
+
+uniform sampler2D tex;
+uniform sampler3D noi;
+
+uniform float t;
+uniform vec2 offset;
+uniform vec2 scrk;
+
+in vec2 tc;
+out vec4 res;
+
+void main() {
+	vec2 nc = tc * scrk + offset;
+	res = texture(tex, tc) * vec4(texture(noi, vec3(nc, t)).rgb, 1);
+}
+
+#end

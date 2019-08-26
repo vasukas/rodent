@@ -71,7 +71,7 @@ void EC_RenderSimple::on_destroy()
 }
 void EC_RenderSimple::step()
 {
-	RenAAL::get().draw_inst(get_pos(), clr, model);	
+	RenAAL::get().draw_inst(get_pos(), clr, model);
 }
 
 
@@ -125,6 +125,11 @@ public:
 		}
 		
 		RenAAL::get().inst_end();
+		RenAAL::get().draw_grid = true;
+	}
+	~GamePresenter_Impl()
+	{
+		RenAAL::get().draw_grid = false;
 	}
 	void sync()
 	{

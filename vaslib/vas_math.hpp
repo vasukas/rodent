@@ -26,6 +26,7 @@ inline bool aequ(float  v, float  c, float eps)  {return std::fabs(v - c) < eps;
 inline bool aequ(double v, double c, double eps) {return std::fabs(v - c) < eps;} ///< Approximate comparison
 
 inline float clampf(float x, float min, float max) {return std::max(min, std::min(max, x));}
+template <typename T> T clamp(T x, T min, T max) {return std::max(min, std::min(max, x));}
 
 /// Integer square root
 uint isqrt(uint value);

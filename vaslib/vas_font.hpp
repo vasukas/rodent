@@ -45,6 +45,13 @@ public:
 		vec2i get_kern (char32_t next);
 	};
 	
+	enum RenderMode
+	{
+		RENMODE_ALPHA8, ///< Default, 8-bit alpha
+		RENMODE_MONO ///< 8-bit, 0 or 255
+	};
+	RenderMode renmode = RENMODE_ALPHA8;
+	
 	
 	
 	/// Automatically detects font format

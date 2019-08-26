@@ -5,7 +5,7 @@
 #version 330 core
 
 uniform mat4 proj;
-uniform vec4 pr;
+uniform vec4 obj_tr;
 uniform float scrmul;
 
 layout(location = 0) in vec4 data;
@@ -21,8 +21,8 @@ void main()
 	wpar = data.z * scrmul;
 	endk = data.w * scrmul;
 
-	mat2 rot = mat2(pr.z, pr.w, -pr.w, pr.z);
-	gl_Position = proj * vec4(rot * data.xy + pr.xy, 0, 1);
+	mat2 rot = mat2(obj_tr.z, obj_tr.w, -obj_tr.w, obj_tr.z);
+	gl_Position = proj * vec4(rot * data.xy + obj_tr.xy, 0, 1);
 }
 
 #end

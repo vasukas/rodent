@@ -8,6 +8,9 @@
 // just looks better
 #define PLAYER_MODEL_RADIUS_INCREASE 0.1
 
+// 
+#define WEAPON_LINE_RADIUS 0.03
+
 // will be changed to param later
 #define MODEL_FILENAME "res/models.svg"
 
@@ -226,7 +229,7 @@ void ResBase_Impl::init_ren()
 		
 		g->n_base = 20;
 		g->clr0 = FColor(1, 0, 0, 0.1);
-		g->clr1 = FColor(1.2, 0.2, 0.2, 1);
+		g->clr1 = FColor(1.2, 0.2, 0.2, 0.5);
 	}{
 		auto g = new Explosion;
 		ld_es[FE_HIT_SHIELD].reset(g);
@@ -341,8 +344,10 @@ void ResBase_Impl::init_ren()
 		vec2fp ctr = {};
 		size_t ctr_n = 0;
 		for (auto& s : m.ls) {
-			for (auto& p : s) ctr += p;
-			ctr_n += s.size();
+			size_t n = s.size();
+			if (n && s.front().equals( s.back(), 1e-10 )) --n;
+			for (size_t i=0; i<n; ++i) ctr += s[i];
+			ctr_n += n;
 		}
 		ctr /= ctr_n;
 		for (auto& s : m.ls)
@@ -415,14 +420,17 @@ void ResBase_Impl::init_ren()
 	
 	// offset weapons
 	
-	for (auto i : {
-	     MODEL_BAT,
-	     MODEL_HANDGUN,
-	     MODEL_BOLTER,
-	     MODEL_GRENADE,
-		 MODEL_MINIGUN,
-		 MODEL_ROCKET,
-		 MODEL_ELECTRO})
+	const int wpn_ixs[] = {
+	    MODEL_BAT,
+        MODEL_HANDGUN,
+        MODEL_BOLTER,
+        MODEL_GRENADE,
+	    MODEL_MINIGUN,
+	    MODEL_ROCKET,
+	    MODEL_ELECTRO
+	};
+	
+	for (auto i : wpn_ixs)
 	{
 		float xmin = std::numeric_limits<float>::max();
 		for (auto& s : mlns[i].ls) for (auto& p : s) xmin = std::min(xmin, p.x);
@@ -442,7 +450,11 @@ void ResBase_Impl::init_ren()
 		
 		ld_me[i][ME_DEATH].reset( new Death(mlns[i].ls) );
 		
-		for (auto& s : mlns[i].ls) ren.inst_add(s, false);
+		float width = 0.1f;
+		if (std::find( std::begin(wpn_ixs), std::end(wpn_ixs), i ) != std::end(wpn_ixs))
+			width = WEAPON_LINE_RADIUS;
+		
+		for (auto& s : mlns[i].ls) ren.inst_add(s, false, width);
 		if (i != ren.inst_add_end())
 			throw std::logic_error(std::to_string(i) + " - index mismatch (internal error)");
 	}

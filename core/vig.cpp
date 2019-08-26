@@ -99,15 +99,13 @@ static void vig_draw_text(vec2i pos, std::string_view str, uint32_t clr = vig_CL
 }
 static vec2i vig_text_size(const char *text, uint length) {
 	if (text) return RenImm::get().text_size({text, length});
-	vec2i v = RenText::get().mxc_size( FontIndex::Mono );
-	v.x *= length;
-	return v;
+	return (RenText::get().mxc_size( FontIndex::Mono ) * length).int_ceil();
 }
 static vec2i vig_text_size(std::string_view s) {
 	return vig_text_size(s.data(), s.size());
 }
 static int vig_text_height() {
-	return RenText::get().line_height( FontIndex::Mono );
+	return std::ceil( RenText::get().line_height( FontIndex::Mono ) );
 }
 static void vig_draw_image(vec2i pos, vec2i size, const TextureReg& tex, uint32_t clr = 0xffffffff) {
 	RenImm::get().draw_image({pos, size, true}, tex, clr);
@@ -335,7 +333,7 @@ struct MenuReg {
 	size_t uid;
 };
 static std::array<std::vector<MenuReg>, static_cast<size_t>(VigMenu::TOTAL_COUNT)> menu_fs;
-static size_t menu_cur = static_cast<size_t>(VigMenu::DebugGame);
+static size_t menu_cur = static_cast<size_t>(VigMenu::Default);
 static size_t menu_uid = 0;
 
 void vig_draw_menues() {
@@ -358,6 +356,10 @@ RAII_Guard vig_reg_menu(VigMenu type, std::function<void()> draw) {
 	return RAII_Guard([i, k = menu_uid]() {
 		for (auto& f : menu_fs[i]) if (f.uid == k) {f.f = {}; break;}
 	});
+}
+VigMenu vig_current_menu()
+{
+	return static_cast<VigMenu>(menu_cur);
 }
 
 

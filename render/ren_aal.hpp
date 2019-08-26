@@ -13,6 +13,8 @@ struct TimeSpan;
 class RenAAL
 {
 public:
+	bool draw_grid = false; ///< HACK
+	
 	static RenAAL& get(); ///< Returns singleton
 	
 	/// Draws line of specified solid color width and additional anti-aliased width
@@ -33,6 +35,7 @@ protected:
 	static RenAAL* init();
 	virtual ~RenAAL();
 	virtual void render() = 0;
+	virtual void render_grid(TimeSpan passed) = 0;
 };
 
 #endif // REN_AAL_HPP

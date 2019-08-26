@@ -188,8 +188,19 @@ bool Font_FT::load_glyph(char32_t cp) {
 	if (!gi) VLOGD("Font::load_glyph() doesn't exist: {:#x}", (uint32_t) cp);
 	
 	// try render (index zero corresponds to 'missing' glyph, which should be always available)
-	if (int error = FT_Load_Glyph(face, gi, FT_LOAD_RENDER)) {
+	if (int error = FT_Load_Glyph(face, gi, FT_LOAD_DEFAULT)) {
 		VLOGE("Font::load_glyph() FT_Load_Glyph() for {:#x}: {}", (uint32_t) cp, FTERR(error));
+		return false;
+	}
+	
+	FT_Render_Mode ft_renmode;
+	switch (renmode)
+	{
+		case RENMODE_ALPHA8: ft_renmode = FT_RENDER_MODE_NORMAL; break;
+		case RENMODE_MONO:   ft_renmode = FT_RENDER_MODE_MONO;   break;
+	}
+	if (int error = FT_Render_Glyph(face->glyph, ft_renmode)) {
+		VLOGE("Font::load_glyph() FT_Render_Glyph() for {:#x}: {}", (uint32_t) cp, FTERR(error));
 		return false;
 	}
 	
@@ -213,10 +224,25 @@ bool Font_FT::load_glyph(char32_t cp) {
 	g.image.resize(w*h);
 	
 	// copy image
-	for (int y=0; y<h; y++) {
-		uint8_t *dst = &g.image[y*w];
-		uint8_t *src = fg->bitmap.buffer + y * fg->bitmap.pitch;
-		memcpy(dst, src, w);
+	switch (renmode)
+	{
+	case RENMODE_ALPHA8:
+		for (int y=0; y<h; y++) {
+			uint8_t *dst = &g.image[y*w];
+			uint8_t *src = fg->bitmap.buffer + y * fg->bitmap.pitch;
+			memcpy(dst, src, w);
+		}
+		break;
+		
+	case RENMODE_MONO:
+		for (int y=0; y<h; y++) {
+			uint8_t *dst = &g.image[y*w];
+			uint8_t *src = fg->bitmap.buffer + y * fg->bitmap.pitch;
+			for (int x=0; x<w; x++) {
+				dst[x] = src[x/8] & (0x80 >> (x%8)) ? 255 : 0;
+			}
+		}
+		break;
 	}
 	
 	return true;
