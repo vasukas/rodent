@@ -3,8 +3,7 @@
 
 EWall::EWall(const std::vector<std::vector<vec2fp>>& walls):
     phy(this, b2BodyDef{}),
-    ren(this, MODEL_LEVEL_STATIC, FColor(0.75, 0.75, 0.75, 1)),
-    ren_back(this, MODEL_LEVEL_GRID, FColor(0, 0.8, 1, 0.3))
+    ren(this, MODEL_LEVEL_STATIC, FColor(0.75, 0.75, 0.75, 1))
 {
 	dbg_name = "static_walls";
 	
@@ -39,7 +38,7 @@ static b2BodyDef EPhyBox_bd(vec2fp at)
 }
 EPhyBox::EPhyBox(vec2fp at):
     phy(this, EPhyBox_bd(at)),
-    ren(this, MODEL_BOX_SMALL, FColor(1, 0.4, 0, 1)),
+    ren(this, MODEL_BOX_SMALL, FColor(1, 0.6, 0.2, 1)),
     hlc(this, 200)
 {
 	b2FixtureDef fd;

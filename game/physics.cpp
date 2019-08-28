@@ -279,8 +279,9 @@ public:
 		int pc = ct->GetManifold()->pointCount;
 		for (int i=0; i<pc; ++i) imp += res->normalImpulses[i];
 		
-		if (!ct->GetFixtureA()->IsSensor() && !ct->GetFixtureB()->IsSensor())
-			GamePresenter::get()->effect(FE_HIT, { Transform{avg_point(ct)}, imp / 20.f });
+		if (!ct->GetFixtureA()->IsSensor() && !ct->GetFixtureB()->IsSensor() && imp > 40.f) {
+			GamePresenter::get()->effect(FE_HIT, { Transform{avg_point(ct)}, imp / 60.f });
+		}
 		
 		report(ContactEvent::T_RESOLVE, ct, imp);
 	}
@@ -324,26 +325,31 @@ void PhysicsWorld::raycast_all(std::vector<RaycastResult>& es, b2Vec2 from, b2Ve
 	Cb cb(es, (from - to).Length());
 	world.RayCast(&cb, from, to);
 }
-std::optional<PhysicsWorld::RaycastResult> PhysicsWorld::raycast_nearest(b2Vec2 from, b2Vec2 to, bool ignore_sensors)
+std::optional<PhysicsWorld::RaycastResult> PhysicsWorld::raycast_nearest(b2Vec2 from, b2Vec2 to, std::function<bool(Entity*, void*)> check)
 {
 	if ((from - to).LengthSquared() < raycast_zero_dist) return {};
 	
 	class Cb : public b2RayCastCallback {
 	public:
 		RaycastResult res;
-		bool ign;
-		Cb(bool ign): ign(ign) {res.ent = nullptr;}
+		std::function<bool(Entity*, void*)> check;
+		
 		float32 ReportFixture(b2Fixture* fix, const b2Vec2& point, const b2Vec2&, float32 frac)
 		{
-			if (ign && fix->IsSensor()) return 1;
-			res.ent = getptr(fix->GetBody())->ent;
-			res.fix = fix;
+			auto ent = getptr(fix->GetBody())->ent;
+			if (check && !check(ent, fix->GetUserData())) return 1;
+			
+			res.ent = ent;
+			res.fix = fix->GetUserData();
 			res.distance = frac;
 			res.poi = point;
 			return frac;
 		}
 	};
-	Cb cb(ignore_sensors);
+	Cb cb;
+	cb.check = std::move(check);
+	cb.res.ent = nullptr;
+	
 	world.RayCast(&cb, from, to);
 	
 	if (cb.res.ent) {
@@ -405,6 +411,32 @@ void PhysicsWorld::circle_cast_nearest(std::vector<RaycastResult>& es, b2Vec2 ct
 		}
 		if (ok) es.push_back({ {f.ent, f.fix, dist}, p });
 	}
+}
+std::optional<PhysicsWorld::PointResult> PhysicsWorld::point_cast(b2Vec2 ctr, float radius)
+{
+	class Cb : public b2QueryCallback {
+	public:
+		std::optional<PointResult> res;
+		b2Vec2 ctr;
+		
+		Cb(b2Vec2 ctr): ctr(ctr) {}
+		bool ReportFixture(b2Fixture* fix)
+		{
+			if (fix->IsSensor()) return true;
+			if (! fix->TestPoint(ctr)) return true;
+			
+			res.emplace();
+			res->ent = getptr(fix->GetBody())->ent;
+			res->fix = fix->GetUserData();
+			return false;
+		}
+	};
+	Cb cb(ctr);
+	b2AABB box;
+	box.lowerBound = ctr - b2Vec2(radius, radius);
+	box.upperBound = ctr + b2Vec2(radius, radius);
+	world.QueryAABB(&cb, box);
+	return cb.res;
 }
 void PhysicsWorld::post_step(std::function<void()> f)
 {

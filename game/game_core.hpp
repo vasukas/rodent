@@ -56,6 +56,8 @@ public:
 	/// Returns entity with such ID or nullptr
 	virtual Entity* get_ent(EntityIndex uid) const noexcept = 0;
 	
+	/// Returns entity if it exists, or returns nullptr and sets uid to 0
+	virtual Entity* valid_ent(EntityIndex& uid) const noexcept = 0;
 	
 	
 protected:

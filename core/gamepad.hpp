@@ -27,6 +27,10 @@ public:
 		B_SHLD_LEFT,
 		B_SHLD_RIGHT,
 		
+		// trigger press
+		B_TRIG_LEFT,
+		B_TRIG_RIGHT,
+		
 		/// Do not use
 		TOTAL_BUTTONS_INTERNAL
 	};

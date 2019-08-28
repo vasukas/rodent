@@ -69,10 +69,21 @@ public:
 		step_comp(ECompType::StepLogic);
 		step_comp(ECompType::StepPostUtil);
 		
-		phy->step();
+		try {
+			phy->step();
+		}
+		catch (std::exception& e) {
+			THROW_FMTSTR("Failed to step physics");
+		}
 		
-		if (auto gp = GamePresenter::get())
-			gp->sync();
+		if (auto gp = GamePresenter::get()) {
+			try {
+				gp->sync();
+			}
+			catch (std::exception& e) {
+				THROW_FMTSTR("Failed to sync presenter");
+			}
+		}
 		
 		// finish
 		
@@ -83,6 +94,12 @@ public:
 	{
 		--i;
 		return i < ents.size() ? ents[i].get() : nullptr;
+	}
+	Entity* valid_ent( EntityIndex& i ) const noexcept
+	{
+		auto ent = get_ent(i);
+		if (!ent) i = 0;
+		return ent;
 	}
 	EntityIndex create_ent(Entity* ent) noexcept
 	{

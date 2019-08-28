@@ -16,7 +16,7 @@ public:
 		char *m = SDL_GameControllerMapping(gc);
 		if (!m) VLOGI("SDL_GameControllerMapping failed - {}", SDL_GetError());
 		else {
-			VLOGI("Mapping: {}", m);
+			VLOGD("Mapping: {}", m);
 			SDL_free(m);
 		}
 	}
@@ -38,6 +38,9 @@ public:
 #undef X
 		case B_SHLD_LEFT:  i = SDL_CONTROLLER_BUTTON_LEFTSHOULDER; break;
 		case B_SHLD_RIGHT: i = SDL_CONTROLLER_BUTTON_RIGHTSHOULDER; break;
+			
+		case B_TRIG_LEFT:  return trig_left()  > 0.1;
+		case B_TRIG_RIGHT: return trig_right() > 0.1;
 			
 		case B_NONE:
 		case TOTAL_BUTTONS_INTERNAL:

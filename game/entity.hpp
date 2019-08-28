@@ -90,7 +90,7 @@ public:
 	virtual EC_Health*    get_hlc() {return nullptr;}
 	virtual EC_Equipment* get_eqp() {return nullptr;}
 	
-	virtual size_t get_team() const {return 0;}
+	virtual size_t get_team() const {return TEAM_ENVIRON;}
 	
 	
 	/// Deletes entity immediatly or at the end of the step. Index garanteed to be not used in next step

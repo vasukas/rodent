@@ -152,12 +152,15 @@ struct StdProjectile : EComp
 		
 		float imp = 0.f; ///< Physical impulse applied to target
 		bool trail = false; ///< If true, leaves particle trail
+		
+		float size = GameConst::hsz_proj; ///< Projectile radius
 	};
 	Params pars;
+	EntityIndex src;
 	
 	
-	StdProjectile(Entity* ent, const Params& pars):
-	    EComp(ent), pars(pars)
+	StdProjectile(Entity* ent, const Params& pars, EntityIndex src):
+	    EComp(ent), pars(pars), src(src)
 	{
 		reg(ECompType::StepLogic);
 	}
@@ -167,16 +170,30 @@ struct StdProjectile : EComp
 		if (pars.trail)
 			ent->get_ren()->parts(FE_SPEED_DUST, {Transform({-self.radius, 0})});
 		
-		const b2Vec2 vel = conv(self.get_vel().pos);
-		const vec2fp ray0 = self.pos.pos, rayd = self.get_vel().pos * GameCore::time_mul;
+		GameCore::get().valid_ent(src);
 		
-		auto hit = GameCore::get().get_phy().raycast_nearest(conv(ray0), conv(ray0 + rayd));
-		if (!hit) return;
+		const b2Vec2 vel = conv(self.get_vel().pos);
+		const vec2fp ray0 = self.pos.pos,
+		             rayd = self.get_vel().pos * GameCore::time_mul;
+		
+		vec2fp roff = rayd;
+		roff.rot90cw();
+		roff.norm_to(pars.size);
+		
+		std::optional<PhysicsWorld::RaycastResult> hit;
+		auto check = [this](Entity* e, auto){ return e->index != src; };
+		
+		if (!hit) hit = GameCore::get().get_phy().raycast_nearest(conv(ray0 + roff), conv(ray0 + rayd + roff), check);
+		if (!hit) hit = GameCore::get().get_phy().raycast_nearest(conv(ray0 - roff), conv(ray0 + rayd - roff), check);
+		if (!hit) {
+			hit = GameCore::get().get_phy().raycast_nearest(conv(ray0 + rayd), conv(ray0), check);
+			if (!hit) return;
+			hit->distance = rayd.len() - hit->distance;
+		}
 		
 		auto apply = [&](Entity* tar, float k, b2Vec2 at, b2Vec2 v)
 		{
-			if (tar->get_team() == ent->get_team()) return;
-			if (auto hc = tar->get_hlc()) {
+			if (auto hc = tar->get_hlc(); hc && tar->get_team() != ent->get_team()) {
 				DamageQuant q = pars.dq;
 				q.amount *= k;
 				hc->apply(q);
@@ -263,12 +280,12 @@ public:
 	size_t team;
 	
 	
-	ProjectileEntity(vec2fp pos, vec2fp vel, size_t team, const StdProjectile::Params& pars, ModelType model, FColor clr)
+	ProjectileEntity(vec2fp pos, vec2fp vel, Entity* src, const StdProjectile::Params& pars, ModelType model, FColor clr)
 	    :
 	    phy(this, Transform{pos, vel.angle()}, Transform{vel}),
 	    ren(this, model, clr),
-	    proj(this, pars),
-	    team(team)
+	    proj(this, pars, src? src->index : 0),
+	    team(src? src->get_team() : TEAM_FREEWPN)
 	{}
 	ECompPhysics& get_phy() override {return phy;}
 	ECompRender* get_ren()  override {return &ren;}
@@ -287,7 +304,7 @@ public:
 	WpnMinigun():
 	    ammo(1, 450, 100)
 	{
-		pars.dq.amount = 20.f;
+		pars.dq.amount = 8.f;
 		pars.imp = 5.f;
 		
 		heat.shots_per_second = 30;
@@ -304,7 +321,7 @@ public:
 		v *= 18.f;
 		v.rotate( GameCore::get().get_random().range(-1, 1) * deg_to_rad(10) );
 		
-		new ProjectileEntity(p, v, ent->get_team(), pars, MODEL_MINIGUN_PROJ, FColor(1, 1, 0.2, 1.5));
+		new ProjectileEntity(p, v, ent, pars, MODEL_MINIGUN_PROJ, FColor(1, 1, 0.2, 1.5));
 		return true;
 	}
 	ModAmmo* get_ammo() override {return &ammo;}
@@ -342,7 +359,7 @@ public:
 		
 		v *= 15.f;
 		
-		new ProjectileEntity(p, v, ent->get_team(), pars, MODEL_ROCKET_PROJ, FColor(0.2, 1, 0.6, 1.5));
+		new ProjectileEntity(p, v, ent, pars, MODEL_ROCKET_PROJ, FColor(0.2, 1, 0.6, 1.5));
 		return true;
 	}
 	ModRof* get_rof() override {return &rof;}

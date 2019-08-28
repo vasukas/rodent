@@ -52,6 +52,7 @@ public:
 		A_ACCEL,
 		A_SHOOT,
 		A_CAM_FOLLOW,
+		A_LASER_DESIG,
 		
 		A_WPN_PREV,
 		A_WPN_NEXT,
@@ -73,6 +74,8 @@ public:
 	struct State
 	{
 		std::array<bool, ACTION_TOTAL_COUNT_INTERNAL> is = {}; ///< Is enabled
+		std::vector<Action> acts; ///< Oneshot actions triggered
+		
 		vec2fp mov = {}; ///< Movement delta [-1; 1]
 		vec2fp tar_pos = {}; ///< Target position (world)
 	};
@@ -85,9 +88,7 @@ public:
 	
 	void on_event(const SDL_Event& ev);
 	void update(); ///< Must be called after getting all events
-	
 	const State& get_state() const {return state;} ///< Last updated state
-	std::vector<Action> get_acts() const; ///< Returns oneshot actions triggered
 	
 	[[nodiscard]] auto lock() {return std::unique_lock(mutex);} ///< Not used internally
 	

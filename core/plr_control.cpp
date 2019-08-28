@@ -20,24 +20,31 @@ PlayerController::PlayerController(std::unique_ptr<Gamepad> gpad):
 		b.name = "Shoot";
 		b.type = BT_HELD;
 		b.mou = SDL_BUTTON_LEFT;
+		b.but = Gamepad::B_SHLD_LEFT;
 	}{
 		Bind& b = binds[A_CAM_FOLLOW];
 		b.name = "Camera follow";
 		b.descr = "Enables camera tracking when held";
 		b.type = BT_HELD;
 		b.key = SDL_SCANCODE_LCTRL;
-		b.but = Gamepad::B_SHLD_LEFT;
+	}{
+		Bind& b = binds[A_LASER_DESIG];
+		b.name = "Laser";
+		b.descr = "Toggles laser designator";
+		b.type = BT_ONESHOT;
+		b.key = SDL_SCANCODE_R;
+		b.but = Gamepad::B_B;
 	}{
 		Bind& b = binds[A_WPN_PREV];
 		b.name = "Previous weapon";
-		b.type = BT_HELD;
+		b.type = BT_ONESHOT;
 		b.key = SDL_SCANCODE_LEFTBRACKET;
 		b.mou = MOUSE_WHEELDOWN;
 		b.but = Gamepad::B_LEFT;
 	}{
 		Bind& b = binds[A_WPN_NEXT];
 		b.name = "Next weapon";
-		b.type = BT_HELD;
+		b.type = BT_ONESHOT;
 		b.key = SDL_SCANCODE_RIGHTBRACKET;
 		b.mou = MOUSE_WHEELUP;
 		b.but = Gamepad::B_RIGHT;
@@ -77,8 +84,10 @@ void PlayerController::on_event(const SDL_Event& ev)
 {
 	if		(ev.type == SDL_KEYDOWN)
 	{
-		if (ev.key.repeat) return;
 		auto& ks = ev.key.keysym;
+		if (ks.scancode == SDL_SCANCODE_UNKNOWN) return;
+		if (ev.key.repeat) return;
+		
 		for (auto& b : binds)
 		{
 			if (b.key == ks.scancode) {
@@ -90,10 +99,12 @@ void PlayerController::on_event(const SDL_Event& ev)
 	else if (ev.type == SDL_KEYUP)
 	{
 		auto& ks = ev.key.keysym;
+		if (ks.scancode == SDL_SCANCODE_UNKNOWN) return;
+		
 		for (auto& b : binds)
 			if (b.key == ks.scancode) {
-				if		(b.st_key == K_JUST) b.st_key = K_ONCE;
-				else if (b.st_key != K_ONCE) b.st_key = K_OFF;
+				if (b.st_key == K_JUST) b.st_key = K_ONCE;
+				else b.st_key = K_OFF;
 				break;
 			}
 	}
@@ -109,8 +120,8 @@ void PlayerController::on_event(const SDL_Event& ev)
 	{
 		for (auto& b : binds)
 			if (b.mou == ev.button.button) {
-				if		(b.st_mou == K_JUST) b.st_mou = K_ONCE;
-				else if (b.st_mou != K_ONCE) b.st_mou = K_OFF;
+				if (b.st_mou == K_JUST) b.st_mou = K_ONCE;
+				else b.st_mou = K_OFF;
 				break;
 			}
 	}
@@ -130,8 +141,6 @@ void PlayerController::update()
 		for (auto& b : binds)
 			upd_st(b, gpad->get_state(b.but));
 		
-		upd_st(binds[A_SHOOT], gpad->trig_left() > 0.1);
-		
 		p_mov = gpad->get_left();
 		p_tar = gpad->get_right() * gpad_aim_dist;
 	}
@@ -148,26 +157,23 @@ void PlayerController::update()
 		p_tar = RenderControl::get().get_world_camera()->mouse_cast({mx, my});
 	}
 	
+	state.acts.clear();
 	for (size_t i=0; i<ACTION_TOTAL_COUNT_INTERNAL; ++i)
+	{
 		state.is[i] = is_enabled(i);
+		
+		if (state.is[i] && binds[i].type == BT_ONESHOT)
+			state.acts.push_back( static_cast<Action>(i) );
+	}
 	
 	for (auto& b : binds)
 	{
-		if (b.st_key == K_ONCE) b.st_key = K_OFF;
-		if (b.st_mou == K_ONCE) b.st_mou = K_OFF;
+		if		(b.st_key == K_ONCE) b.st_key = K_OFF;
+		else if (b.st_key == K_JUST) b.st_key = K_HELD;
+		
+		if		(b.st_mou == K_ONCE) b.st_mou = K_OFF;
+		else if (b.st_mou == K_JUST) b.st_mou = K_HELD;
 	}
-}
-std::vector<PlayerController::Action> PlayerController::get_acts() const
-{
-	std::vector<Action> as;
-	as.reserve(16);
-	
-	for (size_t i=0; i<ACTION_TOTAL_COUNT_INTERNAL; ++i)
-	{
-		if (binds[i].type == BT_ONESHOT && state.is[i])
-			as.push_back( static_cast<Action>(i) );
-	}
-	return as;
 }
 bool PlayerController::is_enabled(size_t i) const
 {

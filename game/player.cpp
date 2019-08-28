@@ -20,8 +20,12 @@ struct PlayerRender : ECompRender
 	};
 	std::array<Attach, ATT_TOTAL_COUNT> atts;
 	
-	bool show_ray = true;
+	bool show_ray = false;
 	vec2fp tar_ray = {};
+	std::optional<std::pair<vec2fp, vec2fp>> tar_next;
+	float tar_next_t;
+	
+	float angle = 0.f; // override
 	
 	
 	
@@ -32,11 +36,12 @@ struct PlayerRender : ECompRender
 	}
 	void step() override
 	{
-		RenAAL::get().draw_inst(get_pos(), FColor(0.4, 0.9, 1, 1), MODEL_PC_RAT);
+		const Transform fixed{get_pos().pos, angle};
+		RenAAL::get().draw_inst(fixed, FColor(0.4, 0.9, 1, 1), MODEL_PC_RAT);
 		
 		for (auto& a : atts) {
 			if (a.model != MODEL_NONE)
-				RenAAL::get().draw_inst(get_pos().get_combined(a.at), a.clr, a.model);
+				RenAAL::get().draw_inst(fixed.get_combined(a.at), a.clr, a.model);
 		}
 		
 		if (show_ray)
@@ -46,7 +51,19 @@ struct PlayerRender : ECompRender
 			vec2fp dt = tar_ray - src;
 			dt.norm_to( ent->get_phy().get_radius() );
 			
-			RenAAL::get().draw_line(src + dt, tar_ray, FColor(1, 0, 0, 1).to_px(), 0.07, 1.5f);
+			RenAAL::get().draw_line(src + dt, tar_ray, FColor(1, 0, 0, 0.6).to_px(), 0.07, 1.5f);
+			
+			if (tar_next) {
+				float d = GamePresenter::get()->get_passed().seconds() / GameCore::get().step_len.seconds();
+				tar_next_t += d;
+				if (tar_next_t < 1) {
+					tar_ray = lerp(tar_next->first, tar_next->second, tar_next_t);
+				}
+				else {
+					tar_ray = tar_next->second;
+					tar_next.reset();
+				}
+			}
 		}
 	}
 	void proc(const PresCommand& c) override
@@ -59,6 +76,21 @@ struct PlayerRender : ECompRender
 			a.clr = c.clr;
 		}
 		else THROW_FMTSTR("PlayerRender::proc() not implemented ({})", ent->dbg_id());
+	}
+	void set_ray_tar(vec2fp new_tar)
+	{
+		auto cur = get_pos().pos;
+		float ad = (new_tar - cur).angle() - (tar_ray - cur).angle();
+		
+		if (std::fabs(wrap_angle(ad)) < deg_to_rad(25))
+		{
+			tar_next = {tar_ray, new_tar};
+			tar_next_t = 0;
+		}
+		else {
+			tar_next.reset();
+			tar_ray = new_tar;
+		}
 	}
 };
 
@@ -73,9 +105,10 @@ struct PlayerLogic : EComp
 	const float push_imp_max = 120.f;
 	
 	const float spd_norm = 8; // movement speed
-	const float spd_accel = 14;
+	const float spd_accel = 17; // 14
 	
-	const float min_tar_dist = 0.5; // minimal target distance
+	const float min_tar_dist = 1.2; // minimal target distance
+	vec2fp prev_tar;
 	
 	
 	
@@ -145,13 +178,15 @@ public:
 		eqp.set_wpn(0);
 		
 		mov.damp_lin = 2.f;
+		
+		log.prev_tar = phy.get_pos() + vec2fp(1, 0);
 	}
 	
 	ECompPhysics& get_phy() override {return  phy;}
 	ECompRender*  get_ren() override {return &ren;}
 	EC_Health*    get_hlc() override {return &hlc;}
 	EC_Equipment* get_eqp() override {return &eqp;}
-	size_t get_team() const override {return 1;}
+	size_t get_team() const override {return TEAM_PLAYER;}
 };
 Entity* create_player(vec2fp pos, std::shared_ptr<PlayerController> ctr)
 {
@@ -173,7 +208,7 @@ void PlayerLogic::step()
 	bool accel    = cst.is[PlayerController::A_ACCEL];
 	bool shooting = cst.is[PlayerController::A_SHOOT];
 	
-	for (auto& a : ctr->get_acts())
+	for (auto& a : cst.acts)
 	{
 		if		(a == PlayerController::A_WPN_PREV)
 		{
@@ -189,11 +224,13 @@ void PlayerLogic::step()
 		}
 		else if (a == PlayerController::A_WPN_1) eqp.set_wpn(0);
 		else if (a == PlayerController::A_WPN_2) eqp.set_wpn(1);
+		else if (a == PlayerController::A_LASER_DESIG)
+			self->ren.show_ray = !self->ren.show_ray;
 	}
 	
 	auto& mov = self->mov;
 	vec2fp mv = cst.mov;
-	mv *= accel ? spd_accel : spd_norm;
+	if (mv.len2() > 0.01) mv.norm_to(accel ? spd_accel : spd_norm);
 	
 	mov.dec_inert = TimeSpan::seconds(accel ? 2 : 1);
 	mov.set_app_vel(mv);
@@ -202,18 +239,13 @@ void PlayerLogic::step()
 	auto tar = cst.tar_pos;
 	
 	if (spos.dist(tar) < min_tar_dist)
-		tar = spos + self->phy.get_norm_dir();
-	
-	float ta = (tar - spos).angle();
-	float ca = self->phy.body->GetAngle();
-	if (std::fabs(wrap_angle(ta - ca)) > 0.1)
-	{
-		float a = std::remainder(ta - ca, M_PI*2) / M_PI / GameCore::time_mul;
-		self->phy.body->ApplyAngularImpulse(a, true);
-	}
+		tar = prev_tar;
+	prev_tar = tar;
 	
 	if (shooting)
 		eqp.shoot(tar);
+	
+	self->ren.angle = (tar - spos).angle();
 	
 	if (self->ren.show_ray)
 	{
@@ -225,6 +257,6 @@ void PlayerLogic::step()
 		else
 			tar = spos + tar * 1.5f;
 		
-		self->ren.tar_ray = tar;
+		self->ren.set_ray_tar(tar);
 	}
 }

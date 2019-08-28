@@ -11,7 +11,6 @@ class EWall final : public Entity
 public:
 	EC_Physics phy;
 	EC_RenderSimple ren;
-	EC_RenderSimple ren_back;
 	
 	EWall(const std::vector<std::vector<vec2fp>>& walls);
 	

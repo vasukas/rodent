@@ -103,6 +103,10 @@ public:
 	struct RaycastResult : CastResult {
 		b2Vec2 poi; ///< Point of impact
 	};
+	struct PointResult {
+		Entity* ent;
+		void* fix; ///< Fixture userdata
+	};
 	
 	GameCore& core;
 	b2World world;
@@ -118,13 +122,16 @@ public:
 	void raycast_all(std::vector<RaycastResult>& es, b2Vec2 from, b2Vec2 to);
 	
 	/// Returns nearest object hit
-	std::optional<RaycastResult> raycast_nearest(b2Vec2 from, b2Vec2 to, bool ignore_sensors = true);
+	std::optional<RaycastResult> raycast_nearest(b2Vec2 from, b2Vec2 to, std::function<bool(Entity*, void*)> check = {});
 	
 	/// Appends result - all objects inside the circle
 	void circle_cast_all(std::vector<CastResult>& es, b2Vec2 ctr, float radius);
 	
 	/// Appends result - objects inside the circle which are nearest to center
 	void circle_cast_nearest(std::vector<RaycastResult>& es, b2Vec2 ctr, float radius);
+	
+	/// Returns non-sensor object in which point lays
+	std::optional<PointResult> point_cast(b2Vec2 ctr, float radius);
 	
 	/// Executes function after step (or immediatly, if not inside one)
 	void post_step(std::function<void()> f);
