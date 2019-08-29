@@ -1,5 +1,5 @@
 #include <unordered_map>
-#include "../settings.hpp"
+#include "core/settings.hpp"
 #include "vaslib/vas_log.hpp"
 #include "vaslib/vas_atlas_packer.hpp"
 #include "vaslib/vas_font.hpp"
@@ -9,7 +9,6 @@
 
 static std::vector<std::vector<char32_t>> tui_char_get_alts() {return {};}
 
-#define FONT_SUPERSAMPLE 2 // upscales texture
 #define DEBUG_ATLAS 0 // terminates after building atlas
 
 #if DEBUG_ATLAS
@@ -185,7 +184,7 @@ public:
 	}
 	static std::shared_ptr<FontData> load_font(const char *fname, float pt)
 	{
-		const float ss_k = FONT_SUPERSAMPLE;
+		const float ss_k = AppSettings::get().font_supersample;
 		
 		VLOGV("RenText::load_font() called: {}px (scaled to {}px) \"{}\"", pt, pt * ss_k, fname);
 		std::unique_ptr <vas::Font> font (vas::Font::load_auto (fname, pt * ss_k));
@@ -267,8 +266,7 @@ public:
 			VLOGV("  {}: {}x{}, sprites: {}", i, img.info.w, img.info.h, img.info.sprs.size());
 			
 			fd->texs[i].reset( Texture::create_from({ img.info.w, img.info.h }, Texture::FMT_SINGLE,
-			                                        img.px.data(), Texture::FIL_LINEAR ) );			
-			
+			                                        img.px.data(), Texture::FIL_LINEAR ) );
 #if DEBUG_ATLAS
 			static int fi = 0; ++fi;
 			if (!i && fi == DEBUG_ATLAS+1)
@@ -343,3 +341,4 @@ RenText& RenText::get() {
 }
 RenText* RenText::init() {return rni = new RenText_Impl;}
 RenText::~RenText() {rni = nullptr;}
+

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.9)
 
 project(rodent VERSION 0.0.1
                LANGUAGES CXX)
@@ -11,6 +11,10 @@ option(USE_RELEASE_PATHS "Use system-defined paths for user data instead of curr
 
 if (USE_RELEASE_PATHS)
 	add_compile_definitions(USE_RELEASE_PATHS=1)
+endif()
+
+if (NOT DEFINED OpenGL_GL_PREFERENCE)
+	set(OpenGL_GL_PREFERENCE "GLVND")
 endif()
 
 
@@ -76,7 +80,6 @@ function(add_src DIR)
 	target_sources(${TARGET} PRIVATE ${SRC})
 endfunction()
 
-add_src(.)
 add_src(client)
 add_src(core)
 add_src(game)

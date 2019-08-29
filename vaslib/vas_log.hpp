@@ -63,6 +63,13 @@ struct RAII_Guard;
 #define FMT_FORMAT( FORMAT, ... ) \
 	fmt::format(FREAK_MACRO_EXPAND( FMT_STRING(FORMAT) ), ##__VA_ARGS__)
 
+#define LOG_OR_THROW( DO_THROW, FORMAT, ... ) \
+	(log_fmt_buffer.clear(), \
+     fmt::format_to(log_fmt_buffer, FREAK_MACRO_EXPAND( FMT_STRING(FORMAT) ), ##__VA_ARGS__), \
+	 ((DO_THROW)? \
+      throw std::runtime_error( std::string(log_fmt_buffer.data(), log_fmt_buffer.size())) : \
+	  log_write_str(LogLevel::Error, log_fmt_buffer.data(), log_fmt_buffer.size()) ))
+
 
 
 /// Initiates breakpoint (uses SIGTRAP on UNIX)

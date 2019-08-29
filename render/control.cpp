@@ -1,6 +1,6 @@
 #include <unordered_map>
 #include <SDL2/SDL.h>
-#include "../settings.hpp"
+#include "core/settings.hpp"
 #include "vaslib/vas_log.hpp"
 #include "camera.hpp"
 #include "control.hpp"
@@ -454,20 +454,6 @@ public:
 			if (!rct) return;
 			static_cast<RenderControl_Impl*>(rct)->cb_resize[i] = {};
 		});
-	}
-	std::string get_gpu_state()
-	{
-		if (SDL_GL_ExtensionSupported("GL_NVX_gpu_memory_info"))
-		{
-#define GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX 0x9048
-#define GL_GPU_MEM_INFO_CURRENT_AVAILABLE_MEM_NVX 0x9049
-			
-			GLint total = 0, avail = 0;
-			glGetIntegerv( GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX, &total );
-			glGetIntegerv( GL_GPU_MEM_INFO_CURRENT_AVAILABLE_MEM_NVX, &avail );
-			return FMT_FORMAT("memory: {:.3f} MB / {:.3f} MB", (total - avail) / 1024.f, total / 1024.f);
-		}
-		return {};
 	}
 };
 bool RenderControl::init()

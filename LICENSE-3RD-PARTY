@@ -1,4 +1,9 @@
-External dependecies (C/C++ libraries, normally linked dynamically):
+External dependecies:
+
+* Box2D
+  www.box2d.org
+  https://github.com/erincatto/Box2D
+  zlib license
 
 * fmt
   https://fmt.dev/
@@ -21,15 +26,7 @@ External dependecies (C/C++ libraries, normally linked dynamically):
   https://www.libsdl.org/
   zlib license
 
-
-
-Static dependecies (linked into app):
-
-* Box2D
-  www.box2d.org
-  https://github.com/erincatto/Box2D
-  zlib license
-
 * stb_image, stb_image_write
   https://github.com/nothings/stb
   Public Domain
+

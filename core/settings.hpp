@@ -17,6 +17,8 @@ struct AppSettings
 	
 	float font_pt = 16;
 	float font_dbg_pt = 16;
+
+	int font_supersample = 2;
 	
 	
 	

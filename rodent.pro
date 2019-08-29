@@ -37,7 +37,10 @@ SOURCES += \
 	client/presenter.cpp \
 	client/resbase.cpp \
 	core/gamepad.cpp \
+	core/main.cpp \
+	core/main_loop.cpp \
 	core/plr_control.cpp \
+	core/settings.cpp \
 	core/vig.cpp \
 	external/Box2D/Collision/Shapes/b2ChainShape.cpp \
 	external/Box2D/Collision/Shapes/b2CircleShape.cpp \
@@ -95,8 +98,6 @@ SOURCES += \
 	game/player.cpp \
 	game/s_objs.cpp \
 	game/weapon.cpp \
-	main.cpp \
-	main_loop.cpp \
 	render/camera.cpp \
 	render/control.cpp \
 	render/gl_utils.cpp \
@@ -107,7 +108,6 @@ SOURCES += \
 	render/ren_text.cpp \
 	render/shader.cpp \
 	render/texture.cpp \
-	settings.cpp \
 	utils/block_cfg.cpp \
 	utils/color_manip.cpp \
 	utils/noise.cpp \
@@ -127,7 +127,9 @@ HEADERS += \
 	client/presenter.hpp \
 	client/resbase.hpp \
 	core/gamepad.hpp \
+	core/main_loop.hpp \
 	core/plr_control.hpp \
+	core/settings.hpp \
 	core/vig.hpp \
 	external/Box2D/Box2D.h \
 	external/Box2D/Collision/Shapes/b2ChainShape.h \
@@ -185,7 +187,6 @@ HEADERS += \
 	game/player.hpp \
 	game/s_objs.hpp \
 	game/weapon.hpp \
-	main_loop.hpp \
 	render/camera.hpp \
 	render/control.hpp \
 	render/gl_utils.hpp \
@@ -196,7 +197,6 @@ HEADERS += \
 	render/ren_text.hpp \
 	render/shader.hpp \
 	render/texture.hpp \
-	settings.hpp \
 	utils/block_cfg.hpp \
 	utils/color_manip.hpp \
 	utils/ev_signal.hpp \

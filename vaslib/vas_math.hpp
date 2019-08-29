@@ -45,9 +45,10 @@ lerp_angle (T a, T b, U t) {return a + t * std::remainder(b - a, M_PI*2);}
 inline float  lerp (float  a, float  b, float  t) {return a * (1.f - t) + b * t;}
 inline double lerp (double a, double b, double t) {return a * (1.0 - t) + b * t;}
 
+float sine_ft_norm(float x); ///< Table-lookup sine, x is [0, 1] representing [0, 2pi]
 vec2fp cossin_ft(float rad); ///< Table-lookup cosine (x) + sine (y)
 
-inline float deg_to_rad(float x) {return x / 180.f * M_PI;}
+constexpr float deg_to_rad(float x) {return x / 180.f * M_PI;}
 
 template <typename T>
 typename std::enable_if<std::is_floating_point<T>::value, T>::type fracpart(T x) {return std::fmod(x, 1);}

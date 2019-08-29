@@ -95,6 +95,9 @@ public:
 	ML_Game() = default;
 	void init()
 	{
+//		LevelTerrain::gen_test().save_image("test.png");
+//		exit(666);
+		
 		Camera* cam = RenderControl::get().get_world_camera();
 		Camera::Frame cf = cam->get_state();
 		cf.mag = 18.f;
@@ -217,11 +220,7 @@ public:
 	
 	Entity* get_plr()
 	{
-		if (pc_ent) {
-			if (auto e = core->get_ent(pc_ent)) return e;
-			pc_ent = 0;
-		}
-		return nullptr;
+		return core? core->valid_ent(pc_ent) : nullptr;
 	}
 	void init_game()
 	{	
@@ -288,20 +287,25 @@ public:
 
 
 MainLoop* MainLoop::current;
-void MainLoop::init( InitWhich which )
+
+MainLoop* MainLoop::create(InitWhich which)
 {
 	if (which == INIT_DEFAULT)
 		which = INIT_GAME;
 	
+	MainLoop* prev = current;
 	try {
 		if		(which == INIT_RENTEST) current = new ML_Rentest;
 		else if (which == INIT_GAME)    current = new ML_Game;
 	}
 	catch (std::exception& e) {
-		VLOGE("MainLoop::init() failed: {}", e.what());
+		THROW_FMTSTR("MainLoop::create() failed: {}", e.what());
 	}
+	
+	current->ml_prev = prev;
+	return current;
 }
 MainLoop::~MainLoop() {
-	if (current == this) current = nullptr;
+	if (current == this) current = ml_prev;
 }
 bool MainLoop::parse_arg(ArgvParse&) {return false;}

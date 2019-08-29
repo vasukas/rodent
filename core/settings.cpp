@@ -17,7 +17,7 @@ bool AppSettings::load()
 	std::string s;
 	BC_Cmd* c;
 	
-	c = &cs.emplace_back( true, true, "wnd_size", [&](){ wnd_size = {i, i2}; return true; });
+	c = &cs.emplace_back( true, true, "wnd_size", [&](){ wnd_size = {i, i2}; return i > 0 && i2 > 0; });
 	c->val(i);
 	c->val(i2);
 	
@@ -38,6 +38,9 @@ bool AppSettings::load()
 	
 	FONT();
 	FONT(dbg_);
+	
+	c = &cs.emplace_back( true, true, "font_supersample", [&](){ font_supersample = i; return i > 1; });
+	c->val(i);
 	
 	return bc_parsefile( cfg_path.c_str(), std::move(cs), 2, BC_Block::F_IGNORE_UNKNOWN );
 }

@@ -4,38 +4,50 @@
 
 
 
-vec2fp cossin_ft(float x)
+struct sin_ft_t
 {
-//	return {cos(x), sin(x)};
-	
-	const int table_size = 1024;
+	static const int table_size = 1024;
 	static_assert(table_size % 4 == 0);
 	
-	static float table [table_size + 1];
-	static bool is_first = true;
+	float table [table_size + 1];
 	
-	if (is_first)
-	{
-		is_first = false;
+	sin_ft_t() {
 		for (int i = 0; i < table_size; ++i) table[i] = sinf( i * M_PI*2 / table_size );
 		table[table_size] = table[0];
 	}
+} sin_ft;
+
+float sine_ft_norm(float x)
+{
+	if (!std::isfinite(x)) return 0;
+	if (x < 0) x = 1 - x;
+	
+	x *= sin_ft.table_size;
+	int i = static_cast<int>(x);
+	x -= i;
+	
+	i %= sin_ft.table_size;
+	return lerp( sin_ft.table[i], sin_ft.table[i+1], x );
+}
+vec2fp cossin_ft(float x)
+{
+//	return {cos(x), sin(x)};
 	
 	if (!std::isfinite(x)) return {1, 0};
 	x = wrap_angle_2(x);
 	x /= M_PI*2;
 	
-	x *= table_size;
+	x *= sin_ft.table_size;
 	int i = static_cast<int>(x);
 	x -= i;
 	
-	if (i < 0) i += table_size;
-	i %= table_size;
-	int j = (i + table_size /4) % table_size;
+	if (i < 0) i += sin_ft.table_size;
+	i %= sin_ft.table_size;
+	int j = (i + sin_ft.table_size /4) % sin_ft.table_size;
 	
 	return {
-		lerp( table[j], table[j+1], x ), // cosine
-		lerp( table[i], table[i+1], x ), // sine
+		lerp( sin_ft.table[j], sin_ft.table[j+1], x ), // cosine
+		lerp( sin_ft.table[i], sin_ft.table[i+1], x ), // sine
 	};
 }
 

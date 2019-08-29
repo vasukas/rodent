@@ -38,23 +38,17 @@ To download needed sources (from project root):
 
 Needed packages can be downloaded with:
 
-* Arch Linux
-
-		$ pacman -S --needed freetype2 glew sdl2
-
-* Ubuntu/Debian (build & runtime)
-
-		$ apt-get install libfreetype6-dev libglew-dev libsdl2-dev
-
-* Ubuntu/Debian (runtime only)
-
-		$ apt-get install libfreetype6 libglew libsdl2
+	$ sudo apt-get install libfreetype6-dev libglew-dev libsdl2-dev  # Ubuntu/Debian (build)
+	$ sudo apt-get install libfreetype6 libglew libsdl2              # Ubuntu/Debian (runtime)
+	$ sudo pacman -S --needed freetype2 glew sdl2                    # Arch
 
 After that project can be built using CMake or qmake.
 
 	$ (mkdir -p build && cd build && cmake .. && make)
 
-Executable will be placed in "build\" directory in project root.
+Executable will be placed in "build/" directory in project root, so game can be run from there as:
+
+	$ build/rodent
 
 ### Windows
 

@@ -17,13 +17,16 @@ public:
 		INIT_GAME
 	};
 	
-	static void init(InitWhich which);
-	virtual void init() = 0; ///< Called after engine
+	static MainLoop* create(InitWhich which); ///< And makes current
+	virtual void init() = 0; ///< Called after engine init
 	virtual bool parse_arg(ArgvParse& arg);
 	
 	virtual void on_event(SDL_Event&) {}
 	virtual void render(TimeSpan passed) = 0; ///< Called each frame on unset renderer
 	virtual ~MainLoop();
+	
+private:
+	MainLoop* ml_prev = nullptr;
 };
 
 #endif // MAIN_LOOP_HPP

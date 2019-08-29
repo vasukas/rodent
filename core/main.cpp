@@ -76,7 +76,7 @@ static std::string get_game_path(GamePath path)
 		
 		auto s = SDL_GetBasePath();
 		if (!s) VLOGE("SDL_GetBasePath failed - {}", SDL_GetError());
-		else {pref = s; SDL_free(s);}
+		else {base = s; SDL_free(s);}
 		
 		s = SDL_GetPrefPath("madkrabs", "rodent");
 		if (!s) VLOGE("SDL_GetPrefPath failed - {}", SDL_GetError());
@@ -186,8 +186,8 @@ Modes (to see options use --modehelp):
 			else if (arg.is("-v"))  cli_verb = LogLevel::Debug;
 			else if (arg.is("-vv")) cli_verb = LogLevel::Verbose;
 			else if (arg.is("--gldbg")) RenderControl::opt_gldbg = true;
-			else if (arg.is("--rentest")) MainLoop::init(MainLoop::INIT_RENTEST);
-			else if (arg.is("--game")) MainLoop::init(MainLoop::INIT_GAME);
+			else if (arg.is("--rentest")) MainLoop::create(MainLoop::INIT_RENTEST);
+			else if (arg.is("--game")) MainLoop::create(MainLoop::INIT_GAME);
 			else if (arg.is("--modehelp"))
 			{
 				if (!MainLoop::current) printf("No mode selected ('--modehelp')\n");
@@ -277,12 +277,10 @@ Modes (to see options use --modehelp):
 	SDL_PumpEvents(); // just in case
 	
 	VLOGI("Basic initialization finished in {:.3f} seconds", (TimeSpan::since_start() - time_init).seconds());
-	VLOGI("Texture mem: {:.3f} MB", Texture::dbg_total_size / (1024.f * 1024.f));
-	VLOGI("GPU: {}", RenderControl::get().get_gpu_state());
 	
 	
 	
-	if (!MainLoop::current) MainLoop::init(MainLoop::INIT_DEFAULT);
+	if (!MainLoop::current) MainLoop::create(MainLoop::INIT_DEFAULT);
 	try {MainLoop::current->init();}
 	catch (std::exception& e) {
 		VLOGE("MainLoop::init() failed: {}", e.what());

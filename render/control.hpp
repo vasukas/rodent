@@ -91,11 +91,6 @@ public:
 	
 	/// Adds callback to be called at screen size change. Returns callback deleter
 	[[nodiscard]] virtual RAII_Guard add_size_cb(std::function<void()> cb, bool call_now = false) = 0;
-	
-	
-	
-	/// Returns short stats description
-	virtual std::string get_gpu_state() = 0;
 };
 
 #endif // REN_CTL_HPP
