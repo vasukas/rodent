@@ -135,7 +135,7 @@ static constexpr std::array<uint32_t, 256> crc32_table(uint32_t poly) {
 uint32_t crc32(uint32_t crc, const void *data, int len) {
 	// CRC-32 (Ethernet, ZIP, etc.) polynomial in reversed bit order.
 	static constexpr std::array<uint32_t, 256> table = crc32_table(0xedb88320);
-	uint8_t* buf = (uint8_t*) data;
+	auto buf = static_cast<const uint8_t*>(data);
 	crc = ~crc;
 	while (len--) {
 		crc = table[(crc ^ (*buf)) & 0xff] ^ (crc >> 8);

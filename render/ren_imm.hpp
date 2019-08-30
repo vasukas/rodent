@@ -50,6 +50,8 @@ public:
 		Shader* sh_text = nullptr; ///< Required for draw_text(), may be null
 	};
 	
+	static const uint32_t White = static_cast<uint32_t>(-1);
+	
 	static RenImm& get(); ///< Returns singleton
 	
 	
@@ -69,10 +71,10 @@ public:
 	virtual void draw_frame (const Rectfp& dst, uint32_t clr, float frame_width = 1) = 0;
 	
 	/// Draw image
-	virtual void draw_image (const Rectfp& dst, const TextureReg& tex, uint32_t clr = (unsigned) -1) = 0;
+	virtual void draw_image (const Rectfp& dst, const TextureReg& tex, uint32_t clr = White) = 0;
 	
 	/// Draw image
-	virtual void draw_image (uint tex, const Rectfp& dst, const Rectfp& src, uint32_t clr = (unsigned) -1) = 0;
+	virtual void draw_image (uint tex, const Rectfp& dst, const Rectfp& src, uint32_t clr = White) = 0;
 
 	
 	
@@ -83,10 +85,10 @@ public:
 	virtual void draw_frame_rot (const Rectfp& dst, uint32_t clr, float rot, float frame_width = 1) = 0;
 	
 	/// Draw image; rotation is in radians
-	virtual void draw_image_rot (const Rectfp& dst, const TextureReg& tex, float rot, uint32_t clr = (unsigned) -1) = 0;
+	virtual void draw_image_rot (const Rectfp& dst, const TextureReg& tex, float rot, uint32_t clr = White) = 0;
 	
 	/// Draw image; rotation is in radians
-	virtual void draw_image_rot (uint tex, const Rectfp& dst, const Rectfp& src, float rot, uint32_t clr = (unsigned) -1) = 0;
+	virtual void draw_image_rot (uint tex, const Rectfp& dst, const Rectfp& src, float rot, uint32_t clr = White) = 0;
 	
 	
 	
@@ -105,14 +107,14 @@ public:
 	
 	
 	/// Draw ASCII string at specified coordinates
-	virtual void draw_text (vec2fp at, std::string_view str, uint32_t clr = 0xffffffff, bool centered = false, float size_k = 1.f, FontIndex font = static_cast<FontIndex>(0)) = 0;
+	virtual void draw_text (vec2fp at, std::string_view str, uint32_t clr = White, bool centered = false, float size_k = 1.f, FontIndex font = static_cast<FontIndex>(0)) = 0;
 	
 	/// Draw ASCII string, with separately colored characters (count, color)
 	virtual void draw_text (vec2fp at, std::vector<std::pair<std::string, FColor>> strs) = 0;
 	
 	/// Draw ASCII string at specified coordinates with filled semi-transparent background. 
 	/// Negative coordinates are treated as if offset from screen size - text size
-	virtual void draw_text_hud (vec2fp at, std::string_view str, uint32_t clr = 0xffffffff, bool centered = false, float size_k = 1.f) = 0;
+	virtual void draw_text_hud (vec2fp at, std::string_view str, uint32_t clr = White, bool centered = false, float size_k = 1.f) = 0;
 	
 	/// Returns size of non-null ASCII string
 	static vec2i text_size (std::string_view str);

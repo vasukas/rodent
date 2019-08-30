@@ -94,7 +94,7 @@ static std::string get_game_path(GamePath path)
 		return pref + "settings.cfg";
 	}
 #endif
-	VLOGX("get_game_path() invalid enum: {}", (int)path);
+	VLOGX("get_game_path() invalid enum: {}", static_cast<int>(path));
 	return {};
 }
 static void platform_info()

@@ -12,7 +12,7 @@ void Weapon::ModAmmo::shoot()
 }
 bool Weapon::ModAmmo::add(float amount)
 {
-	if (cur == max) return false;
+	if (cur >= max) return false;
 	cur = std::min(cur + amount, max);
 	return true;
 }

@@ -195,7 +195,7 @@ void ResBase_Impl::init_ren()
 			auto& l = ls[li];
 			float t = (lc + 0.5f) / l.n;
 			vec2fp pos = lerp(l.a, l.b, t);
-			if (++lc == l.n) ++li, lc = 0;
+			if (++lc == l.n) {++li; lc = 0;}
 			
 			vec2fp rp = pos;
 			rp.fastrotate(tr.rot);

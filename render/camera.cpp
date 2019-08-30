@@ -16,64 +16,6 @@ void Camera::set_vport_full()
 	vport.size( RenderControl::get_size() );
 	mx_req_upd = 3;
 }
-void Camera::set_pos (vec2fp p)
-{
-	cur.pos = p;
-	mx_req_upd = 3;
-}
-void Camera::add_frame (Frame frm)
-{
-	if (ans.empty())
-	{
-		fst = cur;
-		fst.len = TimeSpan();
-	}
-	ans.push_back(frm);
-}
-void Camera::add_shift_frame (Frame frm)
-{
-	auto& f = ans.empty() ? cur : ans.back();
-	frm.pos += f.pos;
-	frm.rot += f.rot;
-	add_frame(frm);
-}
-void Camera::reset_frames()
-{
-	ans.clear();
-}
-Camera::Frame Camera::last_frame()
-{
-	return !ans.empty() ? ans.back() : cur;
-}
-void Camera::step (TimeSpan passed)
-{
-	if (ans.empty()) return;
-	mx_req_upd = 3;
-	
-	fst.len += passed;
-	while (fst.len > ans.front().len)
-	{
-		if (ans.size() != 1)
-		{
-			cur.len = fst.len - ans.front().len;
-			fst = cur;
-			ans.pop_front();
-		}
-		else
-		{
-			cur = ans.front();
-			ans.pop_front();
-			return;
-		}
-	}
-	
-	float t = fst.len / ans.front().len;
-	auto& n = ans.front();
-	
-	cur.pos = lerp(fst.pos, n.pos, t);
-	cur.rot = lerp(fst.rot, n.rot, t);
-	cur.mag = lerp(fst.mag, n.mag, t);
-}
 
 
 

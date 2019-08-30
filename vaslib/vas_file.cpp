@@ -401,7 +401,7 @@ File* File::open( const char *filename, int flags, bool throw_on_error )
 		return nullptr;
 	}
 	if (flags & OpenDisableBuffer)
-		setbuf(f, NULL);
+		setbuf(f, nullptr);
 	
 	std::rewind( f );
 	return open_std( f, true );
@@ -509,7 +509,7 @@ File* File::proxy_region( uint64_t from, uint64_t length, bool writeable )
 
 MemoryFile::MemoryFile( size_t res_size )
 {
-	mem = (uint8_t*) malloc(res_size);
+	mem = static_cast<uint8_t*> (malloc(res_size));
 	size = 0;
 	cap = res_size;
 	ptr = 0;
@@ -518,7 +518,7 @@ MemoryFile::MemoryFile( size_t res_size )
 }
 MemoryFile* MemoryFile::from_copy( const void *data, size_t size, bool writeable )
 {
-	uint8_t *nm = (uint8_t*) malloc(size);
+	uint8_t *nm = static_cast<uint8_t*> (malloc(size));
 	if (!nm) {
 		debugbreak();
 		VLOGE("MemoryFile::from_copy() malloc failed on {} bytes", size);
@@ -538,7 +538,7 @@ MemoryFile* MemoryFile::from_copy( const void *data, size_t size, bool writeable
 MemoryFile* MemoryFile::from_const( const void *data, size_t size, bool writeable )
 {
 	MemoryFile* f = new MemoryFile;
-	f->mem = (uint8_t*) data;
+	f->mem = static_cast<uint8_t*> (const_cast<void*> (data));
 	f->size = f->cap = size;
 	f->ptr = 0;
 	f->a_write = writeable;
@@ -555,7 +555,7 @@ MemoryFile* MemoryFile::from_file( File& file )
 	}
 	
 	MemoryFile* f = new MemoryFile(n);
-	if ((size_t) n != file.read( f->mem, n ))
+	if (static_cast<size_t>(n) != file.read( f->mem, n ))
 	{
 		VLOGE("MemoryFile::from_file() read error");
 		delete f;
@@ -689,7 +689,7 @@ std::unique_ptr <uint8_t[], MemoryFile::malloc_deleter> MemoryFile::release( siz
 }
 bool MemoryFile::realloc(size_t n_cap)
 {
-	if (uint8_t *nm = (uint8_t*) std::realloc(mem, n_cap))
+	if (uint8_t *nm = static_cast<uint8_t*> (std::realloc(mem, n_cap)))
 	{
 		mem = nm;
 		cap = n_cap;

@@ -1,4 +1,5 @@
 #include "game/game_core.hpp"
+#include "game/level_gen.hpp"
 #include "render/ren_aal.hpp"
 #include "render/ren_imm.hpp"
 #include "vaslib/vas_containers.hpp"
@@ -109,14 +110,14 @@ public:
 	
 	
 	
-	GamePresenter_Impl(InitParams pars)
+	GamePresenter_Impl(const InitParams& pars)
 	{
 		RenAAL::get().inst_begin();
 		
-		for (auto& l : pars.grid_lines) RenAAL::get().inst_add(l, false, 0.07f, 1.5f);
+		for (auto& l : pars.lvl->ls_grid) RenAAL::get().inst_add({l.first, l.second}, false, 0.07f, 1.5f);
 		RenAAL::get().inst_add_end();
 		
-		for (auto& l : pars.lvl_lines) RenAAL::get().inst_add(l, false);
+		for (auto& l : pars.lvl->ls_wall) RenAAL::get().inst_add(l, false);
 		RenAAL::get().inst_add_end();
 		
 		try {ResBase::get().init_ren();}
@@ -234,6 +235,6 @@ void GamePresenter::effect(FreeEffect effect, const ParticleGroupGenerator::Batc
 
 
 static GamePresenter* rni;
-void GamePresenter::init(InitParams pars) {rni = new GamePresenter_Impl (std::move(pars));}
+void GamePresenter::init(const InitParams& pars) {rni = new GamePresenter_Impl (pars);}
 GamePresenter* GamePresenter::get() {return rni;}
 GamePresenter::~GamePresenter() {rni = nullptr;}

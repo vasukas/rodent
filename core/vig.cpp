@@ -197,7 +197,7 @@ void vig_on_event(const SDL_Event* ev) {
 		else {
 			// init it
 			it->code = code;
-			it->time = (int) get_ms_ticks();
+			it->time = get_ms_ticks();
 			it->passed = 0;
 			
 			// set modifiers
@@ -238,7 +238,7 @@ void vig_on_event(const SDL_Event* ev) {
 	}
 	else if (ev->type == SDL_MOUSEWHEEL) {
 		int x = ev->wheel.x, y = -ev->wheel.y;
-		if (ev->wheel.direction == SDL_MOUSEWHEEL_FLIPPED) x = -x, y = -y;
+		if (ev->wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {x = -x; y = -y;}
 		if (x) mouse_state |= x<0? vig_Mouse_WheelLeft : vig_Mouse_WheelRight;
 		if (y) mouse_state |= y<0? vig_Mouse_WheelUp : vig_Mouse_WheelDown;
 	}
@@ -346,7 +346,7 @@ void vig_draw_menues() {
 	
 	auto& m = menu_fs[menu_cur];
 	for (size_t i=0; i<m.size(); ) {
-		if (m[i].f) m[i].f(), ++i;
+		if (m[i].f) {m[i].f(); ++i;}
 		else m.erase(m.begin() + i);
 	}
 }
@@ -909,10 +909,10 @@ bool vig_selector(size_t& index, const std::vector <std::string_view> &vals, int
 	
 	// draw increment buttons
 	if (vig_button("<", key_minus, false, true, pos, b_size)) {
-		if (index) --index, ret = true;
+		if (index) {--index; ret = true;}
 	}
 	if (vig_button(">", key_plus, false, true, {pos.x + c_size.x + b_size.x, pos.y}, b_size)) {
-		if (index != vals.size() - 1) ++index, ret = true;
+		if (index != vals.size() - 1) {++index; ret = true;}
 	}
 	
 	// draw selector button
@@ -932,10 +932,10 @@ bool vig_selector(size_t& index, const std::vector <std::string_view> &vals, int
 	// check if pressed
 	if (hov) {
 		if (vig_mouse_state() & vig_Mouse_CLICK(Left)) {
-			if (index != vals.size() - 1) ++index, ret = true;
+			if (index != vals.size() - 1) {++index; ret = true;}
 		}
 		if (vig_mouse_state() & vig_Mouse_CLICK(Right)) {
-			if (index) --index, ret = true;
+			if (index) {--index; ret = true;}
 		}
 	}
 	
@@ -961,10 +961,10 @@ bool vig_num_selector(size_t& index, size_t num, int key_minus, int key_plus) {
 	
 	// draw increment buttons
 	if (vig_button("<", key_minus, false, true, pos, b_size)) {
-		if (index) --index, ret = true;
+		if (index) {--index; ret = true;}
 	}
 	if (vig_button(">", key_plus, false, true, {pos.x + c_size.x + b_size.x, pos.y}, b_size)) {
-		if (index != num - 1) ++index, ret = true;
+		if (index != num - 1) {++index; ret = true;}
 	}
 	
 	// draw selector button
@@ -984,10 +984,10 @@ bool vig_num_selector(size_t& index, size_t num, int key_minus, int key_plus) {
 	// check if pressed
 	if (hov) {
 		if (vig_mouse_state() & vig_Mouse_CLICK(Left)) {
-			if (index != num - 1) ++index, ret = true;
+			if (index != num - 1) {++index; ret = true;}
 		}
 		if (vig_mouse_state() & vig_Mouse_CLICK(Right)) {
-			if (index) --index, ret = true;
+			if (index) {--index; ret = true;}
 		}
 	}
 	
@@ -1045,7 +1045,7 @@ void vigAverage::draw()
 		upd_tex = false;
 		if (!tex) {
 			px.reset( new uint8_t [vals.size() * size.y * 3] );
-			tex.reset( Texture::create_empty({(int) vals.size(), size.y}, Texture::FMT_RGB, Texture::FIL_NEAREST) );
+			tex.reset( Texture::create_empty(vec2i(vals.size(), size.y), Texture::FMT_RGB, Texture::FIL_NEAREST) );
 		}
 		
 		if (tex_range < max) tex_range = max * 1.1;

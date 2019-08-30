@@ -46,7 +46,7 @@ struct ImageInfo
 	const uint8_t* raw() const { return px.data(); }
 	
 	/// Returns raw pixel pointer
-	      uint8_t* raw()       { return px.data(); }
+	uint8_t* raw() { return px.data(); }
 	
 	/// Returns width and height
 	vec2i get_size() const { return size; }
@@ -59,9 +59,9 @@ struct ImageInfo
 	
 	
 	
-	/// Proxy doesn't hold copy of image data. 
+	/// Proxy DOES NOT hold copy of image data. 
 	/// Should be destroyed by user. 
-	/// Created only for RGB and RGBA images.
+	/// Created only for RGB and RGBA image
 	SDL_Surface* proxy() const;
 	
 	/// Returns subimage specified by rectangle. Bounds-safe 

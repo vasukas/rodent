@@ -64,23 +64,23 @@ struct vec2i {
 	
 	vec2i() = default;
 	vec2i(int x, int y): x(x),y(y) {}
-	void set(int x, int y) {this->x = x, this->y = y;}
+	void set(int x, int y) {this->x = x; this->y = y;}
 	vec2i& zero() {x = y = 0; return *this;}
 	static vec2i one( int v ) { return {v, v};}
 	
-	void operator += (const vec2i& v) {x += v.x, y += v.y;}
-	void operator -= (const vec2i& v) {x -= v.x, y -= v.y;}
-	void operator *= (const vec2i& v) {x *= v.x, y *= v.y;}
-	void operator /= (const vec2i& v) {x /= v.x, y /= v.y;}
-	void operator *= (double f) {x *= f, y *= f;}
-	void operator /= (double f) {x /= f, y /= f;}
+	void operator += (const vec2i& v) {x += v.x; y += v.y;}
+	void operator -= (const vec2i& v) {x -= v.x; y -= v.y;}
+	void operator *= (const vec2i& v) {x *= v.x; y *= v.y;}
+	void operator /= (const vec2i& v) {x /= v.x; y /= v.y;}
+	void operator *= (double f) {x = std::floor(x * f); y = std::floor(y * f);}
+	void operator /= (double f) {x = std::floor(x / f); y = std::floor(y / f);}
 	
 	vec2i operator + (const vec2i& v) const {return {x + v.x, y + v.y};}
 	vec2i operator - (const vec2i& v) const {return {x - v.x, y - v.y};}
 	vec2i operator * (const vec2i& v) const {return {x * v.x, y * v.y};}
 	vec2i operator / (const vec2i& v) const {return {x / v.x, y / v.y};}
-	vec2i operator * (double f) const {return vec2i(x * f, y * f);}
-	vec2i operator / (double f) const {return vec2i(x / f, y / f);}
+	vec2i operator * (double f) const {return vec2i(std::floor(x * f), std::floor(y * f));}
+	vec2i operator / (double f) const {return vec2i(std::floor(x / f), std::floor(y / f));}
 	
 	vec2i operator - () const {return vec2i(-x, -y);}
 	
@@ -134,23 +134,23 @@ struct vec2fp {
 	
 	vec2fp() = default;
 	vec2fp(float x, float y): x(x),y(y) {}
-	void set(float x, float y) {this->x = x, this->y = y;}
+	void set(float x, float y) {this->x = x; this->y = y;}
 	void zero() {x = y = 0;}
 	static vec2fp one( float v ) { return {v, v};}
 	
-	void operator += (const vec2fp& v) {x += v.x, y += v.y;}
-	void operator -= (const vec2fp& v) {x -= v.x, y -= v.y;}
-	void operator *= (const vec2fp& v) {x *= v.x, y *= v.y;}
-	void operator /= (const vec2fp& v) {x /= v.x, y /= v.y;}
-	void operator *= (double f) {x *= f, y *= f;}
-	void operator /= (double f) {x /= f, y /= f;}
+	void operator += (const vec2fp& v) {x += v.x; y += v.y;}
+	void operator -= (const vec2fp& v) {x -= v.x; y -= v.y;}
+	void operator *= (const vec2fp& v) {x *= v.x; y *= v.y;}
+	void operator /= (const vec2fp& v) {x /= v.x; y /= v.y;}
+	void operator *= (float f) {x *= f; y *= f;}
+	void operator /= (float f) {x /= f; y /= f;}
 	
 	vec2fp operator + (const vec2fp& v) const {return {x + v.x, y + v.y};}
 	vec2fp operator - (const vec2fp& v) const {return {x - v.x, y - v.y};}
 	vec2fp operator * (const vec2fp& v) const {return {x * v.x, y * v.y};}
 	vec2fp operator / (const vec2fp& v) const {return {x / v.x, y / v.y};}
-	vec2fp operator * (double f) const {return vec2fp(x * f, y * f);}
-	vec2fp operator / (double f) const {return vec2fp(x / f, y / f);}
+	vec2fp operator * (float f) const {return {x * f, y * f};}
+	vec2fp operator / (float f) const {return {x / f, y / f};}
 	
 	vec2fp operator - () const {return vec2fp(-x, -y);}
 	
@@ -213,8 +213,8 @@ struct Rect {
 	
 	Rect() = default;
 	Rect(int ax, int ay, int bx, int by): off(ax, ay), sz(bx, by) {}
-	Rect    (vec2i p0, vec2i b, bool is_size) {off = p0, sz = is_size? b : b - p0;}
-	void set(vec2i p0, vec2i b, bool is_size) {off = p0, sz = is_size? b : b - p0;}
+	Rect    (vec2i p0, vec2i b, bool is_size) {off = p0; sz = is_size? b : b - p0;}
+	void set(vec2i p0, vec2i b, bool is_size) {off = p0; sz = is_size? b : b - p0;}
 	void zero() {off.zero(); sz.zero();}
 	
 	const vec2i& lower() const {return off;}
@@ -252,9 +252,9 @@ struct Rectfp
 	vec2fp a, b; // lower and upper bounds
 	
 	Rectfp() = default;
-	Rectfp( int ax, int ay, int sz_x, int sz_y ) {a.set( ax, ay ), b.set( ax + sz_x, ay + sz_y );}
-	Rectfp  (vec2fp a, vec2fp b, bool is_size) {this->a = a, this->b = is_size? b + a : b;}
-	void set(vec2fp a, vec2fp b, bool is_size) {this->a = a, this->b = is_size? b + a : b;}
+	Rectfp( int ax, int ay, int sz_x, int sz_y ) {a.set( ax, ay ); b.set( ax + sz_x, ay + sz_y );}
+	Rectfp  (vec2fp a, vec2fp b, bool is_size) {this->a = a; this->b = is_size? b + a : b;}
+	void set(vec2fp a, vec2fp b, bool is_size) {this->a = a; this->b = is_size? b + a : b;}
 	void zero() { a.zero(); b.zero(); }
 	
 	const vec2fp& lower() const {return a;}

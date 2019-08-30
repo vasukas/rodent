@@ -71,12 +71,6 @@ public:
 	/// Loads font using FreeType2 from memory
 	static Font* load_ft(const void *mem, size_t size, float pt);
 #endif
-	
-	/// Loads pre-rendererd bitmap font in special format
-	static Font* load_vas(File& f);
-	
-	/// Saves rendered font to special format, returns false on any error. Currently supports only monowide fonts
-	bool save_vas(File& f);
 
 	/// Closes font file
 	virtual ~Font() {}

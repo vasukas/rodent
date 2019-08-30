@@ -6,9 +6,9 @@
 char32_t char_8to32(const char *str, int& n, int left) {
 	uint32_t c = uint8_t(*str);
 	if (c >= 0x80) {
-		if 		((c & 0xe0) == 0xc0) n = 2, c &= 0x1f;
-		else if ((c & 0xf0) == 0xe0) n = 3, c &= 0x0f;
-		else if ((c & 0xf8) == 0xf0) n = 4, c &= 0x07;
+		if 		((c & 0xe0) == 0xc0) {n = 2; c &= 0x1f;}
+		else if ((c & 0xf0) == 0xe0) {n = 3; c &= 0x0f;}
+		else if ((c & 0xf8) == 0xf0) {n = 4; c &= 0x07;}
 		else {
 			n = 0;
 			return 0;
@@ -225,7 +225,7 @@ size_t string_unescape(std::string &str, std::string &err) {
 				}
 				if (str[i] == 'x') {
 					str.erase(i, len);
-					str.insert( str.begin() + i, (char) unsigned(n) );
+					str.insert( str.begin() + i, static_cast<char>(n) );
 				}
 				else {
 					auto s = char_32to8(n);
@@ -243,7 +243,7 @@ size_t string_unescape(std::string &str, std::string &err) {
 					return pos;
 				}
 				str.erase(i, len);
-				str.insert( str.begin() + i, (char) unsigned(n) );
+				str.insert( str.begin() + i, static_cast<char>(n) );
 			}
 			else {
 				err = "Unknown escape";

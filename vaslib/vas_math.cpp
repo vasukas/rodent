@@ -9,13 +9,18 @@ struct sin_ft_t
 	static const int table_size = 1024;
 	static_assert(table_size % 4 == 0);
 	
-	float table [table_size + 1];
+	float *table;
 	
 	sin_ft_t() {
+		table = new float [table_size + 1];
 		for (int i = 0; i < table_size; ++i) table[i] = sinf( i * M_PI*2 / table_size );
 		table[table_size] = table[0];
 	}
-} sin_ft;
+	~sin_ft_t() {
+		delete[] table;
+	}
+};
+static sin_ft_t sin_ft;
 
 float sine_ft_norm(float x)
 {
@@ -353,4 +358,4 @@ void Transform::add(const Transform& t)
 }
 Transform Transform::get_add(const Transform& t) const {Transform r = *this; r.add(t); return r;}
 Transform Transform::operator * (float t) const {return Transform{pos * t, rot * t};}
-void Transform::operator *= (float t) {pos *= t, rot *= t;}
+void Transform::operator *= (float t) {pos *= t; rot *= t;}

@@ -1,10 +1,11 @@
+#include <future>
 #include <mutex>
 #include <thread>
 #include "client/presenter.hpp"
 #include "core/plr_control.hpp"
 #include "core/vig.hpp"
 #include "game/game_core.hpp"
-#include "game/level_ctr.hpp"
+#include "game/level_gen.hpp"
 #include "game/player.hpp"
 #include "game/s_objs.hpp"
 #include "game/weapon.hpp"
@@ -89,15 +90,12 @@ public:
 	std::optional<GamePresenter::InitParams> gp_init;
 	EntityIndex pc_ent = 0; // player	
 	bool ph_debug_draw = false;
-	
+
 	
 	
 	ML_Game() = default;
 	void init()
 	{
-//		LevelTerrain::gen_test().save_image("test.png");
-//		exit(666);
-		
 		Camera* cam = RenderControl::get().get_world_camera();
 		Camera::Frame cf = cam->get_state();
 		cf.mag = 18.f;
@@ -106,7 +104,7 @@ public:
 		pc_ctr.reset (new PlayerController (std::unique_ptr<Gamepad> (Gamepad::open_default())));
 		VLOGI("Box2D version: {}.{}.{}", b2_version.major, b2_version.minor, b2_version.revision);
 		
-		thr_serv = std::thread([this] {thr_func();});
+		thr_serv = std::thread([this]{thr_func();});
 	}
 	~ML_Game()
 	{
@@ -119,6 +117,28 @@ public:
 		if (ev.type == SDL_KEYUP) {
 			int k = ev.key.keysym.scancode;
 			if (k == SDL_SCANCODE_0) ph_debug_draw = !ph_debug_draw;
+			
+			else if (k == SDL_SCANCODE_B)
+			{
+				auto cam = RenderControl::get().get_world_camera();
+				Camera::Frame cf = cam->get_state();
+				cf.mag = 18.f;
+				cam->set_state(cf);
+			}
+			else if (k == SDL_SCANCODE_N)
+			{
+				auto cam = RenderControl::get().get_world_camera();
+				Camera::Frame cf = cam->get_state();
+				cf.mag /= 2;
+				cam->set_state(cf);
+			}
+			else if (k == SDL_SCANCODE_M)
+			{
+				auto cam = RenderControl::get().get_world_camera();
+				Camera::Frame cf = cam->get_state();
+				cf.mag *= 2;
+				cam->set_state(cf);
+			}
 		}
 		if (get_plr()) {
 			auto g = pc_ctr->lock();
@@ -140,56 +160,37 @@ public:
 			}
 		}
 		else {
-/*
 			if (auto ent = get_plr())
 			{
-				const float tar_thr = 8.f; // distance after which targeting enables
-				const float tar_dist = 15.f; // targeting camera distance
-				const float max_dist = 15.f; // max dist of player from camera
-				const float corr_thr = 3.f; // correction distance
-				const float corr_angle = deg_to_rad(20); // max frame deviation
-				const float zero_thr = 0.5f; // stops animation
+				const float tar_min = 2.f;
+				const float tar_max = 15.f;
+				const float per_second = 0.1 / TimeSpan::fps(60).seconds();
 				
 				auto cam = RenderControl::get().get_world_camera();
-				const vec2fp scr = cam->mouse_cast(RenderControl::get_size() /2) - cam->mouse_cast({});
+				
+				const vec2fp pos = ent->get_phy().get_pos();
+				vec2fp tar = pos;
+				
+				auto& pctr = pc_ctr->get_state();
+				if (pctr.is[PlayerController::A_CAM_FOLLOW])
+				{
+					tar = pctr.tar_pos;
+					
+					vec2fp tar_d = (tar - pos);
+					if		(tar_d.len() < tar_min) tar = pos;
+					else if (tar_d.len() > tar_max) tar = pos + tar_d.get_norm() * tar_max;
+				}
 				
 				auto frm = cam->get_state();
-				const vec2fp pos = ent->get_phy().get_pos();
 				
-				auto& pctr = *pc_ctr;
-				vec2fp tar = pctr.is_enabled( PlayerController::A_CAM_FOLLOW )? pctr.get_tar_pos() : pos;
+				const vec2fp scr = cam->mouse_cast(RenderControl::get_size()) - cam->mouse_cast({});
+				const vec2fp tar_d = (tar - frm.pos);
 				
-				vec2fp tar_d = tar - pos;
-				if (tar_d.len() < tar_thr) tar = pos;
-				else tar = pos + tar_d.get_norm() * tar_dist;
+				if (std::fabs(tar_d.x) > scr.x || std::fabs(tar_d.y) > scr.y) frm.pos = tar;
+				else frm.pos = lerp(frm.pos, tar, per_second * passed.seconds());
 				
-				vec2fp edir = frm.pos - pos;
-				if (edir.len() > max_dist)
-					tar = pos + edir.get_norm() * corr_thr;
-				
-				vec2fp corr = tar - frm.pos;
-				if (std::fabs(corr.x) > scr.x ||
-				    std::fabs(corr.y) > scr.y)
-				{
-					frm.pos = tar;
-					cam->set_state(frm);
-					cam->reset_frames();
-				}
-				else if (corr.len() > corr_thr)
-				{
-					frm.pos = tar;
-					frm.len = TimeSpan::seconds(0.3);
-					cam->reset_frames();
-					cam->add_frame(frm);
-				}
-				else if (corr.len() < zero_thr) cam->reset_frames();
-				else {
-					vec2fp old_corr = cam->last_frame().pos - frm.pos;
-					if (wrap_angle_2 (old_corr.angle() - corr.angle()) > corr_angle)
-						cam->reset_frames();
-				}
+				cam->set_state(frm);
 			}
-*/
 			
 			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
 			GamePresenter::get()->render(passed);
@@ -206,7 +207,7 @@ public:
 					vig_label_a("{}\n", wpn->get_reninfo().name);
 					if (auto m = wpn->get_ammo()) {
 						if (ent->get_eqp()->infinite_ammo) vig_label("AMMO CHEAT ENABLED\n");
-						else vig_label_a("Ammo: {} / {}\n", (int) m->cur, (int) m->max);
+						else vig_label_a("Ammo: {} / {}\n", static_cast<int>(m->cur), static_cast<int>(m->max));
 					}
 					if (auto m = wpn->get_heat()) vig_progress(m->ok()? "Overheat" : "COOLDOWN", m->value);
 					if (auto m = wpn->get_rof())  vig_progress(" Ready ", 1 - m->wait / m->delay);
@@ -224,44 +225,26 @@ public:
 	}
 	void init_game()
 	{	
+		TimeSpan t0 = TimeSpan::since_start();
+		
+		std::shared_ptr<LevelTerrain> lt( LevelTerrain::generate({ {200,80}, 3 }) );
 		core.reset( GameCore::create({}) );
 		
-		std::vector<std::vector<vec2fp>> ls_grid;
-		std::vector<std::vector<vec2fp>> ls_level;
-		
-		float hsize = 15.f;
-		{	
-			ls_level = {{{-hsize,-hsize}, {hsize,-hsize}, {hsize,hsize}, {-hsize,hsize}}};
-			ls_level.front().push_back( ls_level.front().front() );
-			
-			for (float i = 2; i < hsize; i += 2)
-			{
-				ls_grid.emplace_back() = {{-hsize,  i}, {hsize,  i}};
-				ls_grid.emplace_back() = {{-hsize, -i}, {hsize, -i}};
-				ls_grid.emplace_back() = {{ i, -hsize}, { i, hsize}};
-				ls_grid.emplace_back() = {{-i, -hsize}, {-i, hsize}};
-			}
-			ls_grid.emplace_back() = {{-hsize, 0}, {hsize, 0}};
-			ls_grid.emplace_back() = {{0, -hsize}, {0, hsize}};
-		}
-		
-		gp_init = GamePresenter::InitParams{ ls_level, std::move(ls_grid) };
+		gp_init = GamePresenter::InitParams{lt};
 		while (!pres)
 		{
 			if (thr_term) throw std::runtime_error("init_game() interrupted");
 			sleep(TimeSpan::fps(30));
 		}
 		
-		new EWall(ls_level);
-		pc_ent = create_player({}, pc_ctr)->index;
+		auto& r0 = lt->rooms.front().area;
+		vec2fp plr_pos = (r0.off + r0.sz /2) * lt->cell_size;
+		
+		new EWall(lt->ls_wall);
+		pc_ent = create_player(plr_pos, pc_ctr)->index;
 		core->get_ent(pc_ent)->get_eqp()->infinite_ammo = true;
 		
-		for (int i=0; i<25; ++i)
-		{
-			float rn = hsize - 1;
-			vec2fp pos(rnd_range(-rn, rn), rnd_range(-rn, rn));
-			(new EPhyBox(pos))->dbg_name = "Box";
-		}
+		VLOGI("init_game() finished in: {:.3f} seconds", (TimeSpan::since_start() - t0).seconds());
 	}
 	void thr_func() try
 	{

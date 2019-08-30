@@ -92,7 +92,7 @@ SOURCES += \
 	game/damage.cpp \
 	game/entity.cpp \
 	game/game_core.cpp \
-	game/level_ctr.cpp \
+	game/level_gen.cpp \
 	game/movement.cpp \
 	game/physics.cpp \
 	game/player.cpp \
@@ -131,57 +131,11 @@ HEADERS += \
 	core/plr_control.hpp \
 	core/settings.hpp \
 	core/vig.hpp \
-	external/Box2D/Box2D.h \
-	external/Box2D/Collision/Shapes/b2ChainShape.h \
-	external/Box2D/Collision/Shapes/b2CircleShape.h \
-	external/Box2D/Collision/Shapes/b2EdgeShape.h \
-	external/Box2D/Collision/Shapes/b2PolygonShape.h \
-	external/Box2D/Collision/Shapes/b2Shape.h \
-	external/Box2D/Collision/b2BroadPhase.h \
-	external/Box2D/Collision/b2Collision.h \
-	external/Box2D/Collision/b2Distance.h \
-	external/Box2D/Collision/b2DynamicTree.h \
-	external/Box2D/Collision/b2TimeOfImpact.h \
-	external/Box2D/Common/b2BlockAllocator.h \
-	external/Box2D/Common/b2Draw.h \
-	external/Box2D/Common/b2GrowableStack.h \
-	external/Box2D/Common/b2Math.h \
-	external/Box2D/Common/b2Settings.h \
-	external/Box2D/Common/b2StackAllocator.h \
-	external/Box2D/Common/b2Timer.h \
-	external/Box2D/Dynamics/Contacts/b2ChainAndCircleContact.h \
-	external/Box2D/Dynamics/Contacts/b2ChainAndPolygonContact.h \
-	external/Box2D/Dynamics/Contacts/b2CircleContact.h \
-	external/Box2D/Dynamics/Contacts/b2Contact.h \
-	external/Box2D/Dynamics/Contacts/b2ContactSolver.h \
-	external/Box2D/Dynamics/Contacts/b2EdgeAndCircleContact.h \
-	external/Box2D/Dynamics/Contacts/b2EdgeAndPolygonContact.h \
-	external/Box2D/Dynamics/Contacts/b2PolygonAndCircleContact.h \
-	external/Box2D/Dynamics/Contacts/b2PolygonContact.h \
-	external/Box2D/Dynamics/Joints/b2DistanceJoint.h \
-	external/Box2D/Dynamics/Joints/b2FrictionJoint.h \
-	external/Box2D/Dynamics/Joints/b2GearJoint.h \
-	external/Box2D/Dynamics/Joints/b2Joint.h \
-	external/Box2D/Dynamics/Joints/b2MotorJoint.h \
-	external/Box2D/Dynamics/Joints/b2MouseJoint.h \
-	external/Box2D/Dynamics/Joints/b2PrismaticJoint.h \
-	external/Box2D/Dynamics/Joints/b2PulleyJoint.h \
-	external/Box2D/Dynamics/Joints/b2RevoluteJoint.h \
-	external/Box2D/Dynamics/Joints/b2RopeJoint.h \
-	external/Box2D/Dynamics/Joints/b2WeldJoint.h \
-	external/Box2D/Dynamics/Joints/b2WheelJoint.h \
-	external/Box2D/Dynamics/b2Body.h \
-	external/Box2D/Dynamics/b2ContactManager.h \
-	external/Box2D/Dynamics/b2Fixture.h \
-	external/Box2D/Dynamics/b2Island.h \
-	external/Box2D/Dynamics/b2TimeStep.h \
-	external/Box2D/Dynamics/b2World.h \
-	external/Box2D/Dynamics/b2WorldCallbacks.h \
 	game/common_defs.hpp \
 	game/damage.hpp \
 	game/entity.hpp \
 	game/game_core.hpp \
-	game/level_ctr.hpp \
+	game/level_gen.hpp \
 	game/movement.hpp \
 	game/physics.hpp \
 	game/player.hpp \

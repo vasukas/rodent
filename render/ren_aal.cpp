@@ -59,12 +59,12 @@ struct Noise
 				vd *= 2.55;
 				
 				double r, g, b;
-				if		(hi == 0) r = v,  g = vi, b = vm;
-				else if (hi == 1) r = vd, g = v,  b = vm;
-				else if (hi == 2) r = vm, g = v,  b = vi;
-				else if (hi == 3) r = vm, g = vd, b = v;
-				else if (hi == 4) r = vi, g = vm, b = v;
-				else if (hi == 5) r = v,  g = vm, b = vd;
+				if		(hi == 0) {r = v;  g = vi; b = vm;}
+				else if (hi == 1) {r = vd; g = v;  b = vm;}
+				else if (hi == 2) {r = vm; g = v;  b = vi;}
+				else if (hi == 3) {r = vm; g = vd; b = v;}
+				else if (hi == 4) {r = vi; g = vm; b = v;}
+				else if (hi == 5) {r = v;  g = vm; b = vd;}
 				else r = g = b = 255.;
 				
 				img_px[i*3+0] = r;
@@ -101,8 +101,8 @@ struct Noise
 		sh->set1f("t", t / tex_depth * 1.3);
 		t += passed.seconds();
 		
-		auto& cam = RenderControl::get().get_world_camera()->get_state();
-		sh->set2f("offset", cam.pos * 0.12);
+//		auto& cam = RenderControl::get().get_world_camera()->get_state();
+		sh->set2f("offset", {});
 		auto ssz = RenderControl::get().get_size();
 		sh->set2f("scrk", float(ssz.x) / ssz.y, 1);
 	}

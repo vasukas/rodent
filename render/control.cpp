@@ -266,7 +266,10 @@ public:
 			
 			cam.   set_vport_full();
 			cam_ui.set_vport_full();
-			cam_ui.set_pos( cam_ui.get_vport().size() / 2 );
+			
+			auto frm = cam_ui.get_state();
+			frm.pos = cam_ui.get_vport().size() / 2;
+			cam_ui.set_state(frm);
 			
 			if (pp_main && use_pp) pp_main->start(passed);
 			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
@@ -287,8 +290,6 @@ public:
 			
 			RenImm::get().render(RenImm::DEFCTX_UI);
 			RenImm::get().render_post();
-			
-			cam.step(passed);
 		}
 		
 		SDL_GL_SwapWindow(wnd);
@@ -347,7 +348,7 @@ public:
 
 			SDL_SetWindowSize(wnd, d_dm.w, d_dm.h); // Windows fix
 
-			dm.w = d_dm.w, dm.h = d_dm.h;
+			dm.w = d_dm.w; dm.h = d_dm.h;
 			if (SDL_SetWindowDisplayMode(wnd, &dm))
 				VLOGE("SDL_SetWindowDisplayMode failed - {}", SDL_GetError());
 		}

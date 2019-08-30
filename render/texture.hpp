@@ -42,7 +42,9 @@ public:
 	
 	static size_t dbg_total_size; ///< Shows how much raw pixel data of all existing textures takes, in bytes
 	
-	static Texture* load( const char *filename, Format fmt = FMT_RGBA, Filter fil = FIL_LINEAR );
+	static Texture* load( const char *filename, Format fmt = FMT_RGBA, Filter fil = FIL_LINEAR ); ///< Returns nullptr on fail
+	
+	// throw on error
 	static Texture* create_empty( vec2i size, Format fmt, Filter fil = FIL_LINEAR );
 	static Texture* create_from( const ImageInfo& img, Filter fil = FIL_LINEAR );
 	static Texture* create_from( vec2i size, Format fmt, const void *data, Filter fil = FIL_LINEAR );

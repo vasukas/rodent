@@ -9,6 +9,7 @@
 #include "vaslib/vas_time.hpp"
 #include "resbase.hpp"
 
+struct LevelTerrain;
 struct PresCommand;
 
 
@@ -101,11 +102,10 @@ class GamePresenter
 public:
 	struct InitParams
 	{
-		std::vector<std::vector<vec2fp>> lvl_lines;
-		std::vector<std::vector<vec2fp>> grid_lines;
+		std::shared_ptr<LevelTerrain> lvl; ///< Must be non-null
 	};
 	
-	static void init(InitParams pars); ///< Creates singleton (must be called from render thread)
+	static void init(const InitParams& pars); ///< Creates singleton (must be called from render thread)
 	static GamePresenter* get(); ///< Returns singleton
 	virtual ~GamePresenter();
 	

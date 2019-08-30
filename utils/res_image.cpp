@@ -125,7 +125,10 @@ SDL_Surface* ImageInfo::proxy() const
 		return nullptr;
 	}
 	
-	SDL_Surface* sur = SDL_CreateRGBSurfaceWithFormatFrom( (void*) raw(), size.x, size.y, bpp * 8, size.x * bpp, sdl_fmt );
+	// data is NOT copied!
+	auto ptr = const_cast<void*> (static_cast<const void*> (raw()));
+	
+	SDL_Surface* sur = SDL_CreateRGBSurfaceWithFormatFrom( ptr, size.x, size.y, bpp * 8, size.x * bpp, sdl_fmt );
 	if (!sur) VLOGE("ImageInfo::proxy() SDL_CreateRGBSurfaceWithFormatFrom failed - {}", SDL_GetError());
 	return sur;
 }

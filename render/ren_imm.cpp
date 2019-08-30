@@ -1,5 +1,6 @@
 #include "vaslib/vas_cpp_utils.hpp"
 #include "vaslib/vas_log.hpp"
+#include "vaslib/vas_types.hpp"
 #include "camera.hpp"
 #include "control.hpp"
 #include "ren_imm.hpp"
@@ -8,8 +9,6 @@
 #include "texture.hpp"
 
 
-
-static const size_t INVIX = (size_t) -1;
 
 vec2i RenImm::text_size( std::string_view str )
 {
@@ -56,7 +55,7 @@ public:
 		std::vector <Cmd> cmds; // command list
 		std::vector <std::pair <Rect, size_t>> clip_stack; // clipping rect stack
 		
-		size_t last_os = INVIX; // last object index for this context (see add_obj())
+		size_t last_os = size_t_inval; // last object index for this context (see add_obj())
 		GLuint last_tex = 0; // last set texture
 		uint32_t last_clr; // last set color
 		size_t last_shad = SHAD_INITIAL; // last set shader
@@ -158,7 +157,7 @@ public:
 		size_t shad = is_text ? SHAD_TEXT : SHAD_MAIN; // which shader index draw with
 		
 		// check if can just extend previous object instead of creating another draw call
-		if (cx.last_os != INVIX && cx.last_tex == tex && cx.last_clr == clr && cx.last_shad == shad)
+		if (cx.last_os != size_t_inval && cx.last_tex == tex && cx.last_clr == clr && cx.last_shad == shad)
 		{
 			auto& b = objs[ cx.last_os ];
 			if (b.off + b.count == objs_off)
@@ -611,7 +610,7 @@ public:
 		cx.clip_stack.pop_back();
 		
 		reserve_more_block( cx.cmds, 256 );
-		if (cx.clip_stack.empty()) cx.cmds.push_back({ Cmd::T_CLIP, INVIX });
+		if (cx.clip_stack.empty()) cx.cmds.push_back({ Cmd::T_CLIP, size_t_inval });
 		else                       cx.cmds.push_back({ Cmd::T_CLIP, cx.clip_stack.back().second });
 	}
 	void draw_cmd( EffectCmd cmd )
@@ -652,7 +651,7 @@ public:
 				break;
 				
 			case Cmd::T_CLIP:
-				if (cmd.index == INVIX) glScissor( vp[0], vp[1], vp[2], vp[3] );
+				if (cmd.index == size_t_inval) glScissor( vp[0], vp[1], vp[2], vp[3] );
 				else
 				{	auto& r = clips[ cmd.index ];
 					int y = RenderControl::get().get_size().y - (r.lower().y + r.size().y);
@@ -709,7 +708,7 @@ public:
 			c.cmds.clear();
 			c.clip_stack.clear();
 			
-			c.last_os = INVIX;
+			c.last_os = size_t_inval;
 			c.last_tex = 0;
 			c.last_shad = SHAD_INITIAL;
 		}

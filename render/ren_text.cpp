@@ -75,7 +75,7 @@ public:
 			throw std::runtime_error("see log for details");
 		}
 		
-		if ((sets.font_path == sets.font_dbg_path && sets.font_pt == sets.font_dbg_pt) || sets.font_dbg_path.empty()) {
+		if ((sets.font_path == sets.font_dbg_path && aequ(sets.font_pt, sets.font_dbg_pt, 0.5f)) || sets.font_dbg_path.empty()) {
 			VLOGW("Using primary font for debug");
 			fonts[1] = fonts[0];
 		}

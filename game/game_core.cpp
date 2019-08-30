@@ -73,7 +73,7 @@ public:
 			phy->step();
 		}
 		catch (std::exception& e) {
-			THROW_FMTSTR("Failed to step physics");
+			THROW_FMTSTR("Failed to step physics - {}", e.what());
 		}
 		
 		if (auto gp = GamePresenter::get()) {
@@ -81,7 +81,7 @@ public:
 				gp->sync();
 			}
 			catch (std::exception& e) {
-				THROW_FMTSTR("Failed to sync presenter");
+				THROW_FMTSTR("Failed to sync presenter - {}", e.what());
 			}
 		}
 		
