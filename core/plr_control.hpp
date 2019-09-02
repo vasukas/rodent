@@ -32,19 +32,48 @@ public:
 		MOUSE_WHEELUP
 	};
 	
+	struct InputMethod
+	{
+		struct Name {
+			std::string str = "---";
+			bool is_icon = false;
+		};
+		
+		KeyState state = K_OFF;
+		Name name;
+		
+		virtual ~InputMethod() = default;
+	};
+	struct IM_Key : InputMethod
+	{
+		SDL_Scancode v = SDL_SCANCODE_UNKNOWN;
+		static Name get_name(SDL_Scancode v);
+		void operator=(SDL_Scancode v);
+	};
+	struct IM_Mouse : InputMethod
+	{
+		int v = MOUSE_NONE; // SDL_BUTTON_* or MOUSE_*
+		static Name get_name(int v);
+		void operator=(int v);
+	};
+	struct IM_Gpad : InputMethod
+	{
+		Gamepad::Button v = Gamepad::B_NONE;
+		static Name get_name(Gamepad::Button v);
+		void operator=(Gamepad::Button v);
+	};
+	
 	struct Bind
 	{
 		BindType type = BT_ONESHOT;
 		std::string name, descr;
 		
-		SDL_Scancode key = SDL_SCANCODE_UNKNOWN;
-		int mou = MOUSE_NONE; // SDL_BUTTON_* or MOUSE_*
-		Gamepad::Button but = Gamepad::B_NONE;
+		IM_Key   key, alt;
+		IM_Mouse mou;
+		IM_Gpad  but;
 		
-		// state
-		KeyState st_key = K_OFF;
-		KeyState st_mou = K_OFF;
-		KeyState st_but = K_OFF;
+		const std::array<InputMethod*, 4> ims;
+		Bind();
 	};
 	
 	enum Action
@@ -91,6 +120,9 @@ public:
 	const State& get_state() const {return state;} ///< Last updated state
 	
 	[[nodiscard]] auto lock() {return std::unique_lock(mutex);} ///< Not used internally
+	
+	std::array<Bind, ACTION_TOTAL_COUNT_INTERNAL>& binds_ref() {return binds;}
+	Gamepad* get_gpad() {return gpad.get();}
 	
 private:
 	std::array<Bind, ACTION_TOTAL_COUNT_INTERNAL> binds;

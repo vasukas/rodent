@@ -20,7 +20,6 @@ int ImageInfo::get_bpp( Format fmt )
 {
 	switch( fmt )
 	{
-	case FMT_NONE:  ASSERT( false, "ImageInfo::get_bpp() FMT_NONE can't be used" ); break;
 	case FMT_ALPHA: return 1;
 	case FMT_RGB:   return 3;
 	case FMT_RGBA:  return 4;
@@ -28,16 +27,20 @@ int ImageInfo::get_bpp( Format fmt )
 	ASSERT( false, "ImageInfo::get_bpp() invalid enum" );
 	return 0;
 }
-void ImageInfo::reset( vec2i new_size, Format new_fmt )
+void ImageInfo::reset( vec2i new_size, std::optional<Format> new_fmt )
 {
-	if (new_fmt != FMT_NONE) fmt = new_fmt;
+	if (new_fmt) fmt = *new_fmt;
 	size = new_size;
 	px.clear();
 	px.resize( size.area() * get_bpp() );
 }
-bool ImageInfo::load( const char *name, Format force_fmt )
+void ImageInfo::clear()
 {
-	int bpp = 0, force_bpp = (force_fmt == FMT_NONE? 0 : get_bpp( force_fmt ));
+	for (auto& p : px) p = 0;
+}
+bool ImageInfo::load( const char *name, std::optional<Format> force_fmt )
+{
+	int bpp = 0, force_bpp = (force_fmt ? get_bpp(*force_fmt) : 0);
 	uint8_t *data = stbi_load( name, &size.x, &size.y, &bpp, force_bpp );
 	if (!data)
 	{
@@ -45,7 +48,7 @@ bool ImageInfo::load( const char *name, Format force_fmt )
 		return false;
 	}
 	
-	if (force_fmt == FMT_NONE)
+	if (!force_fmt)
 	{
 		if		(bpp == 1) force_fmt = FMT_ALPHA;
 		else if (bpp == 3) force_fmt = FMT_RGB;
@@ -57,7 +60,7 @@ bool ImageInfo::load( const char *name, Format force_fmt )
 			return false;
 		}
 	}
-	fmt = force_fmt;
+	fmt = *force_fmt;
 
 	px.clear();
 	px.insert( px.end(), data, data + size.area() * get_bpp( fmt ) );
@@ -158,7 +161,7 @@ ImageInfo ImageInfo::subimg( Rect r ) const
 }
 uint32_t ImageInfo::get_pixel_fast( vec2i pos ) const
 {
-	auto off = get_pixel_ptr( pos );
+	auto off = get_pixel_ptr_fast( pos );
 	int bpp = get_bpp();
 	uint32_t v = 0;
 	
@@ -171,7 +174,7 @@ uint32_t ImageInfo::get_pixel_fast( vec2i pos ) const
 }
 void ImageInfo::set_pixel_fast( vec2i pos, uint32_t v )
 {
-	auto off = get_pixel_ptr( pos );
+	auto off = get_pixel_ptr_fast( pos );
 	int bpp = get_bpp();
 	
 	for (int i = bpp - 1; i >= 0; --i)
@@ -180,13 +183,17 @@ void ImageInfo::set_pixel_fast( vec2i pos, uint32_t v )
 		v >>= 8;
 	}
 }
-uint8_t* ImageInfo::get_pixel_ptr( vec2i pos )
+uint8_t* ImageInfo::get_pixel_ptr_fast( vec2i pos )
 {
 	return px.data() + (pos.y * size.x + pos.x) * get_bpp();
 }
-const uint8_t* ImageInfo::get_pixel_ptr( vec2i pos ) const
+const uint8_t* ImageInfo::get_pixel_ptr_fast( vec2i pos ) const
 {
 	return px.data() + (pos.y * size.x + pos.x) * get_bpp();
+}
+bool ImageInfo::is_in_bounds( vec2i pos ) const
+{
+	return Rect{{}, size, true}.contains_le(pos);
 }
 void ImageInfo::resize( vec2i new_size )
 {

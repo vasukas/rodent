@@ -22,19 +22,14 @@ EC_Physics::~EC_Physics()
 	for (auto& j : js) destroy(j);
 	body->GetWorld()->DestroyBody(body);
 }
-void EC_Physics::add_circle(float radius, float mass)
-{
-	b2FixtureDef fd;
-	add_circle(fd, radius, mass);
-}
 void EC_Physics::add_circle(b2FixtureDef& fd, float radius, float mass)
 {
 	b2CircleShape shp;
 	shp.m_radius = radius;
 	
 	float area = M_PI * shp.m_radius * shp.m_radius;
-	
 	fd.density = mass / area;
+	
 	fd.shape = &shp;
 	body->CreateFixture(&fd);
 	
@@ -47,8 +42,31 @@ void EC_Physics::add_box(b2FixtureDef& fd, vec2fp half_extents, float mass)
 	shp.SetAsBox(v.x, v.y);
 	
 	float area = v.x * v.y * 4;
-	
 	fd.density = mass / area;
+	
+	fd.shape = &shp;
+	body->CreateFixture(&fd);
+	
+	b_radius.reset();
+}
+void EC_Physics::add_box(b2FixtureDef& fd, vec2fp half_extents, float mass, Transform tr)
+{
+	b2PolygonShape shp;
+	
+	auto app = [&](vec2fp k){
+		return conv (tr.apply (half_extents * k));
+	};
+	
+	b2Vec2 ps[4];
+	ps[0] = app({-1, -1});
+	ps[1] = app({ 1, -1});
+	ps[2] = app({ 1,  1});
+	ps[3] = app({-1,  1});
+	shp.Set(ps, 4);
+	
+	float area = half_extents.area() * 4;
+	fd.density = mass / area;
+	
 	fd.shape = &shp;
 	body->CreateFixture(&fd);
 	
@@ -91,9 +109,10 @@ float EC_Physics::get_radius() const
 	{
 		b_radius = 0.f;
 		
-		auto f = body->GetFixtureList();
-		while (f)
+		for (auto f = body->GetFixtureList(); f; f = f->GetNext())
 		{
+			if (f->IsSensor()) continue;
+			
 			float r = 0.f;
 			auto sa = f->GetShape();
 			
@@ -107,7 +126,6 @@ float EC_Physics::get_radius() const
 			}
 			
 			b_radius = std::max(*b_radius, r);
-			f = f->GetNext();
 		}
 	}
 	return *b_radius;

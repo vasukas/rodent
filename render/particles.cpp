@@ -43,24 +43,24 @@ size_t ParticleGroupStd::begin(const BatchPars &pars, ParticleParams& p)
 void ParticleGroupStd::gen(ParticleParams& p)
 {
 	// position
-	p.pr = t_tr.rot + rnd_range(rot_min, rot_max);
-	vec2fp rv = {radius_fixed? radius : (float) rnd_range(0, radius), 0.f};
+	p.pr = t_tr.rot + rnd_stat().range(rot_min, rot_max);
+	vec2fp rv = {radius_fixed? radius : (float) rnd_stat().range(0, radius), 0.f};
 	rv.rotate(p.pr);
 	p.px = t_tr.pos.x + rv.x;
 	p.py = t_tr.pos.y + rv.y;
 	
 	// speed
-	float sp = rnd_range(speed_min, t_spdmax);
-	float sa = rnd_range(rot_min, rot_max);
+	float sp = rnd_stat().range(speed_min, t_spdmax);
+	float sa = rnd_stat().range(rot_min, rot_max);
 	p.vx = sp * cos(sa);
 	p.vy = sp * sin(sa);
 	
-	p.vr = rnd_range(rot_speed_min, t_rotmax);
-	if (rnd_range(-1, 1) < 0) p.vr = -p.vr;
+	p.vr = rnd_stat().range(rot_speed_min, t_rotmax);
+	if (rnd_stat().range(-1, 1) < 0) p.vr = -p.vr;
 	
 	// color
 	if (colors.size()) {
-		int i = rnd_uint(0, colors.size());
+		int i = rnd_stat().range_index(colors.size());
 		p.clr[0] = (colors[i] >> 24) / 255.f;
 		p.clr[1] = (colors[i] >> 16) / 255.f;
 		p.clr[2] = (colors[i] >> 8) / 255.f;
@@ -68,7 +68,7 @@ void ParticleGroupStd::gen(ParticleParams& p)
 		else p.clr[3] = colors[i] / 255.f;
 	}
 	else {
-		for (int i=0; i<3; i++) p.clr[i] = rnd_range(colors_range[i], colors_range[i+3]) / 255.f;
+		for (int i=0; i<3; i++) p.clr[i] = rnd_stat().range(colors_range[i], colors_range[i+3]) / 255.f;
 		p.clr[3] = alpha / 255.f;
 	}
 	if (color_speed != 0.f) {
@@ -77,8 +77,8 @@ void ParticleGroupStd::gen(ParticleParams& p)
 	}
 	
 	// time
-	p.lt = rnd_range(TTL.seconds(), t_lmax);
-	p.ft = rnd_range( FT.seconds(), t_fmax);
+	p.lt = rnd_stat().range(TTL.seconds(), t_lmax);
+	p.ft = rnd_stat().range( FT.seconds(), t_fmax);
 }
 
 

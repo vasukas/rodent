@@ -14,7 +14,6 @@ struct ImageInfo
 	/// Pixel format
 	enum Format
 	{
-		FMT_NONE,  ///< (only for conversions)
 		FMT_ALPHA, ///< Single-channel 8-bit
 		FMT_RGB,   ///< TrueColor (24-bit)
 		FMT_RGBA   ///< TrueColor with alpha (32-bit)
@@ -32,10 +31,13 @@ struct ImageInfo
 	ImageInfo() = default;
 	
 	/// Clears image (optionally changing format)
-	void reset( vec2i new_size, Format new_fmt = FMT_NONE );
+	void reset( vec2i new_size, std::optional<Format> new_fmt = {} );
+	
+	/// Clears image
+	void clear();
 	
 	/// Loads image from file, converting to specified format if it's set
-	bool load( const char* name, Format force_fmt = FMT_NONE );
+	bool load( const char* name, std::optional<Format> force_fmt = {} );
 	
 	/// Saves image to file with current format
 	bool save( const char* name ) const;
@@ -74,10 +76,13 @@ struct ImageInfo
 	void set_pixel_fast( vec2i pos, uint32_t v );
 	
 	/// Returns pointer to pixel without checking bounds
-	const uint8_t* get_pixel_ptr( vec2i pos ) const;
+	const uint8_t* get_pixel_ptr_fast( vec2i pos ) const;
 	
 	/// Returns pointer to pixel without checking bounds
-	      uint8_t* get_pixel_ptr( vec2i pos );
+	      uint8_t* get_pixel_ptr_fast( vec2i pos );
+		  
+	/// Checks if coordinates are valid
+	bool is_in_bounds( vec2i pos ) const;
 	
 	
 	

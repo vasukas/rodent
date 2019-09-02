@@ -13,8 +13,8 @@ public:
 	enum InitWhich
 	{
 		INIT_DEFAULT,
-		INIT_RENTEST,
-		INIT_GAME
+		INIT_GAME,
+		INIT_SETTINGS
 	};
 	
 	static MainLoop* create(InitWhich which); ///< And makes current

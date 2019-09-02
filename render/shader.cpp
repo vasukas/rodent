@@ -172,12 +172,12 @@ void main() {
 	static const char *vert_texel_src = 
 R"(#version 330 core
 
-uniform vec2 tc_size;
+uniform vec2 scr_px_size;
 layout(location = 0) in vec2 vert;
 out vec2 tc;
 
 void main() {
-	tc = tc_size * (vert * 0.5 + 0.5);
+	tc = scr_px_size * (vert * 0.5 + 0.5);
 	gl_Position = vec4(vert, 0, 1);
 })";
 	

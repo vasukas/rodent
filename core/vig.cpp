@@ -25,7 +25,7 @@ static int64_t get_ms_ticks() {return TimeSpan::since_start().ms();}
 const uint vig_FrameWidth = 2;
 
 /// Spacing between widgets (pixels)
-const uint vig_WidgetSpace = 1;
+const uint vig_WidgetSpace = 4;
 
 /// Spacer element width and height (pixels)
 const vec2i vig_SpacerWidth = {20, 10};
@@ -40,7 +40,7 @@ const uint vig_KeyRepeatEach = 50;
 const uint vig_MessageTime = 5000;
 
 /// Time before tooltip is displayed on hover (milliseconds)
-const uint vig_TooltipDelay = 1500;
+const uint vig_TooltipDelay = 1000;
 
 /// Time for which tooltip is shown (milliseconds)
 const uint vig_TooltipTime = 10000;
@@ -438,6 +438,7 @@ void vig_tooltip(std::string_view text) {
 	vig_tooltip(text, ttip_last_pos, ttip_last_size);
 }
 void vig_tooltip(std::string_view text, vec2i pos, vec2i size) {
+	if (text.empty()) return;
 	Rect r{pos, size, true};
 	if (!r.contains( mouse_pos )) return;
 	ttip_set_pos = pos;
@@ -658,7 +659,7 @@ void vig_lo_pop()
 		pz.max_h = std::max(pz.max_h, ht);
 	}
 }
-bool vig_lo_place(vec2i &pos, vec2i size) {
+bool vig_lo_place(vec2i &pos, vec2i& size) {
 	return lo_stack.back().place(pos, size, true);
 }
 void vig_lo_next() {
@@ -666,6 +667,10 @@ void vig_lo_next() {
 }
 void vig_lo_size(vec2i size) {
 	lo_stack.back().min_size = size;
+}
+void vig_lo_cols(int count) {
+	Zone& z = lo_stack.back();
+	z.min_size.x = (z.max_size.x - vig_WidgetSpace * (count + 1)) / count;
 }
 vec2i vig_lo_get_next() {
 	Zone& z = lo_stack.back();
@@ -696,13 +701,13 @@ void vig_space_tab(int width) {
 	int w_left = (z.max_size.x - SPACE) - z.newpos.x;
 	if (w_left < width) return;
 	
-	vec2i p; // ignored
-	vig_lo_place(p, {width, 1});
+	vec2i p, sz = {width, 1};
+	vig_lo_place(p, sz);
 }
 void vig_space_line(int height) {
 	if (height < 0) height = vig_SpacerWidth.y;
-	vec2i p; // ignored
-	vig_lo_place(p, {lo_stack.back().size.x - SPACE, height});
+	vec2i p, sz = {lo_stack.back().size.x - SPACE, height};
+	vig_lo_place(p, sz);
 }
 
 
@@ -1215,4 +1220,78 @@ void vigTextbox::allow_name(bool unicode) {
 		       (c == '_') ||
 		       (unicode && 0 != (c & 0x80));
 	};
+}
+
+
+
+vec2i vigTableLC::calc(bool place)
+{
+	const int space = use_space ? SPACE : 0;
+	
+	std::vector<int> cmax;
+	cmax.resize(size.x);
+	
+	vec2i maxsz = {space, 0};
+	int y_cur = space;
+	
+	for (int y=0; y<size.y; ++y)
+	{
+		int my = 0;
+		
+		for (int x=0; x<size.x; ++x)
+		{
+			auto& e = els[y * size.x + x];
+			if (e.str) e.size = vig_element_size(*e.str);
+			
+			cmax[x] = std::max(cmax[x], e.size.x + space);
+			my = std::max(my, e.size.y);
+			e.pos.y = y_cur;
+		}
+		
+		maxsz.y = std::max(maxsz.y, y_cur + my + space);
+		y_cur += my + space;
+		
+		for (int x=0; x<size.x; ++x)
+		{
+			auto& e = els[y * size.x + x];
+			e.max_size.y = my;
+		}
+	}
+	
+	for (int x=0; x<size.x; ++x)
+	{
+		for (int y=0; y<size.y; ++y)
+		{
+			auto& e = els[y * size.x + x];
+			e.pos.x = maxsz.x + space;
+			e.max_size.x = cmax[x];
+		}
+		maxsz.x += cmax[x];
+	}
+		
+	if (place) {
+		vec2i p, sz = maxsz;
+		vig_lo_place(p, sz);
+	}
+	return maxsz;
+}
+void vigTableLC::set_size(vec2i new_size)
+{
+	auto old = std::move(els);
+	els.resize( new_size.area() );
+	
+	for (int y=0; y < std::min(size.y, new_size.y); ++y)
+	for (int x=0; x < std::min(size.x, new_size.x); ++x)
+	{
+		els[y * new_size.x + x] = std::move(els[y * size.x + x]);
+	}
+	
+	size = new_size;
+}
+vigTableLC::Element& vigTableLC::get(vec2i pos)
+{
+	if (Rect{{}, size, true}.contains_le(pos))
+		return els[pos.y * size.x + pos.x];
+	
+	throw std::runtime_error("vigTableLC::get() out of bounds");
 }

@@ -21,56 +21,96 @@
 
 
 
-class ML_Rentest : public MainLoop
+class ML_Settings : public MainLoop
 {
 public:
+	bool is_game;
+	std::shared_ptr<PlayerController> ctr;
+	std::optional<std::pair<int, int>> bix;
+	
 	void init()
 	{
+		is_game = !!ctr;
+		if (!ctr)
+			ctr.reset (new PlayerController (std::unique_ptr<Gamepad> (Gamepad::open_default())));
 	}
 	void on_event(SDL_Event& ev)
 	{
-		if (ev.type == SDL_KEYDOWN)
+		if		(ev.type == SDL_KEYUP)
 		{
-			auto& ks = ev.key.keysym;
-			if (ks.scancode == SDL_SCANCODE_1)
+			int k = ev.key.keysym.scancode;
+			if		(k == SDL_SCANCODE_ESCAPE)
 			{
-				ParticleGroupStd ptg;
-				ptg.px_radius = 4.f; // default
-				ptg.count = 1000;
-				ptg.radius = 60;
-				ptg.colors_range[0] = 192; ptg.colors_range[3] = 255;
-				ptg.colors_range[1] = 192; ptg.colors_range[4] = 255;
-				ptg.colors_range[2] = 192; ptg.colors_range[5] = 255;
-				ptg.alpha = 255;
-				ptg.speed_min = 60; ptg.speed_max = 200; // 200, 600
-				ptg.TTL.set_ms(2000), ptg.FT.set_ms(1000);
-				ptg.TTL_max = ptg.TTL + TimeSpan::ms(500), ptg.FT_max = ptg.FT + TimeSpan::ms(1000);
-				ptg.draw({});
+				if (bix) bix.reset();
+				else delete this;
 			}
 		}
 	}
-	void render(TimeSpan passed)
+	void render(TimeSpan)
 	{
-		static float r = 0;
-		RenAAL::get().draw_line({0, 0}, vec2fp(400, 0).get_rotated(r), 0x40ff40ff, 5.f, 60.f, 2.f);
-		r += M_PI * 0.5 * passed.seconds();
+		vig_label("KEYBINDS (hover over action to see description)\n");
+		if (vig_button(is_game? "Return to game" : "Return to main menu")) {
+			delete this;
+			return;
+		}
+		vig_space_line();
+		vig_lo_next();
 		
-		RenAAL::get().draw_line({-400,  200}, {-220, -200}, 0x4040ffff, 5.f, 60.f);
-		RenAAL::get().draw_line({-400, -200}, {-220,  200}, 0xff0000ff, 5.f, 60.f);
+		auto& bs = ctr->binds_ref();
+		vigTableLC lc( vec2i(5, bs.size() + 1) );
 		
-		RenImm::get().set_context(RenImm::DEFCTX_WORLD);
-		RenImm::get().draw_frame({-200, -200, 400, 400}, 0xff0000ff, 3);
+		lc.get({0,0}).str = "ACTION";
+		lc.get({1,0}).str = "KEY         ";
+		lc.get({2,0}).str = "KEY         ";
+		lc.get({3,0}).str = "MOUSE       ";
+		lc.get({4,0}).str = "GAMEPAD     ";
 		
-		RenAAL::get().draw_line({-200, -200}, {200, 200}, 0x00ff80ff, 5.f, 12.f);
-		RenAAL::get().draw_chain({{-200, -200}, {50, 50}, {200, -50}}, true, 0x80ff80ff, 8.f, 3.f);
-		RenAAL::get().draw_line({-300, 0}, {-300, 0}, 0xffc080ff, 8.f, 20.f);
+		for (size_t i=0; i<bs.size(); ++i)
+		{
+			lc.get( vec2i(0, i+1) ).str = bs[i].name;
+			auto& is = bs[i].ims;
+			for (size_t j=0; j<is.size(); ++j)
+				lc.get( vec2i(j+1, i+1) ).str = is[j]->name.str;
+		}
 		
-		RenAAL::get().draw_line({250, -200}, {250, 200}, 0xffc080ff, 8.f, 8.f);
-		RenAAL::get().draw_line({325, -200}, {325, 200}, 0xffc080ff, 16.f, 3.f);
-		RenAAL::get().draw_line({400, -200}, {400, 200}, 0xffc080ff, 5.f, 30.f);
+		vec2i off = vig_lo_get_next();
+		lc.calc();
 		
-		RenAAL::get().draw_line({-440,  200}, {-260, -200}, 0x6060ffff, 5.f, 60.f, 1.7f);
-		RenAAL::get().draw_line({-440, -200}, {-260,  200}, 0xff2020ff, 5.f, 60.f, 1.7f);
+		for (int y=0; y < lc.get_size().y; ++y)
+		for (int x=0; x < lc.get_size().x; ++x)
+		{
+			auto& e = lc.get({x,y});
+			if (!y || !x) {
+				vig_label(*e.str, off + e.pos, e.size);
+				if (y && !x) vig_tooltip( bs[y-1].descr, off + e.pos, e.size );
+			}
+			else {
+				bool act = bix? y == bix->first + 1 && x == bix->second + 1 : false;
+				if (vig_button(*e.str, 0, act, false, off + e.pos, e.size) && !bix)
+					{;} //bix = std::make_pair(y-1, x-1);
+			}
+		}
+		
+		if (auto gpad = ctr->get_gpad())
+		{
+			auto gc = static_cast<SDL_GameController*> (gpad->get_raw());
+			
+			vig_lo_next();
+			vig_label_a("Your controller: {}\n", SDL_GameControllerName(gc));
+			
+			bool any = false;
+			for (size_t i=0; i<Gamepad::TOTAL_BUTTONS_INTERNAL; ++i)
+			{
+				auto b = static_cast<Gamepad::Button>(i);
+				if (gpad->get_state(b)) {
+					auto nm = PlayerController::IM_Gpad::get_name(b);
+					vig_label_a("Pressed: {}\n", nm.str);
+					any = true;
+				}
+			}
+			if (!any)
+				vig_label("Press any gamepad button to see it's name");
+		}
 	}
 };
 
@@ -90,6 +130,9 @@ public:
 	std::optional<GamePresenter::InitParams> gp_init;
 	EntityIndex pc_ent = 0; // player	
 	bool ph_debug_draw = false;
+	
+	vigAverage dbg_serv_avg;
+	RAII_Guard dbg_serv_g;
 
 	
 	
@@ -105,6 +148,22 @@ public:
 		VLOGI("Box2D version: {}.{}.{}", b2_version.major, b2_version.minor, b2_version.revision);
 		
 		thr_serv = std::thread([this]{thr_func();});
+		
+		dbg_serv_avg.reset(5.f, GameCore::time_mul);
+		dbg_serv_g = vig_reg_menu(VigMenu::DebugGame, [this]
+		{
+			std::unique_lock lock(ren_lock);
+			dbg_serv_avg.draw();
+			vig_lo_next();
+			
+			if (auto ent = get_plr())
+			{
+				auto pos = ent->get_phy().get_pos();
+				vig_label_a("x:{:5.2f} y:{:5.2f}", pos.x, pos.y);
+				vig_lo_next();
+				vig_checkbox(ent->get_eqp()->infinite_ammo, "Infinite ammo");
+			}
+		});
 	}
 	~ML_Game()
 	{
@@ -116,28 +175,13 @@ public:
 	{
 		if (ev.type == SDL_KEYUP) {
 			int k = ev.key.keysym.scancode;
-			if (k == SDL_SCANCODE_0) ph_debug_draw = !ph_debug_draw;
 			
-			else if (k == SDL_SCANCODE_B)
+			if		(k == SDL_SCANCODE_0) ph_debug_draw = !ph_debug_draw;
+			else if (k == SDL_SCANCODE_ESCAPE)
 			{
-				auto cam = RenderControl::get().get_world_camera();
-				Camera::Frame cf = cam->get_state();
-				cf.mag = 18.f;
-				cam->set_state(cf);
-			}
-			else if (k == SDL_SCANCODE_N)
-			{
-				auto cam = RenderControl::get().get_world_camera();
-				Camera::Frame cf = cam->get_state();
-				cf.mag /= 2;
-				cam->set_state(cf);
-			}
-			else if (k == SDL_SCANCODE_M)
-			{
-				auto cam = RenderControl::get().get_world_camera();
-				Camera::Frame cf = cam->get_state();
-				cf.mag *= 2;
-				cam->set_state(cf);
+				MainLoop::create(INIT_SETTINGS);
+				dynamic_cast<ML_Settings&>(*MainLoop::current).ctr = pc_ctr;
+				MainLoop::current->init();
 			}
 		}
 		if (get_plr()) {
@@ -150,13 +194,15 @@ public:
 		std::unique_lock lock(ren_lock);
 		if (thr_term) LOG_THROW_X("Game failed");
 		if (!pres) {
-			RenImm::get().draw_text(RenderControl::get_size() /2, "Loading...", -1, true, 4.f);
+			RenImm::get().draw_text(RenderControl::get_size() /2, "Generating...", -1, true, 4.f);
 			
 			if (gp_init)
 			{
 				GamePresenter::init(*gp_init);
 				pres.reset( GamePresenter::get() );
 				gp_init.reset();
+				
+				VLOGI("GamePresenter::init() finished at {:.3f} seconds", TimeSpan::since_start().seconds());
 			}
 		}
 		else {
@@ -198,21 +244,23 @@ public:
 			if (ph_debug_draw)
 				core->get_phy().world.DrawDebugData();
 			
-			RenImm::get().set_context(RenImm::DEFCTX_UI);
-			
-			if (auto ent = get_plr())
+			if (vig_current_menu() == VigMenu::Default)
 			{
-				if (auto wpn = ent->get_eqp()->wpn_ptr())
+				RenImm::get().set_context(RenImm::DEFCTX_UI);
+				if (auto ent = get_plr())
 				{
-					vig_label_a("{}\n", wpn->get_reninfo().name);
-					if (auto m = wpn->get_ammo()) {
-						if (ent->get_eqp()->infinite_ammo) vig_label("AMMO CHEAT ENABLED\n");
-						else vig_label_a("Ammo: {} / {}\n", static_cast<int>(m->cur), static_cast<int>(m->max));
+					if (auto wpn = ent->get_eqp()->wpn_ptr())
+					{
+						vig_label_a("{}\n", wpn->get_reninfo().name);
+						if (auto m = wpn->get_ammo()) {
+							if (ent->get_eqp()->infinite_ammo) vig_label("AMMO CHEAT ENABLED\n");
+							else vig_label_a("Ammo: {} / {}\n", static_cast<int>(m->cur), static_cast<int>(m->max));
+						}
+						if (auto m = wpn->get_heat()) vig_progress(m->ok()? "Overheat" : "COOLDOWN", m->value);
+						if (auto m = wpn->get_rof())  vig_progress(" Ready ", 1 - m->wait / m->delay);
 					}
-					if (auto m = wpn->get_heat()) vig_progress(m->ok()? "Overheat" : "COOLDOWN", m->value);
-					if (auto m = wpn->get_rof())  vig_progress(" Ready ", 1 - m->wait / m->delay);
+					else vig_label("No weapon equipped");
 				}
-				else vig_label("No weapon equipped");
 			}
 		}
 	}
@@ -230,6 +278,9 @@ public:
 		std::shared_ptr<LevelTerrain> lt( LevelTerrain::generate({ {200,80}, 3 }) );
 		core.reset( GameCore::create({}) );
 		
+		lt->test_save();
+//		exit(666);
+		
 		gp_init = GamePresenter::InitParams{lt};
 		while (!pres)
 		{
@@ -246,7 +297,9 @@ public:
 		
 		VLOGI("init_game() finished in: {:.3f} seconds", (TimeSpan::since_start() - t0).seconds());
 	}
-	void thr_func() try
+	
+	void thr_func()
+	try
 	{
 		init_game();
 		VLOGI("Game initialized");
@@ -254,11 +307,14 @@ public:
 		while (!thr_term)
 		{
 			auto t0 = TimeSpan::since_start();
+			if (MainLoop::current == this)
 			{
 				std::unique_lock lock(ren_lock);
 				core->step();
 			}
-			sleep(core->step_len - (TimeSpan::since_start() - t0));
+			auto dt = TimeSpan::since_start() - t0;
+			sleep(core->step_len - dt);
+			dbg_serv_avg.add (dt.seconds());
 		}
 	}
 	catch (std::exception& e) {
@@ -273,13 +329,20 @@ MainLoop* MainLoop::current;
 
 MainLoop* MainLoop::create(InitWhich which)
 {
-	if (which == INIT_DEFAULT)
-		which = INIT_GAME;
-	
 	MainLoop* prev = current;
+	
 	try {
-		if		(which == INIT_RENTEST) current = new ML_Rentest;
-		else if (which == INIT_GAME)    current = new ML_Game;
+		switch (which)
+		{
+		case INIT_DEFAULT:
+		case INIT_GAME:
+			current = new ML_Game;
+			break;
+			
+		case INIT_SETTINGS:
+			current = new ML_Settings;
+			break;
+		}
 	}
 	catch (std::exception& e) {
 		THROW_FMTSTR("MainLoop::create() failed: {}", e.what());

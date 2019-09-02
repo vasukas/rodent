@@ -346,7 +346,7 @@ public:
 		pars.type = StdProjectile::T_AOE;
 		pars.rad = 3.f;
 		pars.rad_min = 0.f;
-		pars.imp = 80.f;
+		pars.imp = 250.f;
 		pars.trail = true;
 	}
 	bool shoot(Entity* ent, vec2fp target) override

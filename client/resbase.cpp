@@ -76,14 +76,14 @@ void ResBase_Impl::init_ren()
 		}
 		void gen(ParticleParams& p)
 		{
-			float vk = rnd_range(0.5, 2) * clampf(power, 0.1, 2) + spd_min;
+			float vk = rnd_stat().range(0.5, 2) * clampf(power, 0.1, 2) + spd_min;
 			vec2fp vel{vk, 0};
-			vel.fastrotate( tr.rot + rnd_range(-a_lim, a_lim) );
+			vel.fastrotate( tr.rot + rnd_stat().range(-a_lim, a_lim) );
 			p.vx = vel.x;
 			p.vy = vel.y;
 			
-			p.ft = rnd_range(2, 3.5) * alpha;
-			float t = rnd_range();
+			p.ft = rnd_stat().range(2, 3.5) * alpha;
+			float t = rnd_stat().range_n();
 			
 #define RND(A) p.clr.A = t < 0.5 ? lerp(clr0.A, clr_t.A, t*2) : lerp(clr_t.A, clr1.A, t*2-1)
 			RND(r); RND(g); RND(b); RND(a);
@@ -104,7 +104,7 @@ void ResBase_Impl::init_ren()
 		
 		size_t begin(const BatchPars& pars, ParticleParams& p)
 		{
-			p.size = 0.1;
+			p.size = 1; //0.1;
 			
 			ctr = pars.tr.pos;
 			rad = pars.power;
@@ -117,13 +117,13 @@ void ResBase_Impl::init_ren()
 		}
 		void gen(ParticleParams& p)
 		{
-			p.lt = rnd_range(1.5, 2.5);
-			p.ft = p.lt * 0.25; p.lt *= 0.75;
+			p.lt = rnd_stat().range(1.5, 2.5);
+			p.ft = p.lt * 0.5; p.lt *= 0.5;
 			p.clr = clr;
 			
 			for (int i=0; i<3; ++i) {
-				if (rnd_bool()) p.clr[i] += rnd_range(0, clr_p[i]);
-				else            p.clr[i] -= rnd_range(0, clr_n[i]);
+				if (rnd_stat().flag()) p.clr[i] += rnd_stat().range(0, clr_p[i]);
+				else                   p.clr[i] -= rnd_stat().range(0, clr_n[i]);
 			}
 			
 			vec2fp r = {rad, 0};
@@ -202,12 +202,12 @@ void ResBase_Impl::init_ren()
 			p.px = rp.x + tr.pos.x;
 			p.py = rp.y + tr.pos.y;
 			
-			vec2fp rv = vec2fp(0, rnd_range(0.1, 0.5));
-			rv.fastrotate( rnd_range(-M_PI, M_PI) );
+			vec2fp rv = vec2fp(0, rnd_stat().range(0.1, 0.5));
+			rv.fastrotate( rnd_stat().range(-M_PI, M_PI) );
 			p.vx = rv.x;
 			p.vy = rv.y;
 			
-			p.ft = rnd_range(3, 5);
+			p.ft = rnd_stat().range(3, 5);
 		}
 	};
 
@@ -261,6 +261,7 @@ void ResBase_Impl::init_ren()
 		g->n_base = 8;
 		g->p_min = 0.2f, g->p_max = 2.f;
 		g->alpha = 0.45;
+		g->size = 0.15;
 		g->clr0 = FColor(0.4, 1, 1, 0.8);
 		g->clr1 = FColor(0.9, 1, 1, 0.8);
 	}{

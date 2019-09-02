@@ -244,6 +244,11 @@ bool Rect::contains(vec2i p) const
 	vec2i a1 = upper();
 	return off.x <= p.x && a1.x >= p.x && off.y <= p.y && a1.y >= p.y;
 }
+bool Rect::contains_le(vec2i p) const
+{
+	vec2i a1 = upper();
+	return off.x <= p.x && a1.x > p.x && off.y <= p.y && a1.y > p.y;
+}
 Rect::operator Rectfp() const
 {
 	return Rectfp( lower(), upper(), false );

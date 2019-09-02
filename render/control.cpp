@@ -271,7 +271,7 @@ public:
 			frm.pos = cam_ui.get_vport().size() / 2;
 			cam_ui.set_state(frm);
 			
-			if (pp_main && use_pp) pp_main->start(passed);
+			if (pp_main && use_pp) pp_main->start(passed, Postproc::CI_MAIN);
 			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
 			glBlendEquation(GL_MAX);
 			
@@ -281,12 +281,22 @@ public:
 			RenAAL::get().render();
 			glBlendEquation(GL_FUNC_ADD);
 			
+			if (pp_main && use_pp) pp_main->start(passed, Postproc::CI_PARTS);
 			ParticleRenderer::get().render(passed);
+			if (pp_main && use_pp) pp_main->finish(Postproc::CI_PARTS);
+			
 			RenAAL::get().render_grid(passed); // changes blending
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			
 			RenImm::get().render(RenImm::DEFCTX_WORLD);
-			if (pp_main && use_pp) pp_main->finish();
+			if (pp_main && use_pp) pp_main->finish(Postproc::CI_MAIN);
+			
+			if (pp_main && use_pp) pp_main->render(Postproc::CI_MAIN);
+			if (pp_main && use_pp) {
+				glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
+				pp_main->render(Postproc::CI_PARTS);
+				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			}
 			
 			RenImm::get().render(RenImm::DEFCTX_UI);
 			RenImm::get().render_post();

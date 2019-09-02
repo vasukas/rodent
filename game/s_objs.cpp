@@ -5,8 +5,6 @@ EWall::EWall(const std::vector<std::vector<vec2fp>>& walls):
     phy(this, b2BodyDef{}),
     ren(this, MODEL_LEVEL_STATIC, FColor(0.75, 0.75, 0.75, 1))
 {
-	dbg_name = "static_walls";
-	
 	std::vector<b2Vec2> verts;
 	for (auto& w : walls)
 	{

@@ -175,7 +175,6 @@ Options:
   --gldbg     create debug OpenGL context and log all GL messages as verbose
 				       
 Modes (to see options use --modehelp):
-  --rentest   renderer test
   --game      default
 )");
 			}
@@ -186,7 +185,6 @@ Modes (to see options use --modehelp):
 			else if (arg.is("-v"))  cli_verb = LogLevel::Debug;
 			else if (arg.is("-vv")) cli_verb = LogLevel::Verbose;
 			else if (arg.is("--gldbg")) RenderControl::opt_gldbg = true;
-			else if (arg.is("--rentest")) MainLoop::create(MainLoop::INIT_RENTEST);
 			else if (arg.is("--game")) MainLoop::create(MainLoop::INIT_GAME);
 			else if (arg.is("--modehelp"))
 			{

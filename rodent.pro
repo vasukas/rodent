@@ -110,6 +110,7 @@ SOURCES += \
 	render/texture.cpp \
 	utils/block_cfg.cpp \
 	utils/color_manip.cpp \
+	utils/image_utils.cpp \
 	utils/noise.cpp \
 	utils/res_image.cpp \
 	utils/svg_simple.cpp \
@@ -154,6 +155,7 @@ HEADERS += \
 	utils/block_cfg.hpp \
 	utils/color_manip.hpp \
 	utils/ev_signal.hpp \
+	utils/image_utils.hpp \
 	utils/noise.hpp \
 	utils/res_image.hpp \
 	utils/svg_simple.hpp \

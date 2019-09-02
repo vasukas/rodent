@@ -41,6 +41,7 @@ enum class VigMenu
 {
 	Default,
 	DebugRenderer,
+	DebugGame,
 	
 	TOTAL_COUNT ///< Do not use
 };
@@ -192,13 +193,16 @@ void vig_lo_pop();
 /// Allocates space for element. 
 /// 'pos' is returned absolute position of element. 
 /// Returns false if element is completely out of zone borders (but still initializes everything)
-bool vig_lo_place(vec2i& pos, vec2i size);
+bool vig_lo_place(vec2i& pos, vec2i& size);
 
 /// Ends current row of elements
 void vig_lo_next();
 
 /// Set minimal element size
 void vig_lo_size(vec2i size);
+
+/// Sets element x-size from zone size and number of columns
+void vig_lo_cols(int count);
 
 /// Returns absolute position of next element
 vec2i vig_lo_get_next();
@@ -354,6 +358,40 @@ struct vigTextbox
 	
 private:
 	size_t ptr = 0;
+};
+
+
+/// Table layout calculator
+struct vigTableLC
+{
+	struct Element
+	{
+		std::optional<std::string> str; ///< Input: if set, size calculated from it
+		vec2i size = {}; ///< Input: element size
+		
+		vec2i pos = {}; ///< Output: position relative to origin
+		vec2i max_size = {}; ///< Output: max element size
+	};
+	
+	bool use_space = true; ///< If true, widget spaces are applied
+	
+	vigTableLC() = default;
+	vigTableLC(vec2i size) {set_size(size);}
+	
+	/// Calculates element positions from sizes. 
+	/// If place is true, places total size in current zone. 
+	/// Returns total size
+	vec2i calc(bool place = true);
+	
+	void set_size(vec2i new_size);
+	vec2i get_size() const {return size;}
+	
+	Element& get(vec2i pos); ///< Throws on error
+	std::vector<Element>& get_all() {return els;}
+	
+private:
+	std::vector<Element> els;
+	vec2i size = {};
 };
 
 #endif // VIG_HPP

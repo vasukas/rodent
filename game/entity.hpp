@@ -10,6 +10,11 @@
 class Entity;
 class GameCore;
 
+struct ECompRender;
+struct EC_Equipment;
+struct EC_Health;
+struct EC_Physics;
+
 /// Unique entity index, always non-zero for existing entity
 typedef uint32_t EntityIndex;
 
@@ -69,19 +74,11 @@ struct ECompPhysics : EComp
 
 
 
-struct ECompRender;
-struct EC_Equipment;
-struct EC_Health;
-struct EC_Physics;
-
-
-
 /// Game object
 class Entity
 {
 public:
 	const EntityIndex index;
-	std::string dbg_name = {};
 	
 	
 	virtual EC_Physics&   get_phobj(); ///< Throws if wrong type

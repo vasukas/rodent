@@ -5,6 +5,8 @@
 
 union SDL_Event;
 
+
+
 class Gamepad
 {
 public:
@@ -12,10 +14,10 @@ public:
 	{
 		B_NONE, ///< Never reported
 		
-		B_Y, ///< up - Y, triangle, 1
-		B_B, ///< right - B, circle, 2
-		B_A, ///< down - A, cross, 3
-		B_X, ///< left - X, square, 4
+		B_RC_UP,    ///< Y, 1, triangle
+		B_RC_RIGHT, ///< B, 2, circle
+		B_RC_DOWN,  ///< A, 3, cross
+		B_RC_LEFT,  ///< X, 4, square
 
 		// D-Pad
 		B_UP,
@@ -31,6 +33,10 @@ public:
 		B_TRIG_LEFT,
 		B_TRIG_RIGHT,
 		
+		// control
+		B_BACK,  ///< or 'select'
+		B_START, ///< or 'forward'
+		
 		/// Do not use
 		TOTAL_BUTTONS_INTERNAL
 	};
@@ -44,6 +50,7 @@ public:
 	virtual float trig_left () = 0; ///< [0; 1] range, excluding dead zone
 	virtual float trig_right() = 0; ///< [0; 1] range, excluding dead zone
 	
+	virtual void* get_raw() = 0; ///< Returns SDL_GameController*
 	static void update();
 };
 

@@ -13,7 +13,8 @@ Game (default)
 | W,A,S,D | movement
 | Space   | accelerate
 | LMB     | fire
-| RMB     | alt. fire / aim
+| RMB     | alt. fire
+| R       | toggle laser
 | 1-7     | switch weapon
 | Escape  | menu
 
@@ -25,6 +26,7 @@ Special
 | Ctrl + R | reload shaders
 | Ctrl + F | toggle fullscreen
 | ~ + 1-3  | debug menues
+| F2       | toggle log display
 
 ## Build
 

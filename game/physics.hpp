@@ -43,9 +43,9 @@ struct EC_Physics : ECompPhysics
 	EC_Physics(const EC_Physics&) = delete;
 	~EC_Physics();
 	
-	void add_circle(float radius, float mass);
 	void add_circle(b2FixtureDef& fd, float radius, float mass);
 	void add_box(b2FixtureDef& fd, vec2fp half_extents, float mass);
+	void add_box(b2FixtureDef& fd, vec2fp half_extents, float mass, Transform tr);
 	
 	void attach_to(EC_Physics& target); ///< Fixed
 	void detach(); ///< Detaches self

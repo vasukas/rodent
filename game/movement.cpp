@@ -107,7 +107,7 @@ void EC_Movement::step()
 	float amp = vel.Length();
 	if (amp > dust_vel)
 	{
-		float p = amp - dust_vel;
+		float p = amp / dust_vel;
 		Transform tr;
 		tr.rot = std::atan2(vel.y, vel.x) - body->GetAngle();
 		tr.pos = {-(phy.get_radius() + 0.1f), 0};

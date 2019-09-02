@@ -1,0 +1,32 @@
+// ==================
+#vert_texel
+#frag
+#version 330 core
+
+uniform sampler2D tex;
+uniform int horiz;
+uniform int size;
+uniform float mul[17];
+
+in vec2 tc;
+out vec4 out_clr;
+
+void main() {
+	vec4 clr = vec4(0);
+	if (horiz == 1) {
+		for (int i=-size; i<=size; i++) {
+			ivec2 c = ivec2(tc.x + i, tc.y);
+			clr += texelFetch(tex, c, 0) * mul[i + size];
+		}
+	}
+	else {
+		for (int i=-size; i<=size; i++) {
+			ivec2 c = ivec2(tc.x, tc.y + i);
+			clr += texelFetch(tex, c, 0) * mul[i + size];
+		}
+	}
+	out_clr = clr;
+}
+
+#end
+

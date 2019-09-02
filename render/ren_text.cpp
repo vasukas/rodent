@@ -327,6 +327,13 @@ public:
 			rg.tex.tc.upper(c);
 		}
 		
+		// make all characters monowide
+		if (fd->is_mono_flag)
+		{
+			for (auto& g : fd->glyphs) g.second.xadv = fd->w_mode;
+			fd->miss.xadv = fd->w_mode;
+		}
+		
 		VLOGV("RenText::load_font() OK");
 		return fd;
 	}

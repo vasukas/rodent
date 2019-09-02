@@ -44,9 +44,6 @@ static std::optional<Texture::Format> assoc_fmt(ImageInfo::Format fmt)
 	case ImageInfo::FMT_ALPHA: return Texture::FMT_SINGLE;
 	case ImageInfo::FMT_RGB:   return Texture::FMT_RGB;
 	case ImageInfo::FMT_RGBA:  return Texture::FMT_RGBA;
-	
-	case ImageInfo::FMT_NONE:
-		return {};
 	}
 	return {};
 }

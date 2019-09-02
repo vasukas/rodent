@@ -87,7 +87,7 @@ in vec4 tclr;
 out vec4 res;
 
 void main() {
-	float a = 1 - (tc.x * tc.x + tc.y * tc.y) / 2;
+	float a = 1 - length(tc);
 	res = tclr * a;
 }
 

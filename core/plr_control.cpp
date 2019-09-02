@@ -5,6 +5,98 @@
 
 
 
+PlayerController::Bind::Bind()
+    : ims({ &key, &alt, &mou, &but })
+{}
+PlayerController::InputMethod::Name PlayerController::IM_Key::get_name(SDL_Scancode v)
+{
+	return {v == SDL_SCANCODE_UNKNOWN ? "---" : SDL_GetScancodeName(v)};
+}
+PlayerController::InputMethod::Name PlayerController::IM_Mouse::get_name(int v)
+{
+	switch (v)
+	{
+	case MOUSE_NONE: return {"---"};
+	
+	case SDL_BUTTON_LEFT:   return {"Left"};
+	case SDL_BUTTON_RIGHT:  return {"Right"};
+	case SDL_BUTTON_MIDDLE: return {"Middle"};
+//	case SDL_BUTTON_LEFT:   name = {"mou_left",  true};
+//	case SDL_BUTTON_RIGHT:  name = {"mou_right", true};
+//	case SDL_BUTTON_MIDDLE: name = {"mou_mid",   true};
+	case SDL_BUTTON_X1:     return {"X1"};
+	case SDL_BUTTON_X2:     return {"X2"};
+		
+	case MOUSE_WHEELDOWN:   return {"Wheel down"};
+	case MOUSE_WHEELUP:     return {"Wheel up"};
+//	case MOUSE_WHEELDOWN:   return {"mou_down", true};
+//	case MOUSE_WHEELUP:     return {"mou_up",   true};
+	}
+	return {FMT_FORMAT("Unk #{}", v)};
+}
+PlayerController::InputMethod::Name PlayerController::IM_Gpad::get_name(Gamepad::Button v)
+{
+	switch (v)
+	{
+	case Gamepad::B_NONE:
+	case Gamepad::TOTAL_BUTTONS_INTERNAL:
+		return {"---"};
+		
+	case Gamepad::B_RC_UP:    return {"RC up"};
+	case Gamepad::B_RC_RIGHT: return {"RC right"};
+	case Gamepad::B_RC_DOWN:  return {"RC down"};
+	case Gamepad::B_RC_LEFT:  return {"RC left"};
+		
+	case Gamepad::B_UP:    return {"D up"};
+	case Gamepad::B_RIGHT: return {"D right"};
+	case Gamepad::B_DOWN:  return {"D down"};
+	case Gamepad::B_LEFT:  return {"D left"};
+		
+	case Gamepad::B_SHLD_LEFT:  return {"Left bump"};
+	case Gamepad::B_SHLD_RIGHT: return {"Right bump"};
+		
+	case Gamepad::B_TRIG_LEFT:  return {"Left trigger"};
+	case Gamepad::B_TRIG_RIGHT: return {"Right trigger"};
+		
+	case Gamepad::B_BACK:  return {"Back"};
+	case Gamepad::B_START: return {"Start"};
+		
+//	case Gamepad::B_RC_UP:    return {"gpad_rc_up",    true};
+//	case Gamepad::B_RC_RIGHT: return {"gpad_rc_right", true};
+//	case Gamepad::B_RC_DOWN:  return {"gpad_rc_down",  true};
+//	case Gamepad::B_RC_LEFT:  return {"gpad_rc_left",  true};
+		
+//	case Gamepad::B_UP:    return {"gpad_up",    true};
+//	case Gamepad::B_RIGHT: return {"gpad_right", true};
+//	case Gamepad::B_DOWN:  return {"gpad_down",  true};
+//	case Gamepad::B_LEFT:  return {"gpad_left",  true};
+		
+//	case Gamepad::B_SHLD_LEFT:  return {"gpad_shld_left",  true};
+//	case Gamepad::B_SHLD_RIGHT: return {"gpad_shld_right", true};
+		
+//	case Gamepad::B_TRIG_LEFT:  return {"gpad_trig_left",  true};
+//	case Gamepad::B_TRIG_RIGHT: return {"gpad_trig_right", true};
+	}
+	return {"Unknown"};
+}
+void PlayerController::IM_Key::operator=(SDL_Scancode v)
+{
+	this->v = v;
+	name = get_name(v);
+}
+void PlayerController::IM_Mouse::operator=(int v)
+{
+	this->v = v;
+	name = get_name(v);
+}
+void PlayerController::IM_Gpad::operator=(Gamepad::Button v)
+{
+	this->v = v;
+	name = get_name(v);
+}
+
+
+
 PlayerController::PlayerController(std::unique_ptr<Gamepad> gpad):
     gpad(std::move(gpad))
 {
@@ -33,7 +125,7 @@ PlayerController::PlayerController(std::unique_ptr<Gamepad> gpad):
 		b.descr = "Toggles laser designator";
 		b.type = BT_ONESHOT;
 		b.key = SDL_SCANCODE_R;
-		b.but = Gamepad::B_B;
+		b.but = Gamepad::B_RC_RIGHT;
 	}{
 		Bind& b = binds[A_WPN_PREV];
 		b.name = "Previous weapon";
@@ -82,18 +174,28 @@ PlayerController::PlayerController(std::unique_ptr<Gamepad> gpad):
 }
 void PlayerController::on_event(const SDL_Event& ev)
 {
+	auto check = [](auto& v, auto& e, bool on)
+	{
+		if (v.v == e)
+		{
+			if (on) v.state = K_JUST;
+			else if (v.state == K_JUST) v.state = K_ONCE;
+			else v.state = K_OFF;
+			return true;
+		}
+		return false;
+	};
+	
 	if		(ev.type == SDL_KEYDOWN)
 	{
 		auto& ks = ev.key.keysym;
-		if (ks.scancode == SDL_SCANCODE_UNKNOWN) return;
 		if (ev.key.repeat) return;
+		if (ks.scancode == SDL_SCANCODE_UNKNOWN) return;
 		
 		for (auto& b : binds)
 		{
-			if (b.key == ks.scancode) {
-				b.st_key = K_JUST;
-				break;
-			}
+			if (check(b.key, ks.scancode, true)) break;
+			if (check(b.alt, ks.scancode, true)) break;
 		}
 	}
 	else if (ev.type == SDL_KEYUP)
@@ -102,26 +204,31 @@ void PlayerController::on_event(const SDL_Event& ev)
 		if (ks.scancode == SDL_SCANCODE_UNKNOWN) return;
 		
 		for (auto& b : binds)
-			if (b.key == ks.scancode) {
-				if (b.st_key == K_JUST) b.st_key = K_ONCE;
-				else b.st_key = K_OFF;
-				break;
-			}
+		{
+			if (check(b.key, ks.scancode, false)) break;
+			if (check(b.alt, ks.scancode, false)) break;
+		}
 	}
 	else if (ev.type == SDL_MOUSEBUTTONDOWN)
 	{
 		for (auto& b : binds)
-			if (b.mou == ev.button.button) {
-				b.st_mou = K_JUST;
-				break;
-			}
+			if (check(b.mou, ev.button.button, true)) break;
 	}
 	else if (ev.type == SDL_MOUSEBUTTONUP)
 	{
 		for (auto& b : binds)
-			if (b.mou == ev.button.button) {
-				if (b.st_mou == K_JUST) b.st_mou = K_ONCE;
-				else b.st_mou = K_OFF;
+			if (check(b.mou, ev.button.button, false)) break;
+	}
+	else if (ev.type == SDL_MOUSEWHEEL)
+	{
+		int v, y = ev.wheel.y;
+		if		(y > 0) v = MOUSE_WHEELUP;
+		else if (y < 0) v = MOUSE_WHEELDOWN;
+		else return;
+		
+		for (auto& b : binds)
+			if (b.mou.v == v) {
+				b.mou.state = K_ONCE;
 				break;
 			}
 	}
@@ -133,13 +240,14 @@ void PlayerController::update()
 	
 	if (gpad)
 	{
-		auto upd_st = [](Bind& b, bool ok)
+		auto upd_st = [this](auto& b)
 		{
-			if (ok) b.st_but = (b.st_but == K_OFF) ? K_JUST : K_HELD;
-			else b.st_but = K_OFF;
+			if (gpad->get_state(b.v))
+				b.state = (b.state == K_OFF) ? K_JUST : K_HELD;
+			else b.state = K_OFF;
 		};
 		for (auto& b : binds)
-			upd_st(b, gpad->get_state(b.but));
+			upd_st(b.but);
 		
 		p_mov = gpad->get_left();
 		p_tar = gpad->get_right() * gpad_aim_dist;
@@ -168,11 +276,12 @@ void PlayerController::update()
 	
 	for (auto& b : binds)
 	{
-		if		(b.st_key == K_ONCE) b.st_key = K_OFF;
-		else if (b.st_key == K_JUST) b.st_key = K_HELD;
-		
-		if		(b.st_mou == K_ONCE) b.st_mou = K_OFF;
-		else if (b.st_mou == K_JUST) b.st_mou = K_HELD;
+		for (auto& i : b.ims)
+		{
+			auto& s = i->state;
+			if		(s == K_ONCE) s = K_OFF;
+			else if (s == K_JUST) s = K_HELD;
+		}
 	}
 }
 bool PlayerController::is_enabled(size_t i) const
@@ -181,15 +290,17 @@ bool PlayerController::is_enabled(size_t i) const
 	switch (b.type)
 	{
 	case BT_ONESHOT:
-		if (b.st_key == K_JUST || b.st_key == K_ONCE) return true;
-		if (b.st_mou == K_JUST || b.st_mou == K_ONCE) return true;
-		if (b.st_but == K_JUST || b.st_but == K_ONCE) return true;
+		for (auto& i : b.ims) {
+			if (i->state == K_JUST || i->state == K_ONCE)
+				return true;
+		}
 		return false;
 		
 	case BT_HELD:
-		if (b.st_key) return true;
-		if (b.st_mou) return true;
-		if (b.st_but) return true;
+		for (auto& i : b.ims) {
+			if (i->state != K_OFF)
+				return true;
+		}
 		return false;
 	}
 	return false;

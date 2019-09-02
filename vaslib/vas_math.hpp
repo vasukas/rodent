@@ -232,6 +232,7 @@ struct Rect {
 	bool empty() const {return sz.x <= 0 || sz.y <= 0;} ///< Returns true if rectangle is of zero size
 	bool intersects(const Rect& r) const; ///< Checks if rectangles overlap, including edges
 	bool contains(vec2i p) const; ///< Checks if point is inside, including edges
+	bool contains_le(vec2i p) const; ///< Checks if point is inside, including only lower edges
 	
 	operator Rectfp() const;
 	operator SDL_Rect() const;
