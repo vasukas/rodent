@@ -181,7 +181,7 @@ void ResBase_Impl::init_ren()
 		}
 		size_t begin(const BatchPars& pars, ParticleParams& p)
 		{
-			p.size = 0.1;
+			p.size = 0.15;
 			p.lt = 0;
 			p.clr = clr? *clr : pars.clr;
 			p.lt = 0;

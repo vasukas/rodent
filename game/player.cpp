@@ -1,9 +1,9 @@
+#include "client/plr_control.hpp"
 #include "client/presenter.hpp"
-#include "core/plr_control.hpp"
 #include "render/ren_aal.hpp"
 #include "vaslib/vas_log.hpp"
 #include "game_core.hpp"
-#include "movement.hpp"
+#include "game_utils.hpp"
 #include "physics.hpp"
 #include "player.hpp"
 #include "weapon.hpp"
@@ -11,6 +11,7 @@
 #include "render/camera.hpp"
 #include "render/control.hpp"
 #include "render/ren_imm.hpp"
+#include "s_objs.hpp"
 
 
 
@@ -36,7 +37,9 @@ struct PlayerRender : ECompRender
 	
 	
 	
-	PlayerRender(Entity* ent): ECompRender(ent) {}
+	PlayerRender(Entity* ent)
+	    : ECompRender(ent)
+	{}
 	void on_destroy() override
 	{
 		parts(MODEL_PC_RAT, ME_DEATH, {});
@@ -113,6 +116,80 @@ struct PlayerRender : ECompRender
 
 
 
+struct PlayerMovement : EComp
+{
+	const float spd_norm = 10; // movement speed
+	const float spd_accel = 20;
+	
+	const float dust_vel = spd_accel - 1;
+	
+	vec2fp prev_dir = {}; // last used move direction
+	SmoothSwitch accel_ss;
+	
+	vec2fp tar_dir = {};
+	float inert_k = 0.5;
+	
+	
+	
+	PlayerMovement(Entity* ent)
+	    : EComp(ent)
+	{
+		reg(ECompType::StepPostUtil);
+		accel_ss.min_sus = TimeSpan::seconds(0.3);
+	}
+	void step() override
+	{
+		auto& body = ent->get_phobj().body;
+		b2Vec2 vel = body->GetLinearVelocity();
+		
+		b2Vec2 f = conv(tar_dir) - vel;
+		f *= body->GetMass();
+		f *= inert_k;
+		body->ApplyForceToCenter(f, true);
+		
+		float amp = vel.Length();
+		if (amp > dust_vel)
+		{
+			float p = amp / dust_vel;
+			Transform tr;
+			tr.rot = std::atan2(vel.y, vel.x) - body->GetAngle();
+			tr.pos = {-ent->get_phy().get_radius(), 0};
+			tr.pos.fastrotate(tr.rot);
+			ent->get_ren()->parts(FE_SPEED_DUST, {tr, p});
+		}
+	}
+	void upd_vel(vec2fp dir, bool is_accel, vec2fp look_pos, bool *side_col)
+	{
+		const float zero_thr = 0.001;
+		const float slide_k = 0.2;
+		
+		accel_ss.step(GameCore::step_len, is_accel);
+		is_accel = !accel_ss.is_zero();
+		
+		if (is_accel && dir.len2() < zero_thr) dir = prev_dir;
+		
+		vec2fp vd = look_pos - ent->get_phy().get_pos();
+		if (vd.len2() > zero_thr) vd.norm_to( slide_k );
+		else vd = {};
+		
+		if (dir.x >  zero_thr && side_col[0]) {dir.x = 0; dir.y += vd.y;}
+		if (dir.y >  zero_thr && side_col[1]) {dir.y = 0; dir.x += vd.x;}
+		if (dir.x < -zero_thr && side_col[2]) {dir.x = 0; dir.y += vd.y;}
+		if (dir.y < -zero_thr && side_col[3]) {dir.y = 0; dir.x += vd.x;}
+		
+		if (dir.len2() > zero_thr) {
+			dir.norm_to(is_accel ? spd_accel : spd_norm);
+			prev_dir = dir;
+		}
+		else dir = {};
+		
+		tar_dir = dir;
+		inert_k = 1.f / (is_accel? 0.1 : 0.2);
+	}
+};
+
+
+
 struct PlayerLogic : EComp
 {
 	EVS_SUBSCR;
@@ -121,9 +198,6 @@ struct PlayerLogic : EComp
 	const float push_angle = deg_to_rad(60.f); // pushoff params
 	const float push_imp_max = 120.f;
 	
-	const float spd_norm = 8; // movement speed
-	const float spd_accel = 17; // 14
-	
 	const float min_tar_dist = 1.2; // minimal target distance
 	vec2fp prev_tar; // used if current dist < minimal
 	
@@ -131,43 +205,9 @@ struct PlayerLogic : EComp
 	
 	
 	
-	PlayerLogic(Entity* ent, std::shared_ptr<PlayerController> ctr):
-	    EComp(ent), ctr(std::move(ctr))
-	{
-		reg(ECompType::StepLogic);
-		
-		auto& phy = dynamic_cast<EC_Physics&>(ent->get_phy());
-		EVS_CONNECT1(phy.ev_contact, on_cnt);
-		
-		// set sidecol
-		
-		b2FixtureDef fd;
-		fd.isSensor = true;
-		
-		const float off = GameConst::hsz_rat - 0.05;
-		const float len = GameConst::hsz_rat - 0.1;
-		const float wid = spd_accel * GameCore::time_mul + 0.1;
-		
-		for (int i=0; i<4; ++i)
-		{
-			auto sz  = vec2fp(wid, len).get_rotated( M_PI_2 * i );
-			auto pos = vec2fp(off, 0)  .get_rotated( M_PI_2 * i );
-			
-			fd.userData = reinterpret_cast<void*> (i + 1);
-			phy.add_box(fd, sz, 1, Transform{pos});
-		}
-	}
+	PlayerLogic(Entity* ent, std::shared_ptr<PlayerController> ctr_in);
 	void step() override;
-	void on_cnt(const ContactEvent& ce)
-	{
-		if (ce.fix_this && dynamic_cast<EC_Physics&>(ce.other->get_phy()).body->GetType() == b2_staticBody)
-		{
-			auto i = -1 + reinterpret_cast<intptr_t> (ce.fix_this);
-			if		(ce.type == ContactEvent::T_BEGIN) side_col[i] = true;
-			else if (ce.type == ContactEvent::T_END)   side_col[i] = false;
-		}
-	}
-	void set_mov_vel(vec2fp dir, bool is_accel);
+	void on_cnt(const ContactEvent& ce);
 };
 
 
@@ -175,12 +215,12 @@ struct PlayerLogic : EComp
 class PlayerEntity final : public Entity
 {
 public:
-	EC_Physics   phy;
-	PlayerRender ren;
-	EC_Movement  mov;
-	EC_Health    hlc;
-	EC_Equipment eqp;
-	PlayerLogic  log;
+	EC_Physics     phy;
+	PlayerRender   ren;
+	PlayerMovement mov;
+	EC_Health      hlc;
+	EC_Equipment   eqp;
+	PlayerLogic    log;
 	
 	static b2BodyDef ph_def(vec2fp pos)
 	{
@@ -195,7 +235,7 @@ public:
 	    phy(this, ph_def(pos)),
 	    ren(this),
 	    mov(this),
-	    hlc(this),
+	    hlc(this, 150),
 	    eqp(this),
 	    log(this, std::move(ctr))
 	{
@@ -207,9 +247,6 @@ public:
 		eqp.wpns.emplace_back( Weapon::create_std(WeaponIndex::Minigun) );
 		eqp.wpns.emplace_back( Weapon::create_std(WeaponIndex::Rocket) );
 		eqp.set_wpn(0);
-		
-		mov.damp_lin = 2.f;
-		mov.dust_vel = log.spd_accel - 1;
 		
 		log.prev_tar = phy.get_pos() + vec2fp(1, 0);
 	}
@@ -227,6 +264,33 @@ Entity* create_player(vec2fp pos, std::shared_ptr<PlayerController> ctr)
 
 
 
+PlayerLogic::PlayerLogic(Entity* ent, std::shared_ptr<PlayerController> ctr_in)
+    : EComp(ent), ctr(std::move(ctr_in))
+{
+	reg(ECompType::StepLogic);
+	
+	auto& self = dynamic_cast<PlayerEntity&>(*ent);
+	auto& phy = self.phy;
+	EVS_CONNECT1(phy.ev_contact, on_cnt);
+	
+	// set sidecol
+	
+	b2FixtureDef fd;
+	fd.isSensor = true;
+	
+	const float off = GameConst::hsz_rat - 0.05;
+	const float len = GameConst::hsz_rat - 0.1;
+	const float wid = self.mov.spd_accel * GameCore::time_mul + 0.1;
+	
+	for (int i=0; i<4; ++i)
+	{
+		auto sz  = vec2fp(wid, len).get_rotated( M_PI_2 * i );
+		auto pos = vec2fp(off, 0)  .get_rotated( M_PI_2 * i );
+		
+		fd.userData = reinterpret_cast<void*> (i + 1);
+		phy.add_box(fd, sz, 1, Transform{pos});
+	}
+}
 void PlayerLogic::step()
 {
 	auto self = static_cast<PlayerEntity*>(ent);
@@ -260,14 +324,14 @@ void PlayerLogic::step()
 			self->ren.show_ray = !self->ren.show_ray;
 	}
 	
-	set_mov_vel(cst.mov, accel);
-	
 	auto spos = self->phy.get_pos();
 	auto tar = cst.tar_pos;
 	
 	if (spos.dist(tar) < min_tar_dist)
 		tar = prev_tar;
 	prev_tar = tar;
+	
+	self->mov.upd_vel(cst.mov, accel, prev_tar, side_col);
 	
 	if (shooting)
 		eqp.shoot(tar);
@@ -287,20 +351,13 @@ void PlayerLogic::step()
 		self->ren.set_ray_tar(tar);
 	}
 }
-void PlayerLogic::set_mov_vel(vec2fp dir, bool is_accel)
+void PlayerLogic::on_cnt(const ContactEvent& ce)
 {
-	auto& mov = static_cast<PlayerEntity*>(ent)->mov;
-	
-	vec2fp vd = prev_tar - ent->get_phy().get_pos();
-	if (vd.len2() > 0.01) vd.norm_to(0.2);
-	vd = {};
-	
-	if (dir.x >  0.01 && side_col[0]) {dir.x = 0; dir.y += vd.y;}
-	if (dir.y >  0.01 && side_col[1]) {dir.y = 0; dir.x += vd.x;}
-	if (dir.x < -0.01 && side_col[2]) {dir.x = 0; dir.y += vd.y;}
-	if (dir.y < -0.01 && side_col[3]) {dir.y = 0; dir.x += vd.x;}
-	
-	if (dir.len2() > 0.01) dir.norm_to(is_accel ? spd_accel : spd_norm);
-	mov.dec_inert = TimeSpan::seconds(is_accel ? 2 : 1);
-	mov.set_app_vel(dir);
+//	if (ce.fix_this && ce.other->get_phobj().body->GetType() == b2_staticBody)
+	if (ce.fix_this && dynamic_cast<EWall*>(ce.other))
+	{
+		auto i = -1 + reinterpret_cast<intptr_t> (ce.fix_this);
+		if		(ce.type == ContactEvent::T_BEGIN) side_col[i] = true;
+		else if (ce.type == ContactEvent::T_END)   side_col[i] = false;
+	}
 }

@@ -8,8 +8,8 @@
 
 
 
-ECompRender::ECompRender(Entity* ent):
-    EComp(ent)
+ECompRender::ECompRender(Entity* ent)
+    : EComp(ent)
 {
 	PresCommand c;
 	c.type = PresCommand::T_CREATE;
@@ -44,6 +44,7 @@ void ECompRender::attach(AttachType type, Transform at, ModelType model, FColor 
 }
 void ECompRender::send(PresCommand& c)
 {
+	if (!_is_ok) return;
 	c.ptr = this;
 	GamePresenter::get()->add_cmd(c);
 }
@@ -59,12 +60,14 @@ void ECompRender::on_destroy_ent()
 	c.type = PresCommand::T_DEL;
 	c.ix0 = _comp_id;
 	send(c);
+	
+	_is_ok = false;
 }
 
 
 
-EC_RenderSimple::EC_RenderSimple(Entity* ent, ModelType model, FColor clr):
-    ECompRender(ent), model(model), clr(clr)
+EC_RenderSimple::EC_RenderSimple(Entity* ent, ModelType model, FColor clr)
+    : ECompRender(ent), model(model), clr(clr)
 {}
 void EC_RenderSimple::on_destroy()
 {
@@ -73,6 +76,37 @@ void EC_RenderSimple::on_destroy()
 void EC_RenderSimple::step()
 {
 	RenAAL::get().draw_inst(get_pos(), clr, model);
+}
+
+
+
+EC_RenderBot::EC_RenderBot(Entity* ent, ModelType model, FColor clr)
+    : ECompRender(ent), model(model), clr(clr)
+{}
+void EC_RenderBot::on_destroy()
+{
+	parts(model, ME_DEATH, {{}, 1, clr});
+}
+void EC_RenderBot::step()
+{
+	const Transform fixed{get_pos().pos, rot};
+	RenAAL::get().draw_inst(fixed, clr, model);
+	
+	for (auto& a : atts) {
+		if (a.model != MODEL_NONE)
+			RenAAL::get().draw_inst(fixed.get_combined(a.at), a.clr, a.model);
+	}
+}
+void EC_RenderBot::proc(const PresCommand& c)
+{
+	if (c.type == PresCommand::T_ATTACH)
+	{
+		auto& a = atts[c.ix0];
+		a.model = static_cast<ModelType>(c.ix1);
+		a.at = c.pos;
+		a.clr = c.clr;
+	}
+	else THROW_FMTSTR("EC_RenderBot::proc() not implemented ({})", ent->dbg_id());
 }
 
 
@@ -143,8 +177,9 @@ public:
 			if (ptr) pd.pars.tr = ptr->get_pos().get_combined(pd.pars.tr);
 		};
 		
-		for (auto& c : cmds_queue)
-		{			
+		for (size_t qi=0; qi < cmds_queue.size(); ++qi)
+		{
+			auto& c = cmds_queue[qi];
 			switch (c.type)
 			{
 			case PresCommand::T_ERROR:
@@ -160,13 +195,18 @@ public:
 				
 			case PresCommand::T_DEL:
 				if (c.ix0 != size_t_inval)
-					cs.free_and_null(c.ix0);
+					cs.free_and_reset(c.ix0);
 				
 				for (size_t i = 0; i < cmds.size(); )
 				{
 					if (cmds[i].ptr == c.ptr) cmds.erase( cmds.begin() + i );
 					else ++i;
 				}
+//				for (size_t i = qi + 1; i < cmds_queue.size(); )
+//				{
+//					if (cmds_queue[i].ptr == c.ptr) cmds_queue.erase( cmds_queue.begin() + i );
+//					else ++i;
+//				}
 				break;
 				
 			case PresCommand::T_OBJPARTS:

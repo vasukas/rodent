@@ -15,9 +15,6 @@ struct EC_Equipment;
 struct EC_Health;
 struct EC_Physics;
 
-/// Unique entity index, always non-zero for existing entity
-typedef uint32_t EntityIndex;
-
 /// Custom deleter (calls destroy)
 struct EntityDeleter {void operator()(Entity*);};
 
@@ -44,7 +41,8 @@ struct EComp
 	Entity* ent;
 	
 	
-	virtual void step() {} // unused by most
+	EComp(const EComp&) = delete;
+	virtual void step() {} // unused by some
 	virtual ~EComp(); ///< Removes component from all lists
 	
 	void   reg(ECompType type) noexcept; ///< Adds component to list (safe)
@@ -70,6 +68,23 @@ struct ECompPhysics : EComp
 	virtual Transform get_vel() const {return {};}
 	virtual float get_radius() const = 0; ///< Returns approximate radius of object
 	vec2fp get_norm_dir() const; ///< Returns normalized face direction
+};
+
+
+
+struct EntityIndex
+{
+	EntityIndex() = default;
+	
+	bool operator ==(const EntityIndex& ei) const {return i == ei.i;}
+	bool operator !=(const EntityIndex& ei) const {return i != ei.i;}
+	operator bool() const {return i != std::numeric_limits<uint32_t>::max();}
+	
+	static EntityIndex from_int(uint32_t i) {EntityIndex ei; ei.i = i; return ei;}
+	uint32_t to_int() const {return i;}
+	
+private:
+	uint32_t i = std::numeric_limits<uint32_t>::max();
 };
 
 
@@ -101,6 +116,7 @@ public:
 	
 protected:
 	Entity();
+	Entity(const Entity&) = delete;
 	virtual ~Entity() = default;
 	
 private:

@@ -27,17 +27,6 @@ int ImageInfo::get_bpp( Format fmt )
 	ASSERT( false, "ImageInfo::get_bpp() invalid enum" );
 	return 0;
 }
-void ImageInfo::reset( vec2i new_size, std::optional<Format> new_fmt )
-{
-	if (new_fmt) fmt = *new_fmt;
-	size = new_size;
-	px.clear();
-	px.resize( size.area() * get_bpp() );
-}
-void ImageInfo::clear()
-{
-	for (auto& p : px) p = 0;
-}
 bool ImageInfo::load( const char *name, std::optional<Format> force_fmt )
 {
 	int bpp = 0, force_bpp = (force_fmt ? get_bpp(*force_fmt) : 0);
@@ -135,6 +124,37 @@ SDL_Surface* ImageInfo::proxy() const
 	if (!sur) VLOGE("ImageInfo::proxy() SDL_CreateRGBSurfaceWithFormatFrom failed - {}", SDL_GetError());
 	return sur;
 }
+void ImageInfo::reset( vec2i new_size, std::optional<Format> new_fmt )
+{
+	if (new_fmt) fmt = *new_fmt;
+	size = new_size;
+	px.clear();
+	px.resize( size.area() * get_bpp() );
+}
+void ImageInfo::clear()
+{
+	for (auto& p : px) p = 0;
+}
+void ImageInfo::convert( Format new_fmt )
+{
+	if (fmt == new_fmt) return;
+	
+	if (fmt == FMT_ALPHA && new_fmt == FMT_RGBA)
+	{
+		size_t i = px.size() - 1;
+		px.resize( size.area() * get_bpp(new_fmt) );
+		for (; i != static_cast<size_t>(-1); --i)
+		{
+			uint8_t *src = px.data() + i;
+			uint8_t *dst = px.data() + i*4;
+			for (int i=0; i<3; ++i) dst[i] = *src;
+			dst[3] = 255;
+		}
+	}
+	else throw std::logic_error("ImageInfo::convert() not implemented");
+	
+	fmt = new_fmt;
+}
 ImageInfo ImageInfo::subimg( Rect r ) const
 {
 	int bpp = get_bpp();
@@ -227,4 +247,9 @@ void ImageInfo::blit( vec2i dst, const ImageInfo& from, vec2i src, vec2i sz )
 		memcpy( px.data() + (d_y *      size.x + d_x) * bpp,
 		   from.px.data() + (s_y * from.size.x + s_x) * bpp, bpp );
 	}
+}
+void ImageInfo::map_pixel(std::function<void(uint8_t*)> f)
+{
+	for (size_t i=0; i<px.size(); i += get_bpp())
+		f(px.data() + i);
 }

@@ -28,7 +28,7 @@ public:
 	
 	GameCore_Impl(const InitParams& pars)
 	{
-		ents.fi_expand = 256;
+		ents.block_size = 256;
 		phy.reset(new PhysicsWorld(*this));
 		rndg.gen.seed(pars.random_seed);
 	}
@@ -90,28 +90,28 @@ public:
 		step_flag = false;
 		e_todel.clear();
 	}
-	Entity* get_ent( EntityIndex i ) const noexcept
+	Entity* get_ent( EntityIndex ei ) const noexcept
 	{
-		--i;
+		size_t i = ei.to_int();
 		return i < ents.size() ? ents[i].get() : nullptr;
 	}
 	Entity* valid_ent( EntityIndex& i ) const noexcept
 	{
 		auto ent = get_ent(i);
-		if (!ent) i = 0;
+		if (!ent) i = {};
 		return ent;
 	}
 	EntityIndex create_ent(Entity* ent) noexcept
 	{
-		return ents.emplace_new(ent) + 1;
+		size_t i = ents.emplace_new(ent);
+		return EntityIndex::from_int(i);
 	}
 	void mark_deleted(Entity* e) noexcept
 	{
 		if (auto ren = e->get_ren())
 			ren->on_destroy_ent();
 		
-		size_t ix = e->index - 1;
-		
+		size_t ix = e->index.to_int();
 		ents[ix].release();
 		
 		reserve_more_block( e_next1, 256 );

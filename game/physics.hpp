@@ -40,7 +40,6 @@ struct EC_Physics : ECompPhysics
 	
 	
 	EC_Physics(Entity* ent, const b2BodyDef& def); ///< Creates body
-	EC_Physics(const EC_Physics&) = delete;
 	~EC_Physics();
 	
 	void add_circle(b2FixtureDef& fd, float radius, float mass);
@@ -72,7 +71,6 @@ struct EC_VirtualBody : ECompPhysics
 	float radius = 0.5f;
 	
 	EC_VirtualBody(Entity* ent, Transform pos, std::optional<Transform> vel = {});
-	EC_VirtualBody(const EC_VirtualBody&) = delete;
 	void set_vel(std::optional<Transform> vel);
 	void step() override;
 	
@@ -122,7 +120,7 @@ public:
 	void raycast_all(std::vector<RaycastResult>& es, b2Vec2 from, b2Vec2 to);
 	
 	/// Returns nearest object hit
-	std::optional<RaycastResult> raycast_nearest(b2Vec2 from, b2Vec2 to, std::function<bool(Entity*, void*)> check = {});
+	std::optional<RaycastResult> raycast_nearest(b2Vec2 from, b2Vec2 to, std::function<bool(Entity*, b2Fixture*)> check = {});
 	
 	/// Appends result - all objects inside the circle
 	void circle_cast_all(std::vector<CastResult>& es, b2Vec2 ctr, float radius);

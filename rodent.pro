@@ -34,12 +34,13 @@ linux-g++:gcc_flto {
 QMAKE_CXXFLAGS += -Wno-unused-local-typedefs
 
 SOURCES += \
+	client/gamepad.cpp \
+	client/level_map.cpp \
+	client/plr_control.cpp \
 	client/presenter.cpp \
 	client/resbase.cpp \
-	core/gamepad.cpp \
 	core/main.cpp \
 	core/main_loop.cpp \
-	core/plr_control.cpp \
 	core/settings.cpp \
 	core/vig.cpp \
 	external/Box2D/Collision/Shapes/b2ChainShape.cpp \
@@ -92,8 +93,9 @@ SOURCES += \
 	game/damage.cpp \
 	game/entity.cpp \
 	game/game_core.cpp \
+	game/game_utils.cpp \
+	game/level_ctr.cpp \
 	game/level_gen.cpp \
-	game/movement.cpp \
 	game/physics.cpp \
 	game/player.cpp \
 	game/s_objs.cpp \
@@ -125,19 +127,21 @@ SOURCES += \
 	vaslib/wincompat.cpp
 
 HEADERS += \
+	client/gamepad.hpp \
+	client/level_map.hpp \
+	client/plr_control.hpp \
 	client/presenter.hpp \
 	client/resbase.hpp \
-	core/gamepad.hpp \
 	core/main_loop.hpp \
-	core/plr_control.hpp \
 	core/settings.hpp \
 	core/vig.hpp \
 	game/common_defs.hpp \
 	game/damage.hpp \
 	game/entity.hpp \
 	game/game_core.hpp \
+	game/game_utils.hpp \
+	game/level_ctr.hpp \
 	game/level_gen.hpp \
-	game/movement.hpp \
 	game/physics.hpp \
 	game/player.hpp \
 	game/s_objs.hpp \

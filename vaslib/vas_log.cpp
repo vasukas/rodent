@@ -2,9 +2,9 @@
 #include <csignal>
 #include <ctime>
 #include <mutex>
-#include "vas_log.hpp"
 #include "vaslib/vas_cpp_utils.hpp"
 #include "vaslib/vas_file.hpp"
+#include "vaslib/vas_log.hpp"
 
 thread_local fmt::memory_buffer log_fmt_buffer;
 static LoggerSettings lsets;

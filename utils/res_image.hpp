@@ -1,6 +1,7 @@
 #ifndef RES_IMAGE_HPP
 #define RES_IMAGE_HPP
 
+#include <functional>
 #include <vector>
 #include "vaslib/vas_math.hpp"
 
@@ -30,17 +31,27 @@ struct ImageInfo
 	/// Creates empty image with FMT_RGBA
 	ImageInfo() = default;
 	
+	/// Loads image from file, converting to specified format if it's set
+	bool load( const char* name, std::optional<Format> force_fmt = {} );
+	
+	/// Saves image to file with current format
+	bool save( const char* name ) const;
+	
+	/// Proxy DOES NOT hold copy of image data. 
+	/// Should be destroyed by user. 
+	/// Created only for RGB and RGBA image
+	SDL_Surface* proxy() const;
+	
+	
+	
 	/// Clears image (optionally changing format)
 	void reset( vec2i new_size, std::optional<Format> new_fmt = {} );
 	
 	/// Clears image
 	void clear();
 	
-	/// Loads image from file, converting to specified format if it's set
-	bool load( const char* name, std::optional<Format> force_fmt = {} );
-	
-	/// Saves image to file with current format
-	bool save( const char* name ) const;
+	/// Changes format
+	void convert( Format new_fmt );
 	
 	
 	
@@ -60,11 +71,6 @@ struct ImageInfo
 	int get_bpp() const { return get_bpp( fmt ); }
 	
 	
-	
-	/// Proxy DOES NOT hold copy of image data. 
-	/// Should be destroyed by user. 
-	/// Created only for RGB and RGBA image
-	SDL_Surface* proxy() const;
 	
 	/// Returns subimage specified by rectangle. Bounds-safe 
 	ImageInfo subimg( Rect r ) const;
@@ -91,6 +97,9 @@ struct ImageInfo
 	
 	/// Copies contents from image of same format. Performs bound check
 	void blit( vec2i to, const ImageInfo& from, vec2i src, vec2i size );
+	
+	/// Calls function with pointer to beginning of each pixel
+	void map_pixel(std::function<void(uint8_t*)> f);
 	
 private:
 	std::vector <uint8_t> px;

@@ -33,6 +33,15 @@ struct FColor
 	
 	FColor rgb_to_hsv() const;
 	FColor hsv_to_rgb() const;
+	
+	// HSV hue in range [0, 1]
+	static constexpr float H_red0    = 0;
+	static constexpr float H_yellow  = 1./6;
+	static constexpr float H_green   = 2./6;
+	static constexpr float H_cyan    = 0.5;
+	static constexpr float H_blue    = 4./6;
+	static constexpr float H_magenta = 5./6;
+	static constexpr float H_red1    = 1;
 };
 
 #endif // COLOR_MANIP_HPP

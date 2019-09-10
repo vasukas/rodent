@@ -37,21 +37,24 @@ float fast_invsqrt(float x);
 float wrap_angle_2(float x); ///< Returns angle in range [0; 2pi]
 float wrap_angle(float x); ///< Returns angle in range [-pi, +pi]
 
-/// Linear interpolation between two angles, expressed in radians. Handles all cases
-template <typename T, typename U>
-typename std::enable_if<std::is_floating_point<T>::value && std::is_floating_point<U>::value, T>::type
-lerp_angle (T a, T b, U t) {return a + t * std::remainder(b - a, M_PI*2);}
-
-inline float  lerp (float  a, float  b, float  t) {return a * (1.f - t) + b * t;}
-inline double lerp (double a, double b, double t) {return a * (1.0 - t) + b * t;}
-
 float sine_ft_norm(float x); ///< Table-lookup sine, x is [0, 1] representing [0, 2pi]
 vec2fp cossin_ft(float rad); ///< Table-lookup cosine (x) + sine (y)
 
 constexpr float deg_to_rad(float x) {return x / 180.f * M_PI;}
 
+/// Linear interpolation between two angles, expressed in radians. Handles all cases
+template <typename T1, typename T2, typename T3>
+typename std::enable_if <
+	std::is_floating_point<typename std::common_type<T1, T2, T3>::type>::value,
+	typename std::common_type<T1, T2, T3>::type >::type
+lerp_angle (T1 a, T2 b, T3 t) {return a + t * std::remainder(b - a, M_PI*2);}
+
+template <typename T1, typename T2, typename T3>
+typename std::common_type<T1, T2, T3>::type
+lerp (T1 a, T2 b, T3 t) {return a * (1 - t) + b * t;}
+
 template <typename T>
-typename std::enable_if<std::is_floating_point<T>::value, T>::type fracpart(T x) {return std::fmod(x, 1);}
+T fracpart(T x) {return std::fmod(x, 1);}
 
 template <typename T>
 int int_round(T value) {return static_cast<int>(std::round(value));}
@@ -240,10 +243,21 @@ struct Rect {
 	
 	bool operator == (const Rect& r) const {return lower() == r.lower() && sz == r.sz;}
 	bool operator != (const Rect& r) const {return lower() != r.lower() || sz != r.sz;}
+	
+	/// Maps function over entire area, scanline-like. 
+	/// Lower edge included, upper excluded.
+	void map(std::function<void(vec2i p)> f) const;
+	
+	/// Same as map, but returns false as soon as 'f' does
+	bool map_check(std::function<bool(vec2i p)> f) const;
+	
+	/// Maps function over outer border (-1 from lower and on upper)
+	void map_outer(std::function<void(vec2i p)> f) const;
 };
 
 Rect calc_intersection(const Rect& a, const Rect& b); ///< Returns rectangle representing overlap
 Rect get_bound(const Rect& a, const Rect& b); ///< Returns rectangle enclosing both rectangles
+uint min_distance(const Rect& a, const Rect& b); ///< Returns minimal straight distance
 
 
 

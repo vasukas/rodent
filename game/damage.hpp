@@ -37,8 +37,7 @@ struct EC_Health : EComp
 	
 	
 	
-	EC_Health(Entity* ent, int hp = 100.f): EComp(ent), hp(hp), hp_max(hp) {}
-	EC_Health(const EC_Health&) = delete;
+	EC_Health(Entity* ent, int hp = 100.f);
 	
 	bool is_alive() const;
 	float get_t_state() const; ///< Returns 0-1 current hp value

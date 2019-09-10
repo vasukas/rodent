@@ -1,7 +1,7 @@
 #ifndef VAS_CONTAINERS_HPP
 #define VAS_CONTAINERS_HPP
 
-#include "vas_cpp_utils.hpp"
+#include "vaslib/vas_cpp_utils.hpp"
 
 template <typename T>
 struct SparseArray_DefaultIsNull
@@ -20,19 +20,17 @@ class SparseArray
 	IsNull is_null;
 	
 public:
-	size_t vs_expand; // data is expanded in blocks of such size
-	size_t fi_expand; // stack is expanded in blocks of such size
+	size_t block_size; ///< internal arrays are expanded in blocks of such size
 	
 	
 	
-	SparseArray(size_t default_expand = 128):
-	    vs_expand(default_expand),
-		fi_expand(default_expand)
+	SparseArray(size_t block_size = 128)
+	    : block_size(block_size)
 	{}
 	size_t new_index()
 	{
 		if (fixs.empty()) {
-			::reserve_more_block(vals, vs_expand);
+			::reserve_more_block(vals, block_size);
 			vals.emplace_back();
 			return vals.size() - 1;
 		}
@@ -42,7 +40,7 @@ public:
 	}
 	void free_index(size_t i)
 	{
-		::reserve_more_block(fixs, fi_expand);
+		::reserve_more_block(fixs, block_size);
 		fixs.push_back(i);
 	}
 	std::vector<T>& raw_values()
@@ -60,52 +58,28 @@ public:
 	{
 		return vals.size() == fixs.size();
 	}
-	/// Existing (non-free) objects
 	size_t size() const
 	{
-		return vals.size() - fixs.size();
+		return vals.size();
 	}
-	/// Total objects (including free)
 	size_t capacity() const
 	{
 		return vals.size();
 	}
-	
-	
-	
-	T* data()
+	size_t existing_count() const
 	{
-		return vals.data();
+		return vals.size() - fixs.size();
 	}
+	
+	
+	
 	T& operator[](size_t i)
 	{
 		return vals[i];
 	}
-	const T* data() const
-	{
-		return vals.data();
-	}
 	const T& operator[](size_t i) const
 	{
 		return vals[i];
-	}
-	
-	
-	
-	void reserve_more(size_t required)
-	{
-		size_t avail = fixs.size() + (vals.capacity() - vals.size());
-		if (required > avail)
-		{
-			required -= avail;
-			vals.reserve( vals.capacity() + required );
-		}
-	}
-	void reserve_more_block(size_t required)
-	{
-		size_t avail = fixs.size() + (vals.capacity() - vals.size());
-		if (!avail)
-			vals.reserve( vals.capacity() + required );
 	}
 	
 	
@@ -117,10 +91,10 @@ public:
 		vals[i] = T( std::forward<Args>(args)... );
 		return i;
 	}
-	void free_and_null(size_t i)
+	void free_and_reset(size_t i)
 	{
 		free_index(i);
-		vals[i] = nullptr;
+		vals[i] = {};
 	}
 	
 	

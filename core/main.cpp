@@ -1,5 +1,5 @@
 #include <SDL2/SDL.h>
-#include "core/gamepad.hpp"
+#include "client/gamepad.hpp"
 #include "core/vig.hpp"
 #include "render/control.hpp"
 #include "render/gl_utils.hpp" // debug stats

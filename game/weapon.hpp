@@ -63,8 +63,8 @@ public:
 	{
 		float shots_per_second = 1;
 		float thr_off = 0.5; ///< Overheating disabled when lower
-		float v_incr = 0.3; ///< Overheat increase per second of shooting
-		float v_decr = 0.5; ///< Overheat decrease per second of cooling
+		float v_incr = 0.3; ///< Overheat per second of shooting/normal cooling
+		float v_cool = 0.5; ///< Overheat decrease per second of cooldown
 		
 		float value = 0.f;
 		bool flag = false; ///< Is overheated
@@ -93,7 +93,6 @@ struct EC_Equipment : EComp
 	
 	
 	EC_Equipment(Entity* ent);
-	EC_Equipment(const EC_Equipment&) = delete;
 	~EC_Equipment();
 	void step() override;
 	

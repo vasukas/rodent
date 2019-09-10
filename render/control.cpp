@@ -32,6 +32,29 @@ static bool gl_library_init()
 	VLOGI("glew version: {}", glewGetString(GLEW_VERSION));
 	return true;
 }
+static const char *dbgo_type_name(GLenum x)
+{
+	switch (x)
+	{
+	case GL_DEBUG_TYPE_ERROR: return "Error";
+	case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: return "Deprecated";
+	case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR: return "UB";
+	case GL_DEBUG_TYPE_PORTABILITY: return "Portability";
+	case GL_DEBUG_TYPE_PERFORMANCE: return "Performance";
+	default: return "Unknown";
+	}
+}
+static const char *dbgo_sever_name(GLenum x)
+{
+	switch (x)
+	{
+	case GL_DEBUG_SEVERITY_HIGH:   return "High";
+	case GL_DEBUG_SEVERITY_MEDIUM: return "Medium";
+	case GL_DEBUG_SEVERITY_LOW:    return "Low";
+	case GL_DEBUG_SEVERITY_NOTIFICATION: return "Info";
+	default: return "Unknown";
+	}
+}
 
 
 
@@ -153,9 +176,9 @@ public:
 			struct FOO {
 				static void GLAPIENTRY f(GLenum, GLenum type, GLuint, GLenum sever, GLsizei length, const GLchar* msg, const void*) {
 //					if (sever == GL_DEBUG_SEVERITY_NOTIFICATION) return;
-					if (sever == GL_DEBUG_SEVERITY_HIGH) rct->crit_error = true;
-					if (type == GL_DEBUG_TYPE_ERROR) VLOGE("GL: {}", std::string_view(msg, length));
-					else if (opt_gldbg) VLOGV("GL [{}]: {}", type, std::string_view(msg, length));
+//					if (sever == GL_DEBUG_SEVERITY_HIGH) rct->crit_error = true;
+					if (type == GL_DEBUG_TYPE_ERROR) VLOGE("GL [Error/{}]: {}", dbgo_sever_name(sever), std::string_view(msg, length));
+					else if (opt_gldbg) VLOGV("GL [{}/{}]: {}", dbgo_type_name(type), dbgo_sever_name(sever), std::string_view(msg, length));
 				}
 			};
 			
@@ -181,7 +204,7 @@ public:
 		glDepthMask(0);
 		
 //		glEnable(GL_SCISSOR_TEST);
-//		glHint(GL_GENERATE_MIPMAP_HINT, GL_NICEST);
+		glHint(GL_GENERATE_MIPMAP_HINT, GL_NICEST);
 		
 		
 		

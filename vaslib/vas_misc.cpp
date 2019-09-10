@@ -1,6 +1,6 @@
 #include <array>
-#include "vas_misc.hpp"
-#include "vas_string_utils.hpp"
+#include "vaslib/vas_misc.hpp"
+#include "vaslib/vas_string_utils.hpp"
 
 
 

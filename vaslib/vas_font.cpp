@@ -1,6 +1,6 @@
-#include "vas_file.hpp"
-#include "vas_font.hpp"
-#include "vas_log.hpp"
+#include "vaslib/vas_file.hpp"
+#include "vaslib/vas_font.hpp"
+#include "vaslib/vas_log.hpp"
 using namespace vas;
 
 

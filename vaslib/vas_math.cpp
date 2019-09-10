@@ -1,6 +1,6 @@
 #include <cstring>
 #include <SDL2/SDL_rect.h>
-#include "vas_math.hpp"
+#include "vaslib/vas_math.hpp"
 
 
 
@@ -262,6 +262,34 @@ void Rect::set(const SDL_Rect& r)
 	off = {r.x, r.y};
 	sz  = {r.w, r.h};
 }
+void Rect::map(std::function<void(vec2i p)> f) const
+{
+	for (int y = lower().y; y < upper().y; ++y)
+	for (int x = lower().x; x < upper().x; ++x)
+		f({x, y});
+}
+bool Rect::map_check(std::function<bool(vec2i p)> f) const
+{
+	for (int y = lower().y; y < upper().y; ++y)
+	for (int x = lower().x; x < upper().x; ++x)
+		if (!f({x, y})) return false;
+	return true;
+}
+void Rect::map_outer(std::function<void(vec2i p)> f) const
+{
+	for (int y = lower().y; y < upper().y; ++y) {
+		f({ lower().x - 1, y });
+		f({ upper().x,     y });
+	}
+	for (int x = lower().x; x < upper().x; ++x) {
+		f({ x, lower().y - 1 });
+		f({ x, upper().y,    });
+	}
+	f({ lower().x - 1, lower().y - 1 });
+	f({ upper().x,     lower().y - 1 });
+	f({ lower().x - 1, upper().y });
+	f({ upper().x,     upper().y });
+}
 Rect calc_intersection(const Rect& A, const Rect& B)
 {
 	// taken from SDL2
@@ -298,6 +326,22 @@ Rect calc_intersection(const Rect& A, const Rect& B)
 Rect get_bound(const Rect& a, const Rect& b)
 {
 	return {min(a.lower(), b.lower()), max(a.upper(), b.upper()), false};
+}
+uint min_distance(const Rect& a, const Rect& b)
+{
+	auto au = a.upper();
+	auto bu = b.upper();
+	int xd, yd;
+	
+	if		(a.off.x >= bu.x) xd = a.off.x - bu.x;
+	else if (b.off.x >= au.x) xd = b.off.x - au.x;
+	else xd = 0;
+	
+	if		(a.off.y >= bu.y) yd = a.off.y - bu.y;
+	else if (b.off.y >= au.y) yd = b.off.y - au.y;
+	else yd = 0;
+	
+	return std::min(xd, yd);
 }
 
 

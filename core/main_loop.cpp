@@ -1,10 +1,12 @@
 #include <future>
 #include <mutex>
 #include <thread>
+#include "client/level_map.hpp"
+#include "client/plr_control.hpp"
 #include "client/presenter.hpp"
-#include "core/plr_control.hpp"
 #include "core/vig.hpp"
 #include "game/game_core.hpp"
+#include "game/level_ctr.hpp"
 #include "game/level_gen.hpp"
 #include "game/player.hpp"
 #include "game/s_objs.hpp"
@@ -120,6 +122,7 @@ class ML_Game : public MainLoop
 {
 public:
 	std::unique_ptr<GamePresenter> pres;
+	std::unique_ptr<LevelControl> lvl;
 	std::unique_ptr<GameCore> core;
 	std::shared_ptr<PlayerController> pc_ctr;
 	
@@ -127,13 +130,21 @@ public:
 	std::thread thr_serv;
 	std::mutex ren_lock;
 
-	std::optional<GamePresenter::InitParams> gp_init;
-	EntityIndex pc_ent = 0; // player	
-	bool ph_debug_draw = false;
+	struct GP_Init
+	{
+		GamePresenter::InitParams gp;
+	};
+	std::optional<GP_Init> gp_init;
 	
+	EntityIndex plr_eid = {}; // player
+	Entity* plr_ent = nullptr;
+	
+	bool ph_debug_draw = false;
 	vigAverage dbg_serv_avg;
 	RAII_Guard dbg_serv_g;
-
+	
+	std::unique_ptr<LevelMap> lmap;
+	
 	
 	
 	ML_Game() = default;
@@ -156,12 +167,12 @@ public:
 			dbg_serv_avg.draw();
 			vig_lo_next();
 			
-			if (auto ent = get_plr())
+			if (plr_ent)
 			{
-				auto pos = ent->get_phy().get_pos();
+				auto pos = plr_ent->get_phy().get_pos();
 				vig_label_a("x:{:5.2f} y:{:5.2f}", pos.x, pos.y);
 				vig_lo_next();
-				vig_checkbox(ent->get_eqp()->infinite_ammo, "Infinite ammo");
+				vig_checkbox(plr_ent->get_eqp()->infinite_ammo, "Infinite ammo");
 			}
 		});
 	}
@@ -184,7 +195,7 @@ public:
 				MainLoop::current->init();
 			}
 		}
-		if (get_plr()) {
+		if (plr_ent) {
 			auto g = pc_ctr->lock();
 			pc_ctr->on_event(ev);
 		}
@@ -193,20 +204,25 @@ public:
 	{
 		std::unique_lock lock(ren_lock);
 		if (thr_term) LOG_THROW_X("Game failed");
-		if (!pres) {
+		if (!pres)
+		{
 			RenImm::get().draw_text(RenderControl::get_size() /2, "Generating...", -1, true, 4.f);
 			
 			if (gp_init)
 			{
-				GamePresenter::init(*gp_init);
+				GamePresenter::init(gp_init->gp);
 				pres.reset( GamePresenter::get() );
 				gp_init.reset();
 				
-				VLOGI("GamePresenter::init() finished at {:.3f} seconds", TimeSpan::since_start().seconds());
+				lmap->ren_init();
+				
+				VLOGI("FULL INIT {:.3f} seconds", TimeSpan::since_start().seconds());
 			}
 		}
 		else {
-			if (auto ent = get_plr())
+			// set camera
+			
+			if (plr_ent) 
 			{
 				const float tar_min = 2.f;
 				const float tar_max = 15.f;
@@ -214,7 +230,7 @@ public:
 				
 				auto cam = RenderControl::get().get_world_camera();
 				
-				const vec2fp pos = ent->get_phy().get_pos();
+				const vec2fp pos = plr_ent->get_phy().get_pos();
 				vec2fp tar = pos;
 				
 				auto& pctr = pc_ctr->get_state();
@@ -229,7 +245,7 @@ public:
 				
 				auto frm = cam->get_state();
 				
-				const vec2fp scr = cam->mouse_cast(RenderControl::get_size()) - cam->mouse_cast({});
+				const vec2fp scr = cam->mouse_cast(RenderControl::get_size()) - cam->mouse_cast({}) / 2;
 				const vec2fp tar_d = (tar - frm.pos);
 				
 				if (std::fabs(tar_d.x) > scr.x || std::fabs(tar_d.y) > scr.y) frm.pos = tar;
@@ -238,22 +254,28 @@ public:
 				cam->set_state(frm);
 			}
 			
+			// draw world
+			
 			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
 			GamePresenter::get()->render(passed);
 			
 			if (ph_debug_draw)
 				core->get_phy().world.DrawDebugData();
 			
+			// draw UI
+			
+			RenImm::get().set_context(RenImm::DEFCTX_UI);
+			
 			if (vig_current_menu() == VigMenu::Default)
 			{
-				RenImm::get().set_context(RenImm::DEFCTX_UI);
-				if (auto ent = get_plr())
+				if (plr_ent)
 				{
-					if (auto wpn = ent->get_eqp()->wpn_ptr())
+					auto eqp = plr_ent->get_eqp();
+					if (auto wpn = eqp->wpn_ptr())
 					{
 						vig_label_a("{}\n", wpn->get_reninfo().name);
 						if (auto m = wpn->get_ammo()) {
-							if (ent->get_eqp()->infinite_ammo) vig_label("AMMO CHEAT ENABLED\n");
+							if (eqp->infinite_ammo) vig_label("AMMO CHEAT ENABLED\n");
 							else vig_label_a("Ammo: {} / {}\n", static_cast<int>(m->cur), static_cast<int>(m->max));
 						}
 						if (auto m = wpn->get_heat()) vig_progress(m->ok()? "Overheat" : "COOLDOWN", m->value);
@@ -261,41 +283,58 @@ public:
 					}
 					else vig_label("No weapon equipped");
 				}
+				else vig_label("Waiting for respawn...");
+				vig_lo_next();
 			}
+			
+			std::optional<vec2fp> plr_p;
+			if (plr_ent) plr_p = plr_ent->get_phy().get_pos();
+			lmap->draw(passed, plr_p, pc_ctr->get_state().is[PlayerController::A_SHOW_MAP]);
 		}
 	}
 	
 	
 	
-	Entity* get_plr()
+	void spawn_plr()
 	{
-		return core? core->valid_ent(pc_ent) : nullptr;
+		if (core->get_ent(plr_eid)) return;
+		
+		vec2fp plr_pos = {};
+		for (auto& p : lvl->get_spawns()) {
+			if (p.type == LevelControl::SP_PLAYER) {
+				plr_pos = p.pos;
+				break;
+			}
+		}
+		
+		plr_ent = create_player(plr_pos, pc_ctr);
+		plr_ent->get_eqp()->infinite_ammo = true;
+		plr_eid = plr_ent->index;
 	}
 	void init_game()
 	{	
 		TimeSpan t0 = TimeSpan::since_start();
 		
-		std::shared_ptr<LevelTerrain> lt( LevelTerrain::generate({ {200,80}, 3 }) );
-		core.reset( GameCore::create({}) );
-		
-		lt->test_save();
+//		std::shared_ptr<LevelTerrain> lt( LevelTerrain::generate({ {260,120}, 3 }) );
+		std::shared_ptr<LevelTerrain> lt( LevelTerrain::load_testlvl(3) );
+//		lt->test_save();
 //		exit(666);
 		
-		gp_init = GamePresenter::InitParams{lt};
+		lmap.reset( LevelMap::init(*lt) );
+		core.reset( GameCore::create({}) );
+		lvl.reset( LevelControl::init(*lt) );
+		
+		gp_init = {{lt}};
 		while (!pres)
 		{
 			if (thr_term) throw std::runtime_error("init_game() interrupted");
 			sleep(TimeSpan::fps(30));
 		}
 		
-		auto& r0 = lt->rooms.front().area;
-		vec2fp plr_pos = (r0.off + r0.sz /2) * lt->cell_size;
-		
 		new EWall(lt->ls_wall);
-		pc_ent = create_player(plr_pos, pc_ctr)->index;
-		core->get_ent(pc_ent)->get_eqp()->infinite_ammo = true;
+		lvl->fin_init();
 		
-		VLOGI("init_game() finished in: {:.3f} seconds", (TimeSpan::since_start() - t0).seconds());
+		VLOGI("init_game() finished in {:.3f} seconds", (TimeSpan::since_start() - t0).seconds());
 	}
 	
 	void thr_func()
@@ -311,6 +350,7 @@ public:
 			{
 				std::unique_lock lock(ren_lock);
 				core->step();
+				spawn_plr();
 			}
 			auto dt = TimeSpan::since_start() - t0;
 			sleep(core->step_len - dt);

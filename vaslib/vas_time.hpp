@@ -47,7 +47,8 @@ struct TimeSpan
 	TimeSpan  operator * ( float t ) const { return TimeSpan( mks_value * t ); }
 	TimeSpan& operator *=( float t )       { mks_value *= t; return *this; }
 	
-	double operator / ( const TimeSpan& t ) const { return double(mks_value) / t.mks_value; }
+	/// Returns 0 if t is 0
+	double operator / ( const TimeSpan& t ) const;
 	
 	bool operator < ( const TimeSpan& t ) const { return mks_value <  t.mks_value; }
 	bool operator > ( const TimeSpan& t ) const { return mks_value >  t.mks_value; }

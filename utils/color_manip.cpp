@@ -14,15 +14,15 @@ float& FColor::operator[] (int i) {
 	if		(i == 0) return r;
 	else if (i == 1) return g;
 	else if (i == 2) return b;
-	ASSERT( i == 3, "FColor::[] invalid index" );
-	return a;
+	else if (i == 3) return a;
+	ASSERT(false, "FColor::[] invalid index");
 }
 const float& FColor::operator[] (int i) const {
 	if		(i == 0) return r;
 	else if (i == 1) return g;
 	else if (i == 2) return b;
-	ASSERT( i == 3, "FColor::[] invalid index" );
-	return a;
+	else if (i == 3) return a;
+	ASSERT(false, "FColor::[] invalid index");
 }
 FColor& FColor::operator+= (float f) {
 	for (size_t i=0; i<3; ++i) (*this)[i] += f;

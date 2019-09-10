@@ -3,10 +3,12 @@
 #include "vaslib/vas_cpp_utils.hpp"
 #include "vaslib/vas_log.hpp"
 #include "vaslib/vas_time.hpp"
+#include "vaslib/vas_types.hpp"
 #include "level_gen.hpp"
 
 struct Gen1
 {
+	// Note: corridor data (cells & neis) may be incorrect and is mostly ignored
 	struct RoomClass;
 	
 	struct CorridorEntry
@@ -25,7 +27,7 @@ struct Gen1
 		Rect area;
 		
 		std::vector<size_t> cor_i;
-		RoomClass* klass;
+		const RoomClass* klass;
 	};
 	struct Cell
 	{
@@ -43,6 +45,7 @@ struct Gen1
 	struct RoomClass
 	{
 		float kch = 0; // chance
+		LevelTerrain::RoomType lc_type = LevelTerrain::RM_DEFAULT;
 		
 		vec2i sz_min; // room size
 		vec2i sz_max;
@@ -56,19 +59,27 @@ struct Gen1
 		vec2i isl_sz_max = {2,5};
 	};
 	
-	// room params
-	std::vector<RoomClass> rm_cs;
+	struct GenParams
+	{
+		// room params
+		std::vector<RoomClass> rm_cs;
+		
+		int rm_cor_per = 4; // perimeter cells for one cor
+		int rm_cor_max = 12; // max cor count
+		int rm_cor_add = 3; // additional trys
+		
+		// corridor params
+		int cor_len_min = 1; // min length
+		int cor_len_max = 7; // max length
+		float cor_rot_f = 0.2; // rotation chance on step
+		float cor_dup_f = 0.5; // duplicate corrdior chance
+		float cor_cnt_f = 0.8; // corridor interconnection chance
+		
+		// flags
+		bool gen_islands = true;
+	};
 	
-	int rm_cor_per = 4; // perimeter cells for one cor
-	int rm_cor_max = 8; // max cor count
-	int rm_cor_add = 4; // additional trys
-	
-	// corridor params
-	const int cor_len_min = 2; // min length
-	const int cor_len_max = 6; // max length
-	const float cor_rot_f = -1; // rotation chance on step
-	const float cor_dup_f = 0.1; // duplicate corrdior chance
-	const float cor_cnt_f = 0.5; // corridor interconnection chance
+	const GenParams gp;
 	
 	
 	
@@ -82,26 +93,29 @@ struct Gen1
 	
 	//
 	RandomGen rnd;
-	std::vector<Room*> place_q; // rooms to be yet placed
+	std::vector<size_t> place_q; // rooms to be yet placed
 	
 	
 	
-	Gen1(vec2i size_in)
+	static GenParams gp_1()
 	{
-		{	auto& r = rm_cs.emplace_back();
+		GenParams gp;
+		{
+			auto& r = gp.rm_cs.emplace_back();
 			r.kch = 0.5;
 			r.sz_min = {2,2};
 			r.sz_max = {5,4};
 			r.isl_f = 0;
-		}
-		{	auto& r = rm_cs.emplace_back();
+			r.lc_type = LevelTerrain::RM_SMALL;
+		}{
+			auto& r = gp.rm_cs.emplace_back();
 			r.kch = 2;
 			r.sz_min = {7,6};
 			r.sz_max = {12,8};
 			r.isl_per = 20;
 			r.isl_chn_mul = 2;
-		}
-		{	auto& r = rm_cs.emplace_back();
+		}{	
+			auto& r = gp.rm_cs.emplace_back();
 			r.kch = 1;
 			r.sz_min = {12,8};
 			r.sz_max = {24,18};
@@ -109,35 +123,91 @@ struct Gen1
 			r.isl_per = 40;
 			r.isl_sz_max = {4,6};
 			r.isl_chn_mul = 3;
-		}{
-			float s = 0;
-			for (auto& r : rm_cs) s += r.kch;
-			
-			float t = 0;
-			for (auto& r : rm_cs) {
-				t += r.kch / s;
-				r.kch = t;
-			}
 		}
-		for (auto& r : rm_cs) r.isl_per /= 2;
+		for (auto& r : gp.rm_cs) r.isl_per /= 2;
 		
+		//
+		gp.rm_cor_per = 4; // perimeter cells for one cor
+		gp.rm_cor_max = 8; // max cor count
+		gp.rm_cor_add = 4; // additional trys
+		
+		// corridor params
+		gp.cor_len_min = 2; // min length
+		gp.cor_len_max = 6; // max length
+		gp.cor_rot_f = -1; // rotation chance on step
+		gp.cor_dup_f = 0.1; // duplicate corrdior chance
+		gp.cor_cnt_f = 0.5; // corridor interconnection chance
+		
+		return gp;
+	}
+	static GenParams gp_2()
+	{
+		GenParams gp;
+		{
+			auto& r = gp.rm_cs.emplace_back();
+			r.kch = 0.5;
+			r.sz_min = {2,2};
+			r.sz_max = {5,4};
+			r.isl_f = 0;
+			r.lc_type = LevelTerrain::RM_SMALL;
+		}{
+			auto& r = gp.rm_cs.emplace_back();
+			r.kch = 2;
+			r.sz_min = {3,3};
+			r.sz_max = {6,5};
+			r.isl_per = 20;
+			r.isl_chn_mul = 2;
+		}{
+			auto& r = gp.rm_cs.emplace_back();
+			r.kch = 1;
+			r.sz_min = {6,5};
+			r.sz_max = {12,10};
+			r.isl_f = 1;
+			r.isl_per = 40;
+			r.isl_sz_max = {4,6};
+		}
+		
+		//
+		gp.rm_cor_per = 4; // perimeter cells for one cor
+		gp.rm_cor_max = 12; // max cor count
+		gp.rm_cor_add = 3; // additional trys
+		
+		// corridor params
+		gp.cor_len_min = 1; // min length
+		gp.cor_len_max = 7; // max length
+		gp.cor_rot_f = 0.2; // rotation chance on step
+		gp.cor_dup_f = 0.5; // duplicate corrdior chance
+		gp.cor_cnt_f = 0.8; // corridor interconnection chance
+		
+		// flags
+		gp.gen_islands = false;
+		
+		return gp;
+	}
+	static GenParams gp_postp(GenParams gp)
+	{
+		float s = 0;
+		for (auto& r : gp.rm_cs) s += r.kch;
+		
+		float t = 0;
+		for (auto& r : gp.rm_cs) {
+			t += r.kch / s;
+			r.kch = t;
+		}
+		
+		return gp;
+	}
+	Gen1(vec2i size_in)
+	    :gp(gp_postp(gp_2()))
+	{
 		// setup
 		
-		size = size_in + rm_cs.back().sz_max;
+		size = size_in + gp.rm_cs.back().sz_max;
 		
 		cs.resize( size.area() );
 		for (int y=0; y<size.y; ++y)
 		for (int x=0; x<size.x; ++x)
 			cs[y * size.x + x].pos = {x, y};
-		
-		int corsadd_total = lerp(cor_len_min, cor_len_max, 0.5);
-		vec2i rmavg_total = vec2i{10, 10};
-		size_t rooms_total = size.area() / (rmavg_total + vec2i::one(corsadd_total)).area();
-		size_t cors_total = rooms_total * (rmavg_total.perimeter() / rm_cor_per);
-		VLOGI("LevelControl: {} rooms, {} corridors", rooms_total, cors_total);
-		
-		g_rooms.reserve(rooms_total);
-		g_cors.reserve(cors_total);
 		
 		// generate rooms and corridors
 		
@@ -145,20 +215,20 @@ struct Gen1
 		nr->index = 0;
 		nr->area.sz = {3, 3};
 		nr->area.off = size/2 - nr->area.sz/2;
-		nr->klass = &rm_cs[0];
+		nr->klass = &gp.rm_cs[0];
 		mark_room(*nr);
-		place_q.push_back(nr);
+		place_q.push_back(nr->index);
 		
 		while (!place_q.empty())
 		{
-			std::vector<Room*> q;
-			q.reserve(rm_cor_max);
+			std::vector<size_t> q;
+			q.reserve(gp.rm_cor_max);
 			q.swap(place_q);
 			
-			for (auto& r : q) place_room(*r);
+			for (auto& r : q) place_room( &g_rooms[r] );
 		}
 		
-		VLOGI("Actually generated: {} rooms, {} corridors", g_rooms.size(), g_cors.size());
+		VLOGI("LevelControl::      {} rooms, {} corridors", g_rooms.size(), g_cors.size());
 		
 		// remove rooms with single connection
 		
@@ -182,24 +252,14 @@ struct Gen1
 		};
 		auto rem_room = [this, &rem_cor](size_t i)
 		{
-			auto& r = g_rooms[i].area;
-			auto unmark = [&](vec2i off) {
-				auto pos = off + r.off;
+			g_rooms[i].area.map_outer([&](auto pos) {
 				bool ok = false;
 				if (auto c = getc(pos + vec2i( 1, 0)); c && c->room_i && *c->room_i != i) ok = true;
 				if (auto c = getc(pos + vec2i(-1, 0)); c && c->room_i && *c->room_i != i) ok = true;
 				if (auto c = getc(pos + vec2i(0,  1)); c && c->room_i && *c->room_i != i) ok = true;
 				if (auto c = getc(pos + vec2i(0, -1)); c && c->room_i && *c->room_i != i) ok = true;
 				if (!ok) cref(pos).is_border = false;
-			};
-			for (int y=-1; y<=r.sz.y; ++y) {
-				unmark({-1,y});
-				unmark({r.sz.x, y});
-			}
-			for (int x=-1; x<=r.sz.x; ++x) {
-				unmark({x,-1});
-				unmark({x, r.sz.y});
-			}
+			});
 			
 			for (auto& ci : g_rooms[i].cor_i) rem_cor(ci);
 			g_rooms.erase( g_rooms.begin() + i );
@@ -232,144 +292,129 @@ struct Gen1
 		// set room was
 		
 		for (auto& r : g_rooms)
-		{
-			auto u = r.area.upper();
-			for (int y = r.area.off.y; y < u.y; ++y)
-			for (int x = r.area.off.x; x < u.x; ++x)
-				cref({x,y}).room_was = r.index;
-		}
+			r.area.map([&](auto p){ cref(p).room_was = r.index; });
 		
 		// generate islands
 		
-		auto check_entries = [this](Room& r)
+		if (gp.gen_islands)
 		{
-			const int d_max = std::numeric_limits<int>::max();
-			
-			bool cor_any = false;
-			for (int y=-1; y<=r.area.sz.y; ++y)
-			for (int x=-1; x<=r.area.sz.x; ++x)
+			auto check_entries = [this](Room& r)
 			{
-				auto& c = cref(vec2i{x,y} + r.area.off);
-				if (c.cor_i) {
-					c.depth = cor_any? d_max : 0;
-					cor_any = true;
-				}
-				else if (!c.room_i) c.depth = -1;
-				else c.depth = d_max;
-			}
-			
-			for (int d=0 ;; ++d)
-			{
-				bool ok = false;
+				const int d_max = std::numeric_limits<int>::max();
+				const Rect zn = {r.area.lower() - vec2i{1,1}, r.area.upper() + vec2i{1,1}, false};
 				
-				for (int y=-1; y<=r.area.sz.y; ++y)
-				for (int x=-1; x<=r.area.sz.x; ++x)
+				bool cor_any = false;
+				zn.map([&](auto p)
 				{
-					auto& c = cref(vec2i{x,y} + r.area.off);
-					if (c.depth != d) continue;
+					auto& c = cref(p);
+					if (c.cor_i) {
+						c.depth = cor_any? d_max : 0;
+						cor_any = true;
+					}
+					else if (!c.room_i) c.depth = -1;
+					else c.depth = d_max;
+				});
+				
+				for (int d=0 ;; ++d)
+				{
+					bool ok = false;
 					
-					const vec2i ps[] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
-					for (auto& p : ps)
+					zn.map([&](auto pos)
 					{
-						auto& nc = cref(c.pos + p);
-						if (nc.depth > d) {
-							nc.depth = d + 1;
-							ok = true;
+						auto& c = cref(pos);
+						if (c.depth != d) return;
+						
+						const vec2i ps[] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+						for (auto& p : ps)
+						{
+							auto& nc = cref(pos + p);
+							if (nc.depth > d) {
+								nc.depth = d + 1;
+								ok = true;
+							}
+						}
+					});
+					if (!ok) break;
+				}
+				
+				return zn.map_check([&](auto p){ return cref(p).depth != d_max; });
+			};
+			
+			for (auto& r : g_rooms)
+			{	
+				auto& rc = *r.klass;
+				if (rnd.range_n() > rc.isl_f) continue;
+				
+				int num = std::min( rc.isl_max, r.area.size().area() / rc.isl_per );
+				if (!num) num = 1;
+				for (int i=0; i<num; ++i)
+				{
+					for (int j=0; j<rc.isl_chn_mul; ++j)
+					{
+						vec2i sz;
+						sz.x = round(rnd.range(rc.isl_sz_min.x, rc.isl_sz_max.x));
+						sz.y = round(rnd.range(rc.isl_sz_min.y, rc.isl_sz_max.y));
+						
+						if (sz.x >= r.area.size().x) continue;
+						if (sz.y >= r.area.size().y) continue;
+						
+						vec2i off;
+						off.x = round(rnd.range(0, r.area.size().x - sz.x));
+						off.y = round(rnd.range(0, r.area.size().y - sz.y));
+						off += r.area.off;
+						
+						Rect isl = {off, sz, true};
+						isl.map([&](auto p) {
+							auto& c = cref(p);
+							if (c.room_i == r.index) c.room_i.reset();
+						});
+						
+						if (check_entries(r)) break;
+						else {
+							isl.map([&](auto p) {
+								auto& c = cref(p);
+								if (c.room_was == r.index) c.room_i = r.index;
+							});
 						}
 					}
-				}
-				
-				if (!ok) break;
-			}
-			
-			for (int y=-1; y<=r.area.sz.y; ++y)
-			for (int x=-1; x<=r.area.sz.x; ++x)
-			{
-				auto& c = cref(vec2i{x,y} + r.area.off);
-				if (c.depth == d_max) return false;
-			}
-			return true;
-		};
-		auto switch_room = [this](size_t i, const std::vector<vec2i>& list)
-		{
-			for (auto& p : list)
-			{
-				auto& c = cref(p);
-				if (!c.room_i) c.room_i = i;
-				else if (*c.room_i == i) c.room_i.reset();
-			}
-		};
-		
-		std::vector<vec2i> list;
-		list.reserve( rm_cs.back().sz_max.area() );
-		
-		for (auto& r : g_rooms)
-		{
-			auto& rc = *r.klass;
-			if (rnd.range_n() > rc.isl_f) continue;
-			
-			int num = std::min( rc.isl_max, r.area.size().area() / rc.isl_per );
-			if (!num) num = 1;
-			for (int i=0; i<num; ++i)
-			{
-				for (int j=0; j<rc.isl_chn_mul; ++j)
-				{
-					vec2i sz;
-					sz.x = round(rnd.range(rc.isl_sz_min.x, rc.isl_sz_max.x));
-					sz.y = round(rnd.range(rc.isl_sz_min.y, rc.isl_sz_max.y));
-					
-					if (sz.x >= r.area.size().x) continue;
-					if (sz.y >= r.area.size().y) continue;
-					
-					vec2i off;
-					off.x = round(rnd.range(0, r.area.size().x - sz.x));
-					off.y = round(rnd.range(0, r.area.size().y - sz.y));
-					off += r.area.off;
-					
-					list.clear();
-					for (int y=0; y < sz.y; ++y)
-					for (int x=0; x < sz.x; ++x)
-						list.push_back(off + vec2i{x,y});
-					
-					switch_room(r.index, list);
-					bool ok = check_entries(r);
-					
-					if (ok) break;
-					else switch_room(r.index, list);
 				}
 			}
 		}
 		
 		// remove diags
 		
-		for (auto& r : g_rooms)
+		auto rm_diags = [this]
 		{
-			auto iswall = [&](int x, int y) {
-				return !cref(r.area.off + vec2i{x, y}).room_i;
-			};
-			auto rmrest = [&](int x, int y) {
-				auto& c = cref(r.area.off + vec2i{x, y});
-				c.room_i = c.room_was;
-			};
-			
-			for (int y = 0; y < r.area.sz.y - 1; ++y)
-			for (int x = 0; x < r.area.sz.x - 1; ++x)
+			for (auto& r : g_rooms)
 			{
-				if (iswall(x, y))
+				auto iswall = [&](int x, int y) {
+					return !cref(r.area.off + vec2i{x, y}).room_i;
+				};
+				auto rmrest = [&](int x, int y) {
+					auto& c = cref(r.area.off + vec2i{x, y});
+					c.room_i = c.room_was;
+				};
+				
+				for (int y = 0; y < r.area.sz.y - 1; ++y)
+				for (int x = 0; x < r.area.sz.x - 1; ++x)
 				{
-					if (iswall(x+1, y+1) && !iswall(x+1, y) && !iswall(x, y+1))
+					if (iswall(x, y))
 					{
-						if (rnd.flag()) rmrest(x, y);
-						else rmrest(x+1, y+1);
+						if (iswall(x+1, y+1) && !iswall(x+1, y) && !iswall(x, y+1))
+						{
+							if (rnd.flag()) rmrest(x, y);
+							else rmrest(x+1, y+1);
+						}
+					}
+					else if (!iswall(x+1, y+1) && iswall(x+1, y) && iswall(x, y+1))
+					{
+						if (rnd.flag()) rmrest(x+1, y);
+						else rmrest(x, y+1);
 					}
 				}
-				else if (!iswall(x+1, y+1) && iswall(x+1, y) && iswall(x, y+1))
-				{
-					if (rnd.flag()) rmrest(x+1, y);
-					else rmrest(x, y+1);
-				}
 			}
-		}
+		};
+		rm_diags();
 		
 		// remove 1-wide passageways
 		
@@ -481,10 +526,10 @@ struct Gen1
 			}
 		}
 		
-		// remove half-diags
+		// remove 1-wide diags
 		
-		for (int y=0; y < size.y - 1; ++y)
-		for (int x=0; x < size.x - 1; ++x)
+		for (int y=1; y < size.y - 2; ++y)
+		for (int x=1; x < size.x - 2; ++x)
 		{
 			auto iswall = [&](int ox, int oy) {
 				auto& c = cref({x + ox, y + oy});
@@ -493,68 +538,66 @@ struct Gen1
 			auto corr = [&](int ox, int oy) {
 				auto& c = cref({x + ox, y + oy});
 				if (c.room_was) c.room_i = c.room_was;
-				else if (!c.cor_i) c.cor_i = cref({x+0, y+0}).cor_i;
-				else if (!c.cor_i) c.cor_i = cref({x+1, y+0}).cor_i;
-				else if (!c.cor_i) c.cor_i = cref({x+0, y+1}).cor_i;
-				else if (!c.cor_i) c.cor_i = cref({x+1, y+1}).cor_i;
+				else {
+					if (!c.cor_i) c.cor_i = cref({x+0, y+0}).cor_i;
+					if (!c.cor_i) c.cor_i = cref({x+1, y+0}).cor_i;
+					if (!c.cor_i) c.cor_i = cref({x+0, y+1}).cor_i;
+					if (!c.cor_i) c.cor_i = cref({x+1, y+1}).cor_i;
+				}
 			};
 			
-			if		( iswall(0,0) && !iswall(1,0) && !iswall(0,1) && !iswall(1, 1)) corr(0,0);
-			else if (!iswall(0,0) &&  iswall(1,0) && !iswall(0,1) && !iswall(1, 1)) corr(1,0);
-			else if (!iswall(0,0) && !iswall(1,0) &&  iswall(0,1) && !iswall(1, 1)) corr(0,1);
-			else if (!iswall(0,0) && !iswall(1,0) && !iswall(0,1) &&  iswall(1, 1)) corr(1,1);
+			if		( iswall(0,0) && !iswall(1,0) && !iswall(0,1) && !iswall(1, 1) && (iswall(-1, 0) || iswall(0, -1))) corr(0,0);
+			else if (!iswall(0,0) &&  iswall(1,0) && !iswall(0,1) && !iswall(1, 1) && (iswall( 2, 0) || iswall(0, -1))) corr(1,0);
+			else if (!iswall(0,0) && !iswall(1,0) &&  iswall(0,1) && !iswall(1, 1) && (iswall(-1, 0) || iswall(0,  2))) corr(0,1);
+			else if (!iswall(0,0) && !iswall(1,0) && !iswall(0,1) &&  iswall(1, 1) && (iswall( 2, 0) || iswall(0,  2))) corr(1,1);
 		}
 		
 		// fin
 		
-		g_rooms.shrink_to_fit();
-		g_cors.shrink_to_fit();
+		// prepare player spawn
+		g_rooms[0].area.map([this](vec2i p)
+		{
+			auto& c = cref(p);
+			c.room_i = c.room_was;
+		});
 		
+		rm_diags();
+		
+//		g_rooms.shrink_to_fit();
+//		g_cors.shrink_to_fit();
+	
 		VLOGI("Remains: {} rooms, {} corridors", g_rooms.size(), g_cors.size());
 	}
 	void mark_room(Room& r)
 	{
-		for (int y=0; y<r.area.sz.y; ++y)
-		for (int x=0; x<r.area.sz.x; ++x)
-			cref(vec2i{x,y} + r.area.off).room_i = r.index;
-		
-		auto mark_border = [&](vec2i off) {
-			cref(off + r.area.off).is_border = true;
-		};
-		for (int y=-1; y<=r.area.sz.y; ++y) {
-			mark_border({-1,y});
-			mark_border({r.area.sz.x, y});
-		}
-		for (int x=-1; x<=r.area.sz.x; ++x) {
-			mark_border({x,-1});
-			mark_border({x, r.area.sz.y});
-		}
+		r.area.map      ([&](auto p){ cref(p).room_i = r.index; });
+		r.area.map_outer([&](auto p){ cref(p).is_border = true; });
 	}
-	void place_room(Room& r)
+	void place_room(Room* r)
 	{
-		std::vector<std::pair<Cell*, vec2i>> bord;
-		bord.reserve (r.area.size().perimeter());
+		size_t r_index = r->index;
 		
-		mark_room(r);
+		std::vector<std::pair<Cell*, vec2i>> bord;
+		bord.reserve (r->area.size().perimeter());
+		
+		mark_room(*r);
 		
 		auto mark_border = [&](vec2i off, vec2i dir) {
-			auto& c = cref(off + r.area.off);
+			auto& c = cref(off + r->area.off);
 			if (!c.cor_i)
 				bord.emplace_back(&c, dir);
 		};
-		for (int y=0; y<r.area.sz.y; ++y) {
+		for (int y=0; y<r->area.sz.y; ++y) {
 			mark_border({-1,y}, {-1,0});
-			mark_border({r.area.sz.x, y}, {1,0});
+			mark_border({r->area.sz.x, y}, {1,0});
 		}
-		for (int x=0; x<r.area.sz.x; ++x) {
+		for (int x=0; x<r->area.sz.x; ++x) {
 			mark_border({x,-1}, {0,-1});
-			mark_border({x, r.area.sz.y}, {0,1});
+			mark_border({x, r->area.sz.y}, {0,1});
 		}
 		
 		auto gen_corridor = [&]
 		{
-			if (g_cors.size() == g_cors.capacity()) return;
-			
 			size_t i = rnd.range_index(bord.size());
 			auto& c0 = bord[i];
 			
@@ -565,15 +608,15 @@ struct Gen1
 			}
 			
 			std::vector<Cell*> cs;
-			cs.reserve(cor_len_max);
+			cs.reserve(gp.cor_len_max);
 			cs.push_back(c0.first);
 			
 			vec2i dir = c0.second;
 			
-			int len = rnd.range_index (cor_len_min, cor_len_max);
+			int len = rnd.range_index (gp.cor_len_min, gp.cor_len_max);
 			for (int i=1; i<len; ++i)
 			{
-				if (rnd.range_n() < cor_rot_f)
+				if (rnd.range_n() < gp.cor_rot_f)
 				{
 					if (dir == c0.second) {
 						if (rnd.flag()) dir.rot90cw();
@@ -588,7 +631,7 @@ struct Gen1
 				
 				cs.push_back(c);
 				if (c->cor_i || c->room_i) {
-					if (rnd.range_n() > cor_cnt_f) return;
+					if (rnd.range_n() > gp.cor_cnt_f) return;
 					break;
 				}
 				if (c->is_border) {
@@ -598,7 +641,7 @@ struct Gen1
 						c = getc(np + d);
 						if (c->cor_i || c->room_i) {
 							if (n) return;
-							if (rnd.range_n() > cor_cnt_f) return;
+							if (rnd.range_n() > gp.cor_cnt_f) return;
 							n = c;
 						}
 					}
@@ -622,14 +665,15 @@ struct Gen1
 				for (auto& c : g_cors) {
 					bool a = false, b = false;
 					for (auto& e : c.ents) {
-						if (e.room_i == r.index) a = true;
+						if (e.room_i == r->index) a = true;
 						if (e.room_i == cs.back()->room_i) b = true;
 					}
 					if (a && b && c.ents.size() == 2) {
-						if (rnd.range_n() > cor_dup_f) return;
+						if (rnd.range_n() > gp.cor_dup_f) return;
 					}
 				}
 				
+				reserve_more_block(g_cors, 4096);
 				cor_ix = g_cors.size();
 				cor = &g_cors.emplace_back();
 				
@@ -642,19 +686,18 @@ struct Gen1
 			}
 			else
 			{
-				if (g_rooms.size() == g_rooms.capacity()) return;
 				dir = c0.second;
 				
-				RoomClass* rc = nullptr;
+				const RoomClass* rc = nullptr;
 				float rc_kch = rnd.range_n();
-				for (auto& r : rm_cs)
+				for (auto& r : gp.rm_cs)
 				{
 					if (rc_kch < r.kch) {
 						rc = &r;
 						break;
 					}
 				}
-				if (!rc) rc = &rm_cs.back();
+				if (!rc) rc = &gp.rm_cs.back();
 				
 				Rect ar;
 				ar.sz.x = round(rnd.range(rc->sz_min.x, rc->sz_max.x));
@@ -667,7 +710,7 @@ struct Gen1
 				if (dir.x) ar.off.y -= rnd.range_index(ar.sz.y-1);
 				else       ar.off.x -= rnd.range_index(ar.sz.x-1);
 				
-				int safety = cor_len_max + 3;
+				int safety = gp.cor_len_max + 3;
 				if (ar.off.x - safety < 0 ||
 				    ar.off.y - safety < 0 ||
 				    ar.off.x + safety + ar.sz.x > size.x ||
@@ -682,12 +725,15 @@ struct Gen1
 					if (c.is_border || c.cor_i || c.room_i) return;
 				}
 				
+				reserve_more_block(g_rooms, 1024);
 				auto nr = &g_rooms.emplace_back();
+				r = &g_rooms[r_index];
+				
 				nr->index = g_rooms.size() - 1;
 				nr->area = ar;
 				nr->klass = rc;
 				mark_room(*nr);
-				place_q.push_back(nr);
+				place_q.push_back(nr->index);
 				
 				cor_ix = g_cors.size();
 				cor = &g_cors.emplace_back();
@@ -706,13 +752,13 @@ struct Gen1
 			
 			auto& en = cor->ents.emplace_back();
 			en.pos = cs.front()->pos;
-			en.room_i = r.index;
+			en.room_i = r->index;
 			g_rooms[*en.room_i].cor_i.push_back(cor_ix);
 		};
 		
-		int cor_perim = r.area.size().perimeter() / rm_cor_per;
-		int cor_num = 1 + rnd.range_index (std::min (rm_cor_max, cor_perim));
-		cor_num += rm_cor_add;
+		int cor_perim = r->area.size().perimeter() / gp.rm_cor_per;
+		int cor_num = 1 + rnd.range_index (std::min (gp.rm_cor_max, cor_perim));
+		cor_num += gp.rm_cor_add;
 		for (int i=0; i<cor_num; ++i) gen_corridor();
 	}
 	Cell* getc(vec2i pos)
@@ -754,6 +800,9 @@ struct Gen1
 			if (x != size.x) break;
 			++y_rem;
 		}
+		
+		if (x_rem) --x_rem; // bug hack
+		if (y_rem) --y_rem;
 		
 		for (auto& r : g_rooms) r.area.off -= {x_rem, y_rem};
 		for (auto& c : g_cors) {
@@ -801,6 +850,9 @@ struct Gen1
 			--y_rem;
 		}
 		
+		if (x_rem != size.x) ++x_rem; // bug hack
+		if (y_rem != size.y) ++y_rem;
+		
 		if (y_rem != size.y) cs.erase( cs.begin() + y_rem * size.x, cs.end() );
 		size.y = y_rem;
 		
@@ -819,42 +871,21 @@ struct Gen1
 		t.grid_size = size;
 		t.cs.reserve( cs.size() );
 		t.rooms.reserve( g_rooms.size() );
-		t.cors.reserve( g_cors.size() );
 		
 		for (auto& r : g_rooms)
 		{
 			auto& nr = t.rooms.emplace_back();
 			nr.area = r.area;
+			nr.type = r.klass->lc_type;
 		}
 		for (auto& c : cs)
 		{
 			auto& nc = t.cs.emplace_back();
 			nc.is_wall = (!c.cor_i && !c.room_i);
 		}
-		for (auto& c : g_cors)
-		{
-			auto& nc = t.cors.emplace_back();
-			nc.cells = c.cells;
-			nc.ents.reserve( c.ents.size() );
-			
-			for (auto& e : c.ents)
-			{
-				auto& ne = nc.ents.emplace_back();
-				ne.inner = e.pos;
-				ne.room_index = *e.room_i;
-				ne.outer = ne.inner;
-				
-				const vec2i ds[] = {{0,1}, {0,-1}, {1,0}, {-1,0}};
-				for (auto& d : ds) {
-					if (getc(e.pos + d)->room_i == e.room_i) {
-						ne.outer = e.pos + d;
-						break;
-					}
-				}
-				if (ne.inner == ne.outer)
-					VLOGX("LevelTerrain::() invalid corridor");
-			}
-		}
+		
+		auto& r0 = g_rooms[0].area;
+		t.spps.emplace_back(LevelControl::SP_PLAYER, r0.off + r0.sz /2);
 	}
 };
 
@@ -894,6 +925,62 @@ LevelTerrain* LevelTerrain::generate(const GenParams& pars)
 	
 	return lt_ptr;
 }
+LevelTerrain* LevelTerrain::load_testlvl(float cell_size, const char *filename)
+{
+	ImageInfo img;
+	if (!img.load(filename, ImageInfo::FMT_RGB))
+		throw std::runtime_error("LevelTerrain::load_testlvl() failed");
+	
+	LevelTerrain* lt = new LevelTerrain;
+	lt->cell_size = cell_size;
+	lt->grid_size = img.get_size();
+	lt->cs.resize( lt->grid_size.area() );
+	
+	auto& rm = lt->rooms.emplace_back();
+	rm.area = {{1,1}, lt->grid_size - vec2i::one(2), true};
+	rm.type = RM_DEFAULT;
+	
+	rm.area.map([lt](auto p) {
+		lt->cs[p.y * lt->grid_size.x + p.x].is_wall = false;
+	});
+	
+	for (int y=0; y < lt->grid_size.y; ++y)
+	for (int x=0; x < lt->grid_size.x; ++x)
+	{
+		int v = img.get_pixel_fast({x,y});
+		switch (v)
+		{
+		case 0:
+			lt->cs[y * lt->grid_size.x + x].is_wall = true;
+			break;
+			
+		case 0xffffff:
+			break;
+			
+		case 0xff0000:
+			lt->spps.emplace_back(LevelControl::SP_PLAYER, vec2i{x,y});
+			break;
+			
+		case 0x00ff00:
+			lt->spps.emplace_back(LevelControl::SP_TEST_AI, vec2i{x,y});
+			break;
+			
+		case 0xffff00:
+			lt->spps.emplace_back(LevelControl::SP_TEST_BOX, vec2i{x,y});
+			break;
+			
+		default:
+			throw std::runtime_error("LevelTerrain::load_testlvl() unknown color");
+		}
+	}
+	
+	lt->ls_wall = lt->vectorize();
+	lt->ls_grid = lt->gen_grid();
+	return lt;
+}
+
+
+
 std::vector<std::vector<vec2fp>> LevelTerrain::vectorize() const
 {
 	// generate (straight) segments
@@ -1038,40 +1125,40 @@ std::vector<std::pair<vec2fp, vec2fp>> LevelTerrain::gen_grid() const
 
 
 
+ImageInfo LevelTerrain::draw_grid() const
+{
+	ImageInfo img;
+	ImagePointBrush br;
+	img.reset(grid_size, ImageInfo::FMT_ALPHA);
+	
+	auto& ls = ls_wall;
+	auto& gs = ls_grid;
+	
+	int cz = int_round(cell_size);
+	img.reset(grid_size * cz, ImageInfo::FMT_ALPHA);
+	
+	br.clr = 64;
+	for (auto& g : gs)
+		draw_line(img, g.first.int_round(), g.second.int_round(), br);
+	
+	br.clr = 255;
+	for (auto& c : ls)
+	{
+		vec2i prev = c.front().int_round();
+		for (size_t i=1; i<c.size(); ++i)
+		{
+			auto p = c[i].int_round();
+			draw_line(img, prev, p, br);
+			prev = p;
+		}
+	}
+	
+	return img;
+}
 void LevelTerrain::test_save(const char *prefix) const
 {
 	std::string fn_line = std::string(prefix) + "_line.png";
 	std::string fn_grid = std::string(prefix) + "_grid.png";
-	
-	{
-		ImageInfo img;
-		ImagePointBrush br;
-		img.reset(grid_size, ImageInfo::FMT_ALPHA);
-		
-		auto& ls = ls_wall;
-		auto& gs = ls_grid;
-		
-		int cz = int_round(cell_size);
-		img.reset(grid_size * cz, ImageInfo::FMT_ALPHA);
-		
-		br.clr = 64;
-		for (auto& g : gs)
-			draw_line(img, g.first.int_round(), g.second.int_round(), br);
-		
-		br.clr = 255;
-		for (auto& c : ls)
-		{
-			vec2i prev = c.front().int_round();
-			for (size_t i=1; i<c.size(); ++i)
-			{
-				auto p = c[i].int_round();
-				draw_line(img, prev, p, br);
-				prev = p;
-			}
-		}
-		
-		img.save(fn_line.c_str());
-	}
 	
 	ImageInfo img;
 	img.reset(grid_size, ImageInfo::FMT_ALPHA);
@@ -1081,16 +1168,11 @@ void LevelTerrain::test_save(const char *prefix) const
 	{
 		auto& c = cs[y * grid_size.x + x];
 		
-		size_t i=0;
-		for (; i<rooms.size(); ++i) {
-			auto& r = rooms[i].area;
-			if (r.contains({x,y}) && x != r.upper().x && y != r.upper().y) break;
-		}
-		
 		int v;
-		if (0) {
-			if (i != rooms.size()) v = c.is_wall? 64 : 255;
-			else                   v = c.is_wall? 0 : 128;
+		if (1) {
+			auto i = std::find_if(rooms.begin(), rooms.end(), [&](auto& v){ return v.area.contains_le({x,y}); });
+			if (i != rooms.end()) v = c.is_wall? 64 : 255;
+			else                  v = c.is_wall? 0  : 128;
 		}
 		else v = (!c.is_wall) * 255;
 		
@@ -1098,4 +1180,5 @@ void LevelTerrain::test_save(const char *prefix) const
 	}
 	
 	img.save(fn_grid.c_str());
+	draw_grid().save(fn_line.c_str());
 }

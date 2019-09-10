@@ -1,26 +1,23 @@
 #ifndef LEVEL_GEN_HPP
 #define LEVEL_GEN_HPP
 
-#include "entity.hpp"
+#include "level_ctr.hpp"
+
+struct ImageInfo;
 
 
 
 struct LevelTerrain
 {
+	enum RoomType
+	{
+		RM_SMALL,
+		RM_DEFAULT
+	};
 	struct Room
 	{
 		Rect area; ///< Boundaries
-	};
-	struct CorridorEntry
-	{
-		vec2i inner;
-		vec2i outer;
-		size_t room_index;
-	};
-	struct Corridor
-	{
-		std::vector<vec2i> cells;
-		std::vector<CorridorEntry> ents;
+		RoomType type;
 	};
 	struct Cell
 	{
@@ -32,10 +29,11 @@ struct LevelTerrain
 	
 	std::vector<Cell> cs;
 	std::vector<Room> rooms;
-	std::vector<Corridor> cors;
 	
 	std::vector<std::vector<vec2fp>> ls_wall; ///< Line segment loops representing walls
 	std::vector<std::pair<vec2fp, vec2fp>> ls_grid; ///< Line segments representing background grid
+	
+	std::vector<std::pair<LevelControl::SpawnType, vec2i>> spps; ///< Spawn points
 	
 	
 	
@@ -47,6 +45,12 @@ struct LevelTerrain
 	
 	/// Generates level, never fails
 	static LevelTerrain* generate(const GenParams& pars);
+	
+	///
+	static LevelTerrain* load_testlvl(float cell_size, const char *filename = "res/test_level.png");
+	
+	///
+	ImageInfo draw_grid() const;
 	
 	/// Saves level as image
 	void test_save(const char *prefix = "level_test") const;

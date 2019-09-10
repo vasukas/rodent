@@ -16,7 +16,8 @@ public:
 	SDL_GameController* gc;
 	float dead_zone = 0.15;
 	
-	Gamepad_Impl(SDL_GameController* gc): gc(gc)
+	Gamepad_Impl(SDL_GameController* gc)
+	    : gc(gc)
 	{
 		VLOGI("Using controller: {}", SDL_GameControllerName(gc));
 		char *m = SDL_GameControllerMapping(gc);

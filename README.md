@@ -1,8 +1,6 @@
 ## Overview
 
-Simple top-down shooter with "neon wireframe" graphics.
-
-System requirements: SDL2 and OpenGL 3.3 support, keyboard & mice / gamepad.
+Simple top-down shooter with "neon wireframe" graphics using SDL2, OpenGL and Box2D.
 
 ## Controls
 
@@ -61,4 +59,6 @@ To download dependecies execute in PowerShell (from project root):
 
 After that project can be built using Visual Studio 2017 or newer.
 Executable will be placed in "build\" directory in project root.
+
+	msbuild rodent.sln /p:Configuration=Release /p:Platform=x86
 

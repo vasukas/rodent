@@ -2,8 +2,8 @@
 #include <cstdio>
 #include <cerrno>
 
-#include "vas_log.hpp"
-#include "vas_file.hpp"
+#include "vaslib/vas_log.hpp"
+#include "vaslib/vas_file.hpp"
 
 // called at first line in File::open
 #define VAS_FILE_USE_OPEN_HOOK 0

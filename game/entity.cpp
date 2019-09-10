@@ -58,7 +58,6 @@ void Entity::destroy()
 	was_destroyed = true;
 	GameCore::get().mark_deleted(this);
 }
-Entity::Entity():
-    index(GameCore::get().create_ent(this))
-{
-}
+Entity::Entity()
+    : index(GameCore::get().create_ent(this))
+{}

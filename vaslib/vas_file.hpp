@@ -8,7 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include "vas_types.hpp"
+#include "vaslib/vas_types.hpp"
 
 struct SDL_RWops;
 

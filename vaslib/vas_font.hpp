@@ -6,7 +6,7 @@
 #include <cinttypes>
 #include <optional>
 #include <vector>
-#include "vas_math.hpp"
+#include "vaslib/vas_math.hpp"
 
 #define VAS_HAS_FREETYPE 1
 #define VAS_HAS_RESIMAGE 1

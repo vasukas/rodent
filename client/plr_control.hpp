@@ -22,8 +22,8 @@ public:
 	
 	enum BindType
 	{
-		BT_ONESHOT,
-		BT_HELD
+		BT_ONESHOT, ///< Set as enabled only on initial press
+		BT_HELD ///< Set as enabled while pressed
 	};
 	
 	enum {
@@ -80,8 +80,10 @@ public:
 	{
 		A_ACCEL,
 		A_SHOOT,
+		
 		A_CAM_FOLLOW,
 		A_LASER_DESIG,
+		A_SHOW_MAP,
 		
 		A_WPN_PREV,
 		A_WPN_NEXT,
@@ -102,7 +104,7 @@ public:
 	
 	struct State
 	{
-		std::array<bool, ACTION_TOTAL_COUNT_INTERNAL> is = {}; ///< Is enabled
+		std::array<bool, ACTION_TOTAL_COUNT_INTERNAL> is = {}; ///< Is enabled/triggered
 		std::vector<Action> acts; ///< Oneshot actions triggered
 		
 		vec2fp mov = {}; ///< Movement delta [-1; 1]

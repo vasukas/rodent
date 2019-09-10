@@ -1,6 +1,9 @@
 #include "damage.hpp"
 #include "physics.hpp"
 
+EC_Health::EC_Health(Entity* ent, int hp)
+    : EComp(ent), hp(hp), hp_max(hp)
+{}
 bool EC_Health::is_alive() const
 {
 	return hp > 0;

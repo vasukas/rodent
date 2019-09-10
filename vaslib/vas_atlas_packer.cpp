@@ -1,9 +1,9 @@
 #include <algorithm>
 #include <functional>
 #include <memory.h>
-#include "vas_atlas_packer.hpp"
-#include "vas_cpp_utils.hpp"
-#include "vas_log.hpp"
+#include "vaslib/vas_atlas_packer.hpp"
+#include "vaslib/vas_cpp_utils.hpp"
+#include "vaslib/vas_log.hpp"
 
 
 

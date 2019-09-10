@@ -97,8 +97,8 @@ void PlayerController::IM_Gpad::operator=(Gamepad::Button v)
 
 
 
-PlayerController::PlayerController(std::unique_ptr<Gamepad> gpad):
-    gpad(std::move(gpad))
+PlayerController::PlayerController(std::unique_ptr<Gamepad> gpad)
+    : gpad(std::move(gpad))
 {
 	{
 		Bind& b = binds[A_ACCEL];
@@ -126,6 +126,13 @@ PlayerController::PlayerController(std::unique_ptr<Gamepad> gpad):
 		b.type = BT_ONESHOT;
 		b.key = SDL_SCANCODE_R;
 		b.but = Gamepad::B_RC_RIGHT;
+	}{
+		Bind& b = binds[A_SHOW_MAP];
+		b.name = "Show map";
+		b.descr = "Shows level map when held";
+		b.type = BT_HELD;
+		b.key = SDL_SCANCODE_M;
+		b.but = Gamepad::B_RC_UP;
 	}{
 		Bind& b = binds[A_WPN_PREV];
 		b.name = "Previous weapon";
@@ -178,9 +185,9 @@ void PlayerController::on_event(const SDL_Event& ev)
 	{
 		if (v.v == e)
 		{
-			if (on) v.state = K_JUST;
+			if (on) {if (v.state != K_HELD) v.state = K_JUST;}
 			else if (v.state == K_JUST) v.state = K_ONCE;
-			else v.state = K_OFF;
+			else if (v.state != K_ONCE) v.state = K_OFF;
 			return true;
 		}
 		return false;

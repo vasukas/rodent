@@ -37,7 +37,8 @@ public:
 	enum Filter
 	{
 		FIL_NEAREST, ///< Only magnification, minification is linear
-		FIL_LINEAR
+		FIL_LINEAR,
+		FIL_LINEAR_MIPMAP
 	};
 	
 	static size_t dbg_total_size; ///< Shows how much raw pixel data of all existing textures takes, in bytes

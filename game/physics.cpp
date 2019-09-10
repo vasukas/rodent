@@ -10,8 +10,8 @@ const float raycast_zero_dist = 0.05; ///< Square of distance at which raycast n
 
 
 
-EC_Physics::EC_Physics(Entity* ent, const b2BodyDef& def):
-    ECompPhysics(ent)
+EC_Physics::EC_Physics(Entity* ent, const b2BodyDef& def)
+    : ECompPhysics(ent)
 {
 	auto& ph = GameCore::get().get_phy();
 	body = ph.world.CreateBody(&def);
@@ -133,8 +133,8 @@ float EC_Physics::get_radius() const
 
 
 
-EC_VirtualBody::EC_VirtualBody(Entity *ent, Transform pos, std::optional<Transform> vel):
-    ECompPhysics(ent), pos(pos), vel(vel)
+EC_VirtualBody::EC_VirtualBody(Entity *ent, Transform pos, std::optional<Transform> vel)
+    : ECompPhysics(ent), pos(pos), vel(vel)
 {
 	if (vel) reg(ECompType::StepPostUtil);
 }
@@ -307,7 +307,8 @@ public:
 
 
 
-PhysicsWorld::PhysicsWorld(GameCore& core): core(core), world(b2Vec2(0,0))
+PhysicsWorld::PhysicsWorld(GameCore& core)
+    : core(core), world(b2Vec2(0,0))
 {
 	c_lstr.reset( new PHW_Lstr );
 	world.SetContactListener( c_lstr.get() );
@@ -334,7 +335,8 @@ void PhysicsWorld::raycast_all(std::vector<RaycastResult>& es, b2Vec2 from, b2Ve
 		Cb(std::vector<RaycastResult>& es, float len): es(es), len(len) {}
 		float32 ReportFixture(b2Fixture* fix, const b2Vec2& point, const b2Vec2&, float32 frac)
 		{
-			if (fix->IsSensor()) return 1;
+			if (fix->IsSensor()) return -1;
+			
 			reserve_more_block(es, 256);
 			es.push_back({ {getptr(fix->GetBody())->ent, fix->GetUserData(), frac * len}, point });
 			return 1;
@@ -343,19 +345,21 @@ void PhysicsWorld::raycast_all(std::vector<RaycastResult>& es, b2Vec2 from, b2Ve
 	Cb cb(es, (from - to).Length());
 	world.RayCast(&cb, from, to);
 }
-std::optional<PhysicsWorld::RaycastResult> PhysicsWorld::raycast_nearest(b2Vec2 from, b2Vec2 to, std::function<bool(Entity*, void*)> check)
+std::optional<PhysicsWorld::RaycastResult> PhysicsWorld::raycast_nearest(b2Vec2 from, b2Vec2 to, std::function<bool(Entity*, b2Fixture*)> check)
 {
 	if ((from - to).LengthSquared() < raycast_zero_dist) return {};
 	
 	class Cb : public b2RayCastCallback {
 	public:
 		RaycastResult res;
-		std::function<bool(Entity*, void*)> check;
+		std::function<bool(Entity*, b2Fixture*)> check;
 		
 		float32 ReportFixture(b2Fixture* fix, const b2Vec2& point, const b2Vec2&, float32 frac)
 		{
+			if (fix->IsSensor()) return -1;
+			
 			auto ent = getptr(fix->GetBody())->ent;
-			if (check && !check(ent, fix->GetUserData())) return 1;
+			if (check && !check(ent, fix)) return 1;
 			
 			res.ent = ent;
 			res.fix = fix->GetUserData();

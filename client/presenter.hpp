@@ -42,6 +42,7 @@ private:
 	friend class GamePresenter_Impl;
 	Transform _pos, _vel;
 	size_t _comp_id = size_t_inval;
+	bool _is_ok = true;
 	
 	friend class GameCore_Impl;
 	void on_destroy_ent();
@@ -55,9 +56,31 @@ struct EC_RenderSimple : ECompRender
 	FColor clr;
 	
 	EC_RenderSimple(Entity* ent, ModelType model = MODEL_ERROR, FColor clr = FColor(1,1,1,1));
-	EC_RenderSimple(const EC_RenderSimple&) = delete;
 	void on_destroy() override;
 	void step() override;
+};
+
+
+
+struct EC_RenderBot : ECompRender
+{
+	struct Attach
+	{
+		ModelType model = MODEL_NONE;
+		Transform at;
+		FColor clr;
+	};
+	
+	std::array<Attach, ATT_TOTAL_COUNT> atts;
+	ModelType model;
+	FColor clr;
+	
+	float rot = 0.f; ///< override
+	
+	EC_RenderBot(Entity* ent, ModelType model, FColor clr);
+	void on_destroy() override;
+	void step() override;
+	void proc(const PresCommand& c) override;
 };
 
 

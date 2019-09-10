@@ -26,15 +26,15 @@ void Weapon::ModOverheat::shoot()
 }
 void Weapon::ModOverheat::cool()
 {
-	value -= v_decr * GameCore::time_mul;
+	value -= (flag? v_cool : v_incr) * GameCore::time_mul;
 	if (value < 0) value = 0;
 	if (value < thr_off) flag = false;
 }
 
 
 
-EC_Equipment::EC_Equipment(Entity* ent):
-    EComp(ent)
+EC_Equipment::EC_Equipment(Entity* ent)
+    : EComp(ent)
 {
 	reg(ECompType::StepPostUtil);
 }
@@ -159,8 +159,8 @@ struct StdProjectile : EComp
 	EntityIndex src;
 	
 	
-	StdProjectile(Entity* ent, const Params& pars, EntityIndex src):
-	    EComp(ent), pars(pars), src(src)
+	StdProjectile(Entity* ent, const Params& pars, EntityIndex src)
+	    : EComp(ent), pars(pars), src(src)
 	{
 		reg(ECompType::StepLogic);
 	}
@@ -188,7 +188,8 @@ struct StdProjectile : EComp
 		if (!hit) {
 			hit = GameCore::get().get_phy().raycast_nearest(conv(ray0 + rayd), conv(ray0), check);
 			if (!hit) return;
-			hit->distance = rayd.len() - hit->distance;
+			hit->poi = conv(ray0);
+			hit->distance = 0;
 		}
 		
 		auto apply = [&](Entity* tar, float k, b2Vec2 at, b2Vec2 v)
@@ -284,7 +285,7 @@ public:
 	    :
 	    phy(this, Transform{pos, vel.angle()}, Transform{vel}),
 	    ren(this, model, clr),
-	    proj(this, pars, src? src->index : 0),
+	    proj(this, pars, src? src->index : EntityIndex{}),
 	    team(src? src->get_team() : TEAM_FREEWPN)
 	{}
 	ECompPhysics& get_phy() override {return phy;}
@@ -301,8 +302,8 @@ public:
 	ModAmmo ammo;
 	ModOverheat heat;
 	
-	WpnMinigun():
-	    ammo(1, 450, 100)
+	WpnMinigun()
+	    : ammo(1, 450, 100)
 	{
 		pars.dq.amount = 8.f;
 		pars.imp = 5.f;
@@ -320,7 +321,7 @@ public:
 		
 		v *= 18.f;
 		v.rotate( GameCore::get().get_random().range(-1, 1) * deg_to_rad(10) );
-		
+
 		new ProjectileEntity(p, v, ent, pars, MODEL_MINIGUN_PROJ, FColor(1, 1, 0.2, 1.5));
 		return true;
 	}
@@ -338,7 +339,8 @@ public:
 	ModRof rof;
 	ModAmmo ammo;
 	
-	WpnRocket():
+	WpnRocket()
+	    :
 	    rof(TimeSpan::seconds(1)),
 	    ammo(1, 40, 12)
 	{
