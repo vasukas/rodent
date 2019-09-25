@@ -1,25 +1,22 @@
 #ifndef POSTPROC_HPP
 #define POSTPROC_HPP
 
+#include "utils/color_manip.hpp"
 #include "vaslib/vas_time.hpp"
 
 class Postproc
 {
 public:
-	enum ChainIndex
-	{
-		CI_MAIN,
-		CI_PARTS,
-		
-		CI_TOTAL_COUNT_INTERNAL
-	};
+	static Postproc& get(); ///< Returns singleton
 	
-	static Postproc* create_main_chain();
+	virtual void tint_reset() = 0;
+	virtual void tint_seq(TimeSpan time_to_reach, FColor target_mul, FColor target_add = FColor(0,0,0,0)) = 0;
+	void tint_default(TimeSpan time_to_reach) {tint_seq(time_to_reach, FColor(1,1,1,1), FColor(0,0,0,0));}
 	
-	virtual ~Postproc() = default;
-	virtual void start(TimeSpan passed, ChainIndex i) = 0;
-	virtual void finish(ChainIndex i) = 0; ///< Unbounds buffer
-	virtual void render(ChainIndex i) = 0; ///< Draws effects
+protected:
+	friend class RenderControl_Impl;
+	static Postproc* init(); ///< Creates singleton
+	virtual ~Postproc();
 };
 
 #endif // POSTPROC_HPP

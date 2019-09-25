@@ -17,18 +17,18 @@ void ParticleParams::set_zero(bool vel, bool accel)
 }
 void ParticleParams::decel_to_zero()
 {
-	ax = vx / (ft + lt);
-	ay = vy / (ft + lt);
-	ar = vr / (ft + lt);
+	ax = -vx / (ft + lt);
+	ay = -vy / (ft + lt);
+	ar = -vr / (ft + lt);
 }
-void ParticleGroupGenerator::draw(const BatchPars& pars)
+void ParticleGroupGenerator::draw(const ParticleBatchPars& pars)
 {
 	ParticleRenderer::get().add(*this, pars);
 }
 
 
 
-size_t ParticleGroupStd::begin(const BatchPars &pars, ParticleParams& p)
+size_t ParticleGroupStd::begin(const ParticleBatchPars &pars, ParticleParams& p)
 {
 	t_tr = pars.tr;
 	t_spdmax = speed_max < 0 ? speed_min : speed_max;
@@ -207,11 +207,11 @@ public:
 	
 	
 	
-	void render(TimeSpan passed)
+	void render()
 	{
 		if (gs.empty()) return;
 		
-		update(passed);
+		update( RenderControl::get().get_passed() );
 		if (!gs_off_max) return;
 		
 		sh_draw->bind();
@@ -220,7 +220,7 @@ public:
 		vao[0].bind();
 		glDrawArrays(GL_POINTS, 0, gs_off_max);
 	}
-	void add(ParticleGroupGenerator& group, const ParticleGroupGenerator::BatchPars& pars)
+	void add(ParticleGroupGenerator& group, const ParticleBatchPars& pars)
 	{
 		ParticleParams p;
 		p.pr = p.vr = 0;

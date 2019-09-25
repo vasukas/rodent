@@ -6,7 +6,7 @@ $TmpZip="load_deps_tmp.zip"
 
 
 
-if (!(Test-Path "main.cpp"))
+if (!(Test-Path "core\main.cpp"))
 {
 	Write-Host "Must be launched from project directory"
 	exit 1

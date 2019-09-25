@@ -61,8 +61,7 @@ public:
 			sp -= (*plr_p - vec2fp::one(0.5)) * sz;
 		}
 		
-		Rectfp dst;
-		dst.from_center(sp, sz);
+		Rectfp dst = Rectfp::from_center(sp, sz);
 		RenImm::get().draw_image(dst, tex.get(), 0xffffff00 | a);
 		
 		if (plr_p)

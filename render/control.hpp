@@ -8,6 +8,7 @@
 
 class  Camera;
 struct GLA_VertexArray;
+class  PP_Graph;
 union  SDL_Event;
 struct SDL_Window;
 class  Shader;
@@ -25,9 +26,6 @@ public:
 	};
 	
 	bool shader_fail = false; ///< If true, fails if load_shader fails
-	bool use_pp = true; ///< Is post-processing used
-	
-	bool draw_tui = false; ///< Hack for DbgMenu
 	
 	static bool opt_gldbg;
 	static bool opt_fullscreen;
@@ -46,8 +44,11 @@ public:
 	virtual Camera* get_world_camera() = 0;
 	virtual Camera* get_ui_camera()    = 0; ///< Always reset before rendering
 	
-	virtual bool    is_visible()       = 0; ///< Returns true if window is visible on screen
+	virtual bool is_visible() = 0; ///< Returns true if window is visible on screen
 	virtual SDL_Window* get_wnd() = 0;
+	
+	virtual PP_Graph* get_ppg() = 0;
+	virtual TimeSpan get_passed() = 0; ///< Returns last 'passed' value which was passed to render()
 	
 	
 	
@@ -82,9 +83,6 @@ public:
 	
 	/// Reloads and recompiles all shaders
 	virtual void reload_shaders() = 0;
-	
-	/// Reloads post-processing chain
-	virtual void reload_pp() = 0;
 	
 	/// Returns internal VAO representing full screen in NDC as two triangles - 6 vertices of vec2
 	virtual GLA_VertexArray& ndc_screen2() = 0;

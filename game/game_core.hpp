@@ -6,6 +6,7 @@
 
 struct RandomGen;
 class  PhysicsWorld;
+class  PlayerManager;
 
 #define GAME_THROW LOG_THROW_X
 
@@ -20,10 +21,11 @@ public:
 	struct InitParams
 	{
 		uint32_t random_seed = 0;
+		std::unique_ptr<PlayerManager> pmg;
 	};
 	
 	static GameCore& get(); ///< Returns singleton
-	static GameCore* create( const InitParams& pars ); ///< Creates empty handler and inits all systems
+	static GameCore* create(InitParams pars); ///< Creates empty handler and inits all systems
 	virtual ~GameCore(); ///< Destroys all systems
 	
 	
@@ -37,7 +39,10 @@ public:
 	///
 	virtual PhysicsWorld& get_phy() noexcept = 0;
 	
-	/// Returns generator
+	///
+	virtual PlayerManager& get_pmg() noexcept = 0;
+	
+	///
 	virtual RandomGen& get_random() noexcept = 0;
 	
 	
@@ -64,6 +69,9 @@ protected:
 	friend Entity;
 	virtual EntityIndex create_ent(Entity* e) noexcept = 0;
 	virtual void mark_deleted(Entity* e) noexcept = 0;
+	
+	virtual size_t reg_ent(Entity* e) noexcept = 0;
+	virtual void unreg_ent(size_t i)  noexcept = 0;
 	
 	friend EComp;
 	virtual size_t reg_c(ECompType type, EComp* c) noexcept = 0;

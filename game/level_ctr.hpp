@@ -7,7 +7,41 @@ struct LevelTerrain;
 
 
 
-class LevelControl
+struct PathRequest
+{
+	struct Result
+	{
+		std::vector<vec2fp> ps; ///< Chain of line segments, including first and last. Always contains at least one element.
+		float len; ///< Total length, may be zero
+		bool not_found; ///< Set to true if no path was found
+	};
+	
+	PathRequest(vec2fp from, vec2fp to);
+	~PathRequest();
+	
+//	PathRequest() = default;
+	PathRequest(const PathRequest&) = delete;
+	
+	PathRequest(PathRequest&&) = default;
+//	PathRequest& operator=(PathRequest&&) = default;
+	
+	bool is_ok() const; ///< Returns true if result is available or waiting
+	bool is_ready() const; ///< Returns true if result computed and not yet returned
+	
+	/// Returns (moved) result if ready
+	std::optional<Result> result();
+	
+private:
+	std::pair<vec2fp, vec2fp> p0;
+	mutable std::optional<size_t> i;
+	mutable std::optional<Result> res;
+};
+
+
+
+class AsyncPathSearch;
+
+class LevelControl final
 {
 public:
 	struct Cell
@@ -21,8 +55,10 @@ public:
 	enum SpawnType
 	{
 		SP_PLAYER,
-		SP_TEST_AI,
-		SP_TEST_BOX
+		SP_TEST_TURRET,
+		SP_TEST_BOX,
+		SP_TEST_DRONE,
+		SP_SUPPLY_RND
 	};
 	
 	struct Spawn
@@ -30,6 +66,8 @@ public:
 		SpawnType type;
 		vec2fp pos;
 	};
+	
+	const float cell_size;
 	
 	
 	
@@ -44,11 +82,13 @@ public:
 	void fin_init();
 	const std::vector<Spawn>& get_spawns() const {return spps;}
 	
-private:
-	std::vector<Cell> cells;
-	vec2i size;
+	AsyncPathSearch& get_aps() {return *aps;}
 	
+protected:
+	vec2i size;
+	std::vector<Cell> cells;
 	std::vector<Spawn> spps;
+	std::unique_ptr<AsyncPathSearch> aps;
 	
 	LevelControl(const LevelTerrain& lt);
 };

@@ -9,11 +9,18 @@ EWall::EWall(const std::vector<std::vector<vec2fp>>& walls)
     ren(this, MODEL_LEVEL_STATIC, FColor(0.75, 0.75, 0.75, 1))
 {
 	std::vector<b2Vec2> verts;
-	for (auto& w : walls)
+	vec2fp p0 = vec2fp::one(std::numeric_limits<float>::max());
+	vec2fp p1 = vec2fp::one(std::numeric_limits<float>::min());
+	
+	auto addfix = [&](const std::vector<vec2fp>& w)
 	{
 		verts.clear();
 		verts.reserve(w.size());
-		for (auto& p : w) verts.push_back(conv(p));
+		for (auto& p : w) {
+			verts.push_back(conv(p));
+			p0 = min(p, p0);
+			p1 = max(p, p1);
+		}
 		
 		bool loop = w.front().equals( w.back(), 1e-5 );
 		
@@ -25,8 +32,23 @@ EWall::EWall(const std::vector<std::vector<vec2fp>>& walls)
 		fd.friction = 0.15;
 		fd.restitution = 0.1;
 		fd.shape = &shp;
-		phy.body->CreateFixture(&fd);
-	}
+		auto f = phy.body->CreateFixture(&fd);
+		
+		setptr(f, new FixtureInfo( FixtureInfo::TYPEFLAG_WALL | FixtureInfo::TYPEFLAG_OPAQUE ));
+	};
+	for (auto& w : walls) addfix(w);
+	
+	p0 -= vec2fp::one(10);
+	p1 += vec2fp::one(10);
+	
+	std::vector<vec2fp> enc = {
+	    {p0.x, p0.y},
+	    {p1.x, p0.y},
+	    {p1.x, p1.y},
+	    {p0.x, p1.y},
+	    {p0.x, p0.y},
+	};
+	addfix(enc);
 }
 
 
@@ -46,9 +68,51 @@ EPhyBox::EPhyBox(vec2fp at)
 	b2FixtureDef fd;
 	fd.friction = 0.1;
 	fd.restitution = 0.5;
-	phy.add_box(fd, vec2fp::one(GameConst::hsz_box_small), 8.f);
+	phy.add_box(fd, vec2fp::one(GameConst::hsz_box_small), 8.f, new FixtureInfo( FixtureInfo::TYPEFLAG_OPAQUE ));
 	
 	hlc.hook(phy);
+}
+
+
+
+ESupply::ESupply(vec2fp pos, AmmoPack ap)
+	:
+    phy(this, [&]{b2BodyDef d; d.position = conv(pos); return d;}()),
+    ren(this, ammo_model(ap.type)),
+    val(ap)
+{
+	b2FixtureDef fd;
+	fd.isSensor = true;
+	phy.add_circle(fd, GameConst::hsz_supply, 0);
+	EVS_CONNECT1(phy.ev_contact, on_cnt);
+}
+void ESupply::on_cnt(const CollisionEvent& ce)
+{
+	if (ce.type != CollisionEvent::T_BEGIN) return;
+	
+	if (std::holds_alternative<AmmoPack>(val))
+	{
+		if (ce.other->get_team() != TEAM_PLAYER)
+			return;
+		
+		auto eqp = ce.other->get_eqp();
+		if (!eqp) return;
+		
+		for (auto& w : eqp->wpns)
+		{
+			auto ammo = w->get_ammo();
+			if (!ammo) continue;
+			
+			if (ammo->type != std::get<AmmoPack>(val).type)
+				continue;
+			
+			if (!ammo->add(std::get<AmmoPack>(val).amount))
+				continue;
+			
+			destroy();
+			break;
+		}
+	}
 }
 
 
@@ -67,8 +131,8 @@ ETurret::ETurret(vec2fp at, size_t team)
     ren(this, MODEL_BOX_SMALL, FColor(1, 0, 1, 1)),
     hlc(this, 400),
     eqp(this),
-    team(team),
-    logic(this)
+    logic(this, std::make_unique<AI_TargetSensor>(phy, 20), nullptr),
+    team(team)
 {
 	b2FixtureDef fd;
 	phy.add_circle(fd, GameConst::hsz_box_small, 1);
@@ -79,82 +143,45 @@ ETurret::ETurret(vec2fp at, size_t team)
 	eqp.wpns.emplace_back( Weapon::create_std(WeaponIndex::Minigun) );
 	eqp.set_wpn(0);
 }
-ETurret::Logic::Logic(Entity* e)
-    : EComp(e)
+
+
+static std::unique_ptr<AI_TargetProvider> drone_prov(Entity* ent)
 {
-	reg(ECompType::StepLogic);
-	
+	static std::shared_ptr<AI_TargetNetwork::Group> all = std::make_shared<AI_TargetNetwork::Group>();
+	return std::make_unique<AI_TargetNetwork>(ent, all, std::make_unique<AI_TargetPlayer>(ent, 25));
+}
+
+EEnemyDrone::EEnemyDrone(vec2fp at)
+	:
+	phy(this, [](vec2fp at){
+        b2BodyDef def;
+		def.position = conv(at);
+		def.type = b2_dynamicBody;
+		def.fixedRotation = true;
+		return def;
+	}(at)),
+	ren(this, MODEL_DRONE, FColor(1, 0, 0, 1)),
+	hlc(this, 70),
+	eqp(this),
+	mov(this, 4, 7, 9),
+	logic(this, drone_prov(this), &mov)
+{
 	b2FixtureDef fd;
-	fd.isSensor = true;
-	fd.userData = reinterpret_cast<void*>(1);
-	ent->get_phobj().add_circle(fd, TURRET_RADIUS, 1);
+	fd.friction = 0.8;
+	fd.restitution = 0.4;
+	phy.add_box(fd, vec2fp::one(GameConst::hsz_drone), 25);
 	
-	EVS_CONNECT1(ent->get_phobj().ev_contact, on_cnt);
-}
-void ETurret::Logic::step()
-{
-	vec2fp p0 = ent->get_phy().get_pos();
+	hlc.add_filter(std::make_shared<DmgShield>(100, 20));
+	hlc.ph_thr = 100;
+	hlc.ph_k = 0.2;
+	hlc.hook(phy);
 	
-	vec2fp tar;
-	float ed = TURRET_RADIUS + 1;
+	eqp.infinite_ammo = true;
+	eqp.hand = 0;
 	
-	for (size_t i=0; i < tars.size(); ++i)
-	{
-		if (auto e = GameCore::get().get_ent( tars[i] ))
-		{
-			auto pos = e->get_phy().get_pos();
-			auto rc = GameCore::get().get_phy().raycast_nearest( conv(p0), conv(pos) );
-			if (!rc || rc->ent != e) continue;
-			
-			float d = p0.dist(pos);
-			if (d < ed) {
-				tar = pos;
-				ed = d;
-			}
-		}
-		else {
-			tars.erase( tars.begin() + i );
-			--i;
-		}
-	}
+	eqp.wpns.emplace_back( Weapon::create_std(WeaponIndex::Rocket) );
+	eqp.set_wpn(0);
 	
-	if (ed < TURRET_RADIUS) {
-		ent->get_eqp()->shoot(tar);
-		
-		auto& rot = dynamic_cast<EC_RenderBot&>(*ent->get_ren()).rot;
-		rot = lerp_angle(rot, (tar - p0).angle(), 0.5);
-	}
-	else if (!tars.empty()) {
-		vec2fp tar = GameCore::get().get_ent( tars.front() )->get_phy().get_pos();
-		auto& rot = dynamic_cast<EC_RenderBot&>(*ent->get_ren()).rot;
-		rot = lerp_angle(rot, (tar - p0).angle(), 0.5);
-	}
-	else {
-		dynamic_cast<EC_RenderBot&>(*ent->get_ren()).rot += rr_val;
-		rr_left -= GameCore::step_len;
-		if (rr_left.is_negative())
-		{
-			rr_left = TimeSpan::seconds(1.5);
-			rr_flag = !rr_flag;
-			rr_val = rr_flag? 0 : rnd_stat().range(-M_PI, M_PI) * (GameCore::time_mul / rr_left.seconds());
-		}
-	}
-}
-void ETurret::Logic::on_cnt(const ContactEvent& ev)
-{
-	if (!ev.fix_this) return;
-	
-	if		(ev.type == ContactEvent::T_BEGIN)
-	{
-		if ((ent->get_team() == TEAM_BOTS && ev.other->get_team() == TEAM_PLAYER) ||
-		    (ent->get_team() == TEAM_PLAYER && ev.other->get_team() == TEAM_BOTS))
-		{
-			tars.push_back(ev.other->index);
-		}
-	}
-	else if (ev.type == ContactEvent::T_END)
-	{
-		auto it = std::find( tars.begin(), tars.end(), ev.other->index );
-		if (it != tars.end()) tars.erase(it);
-	}
+	logic.min_dist = 8;
+	logic.opt_dist = 14;
 }

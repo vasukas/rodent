@@ -3,6 +3,7 @@
 #include "vaslib/vas_containers.hpp"
 #include "vaslib/vas_log.hpp"
 #include "game_core.hpp"
+#include "player_mgr.hpp"
 #include "physics.hpp"
 
 
@@ -13,7 +14,10 @@ public:
 	struct Del_Entity { void operator()( Entity* p ) { delete p; } };
 	
 	std::unique_ptr<PhysicsWorld> phy;
+	std::unique_ptr<PlayerManager> pmg;
+	
 	std::array<SparseArray<EComp*>, static_cast<size_t>(ECompType::TOTAL_COUNT)> cs_list;
+	SparseArray<Entity*> es_list;
 	
 	SparseArray<std::unique_ptr <Entity, Del_Entity>> ents;
 	std::vector<size_t> e_next1; // stack of indices which would be free on cycle after the next
@@ -26,16 +30,18 @@ public:
 	
 	
 	
-	GameCore_Impl(const InitParams& pars)
+	GameCore_Impl(InitParams pars)
 	{
 		ents.block_size = 256;
 		phy.reset(new PhysicsWorld(*this));
+		pmg = std::move(pars.pmg);
 		rndg.gen.seed(pars.random_seed);
 	}
 	~GameCore_Impl() = default;
 	
-	PhysicsWorld& get_phy()    noexcept {return *phy;}
-	RandomGen&    get_random() noexcept {return rndg;}
+	PhysicsWorld&  get_phy()    noexcept {return *phy;}
+	PlayerManager& get_pmg()    noexcept {return *pmg;}
+	RandomGen&     get_random() noexcept {return rndg;}
 	
 	uint32_t      get_step_counter() const noexcept {return step_cou;}
 	bool          is_in_step()       const noexcept {return step_flag;}
@@ -50,7 +56,18 @@ public:
 		e_next2 = std::move( e_next1 );
 		step_flag = true;
 		
-		// tick systems
+		// tick entities
+		
+		{	Entity* ent = nullptr;
+			try {
+				for (auto& e : es_list)
+					(ent = e)->step();
+			}
+			catch (std::exception& e) {
+				THROW_FMTSTR("Failed to step entity ({}) - {}",
+				             ent? ent->dbg_id() : "null", e.what());
+			}
+		}
 		
 		auto step_comp = [this](ECompType type)
 		{
@@ -63,11 +80,13 @@ public:
 			}
 			catch (std::exception& e) {
 				THROW_FMTSTR("Failed to step component of type {} on ({}) - {}",
-				             static_cast<int>(type), ent? ent->dbg_id() : "null", e.what());
+				             enum_name(type), ent? ent->dbg_id() : "null", e.what());
 			}
 		};
 		step_comp(ECompType::StepLogic);
 		step_comp(ECompType::StepPostUtil);
+		
+		// tick systems
 		
 		try {
 			phy->step();
@@ -89,6 +108,8 @@ public:
 		
 		step_flag = false;
 		e_todel.clear();
+		
+		pmg->step();
 	}
 	Entity* get_ent( EntityIndex ei ) const noexcept
 	{
@@ -120,14 +141,21 @@ public:
 		if (!is_in_step()) delete e;
 		else e_todel.emplace_back(e);
 	}
+	size_t reg_ent(Entity* e) noexcept
+	{
+		return es_list.emplace_new(e);
+	}
+	void unreg_ent(size_t i) noexcept
+	{
+		es_list.free_and_reset(i);
+	}
 	size_t reg_c(ECompType type, EComp* c) noexcept
 	{
 		return cs_list[static_cast<size_t>(type)].emplace_new(c);
 	}
 	void unreg_c(ECompType type, size_t i) noexcept
 	{
-		cs_list[static_cast<size_t>(type)][i] = nullptr;
-		cs_list[static_cast<size_t>(type)].free_index(i);
+		cs_list[static_cast<size_t>(type)].free_and_reset(i);
 	}
 };
 
@@ -135,5 +163,5 @@ public:
 
 static GameCore* core;
 GameCore& GameCore::get() {return *core;}
-GameCore* GameCore::create( const InitParams& pars ) {return core = new GameCore_Impl(pars);}
+GameCore* GameCore::create(InitParams pars) {return core = new GameCore_Impl (std::move(pars));}
 GameCore::~GameCore() {core = nullptr;}

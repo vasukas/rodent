@@ -171,11 +171,15 @@ Options:
   --logclr <0/1>  enable colors in log
   --cfg    <FILE> override default config path
 
-  -v0 -v -vv  different log verbosity level, from default (info) to verbose
+  -v0 -v -vv  different log verbosity levels, from default (info) to verbose
   --gldbg     create debug OpenGL context and log all GL messages as verbose
-				       
-Modes (to see options use --modehelp):
-  --game      default
+
+Modes:
+  --game      [default]
+
+Mode options (--game):
+  --gpad-on   use gamepad by default (if available)
+  --gpad-off  don't use gamepad by default [default]
 )");
 			}
 			else if (arg.is("--log")) log_filename = arg.str();
@@ -185,12 +189,13 @@ Modes (to see options use --modehelp):
 			else if (arg.is("-v"))  cli_verb = LogLevel::Debug;
 			else if (arg.is("-vv")) cli_verb = LogLevel::Verbose;
 			else if (arg.is("--gldbg")) RenderControl::opt_gldbg = true;
-			else if (arg.is("--game")) MainLoop::create(MainLoop::INIT_GAME);
-			else if (arg.is("--modehelp"))
+			else if (arg.is("--game"))
 			{
-				if (!MainLoop::current) printf("No mode selected ('--modehelp')\n");
-				else if (!MainLoop::current->parse_arg(arg)) printf("Mode has no options\n");
-				return 1;
+				if (MainLoop::current) {
+					printf("Invalid argument: mode already selected\n");
+					return 1;
+				}
+				MainLoop::create(MainLoop::INIT_GAME);
 			}
 			else if (MainLoop::current && MainLoop::current->parse_arg(arg)) continue;
 			else {
@@ -248,9 +253,25 @@ Modes (to see options use --modehelp):
 			"Texture : {:4} KB\n",
 			GLA_Buffer::dbg_size_max >> 10, GLA_Buffer::dbg_size_now >> 10,
 			Texture::dbg_total_size >> 10);
-		vig_checkbox(RenderControl::get().use_pp, "[p] Postproc", 'p');
-		if (vig_button("[m] Reload postproc chain", 'm')) RenderControl::get().reload_pp();
+		
+		auto fs_val = RenderControl::get().get_fscreen();
+		if (vig_button("[f] FS on", 'f', fs_val == RenderControl::FULLSCREEN_ENABLED))
+		{
+			if (fs_val == RenderControl::FULLSCREEN_ENABLED)
+				RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_OFF);
+			else RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_ENABLED);
+		}
+		if (vig_button("[w] FS wnd", 'w', fs_val == RenderControl::FULLSCREEN_DESKTOP))
+		{
+			if (fs_val == RenderControl::FULLSCREEN_DESKTOP)
+				RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_OFF);
+			else RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_DESKTOP);
+		}
 		vig_lo_next();
+		
+		if (vig_button("[r] Reload shaders", 'r')) RenderControl::get().reload_shaders();
+		vig_lo_next();
+		
 		avg_passed->draw();
 		vig_lo_next();
 	});
@@ -333,7 +354,7 @@ Modes (to see options use --modehelp):
 	
 //	bool cons_shown = false;
 	bool log_shown = false;
-	int input_lock = 0;
+	bool input_lock = false;
 	
 	bool run = true;
 	while (run)
@@ -348,34 +369,18 @@ Modes (to see options use --modehelp):
 			else if (ev.type == SDL_KEYDOWN)
 			{
 				auto &ks = ev.key.keysym;
-				if (ks.mod & KMOD_CTRL)
-				{
-					if		(ks.scancode == SDL_SCANCODE_Q) {
-						run = false;
-						continue;
-					}
-					else if (ks.scancode == SDL_SCANCODE_R) {
-						RenderControl::get().reload_shaders();
-						continue;
-					}
-					else if (ks.scancode == SDL_SCANCODE_F) {
-						if (RenderControl::get().get_fscreen() != RenderControl::FULLSCREEN_OFF)
-							RenderControl::get().set_fscreen( RenderControl::FULLSCREEN_OFF );
-						else
-							RenderControl::get().set_fscreen( RenderControl::FULLSCREEN_ENABLED );
-						continue;
-					}
-				}
+				if (ks.scancode == SDL_SCANCODE_Q && (ks.mod & KMOD_CTRL)) run = false;
 //				else if (ks.scancode == SDL_SCANCODE_GRAVE) {cons_shown = !cons_shown; dbg_show = false;}
-				else if (ks.scancode == SDL_SCANCODE_GRAVE) ++input_lock;
+				else if (ks.scancode == SDL_SCANCODE_GRAVE) input_lock = true;
 				else if (ks.scancode == SDL_SCANCODE_F2) log_shown = !log_shown;
 			}
 			else if (ev.type == SDL_KEYUP)
 			{
 				auto &ks = ev.key.keysym;
-				if (ks.scancode == SDL_SCANCODE_GRAVE) --input_lock;
+				if (ks.scancode == SDL_SCANCODE_GRAVE) input_lock = false;
 			}
 			
+			Gamepad::on_event(ev);
 			RenderControl::get().on_event( ev );
 			
 //			if (cons_shown) {
@@ -386,7 +391,12 @@ Modes (to see options use --modehelp):
 			vig_on_event(&ev);
 			if (vig_current_menu() != VigMenu::Default || input_lock) continue;
 			
-			MainLoop::current->on_event(ev);
+			try {MainLoop::current->on_event(ev);}
+			catch (std::exception& e) {
+				VLOGE("MainLoop::on_event() exception: {}", e.what());
+				run = false;
+				break;
+			}
 			if (!MainLoop::current) {
 				run = false;
 				break;
@@ -400,7 +410,11 @@ Modes (to see options use --modehelp):
 		vig_draw_start();
 		vig_draw_menues();
 		
-		MainLoop::current->render( passed );
+		try {MainLoop::current->render( passed );}
+		catch (std::exception& e) {
+			VLOGE("MainLoop::render() exception: {}", e.what());
+			break;
+		}
 		if (!MainLoop::current) break;
 		
 		vig_draw_end();

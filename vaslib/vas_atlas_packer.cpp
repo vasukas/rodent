@@ -131,7 +131,13 @@ std::vector <AtlasPacker::AtlasInfo> AtlasPacker::build()
 		if (at_ix == ats.size())
 		{
 			// add new atlas
-			ats.emplace_back().is_occ.resize( real_size * real_size );
+			try {
+				VLOGD( "AtlasPacker::build() alloc (is_occ): {} bytes", real_size * real_size );
+				ats.emplace_back().is_occ.resize( real_size * real_size );
+			}
+			catch (std::exception& e) {
+				THROW_FMTSTR( "AtlasPacker::build() allocation failed - {}", e.what() );
+			}
 			
 			if (!place( at_ix, im ))
 				THROW_FMTSTR( "AtlasPacker::build() sprite {} is bigger than max_size", im.id );
@@ -242,7 +248,14 @@ std::vector <AtlasBuilder::AtlasData> AtlasBuilder::build()
 	{
 		auto& b = bs.emplace_back();
 		b.info = std::move( at );
-		b.px.resize( at.w * at.h * pk->bpp );
+		
+		try {
+			VLOGD("AtlasBuilder::build() alloc (px): {} bytes", at.w * at.h * pk->bpp);
+			b.px.resize( at.w * at.h * pk->bpp );
+		}
+		catch (std::exception& e) {
+			THROW_FMTSTR("AtlasBuilder::build() allocation failed - {}", e.what());
+		}
 		
 		for (auto& si : b.info.sprs)
 		{

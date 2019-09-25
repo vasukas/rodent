@@ -311,7 +311,6 @@ public:
 
 		fbo.bind();
 		fbo.attach_tex(GL_COLOR_ATTACHMENT0, fbo_clr);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 	void draw_line(vec2fp p0, vec2fp p1, uint32_t clr, float width, float aa_width, float clr_mul)
 	{
@@ -395,7 +394,7 @@ public:
 			inst_q.clear();
 		}
 	}
-	void render_grid(TimeSpan passed)
+	void render_grid(unsigned int fbo_out)
 	{
 		if (!draw_grid) return;
 		
@@ -408,13 +407,23 @@ public:
 		glBlendFuncSeparate(GL_ONE, GL_ONE, GL_ONE, GL_ONE);
 		glBlendEquation(GL_MAX);
 		
+		inst_vao.bind();
+		
+		Camera* cam = RenderControl::get().get_world_camera();
+		const float *mx = cam->get_full_matrix();
+		const float scrmul = 1.f;//cam->get_state().mag;
+		
+		glActiveTexture(GL_TEXTURE0);
+		tex.bind();
+		
+		sh_inst->bind();
+		sh_inst->set4mx("proj", mx);
+		sh_inst->set1f("scrmul", scrmul);
+		
 //		FColor clr(0, 0.8, 1, 0.3);
 //		clr *= clr.a;
 		const FColor clr(1, 1, 1, 1);
 		
-		inst_vao.bind();
-		
-		sh_inst->bind(); // other params was set in render()
 		sh_inst->set4f("obj_tr", 0, 0, 1, 0);
 		sh_inst->set_clr("clr", clr);
 		
@@ -423,13 +432,13 @@ public:
 		
 		// draw to screen
 		
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo_out);
 		
 		glBlendFuncSeparate(GL_ONE_MINUS_DST_ALPHA, GL_ONE, GL_ONE, GL_ONE);
 		glBlendEquation(GL_FUNC_ADD);
 		
 		fbo_sh->bind();
-		fbo_noi.setup(fbo_sh, passed);
+		fbo_noi.setup(fbo_sh, RenderControl::get().get_passed());
 		
 		glActiveTexture(GL_TEXTURE0);
 		fbo_clr.bind();

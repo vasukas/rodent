@@ -7,6 +7,7 @@
 #include "gl_utils.hpp"
 #include "particles.hpp"
 #include "postproc.hpp"
+#include "pp_graph.hpp"
 #include "ren_aal.hpp"
 #include "ren_imm.hpp"
 #include "ren_text.hpp"
@@ -85,7 +86,7 @@ public:
 	RenAAL* r_aal = nullptr;
 	RenImm* r_imm = nullptr;
 	RenText* r_text = nullptr;
-	
+	PP_Graph* pp_graph = nullptr;
 	Postproc* pp_main = nullptr;
 	
 	std::vector< std::function<void()> > cb_resize;
@@ -93,6 +94,8 @@ public:
 
 	FullscreenValue fs_cur = FULLSCREEN_OFF;
 	vec2i nonfs_size; // windowed size
+	
+	TimeSpan last_passed = TimeSpan::fps(30);
 	
 	
 	
@@ -189,10 +192,10 @@ public:
 			if (glGetError() == GL_NO_ERROR) VLOGI("glDebugMessageCallback set");
 			else {
 				glDisable(GL_DEBUG_OUTPUT);
-				VLOGE("glDebugMessageCallback set failed\nOpenGL errors won't be reported");
+				VLOGE("glDebugMessageCallback set failed - OpenGL errors won't be reported");
 			}
 		}
-		else VLOGE("glDebugMessageCallback not available\nOpenGL errors won't be reported");
+		else VLOGE("glDebugMessageCallback not available - OpenGL errors won't be reported");
 
 		
 		
@@ -203,7 +206,7 @@ public:
 		glDisable(GL_DEPTH_TEST);
 		glDepthMask(0);
 		
-//		glEnable(GL_SCISSOR_TEST);
+		glEnable(GL_SCISSOR_TEST);
 		glHint(GL_GENERATE_MIPMAP_HINT, GL_NICEST);
 		
 		
@@ -231,13 +234,26 @@ public:
 		INIT(r_aal, RenAAL);
 		INIT(r_part, ParticleRenderer);
 		
-		reload_pp();
+		try {
+			pp_graph = PP_Graph::create();
+			pp_main = Postproc::init();
+			VLOGI("Postproc initialized");
+		}
+		catch (std::exception& e)
+		{
+			VLOGE("Postproc init failed: {}", e.what());
+			
+			pp_graph = nullptr;
+			pp_main = nullptr;
+			return;
+		}
 		
 		ok = true;
 	}
 	~RenderControl_Impl()
 	{
 		delete pp_main;
+		delete pp_graph;
 		
 		delete r_aal;
 		delete r_imm;
@@ -260,9 +276,12 @@ public:
 	Camera* get_ui_camera()    { return &cam_ui; }
 	bool    is_visible()       { return visib; }
 	SDL_Window* get_wnd()      { return wnd; }
+	PP_Graph*   get_ppg()      { return pp_graph; }
+	TimeSpan    get_passed()   { return last_passed; }
 	
 	bool render( TimeSpan passed )
 	{
+		last_passed = passed;
 		if (crit_error) return false;
 		if (!visib) return true;
 		
@@ -294,35 +313,13 @@ public:
 			frm.pos = cam_ui.get_vport().size() / 2;
 			cam_ui.set_state(frm);
 			
-			if (pp_main && use_pp) pp_main->start(passed, Postproc::CI_MAIN);
-			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
-			glBlendEquation(GL_MAX);
-			
-			RenImm::get().render_pre();
-//			RenImm::get().render(RenImm::DEFCTX_BACK);
-
-			RenAAL::get().render();
-			glBlendEquation(GL_FUNC_ADD);
-			
-			if (pp_main && use_pp) pp_main->start(passed, Postproc::CI_PARTS);
-			ParticleRenderer::get().render(passed);
-			if (pp_main && use_pp) pp_main->finish(Postproc::CI_PARTS);
-			
-			RenAAL::get().render_grid(passed); // changes blending
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-			
-			RenImm::get().render(RenImm::DEFCTX_WORLD);
-			if (pp_main && use_pp) pp_main->finish(Postproc::CI_MAIN);
-			
-			if (pp_main && use_pp) pp_main->render(Postproc::CI_MAIN);
-			if (pp_main && use_pp) {
-				glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
-				pp_main->render(Postproc::CI_PARTS);
-				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			try {
+				pp_graph->render();
 			}
-			
-			RenImm::get().render(RenImm::DEFCTX_UI);
-			RenImm::get().render_post();
+			catch (std::exception& e) {
+				VLOGE("RenderControl::render() postproc failed: {}", e.what());
+				return false;
+			}
 		}
 		
 		SDL_GL_SwapWindow(wnd);
@@ -460,17 +457,6 @@ public:
 		
 		if (reload_fail) VLOGW("Reload failed, renderer disabled");
 	}
-	void reload_pp()
-	{
-		delete pp_main;
-		try {
-			pp_main = Postproc::create_main_chain();
-		}
-		catch (std::exception& e) {
-			VLOGE("Postproc::create_main_chain() failed - {}", e.what());
-			pp_main = nullptr;
-		}
-	}
 	GLA_VertexArray& ndc_screen2()
 	{
 		return *ndc_screen2_obj;
@@ -495,7 +481,7 @@ bool RenderControl::init()
 	if (!rct)
 	{
 		bool ok = false;
-		rct = new RenderControl_Impl (ok);
+		new RenderControl_Impl (ok);
 		if (!ok)
 		{
 			VLOGE("RenderControl::init() failed");

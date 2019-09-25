@@ -29,6 +29,8 @@ struct FColor
 	FColor operator +( const FColor& c ) const { auto self = *this; self += c; return self; }
 	FColor operator -( const FColor& c ) const { auto self = *this; self -= c; return self; }
 	
+	FColor& mul(float f); ///< Multiply, including alpha
+	
 	uint32_t to_px() const;
 	
 	FColor rgb_to_hsv() const;

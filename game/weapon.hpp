@@ -18,6 +18,8 @@ enum class WeaponIndex
 	Electro
 };
 
+ModelType ammo_model(WeaponIndex wpn);
+
 
 
 class Weapon
@@ -26,8 +28,15 @@ public:
 	static Weapon* create_std(WeaponIndex i);
 	virtual ~Weapon() = default;
 	
-	/// Returns false if not possible atm (by internal conditions)
-	virtual bool shoot(Entity* ent, vec2fp target) = 0;
+	/// Must never fail
+	virtual void shoot(Entity* ent, vec2fp target) = 0;
+	
+	/// Average, meters per second
+	virtual float get_bullet_speed() const = 0;
+	
+	/// Returns true if can shoot right now
+	bool is_ready();
+	
 	
 	
 	struct RenInfo
@@ -35,8 +44,6 @@ public:
 		std::string name;
 		ModelType model;
 	};
-	virtual RenInfo get_reninfo() const = 0;
-	
 	
 	struct ModRof
 	{
@@ -49,10 +56,11 @@ public:
 	
 	struct ModAmmo
 	{
+		WeaponIndex type;
 		float per_shot, max, cur;
 		
-		ModAmmo(float per_shot = 1, float max = 100, float cur = 0):
-		    per_shot(per_shot), max(max), cur(cur) {}
+		ModAmmo(WeaponIndex type, float per_shot = 1, float max = 100, float cur = 0):
+		    type(type), per_shot(per_shot), max(max), cur(cur) {}
 		
 		bool ok() const {return cur != 0.f;}
 		void shoot();
@@ -74,10 +82,16 @@ public:
 		void cool();
 	};
 	
+	virtual RenInfo get_reninfo() const = 0;
+	
 	// Note: must be stepped outside
 	virtual ModRof* get_rof() {return nullptr;}
 	virtual ModAmmo* get_ammo() {return nullptr;}
 	virtual ModOverheat* get_heat() {return nullptr;}
+	
+protected:
+	/// Checks internal conditions, called only by is_ready()
+	virtual bool is_ready_internal() {return true;}
 };
 
 

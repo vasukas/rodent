@@ -677,11 +677,6 @@ public:
 				switch (static_cast< EffectCmd >( cmd.index ))
 				{
 				case EFF_POP:
-					glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-					break;
-					
-				case EFF_ADDITIVE_BLEND:
-					glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
 					break;
 				}
 				break;

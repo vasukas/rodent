@@ -15,6 +15,7 @@ class Gamepad_Impl : public Gamepad
 public:
 	SDL_GameController* gc;
 	float dead_zone = 0.15;
+	GpadState gpad_state = STATE_WAITING;
 	
 	Gamepad_Impl(SDL_GameController* gc)
 	    : gc(gc)
@@ -38,6 +39,10 @@ public:
 		std::unique_lock lock(gpad_lock);
 		auto it = std::find(gpads_list.begin(), gpads_list.end(), this);
 		if (it != gpads_list.end()) gpads_list.erase(it);
+	}
+	GpadState get_gpad_state()
+	{
+		return gpad_state;
 	}
 	bool get_state(Button b)
 	{
@@ -138,22 +143,58 @@ Gamepad* Gamepad::open_default()
 	g.cancel();
 	return new Gamepad_Impl(gc);
 }
+void Gamepad::on_event(const SDL_Event& ev)
+{
+	if		(ev.type == SDL_CONTROLLERDEVICEADDED)
+	{
+		// ignored for now
+	}
+	else if (ev.type == SDL_CONTROLLERDEVICEREMOVED)
+	{
+		std::unique_lock lock(gpad_lock);
+		auto gc = SDL_GameControllerFromInstanceID( ev.cdevice.which );
+		
+		for (auto& p : gpads_list)
+		{
+			if (p->gc == gc)
+			{
+				VLOGI("Gamepad::update() disabled");
+				p->gpad_state = STATE_DISABLED;
+				break;
+			}
+		}
+	}
+}
 void Gamepad::update()
 {
 	if (SDL_WasInit(0) & SDL_INIT_GAMECONTROLLER)
 		SDL_GameControllerUpdate();
 	
+	static bool esc_was = false;
 	bool esc = false;
 	{
 		std::unique_lock lock(gpad_lock);
-		for (auto& p : gpads_list) {
-			if (p->get_state(B_START)) {
-				esc = true;
-				break;
+		for (auto& p : gpads_list)
+		{
+			if (p->get_state(B_START))
+			{
+				if (p->gpad_state == STATE_WAITING)
+				{
+					VLOGI("Gamepad::update() activated");
+					p->gpad_state = STATE_OK;
+					esc_was = true;
+					break;
+				}
+				else if (p->gpad_state == STATE_OK)
+				{
+					esc = true;
+					break;
+				}
 			}
 		}
 	}
-	if (esc)
+	
+	if (esc && !esc_was)
 	{
 		SDL_Event ev = {};
 		ev.key.keysym.sym = SDLK_ESCAPE;
@@ -165,4 +206,5 @@ void Gamepad::update()
 		ev.type = SDL_KEYUP;
 		SDL_PushEvent(&ev);
 	}
+	esc_was = esc;
 }

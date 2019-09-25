@@ -142,6 +142,8 @@ public:
 		{
 			return i != it.i;
 		}
+		T* operator->() const {return &*(*this);}
+		size_t index() const {return i;}
 		
 	private:
 		SparseArray* arr;
@@ -154,6 +156,95 @@ public:
 	Iterator end()
 	{
 		return {this, vals.size()};
+	}
+};
+
+
+
+template <typename T>
+class FixedPoolAllocator
+{
+	struct Id {
+		unsigned pool  : 16;
+		unsigned index : 16;
+	};
+	static constexpr size_t id_off = std::max(sizeof(Id), alignof(T));
+	static constexpr size_t obj_size = sizeof(T) + id_off;
+	
+	struct Pool
+	{
+		uint8_t* mem;
+		size_t* fs; // byte offsets to T
+		size_t f_num; // number of free offsets
+		
+		Pool(size_t size, size_t self_index)
+		{
+			mem = new uint8_t [size * obj_size];
+			fs = new size_t [size];
+			f_num = size;
+
+			for (size_t i=0; i<size; ++i)
+			{
+				size_t offset = i * obj_size + id_off;
+				auto& id = *reinterpret_cast<Id*>(mem + i * obj_size);
+				id.pool = self_index;
+				id.index = offset;
+				fs[size - i - 1] = offset;
+			}
+		}
+		~Pool()
+		{
+			delete[] mem;
+			delete[] fs;
+		}
+	};
+	std::vector<Pool> ps;
+	
+public:
+	size_t pool_size;
+	
+	
+	FixedPoolAllocator(size_t pool_size = 128)
+		: pool_size(pool_size)
+	{
+		ps.emplace_back(pool_size, ps.size());
+	}
+	void* alloc()
+	{
+		Pool* ap = nullptr;
+		for (auto& p : ps) {
+			if (p.f_num) {
+				ap = &p;
+				break;
+			}
+		}
+		if (!ap)
+			ap = &ps.emplace_back(pool_size, ps.size());
+		
+		--ap->f_num;
+		auto m = ap->mem + ap->fs[ap->f_num];
+		return m;
+	}
+	void free(void* ptr)
+	{
+		if (!ptr) return;
+		auto m = reinterpret_cast<uint8_t*>(ptr);
+		auto& id = *reinterpret_cast<Id*>(m - id_off);
+		auto& p = ps[id.pool];
+		p.fs[p.f_num] = id.index;
+		++p.f_num;
+	}
+	
+	
+	template<typename... Args>
+	T* emplace(Args&&... args)
+	{
+		return new(alloc()) T( std::forward<Args>(args)... );
+	}
+	void free(T* ptr)
+	{
+		if (ptr) ptr->~T();
+		free(static_cast<void*>(ptr));
 	}
 };
 

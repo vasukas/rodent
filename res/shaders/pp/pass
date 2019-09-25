@@ -18,13 +18,12 @@ void main() {
 #version 330 core
 
 uniform sampler2D tex;
-uniform float alpha;
 
 in vec2 tc;
 out vec4 res;
 
 void main() {
 	res = texture(tex, tc);
-	res.a *= alpha;
 }
 #end
+

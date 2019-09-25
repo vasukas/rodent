@@ -23,7 +23,8 @@ public:
 	enum BindType
 	{
 		BT_ONESHOT, ///< Set as enabled only on initial press
-		BT_HELD ///< Set as enabled while pressed
+		BT_HELD, ///< Set as enabled while pressed
+		BT_SWITCH ///< Each initial press switches value
 	};
 	
 	enum {
@@ -71,6 +72,7 @@ public:
 		IM_Key   key, alt;
 		IM_Mouse mou;
 		IM_Gpad  but;
+		bool sw_val = false; ///< Switch value
 		
 		const std::array<InputMethod*, 4> ims;
 		Bind();
@@ -80,10 +82,13 @@ public:
 	{
 		A_ACCEL,
 		A_SHOOT,
+		A_SHOOT_ALT,
+		A_SHIELD_SW,
 		
 		A_CAM_FOLLOW,
 		A_LASER_DESIG,
 		A_SHOW_MAP,
+		A_SHOW_WPNS,
 		
 		A_WPN_PREV,
 		A_WPN_NEXT,
@@ -115,15 +120,18 @@ public:
 	
 	
 	
-	PlayerController(std::unique_ptr<Gamepad> gpad = {}); ///< Inits all binds with defaults
+	PlayerController(); ///< Inits all binds with defaults
 	
 	void on_event(const SDL_Event& ev);
 	void update(); ///< Must be called after getting all events
 	const State& get_state() const {return state;} ///< Last updated state
 	
 	[[nodiscard]] auto lock() {return std::unique_lock(mutex);} ///< Not used internally
+	void set_switch(Action act, bool value);
 	
 	std::array<Bind, ACTION_TOTAL_COUNT_INTERNAL>& binds_ref() {return binds;}
+	
+	void set_gpad(std::unique_ptr<Gamepad> gpad) {this->gpad = std::move(gpad);}
 	Gamepad* get_gpad() {return gpad.get();}
 	
 private:
@@ -132,8 +140,6 @@ private:
 	
 	State state;
 	std::mutex mutex;
-	
-	bool is_enabled(size_t i) const;
 };
 
 #endif // PLR_CONTROL_HPP

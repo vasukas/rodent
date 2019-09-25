@@ -3,7 +3,7 @@
 # note: it's deleted using rm -rf!
 TmpDir="${TMPDIR:-/tmp}"/rodent_load_deps
 
-if [ ! -f main.cpp ]; then
+if [ ! -f "core/main.cpp" ]; then
 	echo "Must be launched from project directory"
 	exit 1
 fi
@@ -25,7 +25,8 @@ dlsrc() {
 	shift 2
 	List=""
 
-	for Var in "$@" do
+	for Var in "$@"
+	do
 		List="${List}${Var}
 "
 	done
@@ -34,7 +35,8 @@ dlsrc() {
 	git pull origin master
 	
 	if [ $SrcEnd -eq 1 ]; then
-		for Var in "$@" do
+		for Var in "$@"
+		do
 			mv "$Var" "$OutDir"
 		done
 		dlsrc_end

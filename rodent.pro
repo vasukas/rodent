@@ -90,6 +90,7 @@ SOURCES += \
 	external/Box2D/Dynamics/b2WorldCallbacks.cpp \
 	external/fmt/format.cc \
 	external/fmt/posix.cc \
+	game/ai_logic.cpp \
 	game/damage.cpp \
 	game/entity.cpp \
 	game/game_core.cpp \
@@ -98,6 +99,7 @@ SOURCES += \
 	game/level_gen.cpp \
 	game/physics.cpp \
 	game/player.cpp \
+	game/player_mgr.cpp \
 	game/s_objs.cpp \
 	game/weapon.cpp \
 	render/camera.cpp \
@@ -105,6 +107,7 @@ SOURCES += \
 	render/gl_utils.cpp \
 	render/particles.cpp \
 	render/postproc.cpp \
+	render/pp_graph.cpp \
 	render/ren_aal.cpp \
 	render/ren_imm.cpp \
 	render/ren_text.cpp \
@@ -114,6 +117,7 @@ SOURCES += \
 	utils/color_manip.cpp \
 	utils/image_utils.cpp \
 	utils/noise.cpp \
+	utils/path_search.cpp \
 	utils/res_image.cpp \
 	utils/svg_simple.cpp \
 	vaslib/vas_atlas_packer.cpp \
@@ -135,6 +139,7 @@ HEADERS += \
 	core/main_loop.hpp \
 	core/settings.hpp \
 	core/vig.hpp \
+	game/ai_logic.hpp \
 	game/common_defs.hpp \
 	game/damage.hpp \
 	game/entity.hpp \
@@ -144,6 +149,7 @@ HEADERS += \
 	game/level_gen.hpp \
 	game/physics.hpp \
 	game/player.hpp \
+	game/player_mgr.hpp \
 	game/s_objs.hpp \
 	game/weapon.hpp \
 	render/camera.hpp \
@@ -151,6 +157,7 @@ HEADERS += \
 	render/gl_utils.hpp \
 	render/particles.hpp \
 	render/postproc.hpp \
+	render/pp_graph.hpp \
 	render/ren_aal.hpp \
 	render/ren_imm.hpp \
 	render/ren_text.hpp \
@@ -161,6 +168,7 @@ HEADERS += \
 	utils/ev_signal.hpp \
 	utils/image_utils.hpp \
 	utils/noise.hpp \
+	utils/path_search.hpp \
 	utils/res_image.hpp \
 	utils/svg_simple.hpp \
 	vaslib/vas_atlas_packer.hpp \

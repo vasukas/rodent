@@ -9,11 +9,12 @@
 #include "game/level_ctr.hpp"
 #include "game/level_gen.hpp"
 #include "game/player.hpp"
+#include "game/player_mgr.hpp"
 #include "game/s_objs.hpp"
-#include "game/weapon.hpp"
 #include "render/camera.hpp"
 #include "render/control.hpp"
 #include "render/particles.hpp"
+#include "render/postproc.hpp"
 #include "render/ren_aal.hpp"
 #include "render/ren_imm.hpp"
 #include "utils/noise.hpp"
@@ -23,18 +24,48 @@
 
 
 
+struct Watchdog
+{
+	const TimeSpan max = TimeSpan::seconds(3);
+	
+	void reset() {
+		std::unique_lock l(m);
+		t = {};
+	}
+	void add(TimeSpan val) {
+		std::unique_lock l(m);
+		t += val;
+		if (t > max) {
+			VLOGC("!!!WATCHDOG!!!");
+			log_terminate_h_reset();
+			std::terminate();
+		}
+	}
+	
+private:
+	std::mutex m;
+	TimeSpan t;
+};
+static Watchdog wdog;
+
+
+
 class ML_Settings : public MainLoop
 {
 public:
 	bool is_game;
 	std::shared_ptr<PlayerController> ctr;
 	std::optional<std::pair<int, int>> bix;
+	vec2i scroll_pos = {};
+	std::string gpad_try;
 	
 	void init()
 	{
 		is_game = !!ctr;
-		if (!ctr)
-			ctr.reset (new PlayerController (std::unique_ptr<Gamepad> (Gamepad::open_default())));
+		if (!ctr) {
+			ctr.reset (new PlayerController);
+			ctr->set_gpad( std::unique_ptr<Gamepad> (Gamepad::open_default()) );
+		}
 	}
 	void on_event(SDL_Event& ev)
 	{
@@ -50,6 +81,10 @@ public:
 	}
 	void render(TimeSpan)
 	{
+		wdog.reset();
+		
+		vig_lo_push_scroll( RenderControl::get_size() - vig_element_decor()*2, scroll_pos );
+		
 		vig_label("KEYBINDS (hover over action to see description)\n");
 		if (vig_button(is_game? "Return to game" : "Return to main menu")) {
 			delete this;
@@ -59,13 +94,23 @@ public:
 		vig_lo_next();
 		
 		auto& bs = ctr->binds_ref();
-		vigTableLC lc( vec2i(5, bs.size() + 1) );
+		vigTableLC lc( vec2i(6, bs.size() + 1) );
 		
 		lc.get({0,0}).str = "ACTION";
-		lc.get({1,0}).str = "KEY         ";
-		lc.get({2,0}).str = "KEY         ";
-		lc.get({3,0}).str = "MOUSE       ";
-		lc.get({4,0}).str = "GAMEPAD     ";
+		lc.get({1,0}).str = "KEY    ";
+		lc.get({2,0}).str = "KEY    ";
+		lc.get({3,0}).str = "MOUSE  ";
+		lc.get({4,0}).str = "GAMEPAD";
+		lc.get({5,0}).str = "TYPE   ";
+		
+		const char *hd_str[] = {
+		    "",
+		    "Primary key",
+		    "Alternate key",
+		    "Mouse button",
+		    "Gamepad button",
+		    "Action type"
+		};
 		
 		for (size_t i=0; i<bs.size(); ++i)
 		{
@@ -73,6 +118,22 @@ public:
 			auto& is = bs[i].ims;
 			for (size_t j=0; j<is.size(); ++j)
 				lc.get( vec2i(j+1, i+1) ).str = is[j]->name.str;
+			
+			auto& s = lc.get( vec2i(5, i+1) ).str;
+			switch (bs[i].type)
+			{
+			case PlayerController::BT_ONESHOT:
+				s = "Trigger";
+				break;
+				
+			case PlayerController::BT_HELD:
+				s = "Hold";
+				break;
+				
+			case PlayerController::BT_SWITCH:
+				s = "Switch";
+				break;
+			}
 		}
 		
 		vec2i off = vig_lo_get_next();
@@ -84,7 +145,27 @@ public:
 			auto& e = lc.get({x,y});
 			if (!y || !x) {
 				vig_label(*e.str, off + e.pos, e.size);
-				if (y && !x) vig_tooltip( bs[y-1].descr, off + e.pos, e.size );
+				if (y) vig_tooltip( bs[y-1].descr, off + e.pos, e.size );
+				else vig_tooltip( hd_str[x], off + e.pos, e.size );
+			}
+			else if (x == 5)
+			{
+				if (vig_button(*e.str, 0, false, false, off + e.pos, e.size))
+					{;}
+				switch (bs[y-1].type)
+				{
+				case PlayerController::BT_ONESHOT:
+					vig_tooltip("Triggered on press", off + e.pos, e.size);
+					break;
+					
+				case PlayerController::BT_HELD:
+					vig_tooltip("Enabled while pressed", off + e.pos, e.size);
+					break;
+					
+				case PlayerController::BT_SWITCH:
+					vig_tooltip("Switched on press", off + e.pos, e.size);
+					break;
+				}
 			}
 			else {
 				bool act = bix? y == bix->first + 1 && x == bix->second + 1 : false;
@@ -95,23 +176,43 @@ public:
 		
 		if (auto gpad = ctr->get_gpad())
 		{
-			auto gc = static_cast<SDL_GameController*> (gpad->get_raw());
+			if (gpad->get_gpad_state() == Gamepad::STATE_OK)
+			{
+				auto gc = static_cast<SDL_GameController*> (gpad->get_raw());
+				
+				vig_lo_next();
+				vig_label_a("Your gamepad: {}\n", SDL_GameControllerName(gc));
+				
+				bool any = false;
+				for (size_t i=0; i<Gamepad::TOTAL_BUTTONS_INTERNAL; ++i)
+				{
+					auto b = static_cast<Gamepad::Button>(i);
+					if (gpad->get_state(b)) {
+						auto nm = PlayerController::IM_Gpad::get_name(b);
+						vig_label_a("Pressed: {}\n", nm.str);
+						any = true;
+					}
+				}
+				if (!any)
+					vig_label("Press any gamepad button to see it's name");
+			}
+			else if (gpad->get_gpad_state()== Gamepad::STATE_WAITING)
+				vig_label("Press START to init gamepad");
+			else if (gpad->get_gpad_state()== Gamepad::STATE_DISABLED)
+				vig_label("Gamepad is removed or disabled");
+		}
+		else {
+			vig_lo_next();
+			vig_label_a("No gamepad connected");
 			
 			vig_lo_next();
-			vig_label_a("Your controller: {}\n", SDL_GameControllerName(gc));
-			
-			bool any = false;
-			for (size_t i=0; i<Gamepad::TOTAL_BUTTONS_INTERNAL; ++i)
+			if (vig_button("Enable gamepad"))
 			{
-				auto b = static_cast<Gamepad::Button>(i);
-				if (gpad->get_state(b)) {
-					auto nm = PlayerController::IM_Gpad::get_name(b);
-					vig_label_a("Pressed: {}\n", nm.str);
-					any = true;
-				}
+				std::unique_ptr<Gamepad> gpad(Gamepad::open_default());
+				if (!gpad) gpad_try = "Not found";
+				else ctr->set_gpad( std::move(gpad) );
 			}
-			if (!any)
-				vig_label("Press any gamepad button to see it's name");
+			vig_label(gpad_try);
 		}
 	}
 };
@@ -136,29 +237,49 @@ public:
 	};
 	std::optional<GP_Init> gp_init;
 	
-	EntityIndex plr_eid = {}; // player
-	Entity* plr_ent = nullptr;
-	
 	bool ph_debug_draw = false;
 	vigAverage dbg_serv_avg;
 	RAII_Guard dbg_serv_g;
 	
+	bool use_gamepad = false;
+	
 	std::unique_ptr<LevelMap> lmap;
+	TimeSpan cam_telep_tmo;
 	
 	
 	
 	ML_Game() = default;
+	bool parse_arg(ArgvParse& arg)
+	{
+		if		(arg.is("--gpad-on"))  use_gamepad = true;
+		else if (arg.is("--gpad-off")) use_gamepad = false;
+		else return false;
+		return true;
+	}
 	void init()
 	{
+		// camera
+		
 		Camera* cam = RenderControl::get().get_world_camera();
 		Camera::Frame cf = cam->get_state();
 		cf.mag = 18.f;
 		cam->set_state(cf);
 		
-		pc_ctr.reset (new PlayerController (std::unique_ptr<Gamepad> (Gamepad::open_default())));
-		VLOGI("Box2D version: {}.{}.{}", b2_version.major, b2_version.minor, b2_version.revision);
+		// controls
 		
-		thr_serv = std::thread([this]{thr_func();});
+		std::unique_ptr<Gamepad> gpad;
+		if (use_gamepad)
+		{
+			TimeSpan time0 = TimeSpan::since_start();
+			gpad.reset(Gamepad::open_default());
+			VLOGI("Wasted on gamepad: {:.3f}", (TimeSpan::since_start() - time0).seconds());
+		}
+		else VLOGI("Gamepad is disabled by default");
+		
+		pc_ctr.reset (new PlayerController);
+		pc_ctr->set_gpad(std::move(gpad));
+		
+		// dbg info
 		
 		dbg_serv_avg.reset(5.f, GameCore::time_mul);
 		dbg_serv_g = vig_reg_menu(VigMenu::DebugGame, [this]
@@ -167,14 +288,18 @@ public:
 			dbg_serv_avg.draw();
 			vig_lo_next();
 			
-			if (plr_ent)
+			if (auto ent = core->get_pmg().get_ent())
 			{
-				auto pos = plr_ent->get_phy().get_pos();
+				auto pos = ent->get_phy().get_pos();
 				vig_label_a("x:{:5.2f} y:{:5.2f}", pos.x, pos.y);
 				vig_lo_next();
-				vig_checkbox(plr_ent->get_eqp()->infinite_ammo, "Infinite ammo");
+				vig_checkbox(ent->get_eqp()->infinite_ammo, "Infinite ammo");
 			}
 		});
+		
+		// init
+		
+		thr_serv = std::thread([this]{thr_func();});
 	}
 	~ML_Game()
 	{
@@ -194,35 +319,53 @@ public:
 				dynamic_cast<ML_Settings&>(*MainLoop::current).ctr = pc_ctr;
 				MainLoop::current->init();
 			}
+			else if (k == SDL_SCANCODE_B)
+			{
+				Camera* cam = RenderControl::get().get_world_camera();
+				Camera::Frame cf = cam->get_state();
+				cf.mag = aequ(cf.mag, 18, 0.1) ? 10.f : 18.f;
+				cam->set_state(cf);
+			}
+			else if (k == SDL_SCANCODE_F4)
+			{
+				auto& pm = core->get_pmg();
+				pm.god_mode = !pm.god_mode;
+				pm.update_godmode();
+			}
 		}
-		if (plr_ent) {
-			auto g = pc_ctr->lock();
-			pc_ctr->on_event(ev);
-		}
+		
+		auto g = pc_ctr->lock();
+		pc_ctr->on_event(ev);
 	}
 	void render(TimeSpan passed)
 	{
+		wdog.reset();
+		
 		std::unique_lock lock(ren_lock);
-		if (thr_term) LOG_THROW_X("Game failed");
+		if (thr_term) throw std::runtime_error("Game failed");
 		if (!pres)
 		{
 			RenImm::get().draw_text(RenderControl::get_size() /2, "Generating...", -1, true, 4.f);
 			
 			if (gp_init)
 			{
+				auto time0 = TimeSpan::since_start();
+				
 				GamePresenter::init(gp_init->gp);
 				pres.reset( GamePresenter::get() );
 				gp_init.reset();
 				
 				lmap->ren_init();
 				
-				VLOGI("FULL INIT {:.3f} seconds", TimeSpan::since_start().seconds());
+				VLOGI("Game render init finished in {:.3f} seconds", (TimeSpan::since_start() - time0).seconds());
+				log_write_str(LogLevel::Critical,
+				              FMT_FORMAT("Full init took {:.3f} seconds", TimeSpan::since_start().seconds()).data());
 			}
 		}
 		else {
 			// set camera
 			
-			if (plr_ent) 
+			if (auto ent = core->get_pmg().get_ent())
 			{
 				const float tar_min = 2.f;
 				const float tar_max = 15.f;
@@ -230,7 +373,7 @@ public:
 				
 				auto cam = RenderControl::get().get_world_camera();
 				
-				const vec2fp pos = plr_ent->get_phy().get_pos();
+				const vec2fp pos = ent->get_phy().get_pos();
 				vec2fp tar = pos;
 				
 				auto& pctr = pc_ctr->get_state();
@@ -248,10 +391,30 @@ public:
 				const vec2fp scr = cam->mouse_cast(RenderControl::get_size()) - cam->mouse_cast({}) / 2;
 				const vec2fp tar_d = (tar - frm.pos);
 				
-				if (std::fabs(tar_d.x) > scr.x || std::fabs(tar_d.y) > scr.y) frm.pos = tar;
-				else frm.pos = lerp(frm.pos, tar, per_second * passed.seconds());
-				
-				cam->set_state(frm);
+				if (std::fabs(tar_d.x) > scr.x || std::fabs(tar_d.y) > scr.y)
+				{
+					auto half = TimeSpan::seconds(0.3);
+					if (!cam_telep_tmo.is_positive())
+					{
+						Postproc::get().tint_reset();
+						Postproc::get().tint_seq(half, FColor(0,0,0,0));
+						Postproc::get().tint_default(half);
+					}
+					
+					cam_telep_tmo += passed;
+					if (cam_telep_tmo > half)
+					{
+						cam_telep_tmo = {};
+						frm.pos = tar;
+						cam->set_state(frm);
+					}
+				}
+				else
+				{
+					cam_telep_tmo = {};
+					frm.pos = lerp(frm.pos, tar, per_second * passed.seconds());
+					cam->set_state(frm);
+				}
 			}
 			
 			// draw world
@@ -267,50 +430,16 @@ public:
 			RenImm::get().set_context(RenImm::DEFCTX_UI);
 			
 			if (vig_current_menu() == VigMenu::Default)
-			{
-				if (plr_ent)
-				{
-					auto eqp = plr_ent->get_eqp();
-					if (auto wpn = eqp->wpn_ptr())
-					{
-						vig_label_a("{}\n", wpn->get_reninfo().name);
-						if (auto m = wpn->get_ammo()) {
-							if (eqp->infinite_ammo) vig_label("AMMO CHEAT ENABLED\n");
-							else vig_label_a("Ammo: {} / {}\n", static_cast<int>(m->cur), static_cast<int>(m->max));
-						}
-						if (auto m = wpn->get_heat()) vig_progress(m->ok()? "Overheat" : "COOLDOWN", m->value);
-						if (auto m = wpn->get_rof())  vig_progress(" Ready ", 1 - m->wait / m->delay);
-					}
-					else vig_label("No weapon equipped");
-				}
-				else vig_label("Waiting for respawn...");
-				vig_lo_next();
-			}
+				core->get_pmg().render(passed);
 			
 			std::optional<vec2fp> plr_p;
-			if (plr_ent) plr_p = plr_ent->get_phy().get_pos();
+			if (auto ent = core->get_pmg().get_ent()) plr_p = ent->get_phy().get_pos();
 			lmap->draw(passed, plr_p, pc_ctr->get_state().is[PlayerController::A_SHOW_MAP]);
 		}
 	}
 	
 	
 	
-	void spawn_plr()
-	{
-		if (core->get_ent(plr_eid)) return;
-		
-		vec2fp plr_pos = {};
-		for (auto& p : lvl->get_spawns()) {
-			if (p.type == LevelControl::SP_PLAYER) {
-				plr_pos = p.pos;
-				break;
-			}
-		}
-		
-		plr_ent = create_player(plr_pos, pc_ctr);
-		plr_ent->get_eqp()->infinite_ammo = true;
-		plr_eid = plr_ent->index;
-	}
 	void init_game()
 	{	
 		TimeSpan t0 = TimeSpan::since_start();
@@ -320,15 +449,21 @@ public:
 //		lt->test_save();
 //		exit(666);
 		
+		GameCore::InitParams gci;
+		gci.pmg.reset( PlayerManager::create(pc_ctr) );
+		
 		lmap.reset( LevelMap::init(*lt) );
-		core.reset( GameCore::create({}) );
+		core.reset( GameCore::create( std::move(gci) ) );
 		lvl.reset( LevelControl::init(*lt) );
 		
 		gp_init = {{lt}};
 		while (!pres)
 		{
 			if (thr_term) throw std::runtime_error("init_game() interrupted");
-			sleep(TimeSpan::fps(30));
+			
+			TimeSpan st = TimeSpan::fps(30);
+			sleep(st);
+			wdog.add(st);
 		}
 		
 		new EWall(lt->ls_wall);
@@ -350,10 +485,13 @@ public:
 			{
 				std::unique_lock lock(ren_lock);
 				core->step();
-				spawn_plr();
 			}
 			auto dt = TimeSpan::since_start() - t0;
-			sleep(core->step_len - dt);
+			
+			TimeSpan st = core->step_len - dt;
+			sleep(st);
+			wdog.add(st);
+			
 			dbg_serv_avg.add (dt.seconds());
 		}
 	}

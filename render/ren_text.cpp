@@ -235,8 +235,8 @@ public:
 		abd.pk.reset( new AtlasPacker );
 		
 		abd.pk->bpp = 1;
-		abd.pk->min_size = 1;
-		abd.pk->max_size = RenderControl::get().get_max_tex();
+		abd.pk->min_size = 4;
+		abd.pk->max_size = std::max( RenderControl::get().get_max_tex(), 32768 );
 		abd.pk->space_size = 1;
 		
 		// white pixel image (used for rectangles)
@@ -348,4 +348,3 @@ RenText& RenText::get() {
 }
 RenText* RenText::init() {return rni = new RenText_Impl;}
 RenText::~RenText() {rni = nullptr;}
-

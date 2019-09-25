@@ -33,6 +33,8 @@ enum class ECompType
 	TOTAL_COUNT ///< Do not use
 };
 
+const char *enum_name(ECompType type);
+
 
 
 /// Entity component
@@ -97,6 +99,8 @@ public:
 	
 	
 	virtual EC_Physics&   get_phobj(); ///< Throws if wrong type
+	vec2fp get_pos() {return get_phy().get_pos();}
+	
 	virtual ECompPhysics& get_phy(); ///< Throws if doesn't exist
 	virtual ECompRender*  get_ren() {return nullptr;}
 	virtual EC_Health*    get_hlc() {return nullptr;}
@@ -114,13 +118,21 @@ public:
 	/// Returns ID string
 	std::string dbg_id() const;
 	
+	
+	/// Called only if in step list
+	virtual void step() {}
+	
+	void   reg() noexcept; ///< Adds entity to step list (safe)
+	void unreg() noexcept; ///< Removes entity from step list (safe)
+	
 protected:
 	Entity();
 	Entity(const Entity&) = delete;
-	virtual ~Entity() = default;
+	virtual ~Entity();
 	
 private:
 	bool was_destroyed = false;
+	std::optional<size_t> reglist_index;
 	friend class GameCore_Impl;
 };
 

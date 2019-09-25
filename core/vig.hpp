@@ -110,6 +110,9 @@ int vig_mouse_state();
 /// Returns absolute mouse position
 vec2i vig_mouse_pos();
 
+/// Returns scroll state - but only once per render step!
+vec2i vig_get_scroll();
+
 
 
 /* Messages */
@@ -183,6 +186,10 @@ void vig_lo_push(vec2i size, bool fixed);
 
 /// Push dynamic sized zone attached to parent edge. Uses reversed placement direction
 void vig_lo_push_edge(bool Left_or_right, bool Top_or_bottom);
+
+/// Scrollable zone with fixed outer size and unlimited inner. 
+/// Note: inner offset must be valid until call to pop()
+void vig_lo_push_scroll(vec2i outer_size, vec2i& inner_offset);
 
 /// Push top-level zone (absolute coordinates)
 void vig_lo_toplevel(Rect r);
@@ -280,11 +287,11 @@ bool vig_checkbox(bool& flag, std::string_view text, int key = 0);
 
 /* Sliders */
 
-/// 't' is fill value (from 0 to 1). 
+/// 't' is normalized value [0, 1]. 
 /// Returns true if value changed, otherwise t is unchanged
 bool vig_slider_t(std::string_view text, double& t, vec2i pos, vec2i size);
 
-/// 't' is fill value (from 0 to 1). 
+/// 't' is normalized value [0, 1]. 
 /// Returns true if value changed, otherwise t is unchanged
 bool vig_slider_t(std::string_view text, double& t);
 
@@ -295,6 +302,9 @@ bool vig_slider(std::string_view text, int& value, int min = 0, int max = 100);
 /// Floating-point slider. 
 /// Returns true if value changed
 bool vig_slider(std::string_view text, double& value, double min = 0., double max = 1., int precision = 3);
+
+///
+bool vig_scrollbar(float& offset, float span, bool is_horizontal, vec2i pos, vec2i size, Rect zone = {});
 
 
 

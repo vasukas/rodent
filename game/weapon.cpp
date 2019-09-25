@@ -6,6 +6,30 @@
 
 
 
+ModelType ammo_model(WeaponIndex wpn)
+{
+	switch (wpn)
+	{
+	case WeaponIndex::Bat:     return MODEL_ERROR;
+	case WeaponIndex::Handgun: return MODEL_HANDGUN_AMMO;
+	case WeaponIndex::Bolter:  return MODEL_BOLTER_AMMO;
+	case WeaponIndex::Grenade: return MODEL_GRENADE_AMMO;
+	case WeaponIndex::Minigun: return MODEL_MINIGUN_AMMO;
+	case WeaponIndex::Rocket:  return MODEL_ROCKET_AMMO;
+	case WeaponIndex::Electro: return MODEL_ELECTRO_AMMO;
+	}
+	return MODEL_ERROR;
+}
+bool Weapon::is_ready()
+{
+	if (auto m = get_rof() ; m && !m->ok()) return false;
+	if (auto m = get_heat(); m && !m->ok()) return false;
+	if (auto m = get_ammo(); m && !m->ok()) return false;
+	return is_ready_internal();
+}
+
+
+
 void Weapon::ModAmmo::shoot()
 {
 	cur = std::max(cur - per_shot, 0.f);
@@ -60,12 +84,8 @@ bool EC_Equipment::shoot(vec2fp target)
 	if (has_shot) return true;
 	
 	auto wpn = wpn_ptr();
-	if (!wpn) return false;
-	
-	if (auto m = wpn->get_rof() ; m && !m->ok()) return false;
-	if (auto m = wpn->get_heat(); m && !m->ok()) return false;
-	if (auto m = wpn->get_ammo(); m && !m->ok()) return false;
-	if (!wpn->shoot(ent, target)) return false;
+	if (!wpn || !wpn->is_ready()) return false;
+	wpn->shoot(ent, target);
 	
 	if (auto m = wpn->get_rof()) m->shoot();
 	if (auto m = wpn->get_heat()) m->shoot();
@@ -97,7 +117,10 @@ bool EC_Equipment::set_wpn(size_t index)
 	{
 		auto wpn = wpns[index].get();
 		if (auto m = wpn->get_ammo(); m && !m->ok())
+		{
+			last_req.reset();
 			return false;
+		}
 	}
 	
 	// reset
@@ -159,6 +182,7 @@ struct StdProjectile : EComp
 	EntityIndex src;
 	
 	
+	
 	StdProjectile(Entity* ent, const Params& pars, EntityIndex src)
 	    : EComp(ent), pars(pars), src(src)
 	{
@@ -181,7 +205,25 @@ struct StdProjectile : EComp
 		roff.norm_to(pars.size);
 		
 		std::optional<PhysicsWorld::RaycastResult> hit;
-		auto check = [this](Entity* e, auto){ return e->index != src; };
+		PhysicsWorld::CastFilter check(
+			[this](Entity* e, b2Fixture* f)
+			{
+				if (e->index == src) return false;
+				if (f->IsSensor())
+				{
+					if (auto fi = getptr(f); fi && fi->get_armor_index()) return true;
+					return false;
+				}
+				return true;
+			},
+			[]{
+				b2Filter f;
+				f.categoryBits = EC_Physics::CF_BULLET;
+				f.maskBits = ~f.categoryBits;
+				return f;
+			}(),
+			false
+		);
 		
 		if (!hit) hit = GameCore::get().get_phy().raycast_nearest(conv(ray0 + roff), conv(ray0 + rayd + roff), check);
 		if (!hit) hit = GameCore::get().get_phy().raycast_nearest(conv(ray0 - roff), conv(ray0 + rayd - roff), check);
@@ -192,11 +234,14 @@ struct StdProjectile : EComp
 			hit->distance = 0;
 		}
 		
-		auto apply = [&](Entity* tar, float k, b2Vec2 at, b2Vec2 v)
+		auto apply = [&](Entity* tar, float k, b2Vec2 at, b2Vec2 v, std::optional<size_t> armor)
 		{
-			if (auto hc = tar->get_hlc(); hc && tar->get_team() != ent->get_team()) {
+			if (auto hc = tar->get_hlc(); hc && tar->get_team() != ent->get_team())
+			{
 				DamageQuant q = pars.dq;
 				q.amount *= k;
+				q.armor = armor;
+				q.wpos = conv(at);
 				hc->apply(q);
 			}
 			if (pars.imp != 0.f)
@@ -215,8 +260,12 @@ struct StdProjectile : EComp
 		switch (pars.type)
 		{
 		case T_BULLET:
-			apply(hit->ent, 1, hit->poi, vel);
-			break;
+		{	
+			std::optional<size_t> armor;
+			if (hit->fix) armor = hit->fix->get_armor_index();
+			apply(hit->ent, 1, hit->poi, vel, armor);
+		}
+		break;
 			
 		case T_AOE:
 		{
@@ -229,6 +278,7 @@ struct StdProjectile : EComp
 				Entity* ent;
 				b2Vec2 poi;
 				float dist;
+				std::optional<size_t> armor;
 			};
 			std::vector<Obj> os;
 			os.reserve(num);
@@ -238,7 +288,7 @@ struct StdProjectile : EComp
 				vec2fp d(pars.rad, 0);
 				d.rotate(2*M_PI*i/num);
 				
-				auto res = GameCore::get().get_phy().raycast_nearest(hit->poi, hit->poi + conv(d));
+				auto res = GameCore::get().get_phy().raycast_nearest(hit->poi, hit->poi + conv(d), check);
 				if (!res) continue;
 				
 				auto it = std::find_if(os.begin(), os.end(), [&res](auto&& v){return v.ent == res->ent;});
@@ -250,17 +300,35 @@ struct StdProjectile : EComp
 					}
 				}
 				else {
-					auto& p = os.emplace_back();
-					p.ent = res->ent;
-					p.dist = res->distance;
-					p.poi = res->poi;
+					bool ignore = false;
+					Obj* p = nullptr;
+					
+					for (auto& op : os)
+					{
+						if (op.ent == res->ent)
+						{
+							if (op.dist <= res->distance) ignore = true;
+							p = &op;
+							break;
+						}
+					}
+					if (!p)
+					{
+						if (ignore) continue;
+						p = &os.emplace_back();
+					}
+					
+					p->ent = res->ent;
+					p->dist = res->distance;
+					p->poi = res->poi;
+					if (res->fix) p->armor = res->fix->get_armor_index();
 				}
 			}
 			
 			for (auto& r : os)
 			{
 				float k = pars.rad_full ? 1 : std::min(1.f, std::max((pars.rad - r.dist) / pars.rad, pars.rad_min));
-				apply(r.ent, k, r.poi, r.poi - hit->poi);
+				apply(r.ent, k, r.poi, r.poi - hit->poi, r.armor);
 			}
 		}
 		break;
@@ -303,7 +371,7 @@ public:
 	ModOverheat heat;
 	
 	WpnMinigun()
-	    : ammo(1, 450, 100)
+	    : ammo(WeaponIndex::Minigun, 1, 450, 100)
 	{
 		pars.dq.amount = 8.f;
 		pars.imp = 5.f;
@@ -311,7 +379,7 @@ public:
 		heat.shots_per_second = 30;
 		heat.thr_off = 0.1;
 	}
-	bool shoot(Entity* ent, vec2fp target) override
+	void shoot(Entity* ent, vec2fp target) override
 	{
 		vec2fp p = ent->get_phy().get_pos();
 		vec2fp v = target - p;
@@ -319,12 +387,12 @@ public:
 		v.norm();
 		p += v * ent->get_phy().get_radius();
 		
-		v *= 18.f;
+		v *= get_bullet_speed();
 		v.rotate( GameCore::get().get_random().range(-1, 1) * deg_to_rad(10) );
 
 		new ProjectileEntity(p, v, ent, pars, MODEL_MINIGUN_PROJ, FColor(1, 1, 0.2, 1.5));
-		return true;
 	}
+	float get_bullet_speed() const override {return 18.f;}
 	ModAmmo* get_ammo() override {return &ammo;}
 	ModOverheat* get_heat() override {return &heat;}
 	RenInfo get_reninfo() const override {return {"Minigun", MODEL_MINIGUN};}
@@ -342,16 +410,16 @@ public:
 	WpnRocket()
 	    :
 	    rof(TimeSpan::seconds(1)),
-	    ammo(1, 40, 12)
+	    ammo(WeaponIndex::Rocket, 1, 40, 12)
 	{
 		pars.dq.amount = 120.f;
 		pars.type = StdProjectile::T_AOE;
 		pars.rad = 3.f;
 		pars.rad_min = 0.f;
-		pars.imp = 250.f;
+		pars.imp = 80.f;
 		pars.trail = true;
 	}
-	bool shoot(Entity* ent, vec2fp target) override
+	void shoot(Entity* ent, vec2fp target) override
 	{
 		vec2fp p = ent->get_phy().get_pos();
 		vec2fp v = target - p;
@@ -359,11 +427,11 @@ public:
 		v.norm();
 		p += v * ent->get_phy().get_radius();
 		
-		v *= 15.f;
+		v *= get_bullet_speed();
 		
 		new ProjectileEntity(p, v, ent, pars, MODEL_ROCKET_PROJ, FColor(0.2, 1, 0.6, 1.5));
-		return true;
 	}
+	float get_bullet_speed() const override {return 15.f;}
 	ModRof* get_rof() override {return &rof;}
 	ModAmmo* get_ammo() override {return &ammo;}
 	RenInfo get_reninfo() const override {return {"Rocket", MODEL_ROCKET};}

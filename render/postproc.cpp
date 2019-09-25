@@ -1,30 +1,14 @@
+#include <deque>
 #include "core/vig.hpp"
-#include "vaslib/vas_log.hpp"
-#include "control.hpp"
 #include "postproc.hpp"
-#include "shader.hpp"
-#include "texture.hpp"
+#include "pp_graph.hpp"
+
+#include "particles.hpp"
+#include "ren_aal.hpp"
+#include "ren_imm.hpp"
 
 
 
-struct PP_Filter
-{
-	bool enabled = false;
-	TimeSpan passed;
-	std::function<void(bool is_last)> draw; ///< Flips buffers
-	Shader* sh = nullptr;
-	
-	virtual ~PP_Filter() = default;
-	virtual bool is_ok() {return sh && sh->get_obj();}
-	virtual void proc() = 0;
-	virtual std::string descr() = 0;
-	virtual void dbgm_opts() {}
-	
-	void set_tc_size() {
-		auto sz = RenderControl::get_size();
-		sh->set2f("tc_size", sz.x, sz.y);
-	}
-};
 struct PPF_Kuwahara : PP_Filter
 {
 	float r = 4.f;
@@ -34,22 +18,25 @@ struct PPF_Kuwahara : PP_Filter
 	{
 		sh = RenderControl::get().load_shader( dir? "pp/kuwahara_dir" : "pp/kuwahara", {}, false );
 	}
-	void proc()
+	void proc() override
 	{
 		int xr = r, yr = r;
 		sh->bind();
 		sh->set1i("x_radius", xr);
 		sh->set1i("y_radius", yr);
 		sh->set1f("samp_mul", 1. / ((xr+1) * (yr+1)) );
-		set_tc_size();
+		
+		auto sz = RenderControl::get_size();
+		sh->set2f("tc_size", sz.x, sz.y);
 		
 		draw(true);
 	}
-	std::string descr() {return FMT_FORMAT("Kuwahara; dir: {}, radius: {}", dir, r);}
 };
+
+
 struct PPF_Glowblur : PP_Filter
 {
-	const int n_max = 8; // same as in shader
+	static const int n_max = 8; // same as in shader
 	const float a = 12.f; // sigma
 	
 	int n = 3, n_old = -1;
@@ -59,8 +46,11 @@ struct PPF_Glowblur : PP_Filter
 	{
 		sh = RenderControl::get().load_shader("pp/gauss", [this](Shader&){ n_old = -1; }, false);
 	}
-	bool is_ok() {return PP_Filter::is_ok() && pass != 0;}
-	void proc()
+	bool is_ok_int() override
+	{
+		return pass != 0;
+	}
+	void proc() override
 	{
 		sh->bind();
 		sh->set2f("scr_px_size", RenderControl::get_size());
@@ -96,14 +86,9 @@ struct PPF_Glowblur : PP_Filter
 			draw(i == pass-1);
 		}
 	}
-	std::string descr() {return FMT_FORMAT("Glowblur; passes: {}, n: {}", pass, n);}
-	void dbgm_opts() {
-		if (vig_button("N-")) {if (n) --n;}
-		if (vig_button("N+")) ++n;
-		if (vig_button("Ps-")) {if (pass) --pass;}
-		if (vig_button("Ps+")) ++pass;
-	}
 };
+
+
 struct PPF_Bleed : PP_Filter
 {
 	int n = 1;
@@ -112,157 +97,203 @@ struct PPF_Bleed : PP_Filter
 	{
 		sh = RenderControl::get().load_shader("pp/bleed", {}, false);
 	}
-	bool is_ok() {return PP_Filter::is_ok() && n != 0;}
-	void proc()
+	bool is_ok_int() override
+	{
+		return n != 0;
+	}
+	void proc() override
 	{
 		sh->bind();
 		for (int i=0; i<n; ++i) draw(i == n-1);
 	}
-	std::string descr() {return FMT_FORMAT("Bleed; n: {}", n);}
-	void dbgm_opts() {
-		if (vig_button("N-")) {if (n) --n;}
-		if (vig_button("N+")) ++n;
-	}
 };
 
 
-
-struct PP_Chain
+struct PPF_Tint : PP_Filter
 {
-	GLA_Framebuffer fbo_s[2];
-	GLA_Texture tex_s[2];
-	
-	std::vector<std::unique_ptr<PP_Filter>> fts;
-	bool bs_index, bs_last;
-	
-	RAII_Guard dbgm_g;
-	RAII_Guard ren_rsz;
-	std::string dbg_name;
-	
-	std::optional<GLint> prev_fbo;
-	
-	
-	
-	PP_Chain(std::vector<std::unique_ptr<PP_Filter>> fts_in, std::string dbg_name)
-	    : fts(std::move(fts_in)), dbg_name(dbg_name)
+	struct Step
 	{
-		auto set_fb = [this]
+		float t, tps;
+		FColor d_mul, d_add;
+	};
+	std::deque<Step> steps;
+	FColor mul = FColor(1,1,1,1);
+	FColor add = FColor(0,0,0,0);
+	
+	PPF_Tint()
+	{
+		sh = RenderControl::get().load_shader("pp/tint", [this](Shader& sh){
+		     sh.set_clr("mul", mul);
+		     sh.set_clr("add", add);
+		}, false);
+	}
+	bool is_ok_int() override
+	{
+		if (!steps.empty()) return true;
+		for (int i=0; i<4; ++i)
 		{
-			for (int i=0; i<2; ++i)
+			if (!aequ(mul[i], 1.f, 0.001)) return true;
+			if (!aequ(add[i], 0.f, 0.001)) return true;
+		}
+		return false;
+	}
+	void proc() override
+	{
+		TimeSpan time = get_passed();
+		while (!steps.empty())
+		{
+			auto& s = steps.front();
+			bool fin = false;
+			
+			float incr = s.tps * time.seconds();
+			
+			float left = 1 - s.t;
+			if (incr >= left)
 			{
-				tex_s[i].set(GL_RGBA, RenderControl::get_size(), 0, 4);
-				fbo_s[i].attach_tex(GL_COLOR_ATTACHMENT0, tex_s[i]);
+				float used = left / incr;
+				time *= 1 - used;
+				
+				incr = left;
+				fin = true;
 			}
-		};
-		set_fb();
-		ren_rsz = RenderControl::get().add_size_cb(set_fb);
-		
-		for (auto& f : fts) f->draw = [this](bool is_last)
-		{
-			if (is_last && bs_last) glBindFramebuffer(GL_FRAMEBUFFER, 0);
-			else {
-				fbo_s[bs_index].bind();
-				glClear(GL_COLOR_BUFFER_BIT);
-			}
+			else s.t += incr;
 			
-			tex_s[!bs_index].bind();			
-			bs_index = !bs_index;
+			mul += FColor(s.d_mul).mul(incr);
+			add += FColor(s.d_add).mul(incr);
 			
-			glDrawArrays(GL_TRIANGLES, 0, 6);
-		};
-		
-		dbgm_g = vig_reg_menu(VigMenu::DebugRenderer, 
-		[this]{
-			vig_label_a("==== {} ====\n", this->dbg_name);
-			for (auto& f : fts) {
-				bool ok = f->is_ok();
-				bool en = f->enabled && ok;
-				vig_checkbox(en, f->descr() + (ok? ". [OK]" : ". [Err]"));
-				if (ok) f->enabled = en;
-				f->dbgm_opts();
-				vig_lo_next();
-			}
-		});
-	}
-	void start(TimeSpan passed)
-	{
-		bool any = false;
-		for (auto& f : fts) if (f->enabled && f->is_ok()) {any = true; break;}
-		
-		if (any)
-		{
-			prev_fbo = 0;
-			glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prev_fbo.value());
-			
-			fbo_s[0].bind();
-			glClearColor(0, 0, 0, 0);
-			glClear(GL_COLOR_BUFFER_BIT);
-			
-			for (auto& f : fts) f->passed = passed;
-		}
-	}
-	void finish()
-	{
-		glBindFramebuffer(GL_FRAMEBUFFER, *prev_fbo);
-		prev_fbo.reset();
-	}
-	void render()
-	{
-		int last = fts.size() - 1;
-		for (; last != -1; --last) if (fts[last]->enabled && fts[last]->is_ok()) break;
-		
-		if (last != -1)
-		{
-			glActiveTexture(GL_TEXTURE0);
-			RenderControl::get().ndc_screen2().bind();
+			if (fin) steps.pop_front();
+			else break;
 		}
 		
-		bs_index = true;
-		for (int i=0; i<=last; ++i)
-		{
-			auto& f = fts[i];
-			if (f->enabled && f->is_ok())
-			{
-				bs_last = (i == last);
-				f->proc();
-			}
+		sh->bind();
+		sh->set_clr("mul", mul);
+		sh->set_clr("add", add);
+		draw(true);
+	}
+	void reset()
+	{
+		steps.clear();
+	}
+	void add_step(TimeSpan ttr, FColor tar_mul, FColor tar_add)
+	{
+		FColor m0 = mul, a0 = add;
+		for (auto& s : steps) {
+			m0 += s.d_mul;
+			a0 += s.d_add;
 		}
+		
+		auto& ns = steps.emplace_back();
+		ns.t = 0;
+		ns.tps = 1.f / ttr.seconds();
+		ns.d_mul = tar_mul - m0;
+		ns.d_add = tar_add - a0;
 	}
 };
 
 
 
-class PostprocMain : public Postproc
+class Postproc_Impl : public Postproc
 {
 public:
-	std::array<std::unique_ptr<PP_Chain>, CI_TOTAL_COUNT_INTERNAL> cs;
+	PPF_Tint* tint = nullptr;
 	
-	PostprocMain()
+	void tint_reset()
 	{
+		if (tint) tint->reset();
+	}
+	void tint_seq(TimeSpan time_to_reach, FColor target_mul, FColor target_add)
+	{
+		if (tint) tint->add_step(time_to_reach, target_mul, target_add);
+	}
+	
+	
+	
+	Postproc_Impl()
+	{
+		auto g = RenderControl::get().get_ppg();
+		
+		g->add_node(new PPN_InputDraw("grid", [](auto fbo)
+		{
+			RenAAL::get().render_grid(fbo);
+		}));
+		
+		g->add_node(new PPN_InputDraw("aal", [](auto fbo)
+		{
+			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
+			glBlendEquation(GL_MAX);
+			
+			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+			RenAAL::get().render();
+		}));
+		
+		g->add_node(new PPN_InputDraw("parts", [](auto fbo)
+		{
+			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
+			glBlendEquation(GL_FUNC_ADD);
+			
+			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+			ParticleRenderer::get().render();
+		}));
+		
+		g->add_node(new PPN_InputDraw("imm", [](auto fbo)
+		{
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			glBlendEquation(GL_FUNC_ADD);
+			
+			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+			RenImm::get().render_pre();
+			RenImm::get().render(RenImm::DEFCTX_WORLD);
+		}));
+		
+		g->add_node(new PPN_InputDraw("ui", [](auto fbo)
+		{
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			glBlendEquation(GL_FUNC_ADD);
+			
+			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+			RenImm::get().render(RenImm::DEFCTX_UI);
+			RenImm::get().render_post();
+		}));
+		
+		g->add_node(new PPN_OutputScreen);
+		
 		std::vector<std::unique_ptr<PP_Filter>> fts;
 		{	
 			fts.emplace_back(new PPF_Kuwahara)->enabled = false;
 			fts.emplace_back(new PPF_Bleed)->enabled = true;
-			cs[CI_MAIN].reset(new PP_Chain (std::move(fts), "PP main"));
+			g->add_node (new PPN_Chain("E1", std::move(fts), []
+			{
+				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+				glBlendEquation(GL_FUNC_ADD);
+			}));
 		}{
 			fts.emplace_back(new PPF_Glowblur)->enabled = true;
-			cs[CI_PARTS].reset(new PP_Chain (std::move(fts), "PP parts"));
+			g->add_node (new PPN_Chain("E2", std::move(fts), []
+			{
+				glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
+				glBlendEquation(GL_FUNC_ADD);
+			}));
+		}{
+			tint = new PPF_Tint;
+			fts.emplace_back(tint)->enabled = true;
+			g->add_node (new PPN_Chain("post", std::move(fts), {}));
 		}
-	}
-	void start(TimeSpan passed, ChainIndex i)
-	{
-		if (cs[i]) cs[i]->start(passed);
-	}
-	void finish(ChainIndex i)
-	{
-		if (cs[i]) cs[i]->finish();
-	}
-	void render(ChainIndex i)
-	{
-		if (cs[i]) cs[i]->render();
+		
+		g->connect("grid", "post", 1);
+		g->connect("aal", "E1", 2);
+		g->connect("imm", "display", 2);
+		g->connect("parts", "E2");
+		
+		g->connect("E1", "post", 2);
+		g->connect("E2", "post", 3);
+		g->connect("post", "display", 1);
+		g->connect("ui", "display", 3);
 	}
 };
-Postproc* Postproc::create_main_chain()
-{
-	return new PostprocMain;
-}
+
+
+
+static Postproc* rni;
+Postproc& Postproc::get() {return *rni;}
+Postproc* Postproc::init() {return rni = new Postproc_Impl;}
+Postproc::~Postproc() {rni = nullptr;}

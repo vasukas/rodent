@@ -40,10 +40,19 @@ public:
 		/// Do not use
 		TOTAL_BUTTONS_INTERNAL
 	};
+	
+	enum GpadState
+	{
+		STATE_OK,
+		STATE_WAITING, ///< Waiting activation
+		STATE_DISABLED ///< Device was disconnected
+	};
 
 	static Gamepad* open_default();
 	virtual ~Gamepad() = default;
 
+	virtual GpadState get_gpad_state() = 0;
+	
 	virtual bool get_state(Button b) = 0;
 	virtual vec2fp get_left () = 0; ///< [-1; 1] range, excluding dead zone
 	virtual vec2fp get_right() = 0; ///< [-1; 1] range, excluding dead zone
@@ -51,6 +60,8 @@ public:
 	virtual float trig_right() = 0; ///< [0; 1] range, excluding dead zone
 	
 	virtual void* get_raw() = 0; ///< Returns SDL_GameController*
+	
+	static void on_event(const SDL_Event& ev);
 	static void update();
 };
 

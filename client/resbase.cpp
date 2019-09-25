@@ -24,6 +24,7 @@ class ResBase_Impl : public ResBase
 public:
 	std::array <std::array<std::unique_ptr<ParticleGroupGenerator>, ME_TOTAL_COUNT_INTERNAL>, MODEL_TOTAL_COUNT_INTERNAL> ld_me;
 	std::array <std::unique_ptr<ParticleGroupGenerator>, FE_TOTAL_COUNT_INTERNAL> ld_es;
+	std::array <vec2fp, MODEL_TOTAL_COUNT_INTERNAL> md_sz = {};
 	
 	ParticleGroupGenerator* get_eff(ModelType type, ModelEffect eff)
 	{
@@ -32,6 +33,10 @@ public:
 	ParticleGroupGenerator* get_eff(FreeEffect eff)
 	{
 		return ld_es[eff].get();
+	}
+	vec2fp get_size(ModelType type)
+	{
+		return md_sz[type];
 	}
 	void init_ren();
 };
@@ -61,7 +66,7 @@ void ResBase_Impl::init_ren()
 		float power;
 		FColor clr_t;
 		
-		size_t begin(const BatchPars& pars, ParticleParams& p)
+		size_t begin(const ParticleBatchPars& pars, ParticleParams& p)
 		{
 			tr = pars.tr;
 			power = clampf(pars.power, p_min, p_max);
@@ -102,7 +107,7 @@ void ResBase_Impl::init_ren()
 		float rad;
 		float t, dt;
 		
-		size_t begin(const BatchPars& pars, ParticleParams& p)
+		size_t begin(const ParticleBatchPars& pars, ParticleParams& p)
 		{
 			p.size = 1; //0.1;
 			
@@ -179,10 +184,9 @@ void ResBase_Impl::init_ren()
 				}
 			}
 		}
-		size_t begin(const BatchPars& pars, ParticleParams& p)
+		size_t begin(const ParticleBatchPars& pars, ParticleParams& p)
 		{
 			p.size = 0.15;
-			p.lt = 0;
 			p.clr = clr? *clr : pars.clr;
 			p.lt = 0;
 			
@@ -208,6 +212,87 @@ void ResBase_Impl::init_ren()
 			p.vy = rv.y;
 			
 			p.ft = rnd_stat().range(3, 5);
+		}
+	};
+	struct Aura : ParticleGroupGenerator
+	{
+		struct Ln {
+			vec2fp a, b, av, bv;
+			size_t n;
+		};
+		std::vector<Ln> ls;
+		size_t total = 0;
+		
+		Transform tr;
+		size_t li, lc;
+		float time_k;
+		
+		Aura(const std::vector<std::vector<vec2fp>>& ps)
+		{
+			for (auto& s : ps)
+			{
+				size_t n = s.size();
+				for (size_t i=1; i<n; ++i)
+				{
+					auto& l = ls.emplace_back();
+					l.a = s[i-1];
+					l.b = s[i];
+					l.n = l.a.dist(l.b) * 8;
+					if (l.n < 2) l.n = 2;
+					total += l.n;
+				}
+			}
+			
+			for (size_t i=0; i < ls.size(); ++i)
+			{
+				auto norm = [&](auto& l)
+				{
+					auto n = l.b - l.a;
+					n.norm();
+					n.rot90ccw();
+					if (dot(n, lerp(l.a, l.b, 0.5).get_norm()) < 0) n = -n;
+					return n;
+				};
+				
+				auto& l0 = ls[(i - 1 + ls.size()) % ls.size()];
+				auto& lc = ls[i];
+				auto& l1 = ls[(i + 1) % ls.size()];
+				
+				auto nc = norm(lc);
+				lc.av = slerp(norm(l0), nc, 0.6);
+				lc.bv = slerp(norm(l1), nc, 0.6);
+			}
+		}
+		size_t begin(const ParticleBatchPars& pars, ParticleParams& p)
+		{
+			p.size = 0.25;
+			p.clr = pars.clr;
+			p.lt = 0;
+			
+			li = lc = 0;
+			tr = pars.tr;
+			time_k = pars.power;
+			return total;
+		}
+		void gen(ParticleParams& p)
+		{
+			auto& l = ls[li];
+			float t = (lc + 0.5f) / l.n;
+			if (++lc == l.n) {++li; lc = 0;}
+			
+			vec2fp rp = lerp(l.a, l.b, t);
+			rp.fastrotate(tr.rot);
+			p.px = rp.x + tr.pos.x;
+			p.py = rp.y + tr.pos.y;
+			
+			vec2fp rv = slerp(l.av, l.bv, t);
+			rv.fastrotate( tr.rot + rnd_stat().range(-1, 1) * deg_to_rad(20) );
+			rv.norm_to( rnd_stat().range(0.5, 0.7) );
+			p.vx = rv.x;
+			p.vy = rv.y;
+			
+			p.ft = rnd_stat().range(time_k * 0.5, time_k);
+			p.decel_to_zero();
 		}
 	};
 
@@ -276,6 +361,7 @@ void ResBase_Impl::init_ren()
 	struct ModelInfo
 	{
 		std::vector<std::vector<vec2fp>> ls;
+		bool fix_rotation = true;
 	};
 	ModelInfo mlns[MODEL_TOTAL_COUNT_INTERNAL];
 	
@@ -286,7 +372,10 @@ void ResBase_Impl::init_ren()
 	    {MODEL_ERROR, "error"},
 	    
 	    {MODEL_PC_RAT, "rat"},
+	    {MODEL_PC_SHLD, "pshl"},
+	    
 	    {MODEL_BOX_SMALL, "box_small"},
+	    {MODEL_DRONE, "drone"},
 	    
 	    {MODEL_MEDKIT, "medkit"},
 	    {MODEL_ARMOR, "armor"},
@@ -357,7 +446,24 @@ void ResBase_Impl::init_ren()
 	
 	// rotate models (0 angle: top -> right)
 	
+	const int no_fix_rot[] =
+	{
+	    MODEL_ERROR,
+	    MODEL_MEDKIT,
+		MODEL_ARMOR,
+	    
+	    MODEL_HANDGUN_AMMO,
+		MODEL_BOLTER_AMMO,
+		MODEL_GRENADE_AMMO,
+		MODEL_MINIGUN_AMMO,
+		MODEL_ROCKET_AMMO,
+		MODEL_ELECTRO_AMMO
+	};
+	for (auto i : no_fix_rot)
+		mlns[i].fix_rotation = false;
+	
 	for (auto& m : mlns) {
+		if (!m.fix_rotation) continue;
 		for (auto& s : m.ls)
 			for (auto& p : s)
 				p.rot90ccw();
@@ -377,12 +483,32 @@ void ResBase_Impl::init_ren()
 			for (auto& p : s)
 				p *= radius / mr;
 	};
+	auto scale_d2 = [&](ModelType t, vec2fp radius) {
+		auto& m = mlns[t];
+		vec2fp mr = {};
+		for (auto& s : m.ls)
+			for (auto& p : s)
+				mr = max(mr, {std::fabs(p.x), std::fabs(p.y)});
+		for (auto& s : m.ls)
+			for (auto& p : s)
+				p *= radius / mr;
+	};
 	
 	scale_to(MODEL_PC_RAT, hsz_rat + PLAYER_MODEL_RADIUS_INCREASE);
+	scale_d2(MODEL_PC_SHLD, hsz_pshl);
+	
 	scale_to(MODEL_BOX_SMALL, hsz_box_small);
+	scale_to(MODEL_DRONE, hsz_drone);
 	
 	scale_to(MODEL_MEDKIT, hsz_supply);
 	scale_to(MODEL_ARMOR, hsz_supply);
+	
+	scale_to(MODEL_HANDGUN_AMMO, hsz_supply);
+	scale_to(MODEL_BOLTER_AMMO, hsz_supply);
+	scale_to(MODEL_GRENADE_AMMO, hsz_supply);
+	scale_to(MODEL_MINIGUN_AMMO, hsz_supply);
+	scale_to(MODEL_ROCKET_AMMO, hsz_supply);
+	scale_to(MODEL_ELECTRO_AMMO, hsz_supply);
 	
 	
 	
@@ -440,6 +566,18 @@ void ResBase_Impl::init_ren()
 	
 	
 	
+	// generate parts
+	
+	{
+		auto g = new Aura(mlns[MODEL_PC_RAT].ls);
+		ld_me[MODEL_PC_RAT][ME_AURA].reset(g);
+	}{
+		auto g = new Aura(mlns[MODEL_PC_SHLD].ls);
+		ld_me[MODEL_PC_SHLD][ME_AURA].reset(g);
+	}
+	
+	
+	
 	// fin
 	
 	auto& ren = RenAAL::get();
@@ -460,10 +598,24 @@ void ResBase_Impl::init_ren()
 			throw std::logic_error(std::to_string(i) + " - index mismatch (internal error)");
 	}
 	
-	// generate parts
 	
-	{	auto g = new Death(mlns[MODEL_PC_RAT].ls);
-		g->clr = FColor(0.3, 0.7, 1, 2);
-		ld_me[MODEL_PC_RAT][ME_POWERED].reset(g);
+	
+	// set model sizes
+	
+	for (size_t i = MODEL_LEVEL_STATIC + 1; i < MODEL_TOTAL_COUNT_INTERNAL; ++i)
+	{
+		if (i == MODEL_NONE) continue;
+		
+		vec2fp p0 = vec2fp::one( std::numeric_limits<float>::max() );
+		vec2fp p1 = vec2fp::one( std::numeric_limits<float>::min() );
+		
+		for (auto& l : mlns[i].ls)
+		for (auto& p : l)
+		{
+			p0 = min(p0, p);
+			p1 = max(p1, p);
+		}
+		
+		md_sz[i] = p1 - p0;
 	}
 }

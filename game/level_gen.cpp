@@ -962,15 +962,23 @@ LevelTerrain* LevelTerrain::load_testlvl(float cell_size, const char *filename)
 			break;
 			
 		case 0x00ff00:
-			lt->spps.emplace_back(LevelControl::SP_TEST_AI, vec2i{x,y});
+			lt->spps.emplace_back(LevelControl::SP_TEST_TURRET, vec2i{x,y});
 			break;
 			
 		case 0xffff00:
 			lt->spps.emplace_back(LevelControl::SP_TEST_BOX, vec2i{x,y});
 			break;
 			
+		case 0xff8080:
+			lt->spps.emplace_back(LevelControl::SP_TEST_DRONE, vec2i{x,y});
+			break;
+			
+		case 0xff8000:
+			lt->spps.emplace_back(LevelControl::SP_SUPPLY_RND, vec2i{x,y});
+			break;
+			
 		default:
-			throw std::runtime_error("LevelTerrain::load_testlvl() unknown color");
+			THROW_FMTSTR("LevelTerrain::load_testlvl() unknown color at {}:{}", x, y);
 		}
 	}
 	

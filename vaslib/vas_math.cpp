@@ -81,7 +81,6 @@ uint isqrt(uint n)
 	}
 	return r;
 }
-
 float fast_invsqrt(float x)
 {
 	if constexpr (std::numeric_limits<float>::is_iec559 && sizeof(float) == sizeof(uint32_t))
@@ -98,6 +97,8 @@ float fast_invsqrt(float x)
 	else return 1.f / std::sqrt(x);
 }
 
+
+
 float wrap_angle_2(float x)
 {
 	int i = static_cast<int>( x / (M_PI*2.) );
@@ -110,6 +111,19 @@ float wrap_angle(float x)
 	int i = static_cast<int>(x / M_PI);
 	x -= i * M_PI;
 	return x;
+}
+float angle_delta(float target, float current)
+{
+	float delta = target - current;
+//	while (delta < -M_PI) delta += M_PI*2;
+//	while (delta >  M_PI) delta -= M_PI*2;
+	
+	int i = static_cast<int>(delta / M_PI);
+	if		(i < 0) i = (-i + 1)/2;
+	else if (i > 0) i = -(i + 1)/2;
+	
+	delta += i * M_PI * 2;
+	return delta;
 }
 
 
@@ -196,6 +210,14 @@ void vec2fp::norm_to(float n)
 	float t = n / len();
 	x *= t; y *= t;
 }
+void vec2fp::limit_to(float n)
+{
+	float cur = len_squ();
+	if (cur > n*n) {
+		float t = n / std::sqrt(cur);
+		x *= t; y *= t;
+	}
+}
 vec2fp vec2fp::get_rotate (float cos, float sin)
 {
 	return {
@@ -211,6 +233,15 @@ void vec2fp::rotate (float cos, float sin)
 
 
 
+vec2fp slerp (const vec2fp &v0, const vec2fp &v1, float t)
+{
+	float dp = dot(v0, v1);
+	if (dp > 0.9995) return lerp(v0, v1, t).get_norm();
+	
+	vec2fp v2 = (v1 - dp * v0).get_norm();
+	auto [c, s] = cossin_ft(t * std::acos(dp));
+	return v0 * c + v2 * s;
+}
 std::optional<vec2fp> lineseg_intersect(vec2fp a1, vec2fp a2, vec2fp b1, vec2fp b2, float eps)
 {
 	auto t = line_intersect_t(a1, a2 - a1, b1, b2 - b1, eps);
@@ -230,6 +261,12 @@ std::optional<std::pair<float, float>> line_intersect_t(vec2fp a, vec2fp at, vec
 	float t = cross(b, bt) / im;
 	float u = cross(b, at) / im;
 	return std::make_pair(t, u);
+}
+std::pair<float, vec2fp> fit_rect(vec2fp size, vec2fp into)
+{
+	vec2fp pk = into / size;
+	float k = std::min(pk.x, pk.y);
+	return {k, into - size * k};
 }
 
 

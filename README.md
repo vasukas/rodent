@@ -59,6 +59,3 @@ To download dependecies execute in PowerShell (from project root):
 
 After that project can be built using Visual Studio 2017 or newer.
 Executable will be placed in "build\" directory in project root.
-
-	msbuild rodent.sln /p:Configuration=Release /p:Platform=x86
-

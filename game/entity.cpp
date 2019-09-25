@@ -6,6 +6,19 @@ void EntityDeleter::operator()(Entity* p) {p->destroy();}
 
 
 
+const char *enum_name(ECompType type)
+{
+	switch (type)
+	{
+	case ECompType::StepLogic:    return "Logic";
+	case ECompType::StepPostUtil: return "PostUtil";
+	case ECompType::TOTAL_COUNT:  return "TOTAL_COUNT"; 
+	}
+	return "INVALID";
+}
+
+
+
 EComp::~EComp()
 {
 	for (auto& r : _regs)
@@ -46,7 +59,7 @@ ECompPhysics& Entity::get_phy()
 }
 std::string Entity::dbg_id() const
 {
-	return FMT_FORMAT("eid {}", index);
+	return FMT_FORMAT("eid {}", index.to_int());
 }
 bool Entity::is_ok() const
 {
@@ -61,3 +74,19 @@ void Entity::destroy()
 Entity::Entity()
     : index(GameCore::get().create_ent(this))
 {}
+Entity::~Entity()
+{
+	unreg();
+}
+void Entity::reg() noexcept
+{
+	if (!reglist_index)
+		reglist_index = GameCore::get().reg_ent(this);
+}
+void Entity::unreg() noexcept
+{
+	if (reglist_index) {
+		GameCore::get().unreg_ent(*reglist_index);
+		reglist_index.reset();
+	}
+}

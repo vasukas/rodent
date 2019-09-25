@@ -45,6 +45,12 @@ const uint vig_TooltipDelay = 1000;
 /// Time for which tooltip is shown (milliseconds)
 const uint vig_TooltipTime = 10000;
 
+/// Width of scrollbar without frame (pixels)
+const uint vig_ScrollbarWidth = 10;
+
+/// How much normalized value is changed by mouse scroll
+const float vig_SliderScroll = 0.05;
+
 
 
 /* Palette */
@@ -128,6 +134,7 @@ static std::array <keydat, KEY_LIMIT> keys;
 
 static int mouse_state = 0; ///< vig_Mouse_* flags
 static vec2i mouse_pos = {-1, -1};
+static vec2i scroll_state = {};
 
 static std::string msg_text; ///< Message text (if empty - not shown)
 static int64_t msg_time = 0; ///< Message start time (if <0 - infinite)
@@ -256,8 +263,16 @@ void vig_draw_start() {
 	//
 	textbox_old = textbox_sel;
 	textbox_sel = nullptr;
+	
+	//
+	scroll_state = {};
+	if (vig_mouse_state() & vig_Mouse_WheelLeft)  scroll_state.x = -1;
+	if (vig_mouse_state() & vig_Mouse_WheelRight) scroll_state.x =  1;
+	if (vig_mouse_state() & vig_Mouse_WheelUp)    scroll_state.y = -1;
+	if (vig_mouse_state() & vig_Mouse_WheelDown)  scroll_state.y =  1;
 }
 void vig_draw_end() {
+	vig_lo_reset(); // to pop scrolled zones
 	vec2i root_zone_size = RenderControl::get_size();
 	
 	// reset keys that was pressed and released on same cycle (see vig_on_event())
@@ -425,6 +440,11 @@ vec2i vig_mouse_pos() {
 	if (input_locked) return {};
 	return mouse_pos;
 }
+vec2i vig_get_scroll() {
+	vec2i s = scroll_state;
+	scroll_state = {};
+	return s;
+}
 
 
 
@@ -543,6 +563,8 @@ struct Zone {
 	bool is_free = false;
 	vec2i tl_lim = {}; // edge correction
 	
+	vec2i* scr_off = nullptr; // offset for scrollable zone
+	
 	
 	
 	/// Places element
@@ -573,17 +595,30 @@ struct Zone {
 		// update size for non-fixed zones
 		size = max(size, el_pos + el_size);
 		
-		// get max size
-		if (!fixed) {
-			el_size.x = w_left;
-			el_size.y = max_size.y - newpos.y;
+		bool ret;
+		if (!scr_off)
+		{
+			// get max size
+			if (!fixed) {
+				el_size.x = w_left;
+				el_size.y = max_size.y - newpos.y;
+			}
+			
+			ret = (el_pos.y < size.y); // check if element would be seen
+			el_pos += pos; // absolute pos
+			
+			ttip_last_pos = el_pos; // set params for tooltip
+			ttip_last_size = el_size;
 		}
-		
-		bool ret = (el_pos.y < size.y); // check if element would be seen
-		el_pos += pos; // absolute pos
-		
-		ttip_last_pos = el_pos; // set params for tooltip
-		ttip_last_size = el_size;
+		else {
+			el_pos -= *scr_off;
+			
+			Rect is = calc_intersection(Rect{el_pos, el_size, true}, Rect{{}, orig_size, true});
+			ret = is.size() != vec2i{};
+			
+			ttip_last_pos = pos + is.off; // set params for tooltip
+			ttip_last_size = is.sz;
+		}
 		
 		if (tl_lim.x) el_pos.x = tl_lim.x - (el_pos.x + el_size.x);
 		if (tl_lim.y) el_pos.y = tl_lim.y - (el_pos.y + el_size.y);
@@ -605,7 +640,7 @@ static std::vector <Zone> lo_stack;
 
 void vig_lo_reset()
 {
-	lo_stack.clear();
+	while (lo_stack.size() > 1) vig_lo_pop();
 	vig_lo_toplevel({{}, RenderControl::get_size(), {}});
 }
 void vig_lo_push(vec2i size, bool fixed)
@@ -631,6 +666,17 @@ void vig_lo_push_edge(bool is_left, bool is_upper)
 	if (!is_left)  z.tl_lim.x = pz.pos.x + pz.size.x;
 	if (!is_upper) z.tl_lim.y = pz.pos.y + pz.size.y;
 }
+void vig_lo_push_scroll(vec2i outer_size, vec2i& inner_offset)
+{
+	Zone& z = lo_stack.emplace_back();
+	Zone& pz = *(lo_stack.end() - 2); // parent zone
+	z.size = z.max_size = z.orig_size = outer_size;
+	pz.place(z.pos, z.size, true);
+	
+	RenImm::get().clip_push({ z.pos, outer_size, true });
+	z.max_size.x = z.max_size.y = std::numeric_limits<int>::max();
+	z.scr_off = &inner_offset;
+}
 void vig_lo_toplevel(Rect r)
 {
 	Zone& z = lo_stack.emplace_back();
@@ -645,8 +691,42 @@ void vig_lo_pop()
 	if (lo_stack.size() == 1)
 		throw std::logic_error("vig_lo_pop() underflow");
 	
-	// get height and additional width and pop
 	Zone& z = lo_stack.back();
+	
+	// for scrollable zones
+	if (z.scr_off)
+	{
+		const int sbwd = vig_ScrollbarWidth + vig_FrameWidth*2;
+		const Rect area = {z.pos, z.orig_size, true};
+		
+		// vertical
+		if (z.size.y > z.orig_size.y)
+		{
+			vec2i pos = z.pos + vec2i(z.orig_size.x - sbwd, 0);
+			vec2i size = vec2i(sbwd, z.orig_size.y);
+			
+			float t = float(z.scr_off->y) / z.size.y;
+			float s = float(z.orig_size.y - sbwd) / z.size.y;
+			if (vig_scrollbar(t, s, false, pos, size, area))
+				z.scr_off->y = t * z.size.y;
+		}
+		// horizontal
+		if (z.size.x > z.orig_size.x)
+		{
+			vec2i pos = z.pos + vec2i(0, z.orig_size.y - sbwd);
+			vec2i size = vec2i(z.orig_size.x, sbwd);
+
+			float t = float(z.scr_off->x) / z.size.x;
+			float s = float(z.orig_size.x - sbwd) / z.size.x;
+			if (vig_scrollbar(t, s, true, pos, size, area))
+				z.scr_off->x = t * z.size.x;
+		}
+		
+		z.size = z.orig_size;
+		RenImm::get().clip_pop();
+	}
+	
+	// get height and additional width and pop
 	int ht = z.size.y;
 	int xd = z.size.x - z.orig_size.x;
 	lo_stack.pop_back();
@@ -674,7 +754,9 @@ void vig_lo_cols(int count) {
 }
 vec2i vig_lo_get_next() {
 	Zone& z = lo_stack.back();
-	return z.newpos + z.pos;
+	vec2i p = z.newpos + z.pos;
+	if (z.scr_off) p -= *z.scr_off;
+	return p;
 }
 
 
@@ -698,7 +780,7 @@ void vig_space_tab(int width) {
 	
 	// don't move space to the next line
 	Zone& z = lo_stack.back();
-	int w_left = (z.max_size.x - SPACE) - z.newpos.x;
+	int w_left = (z.size.x - SPACE) - z.newpos.x;
 	if (w_left < width) return;
 	
 	vec2i p, sz = {width, 1};
@@ -707,7 +789,10 @@ void vig_space_tab(int width) {
 void vig_space_line(int height) {
 	if (height < 0) height = vig_SpacerWidth.y;
 	vec2i p, sz = {lo_stack.back().size.x - SPACE, height};
+	
+	vig_lo_next();
 	vig_lo_place(p, sz);
+	vig_lo_next();
 }
 
 
@@ -837,15 +922,12 @@ bool vig_slider_t(std::string_view text, double& t, vec2i pos, vec2i size) {
 			t = vig_mouse_pos().x - pos.x;
 			t /= size.x;
 		}
-		else if (vig_mouse_state() & (vig_Mouse_WheelDown | vig_Mouse_WheelLeft)) {
-			t -= 0.05;
-			if (t < 0.) t = 0.;
+		else {
+			vec2i scr = vig_get_scroll();
+			if		(scr.x < 0 || scr.y > 0) t = std::max(t - vig_SliderScroll, 0.);
+			else if (scr.x > 0 || scr.y < 0) t = std::min(t + vig_SliderScroll, 1.);
+			else return false;
 		}
-		else if (vig_mouse_state() & (vig_Mouse_WheelUp | vig_Mouse_WheelRight)) {
-			t += 0.05;
-			if (t > 1.) t = 1.;
-		}
-		else return false;
 		return true;
 	}
 	return false;
@@ -886,6 +968,48 @@ bool vig_slider(std::string_view text, double& value, double min, double max, in
 	t /= (max - min);
 	if (vig_slider_t(getstr(), t)) {
 		value = t * (max - min) + min;
+		return true;
+	}
+	return false;
+}
+bool vig_scrollbar(float& offset, float span, bool is_horizontal, vec2i pos, vec2i size, Rect zone) {
+	// check if element hovered by mouse
+	bool hov = Rect(pos, size, true).contains(vig_mouse_pos());
+	bool area_hov = zone.contains(vig_mouse_pos());
+	
+	// draw background
+	vig_fill_rect(pos, size, hov? vig_CLR(BackHover) : vig_CLR(Back));
+	
+	// draw position
+	if (is_horizontal) {
+		int x0 = int_round(size.x * offset);
+		int xn = int_round(size.x * span);
+		vig_fill_rect(pos + vec2i(x0, vig_FrameWidth), vec2i(xn, vig_ScrollbarWidth),
+		              hov? vig_CLR(ActiveHover) : vig_CLR(Active));
+	}
+	else {
+		int x0 = int_round(size.y * offset);
+		int xn = int_round(size.y * span);
+		vig_fill_rect(pos + vec2i(vig_FrameWidth, x0), vec2i(vig_ScrollbarWidth, xn),
+		              hov? vig_CLR(ActiveHover) : vig_CLR(Active));
+	}
+	
+	// draw frame
+	vig_draw_rect(pos, size, vig_CLR(Frame), vig_FrameWidth);
+	
+	// check if pressed
+	if (hov || area_hov) {
+		if ((vig_mouse_state() & vig_Mouse_CLICK(Left)) && hov) {
+			bool is_x = is_horizontal;
+			offset = float(vig_mouse_pos()(is_x) - pos(is_x)) / size(is_x) - span/2;
+			offset = clampf(offset, 0, 1 - span);
+		}
+		else {
+			vec2i scr = vig_get_scroll();
+			if		(scr.x < 0 || scr.y < 0) offset = std::max(offset - span * 0.1f, 0.f);
+			else if (scr.x > 0 || scr.y > 0) offset = std::min(offset + span * 0.1f, 1.f - span);
+			else return false;
+		}
 		return true;
 	}
 	return false;

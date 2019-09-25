@@ -40,6 +40,10 @@ FColor& FColor::operator-= (const FColor& c) {
 	for (size_t i=0; i<4; ++i) (*this)[i] -= c[i];
 	return *this;
 }
+FColor& FColor::mul(float f) {
+	for (size_t i=0; i<4; ++i) (*this)[i] *= f;
+	return *this;
+}
 uint32_t FColor::to_px() const
 {
 	uint32_t c = 0;

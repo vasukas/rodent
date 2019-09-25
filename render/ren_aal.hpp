@@ -34,8 +34,10 @@ protected:
 	friend class RenderControl_Impl;
 	static RenAAL* init();
 	virtual ~RenAAL();
+	
+	friend class Postproc_Impl;
 	virtual void render() = 0;
-	virtual void render_grid(TimeSpan passed) = 0;
+	virtual void render_grid(unsigned int fbo_out) = 0;
 };
 
 #endif // REN_AAL_HPP

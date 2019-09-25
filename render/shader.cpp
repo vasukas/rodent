@@ -188,12 +188,7 @@ void main() {
 		while (true)
 		{
 			pos = file.find( p.first );
-			if (pos == std::string::npos)
-			{
-				if (p.second == GL_VERTEX_SHADER)   VLOGW("Shader::load() no vertex shader: \"{}\"", filename);
-				if (p.second == GL_FRAGMENT_SHADER) VLOGW("Shader::load() no fragment shader: \"{}\"", filename);
-				break;
-			}
+			if (pos == std::string::npos) break;
 			if (pos != 0 && file[pos - 1] != '\n') continue;
 			
 			pos += p.first.length();
@@ -232,6 +227,17 @@ void main() {
 			shs.emplace_back( p.second.first, p.second.second );
 	}
 	
+	std::string typestr;
+	for (auto& s : shs) {
+		switch (s.first)
+		{
+		case GL_VERTEX_SHADER:   typestr += 'v'; break;
+		case GL_FRAGMENT_SHADER: typestr += 'f'; break;
+		case GL_GEOMETRY_SHADER: typestr += 'g'; break;
+		default:                 typestr += '?'; break;
+		}
+	}
+	
 	Shader* s = make(filename, shs);
 	if (!s)
 	{
@@ -239,7 +245,7 @@ void main() {
 		return nullptr;
 	}
 	
-	VLOGI("Loaded shader \"{}\" as {}", filename, s->prog);
+	VLOGI("Loaded shader \"{}\" as {} [{}]", filename, s->prog, typestr);
 	return s;
 }
 

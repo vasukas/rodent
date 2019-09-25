@@ -1,0 +1,18 @@
+// ==================
+#vert_pass
+#frag
+#version 330 core
+
+uniform sampler2D tex;
+
+uniform vec4 mul;
+uniform vec4 add;
+
+in vec2 tc;
+out vec4 res;
+
+void main() {
+	res = texture(tex, tc) * mul + add;
+}
+
+#end

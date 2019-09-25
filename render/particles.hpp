@@ -29,26 +29,29 @@ struct ParticleParams
 
 
 
+/// Generation parameters
+struct ParticleBatchPars
+{
+	Transform tr = {};
+	float power = 1.f;
+	FColor clr = {1, 1, 1, 1};
+};
+
+
+
 struct ParticleGroupGenerator
 {
-	struct BatchPars
-	{
-		Transform tr = {};
-		float power = 1.f;
-		FColor clr = {1, 1, 1, 1};
-	};
-	
 	virtual ~ParticleGroupGenerator() = default;
 	
 	/// Generates group with specified transformation
-	void draw(const BatchPars& pars);
+	void draw(const ParticleBatchPars& pars);
 	
 protected:
 	friend class ParticleRenderer_Impl;
 	
 	/// Begins generating new group. Returns number of particles. 
 	/// Params are already inited with zero rotations and acceleration, everything else is unset
-	virtual size_t begin(const BatchPars& pars, ParticleParams& p) = 0;
+	virtual size_t begin(const ParticleBatchPars& pars, ParticleParams& p) = 0;
 	
 	/// Fills params, value is same since last call and call to begin
 	virtual void gen(ParticleParams& p) = 0;
@@ -88,7 +91,7 @@ private:
 	Transform t_tr;
 	float t_spdmax, t_rotmax, t_lmax, t_fmax;
 	
-	size_t begin(const BatchPars& pars, ParticleParams& p);
+	size_t begin(const ParticleBatchPars& pars, ParticleParams& p);
 	void gen(ParticleParams& p);
 };
 
@@ -98,14 +101,15 @@ class ParticleRenderer {
 public:
 	static ParticleRenderer& get(); ///< Returns singleton
 	
+	virtual void add(ParticleGroupGenerator& group, const ParticleBatchPars& pars) = 0;
+	
 protected:
 	friend class RenderControl_Impl;
 	static ParticleRenderer* init();
 	virtual ~ParticleRenderer();
-	virtual void render(TimeSpan passed) = 0;
 	
-	friend ParticleGroupGenerator;
-	virtual void add(ParticleGroupGenerator& group, const ParticleGroupGenerator::BatchPars& pars) = 0;
+	friend class Postproc_Impl;
+	virtual void render() = 0;
 };
 
 #endif // PARTICLES_HPP

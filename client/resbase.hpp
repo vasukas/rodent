@@ -18,7 +18,10 @@ enum ModelType
 	MODEL_NONE, ///< Displays nothing
 	
 	MODEL_PC_RAT, ///< Player character
+	MODEL_PC_SHLD, ///< Projected shield
+	
 	MODEL_BOX_SMALL,
+	MODEL_DRONE,
 	
 	MODEL_MEDKIT,
 	MODEL_ARMOR,
@@ -56,7 +59,7 @@ enum ModelType
 enum ModelEffect
 {
 	ME_DEATH,
-	ME_POWERED,
+	ME_AURA,
 	
 	ME_TOTAL_COUNT_INTERNAL ///< Do not use
 };
@@ -84,6 +87,8 @@ public:
 	
 	virtual ParticleGroupGenerator* get_eff(ModelType type, ModelEffect eff) = 0;	
 	virtual ParticleGroupGenerator* get_eff(FreeEffect eff) = 0;
+	
+	virtual vec2fp get_size(ModelType type) = 0;
 	
 protected:
 	friend class GamePresenter_Impl;

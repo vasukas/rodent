@@ -9,6 +9,7 @@
 #include <array>
 #include <cinttypes>
 #include <cmath>
+#include <functional>
 #include <optional>
 
 using uint = unsigned int;
@@ -22,11 +23,8 @@ struct vec2fp;
 
 
 
-inline bool aequ(float  v, float  c, float eps)  {return std::fabs(v - c) < eps;} ///< Approximate comparison
-inline bool aequ(double v, double c, double eps) {return std::fabs(v - c) < eps;} ///< Approximate comparison
-
-inline float clampf(float x, float min, float max) {return std::max(min, std::min(max, x));}
-template <typename T> T clamp(T x, T min, T max) {return std::max(min, std::min(max, x));}
+float sine_ft_norm(float x); ///< Table-lookup sine, x is [0, 1] representing [0, 2pi]
+vec2fp cossin_ft(float rad); ///< Table-lookup cosine (x) + sine (y)
 
 /// Integer square root
 uint isqrt(uint value);
@@ -34,20 +32,16 @@ uint isqrt(uint value);
 /// Quake III
 float fast_invsqrt(float x);
 
-float wrap_angle_2(float x); ///< Returns angle in range [0; 2pi]
-float wrap_angle(float x); ///< Returns angle in range [-pi, +pi]
 
-float sine_ft_norm(float x); ///< Table-lookup sine, x is [0, 1] representing [0, 2pi]
-vec2fp cossin_ft(float rad); ///< Table-lookup cosine (x) + sine (y)
 
-constexpr float deg_to_rad(float x) {return x / 180.f * M_PI;}
 
-/// Linear interpolation between two angles, expressed in radians. Handles all cases
+/// Approximate comparison
 template <typename T1, typename T2, typename T3>
-typename std::enable_if <
-	std::is_floating_point<typename std::common_type<T1, T2, T3>::type>::value,
-	typename std::common_type<T1, T2, T3>::type >::type
-lerp_angle (T1 a, T2 b, T3 t) {return a + t * std::remainder(b - a, M_PI*2);}
+bool aequ(T1 v, T2 c, T3 eps) {return std::fabs(v - c) < eps;}
+
+inline float clampf(float x, float min, float max) {return std::max(min, std::min(max, x));}
+inline float clampf_n(float x) {return clampf(x, 0, 1);}
+template <typename T> T clamp(T x, T min, T max) {return std::max(min, std::min(max, x));}
 
 template <typename T1, typename T2, typename T3>
 typename std::common_type<T1, T2, T3>::type
@@ -58,6 +52,26 @@ T fracpart(T x) {return std::fmod(x, 1);}
 
 template <typename T>
 int int_round(T value) {return static_cast<int>(std::round(value));}
+
+template <typename T>
+typename std::enable_if<std::is_signed<T>::value, bool>::value
+same_sign(T a, T b) {return a < 0 == b < 0;}
+
+
+
+constexpr float deg_to_rad(float x) {return x / 180.f * M_PI;}
+
+float wrap_angle_2(float x); ///< Brings to [0; 2pi]
+float wrap_angle(float x); ///< Brings to [-pi, +pi]
+
+float angle_delta(float target, float current);
+
+/// Linear interpolation between two angles, expressed in radians. Handles all cases
+template <typename T1, typename T2, typename T3>
+typename std::enable_if <
+	std::is_floating_point<typename std::common_type<T1, T2, T3>::type>::value,
+	typename std::common_type<T1, T2, T3>::type >::type
+lerp_angle (T1 a, T2 b, T3 t) {return a + t * std::remainder(b - a, M_PI*2);}
 
 
 
@@ -93,7 +107,7 @@ struct vec2i {
 	
 	float len() const {return std::sqrt(x*x + y*y);} ///< Length
 	float angle() const {return y && x? std::atan2( y, x ) : 0;} ///< Rotation angle (radians)
-	uint len2() const {return x*x + y*y;} ///< Square of length
+	uint len_squ() const {return x*x + y*y;} ///< Square of length
 	
 	uint ilen() const {return isqrt(x*x + y*y);} ///< Integer length (approximate)
 	
@@ -163,11 +177,13 @@ struct vec2fp {
 	
 	float fastlen() const {return 1.f / fast_invsqrt(x*x + y*y);} ///< Length should be non-zero!
 	float len() const {return std::sqrt(x*x + y*y);} ///< Length
+	float len_squ() const {return x*x + y*y;} ///< Squared length
+	
 	float angle() const; ///< Rotation angle (radians)
-	float len2() const {return x*x + y*y;} ///< Squared length
 	
 	float dist(const vec2fp& v) const {return (*this - v).len();} ///< Straight distance
 	float ndg_dist(const vec2fp& v) const {return std::fabs(x - v.x) + std::fabs(y - v.y);} ///< Manhattan distance
+	float dist_squ(const vec2fp& v) const {return (*this - v).len_squ();} ///< Squared distance
 	
 	void rot90cw()  {float t = x; x = y; y = -t;}
 	void rot90ccw() {float t = x; x = -y; y = t;}
@@ -181,7 +197,8 @@ struct vec2fp {
 	
 	vec2fp get_norm() const; ///< Returns normalized vector
 	void norm(); ///< Normalizes vector
-	void norm_to(float n); ///< Normalizes vector to specified length
+	void norm_to(float n); ///< Brings vector to specified length
+	void limit_to(float n); ///< Brings vector to specified length if it exceeds it
 	
 	float area() const {return std::fabs(x * y);}
 	
@@ -199,6 +216,9 @@ inline float cross(const vec2fp& a, const vec2fp& b) {return a.x * b.y - a.y * b
 inline vec2fp operator * (double f, const vec2fp& v) {return vec2fp(v.x * f, v.y * f);}
 inline vec2fp lerp (const vec2fp &a, const vec2fp &b, double t) {return a * (1. - t) + b * t;}
 
+/// Spherical linear interpolation of unit vectors
+vec2fp slerp (const vec2fp &v0, const vec2fp &v1, float t);
+
 inline vec2fp min(const vec2fp &a, const vec2fp &b) {return {std::min(a.x, b.x), std::min(a.y, b.y)};}
 inline vec2fp max(const vec2fp &a, const vec2fp &b) {return {std::max(a.x, b.x), std::max(a.y, b.y)};}
 
@@ -207,6 +227,9 @@ std::optional<vec2fp> lineseg_intersect(vec2fp a1, vec2fp a2, vec2fp b1, vec2fp 
 
 /// Returns t,u of intersection point a+at*t = b+bt*u if lines aren't collinear or parallel
 std::optional<std::pair<float, float>> line_intersect_t(vec2fp a, vec2fp at, vec2fp b, vec2fp bt, float eps = 1e-10);
+
+/// Calculates scale and offset to fit rectangle of one size into another, keeping aspect ratio
+std::pair<float, vec2fp> fit_rect(vec2fp size, vec2fp into);
 
 
 
@@ -281,7 +304,7 @@ struct Rectfp
 	void upper (vec2fp v) {b = v;}
 	void size  (vec2fp v) {b = v + a;}
 	
-	void from_center(vec2fp ctr, vec2fp half_size) {set(ctr - half_size, ctr + half_size, false);}
+	static Rectfp from_center(vec2fp ctr, vec2fp half_size) {return {ctr - half_size, ctr + half_size, false};}
 	
 	/// Returns points representing same rectangle rotated around center
 	std::array <vec2fp, 4> rotate( float cs, float sn ) const;

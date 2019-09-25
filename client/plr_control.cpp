@@ -97,8 +97,7 @@ void PlayerController::IM_Gpad::operator=(Gamepad::Button v)
 
 
 
-PlayerController::PlayerController(std::unique_ptr<Gamepad> gpad)
-    : gpad(std::move(gpad))
+PlayerController::PlayerController()
 {
 	{
 		Bind& b = binds[A_ACCEL];
@@ -109,13 +108,26 @@ PlayerController::PlayerController(std::unique_ptr<Gamepad> gpad)
 		b.but = Gamepad::B_SHLD_RIGHT;
 	}{
 		Bind& b = binds[A_SHOOT];
-		b.name = "Shoot";
+		b.name = "Fire";
 		b.type = BT_HELD;
 		b.mou = SDL_BUTTON_LEFT;
 		b.but = Gamepad::B_SHLD_LEFT;
 	}{
+		Bind& b = binds[A_SHOOT_ALT];
+		b.name = "Alt. fire";
+		b.type = BT_HELD;
+		b.mou = SDL_BUTTON_RIGHT;
+		b.but = Gamepad::B_TRIG_LEFT;
+	}{
+		Bind& b = binds[A_SHIELD_SW];
+		b.name = "Shield";
+		b.type = BT_SWITCH;
+		b.mou = SDL_BUTTON_X1;
+		b.key = SDL_SCANCODE_G;
+		b.but = Gamepad::B_RC_DOWN;
+	}{
 		Bind& b = binds[A_CAM_FOLLOW];
-		b.name = "Camera follow";
+		b.name = "Camera track";
 		b.descr = "Enables camera tracking when held";
 		b.type = BT_HELD;
 		b.key = SDL_SCANCODE_LCTRL;
@@ -129,10 +141,17 @@ PlayerController::PlayerController(std::unique_ptr<Gamepad> gpad)
 	}{
 		Bind& b = binds[A_SHOW_MAP];
 		b.name = "Show map";
-		b.descr = "Shows level map when held";
-		b.type = BT_HELD;
+		b.descr = "Shows level map";
+		b.type = BT_SWITCH;
 		b.key = SDL_SCANCODE_M;
 		b.but = Gamepad::B_RC_UP;
+	}{
+		Bind& b = binds[A_SHOW_WPNS];
+		b.name = "Show weapons";
+		b.descr = "Shows all obtained weapons";
+		b.type = BT_SWITCH;
+		b.key = SDL_SCANCODE_I;
+		b.but = Gamepad::B_UP;
 	}{
 		Bind& b = binds[A_WPN_PREV];
 		b.name = "Previous weapon";
@@ -242,10 +261,41 @@ void PlayerController::on_event(const SDL_Event& ev)
 }
 void PlayerController::update()
 {
+	auto is_enabled = [this](size_t i)
+	{
+		auto& b = binds[i];
+		switch (b.type)
+		{
+		case BT_ONESHOT:
+			for (auto& i : b.ims) {
+				if (i->state == K_JUST || i->state == K_ONCE)
+					return true;
+			}
+			return false;
+			
+		case BT_SWITCH:
+			for (auto& i : b.ims) {
+				if (i->state == K_JUST || i->state == K_ONCE) {
+					b.sw_val = !b.sw_val;
+					break;
+				}
+			}
+			return b.sw_val;
+			
+		case BT_HELD:
+			for (auto& i : b.ims) {
+				if (i->state != K_OFF)
+					return true;
+			}
+			return false;
+		}
+		return false;
+	};
+	
 	auto& p_mov = state.mov;
 	auto& p_tar = state.tar_pos;
 	
-	if (gpad)
+	if (gpad && gpad->get_gpad_state() == Gamepad::STATE_OK)
 	{
 		auto upd_st = [this](auto& b)
 		{
@@ -258,9 +308,13 @@ void PlayerController::update()
 		
 		p_mov = gpad->get_left();
 		p_tar = gpad->get_right() * gpad_aim_dist;
+		p_tar += RenderControl::get().get_world_camera()->mouse_cast( RenderControl::get_size() /2 );
 	}
 	else
 	{
+		if (gpad && gpad->get_gpad_state() == Gamepad::STATE_DISABLED)
+			gpad.reset();
+		
 		p_mov = {};
 		if (is_enabled(AX_MOV_Y_NEG)) --p_mov.y;
 		if (is_enabled(AX_MOV_X_NEG)) --p_mov.x;
@@ -291,24 +345,7 @@ void PlayerController::update()
 		}
 	}
 }
-bool PlayerController::is_enabled(size_t i) const
+void PlayerController::set_switch(Action act, bool value)
 {
-	auto& b = binds[i];
-	switch (b.type)
-	{
-	case BT_ONESHOT:
-		for (auto& i : b.ims) {
-			if (i->state == K_JUST || i->state == K_ONCE)
-				return true;
-		}
-		return false;
-		
-	case BT_HELD:
-		for (auto& i : b.ims) {
-			if (i->state != K_OFF)
-				return true;
-		}
-		return false;
-	}
-	return false;
+	binds[static_cast<size_t>(act)].sw_val = value;
 }

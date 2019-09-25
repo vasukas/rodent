@@ -38,8 +38,7 @@ public:
 	/// Effect command
 	enum EffectCmd
 	{
-		EFF_POP, ///< Disables last applied effect
-		EFF_ADDITIVE_BLEND ///< Enables additive blending
+		EFF_POP ///< Disables last applied effect
 	};
 	
 	///
@@ -145,6 +144,7 @@ protected:
 	static RenImm* init();
 	virtual ~RenImm();
 	
+	friend class Postproc_Impl;
 	virtual void render_pre() = 0;
 	virtual void render(CtxIndex id) = 0;
 	virtual void render_post() = 0;
