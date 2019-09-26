@@ -94,7 +94,6 @@ SOURCES += \
 	game/damage.cpp \
 	game/entity.cpp \
 	game/game_core.cpp \
-	game/game_utils.cpp \
 	game/level_ctr.cpp \
 	game/level_gen.cpp \
 	game/physics.cpp \
@@ -120,6 +119,7 @@ SOURCES += \
 	utils/path_search.cpp \
 	utils/res_image.cpp \
 	utils/svg_simple.cpp \
+	utils/time_utils.cpp \
 	vaslib/vas_atlas_packer.cpp \
 	vaslib/vas_file.cpp \
 	vaslib/vas_font.cpp \
@@ -144,7 +144,6 @@ HEADERS += \
 	game/damage.hpp \
 	game/entity.hpp \
 	game/game_core.hpp \
-	game/game_utils.hpp \
 	game/level_ctr.hpp \
 	game/level_gen.hpp \
 	game/physics.hpp \
@@ -171,6 +170,7 @@ HEADERS += \
 	utils/path_search.hpp \
 	utils/res_image.hpp \
 	utils/svg_simple.hpp \
+	utils/time_utils.hpp \
 	vaslib/vas_atlas_packer.hpp \
 	vaslib/vas_containers.hpp \
 	vaslib/vas_cpp_utils.hpp \

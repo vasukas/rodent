@@ -2,8 +2,8 @@
 #define PLAYER_HPP
 
 #include "client/presenter.hpp"
+#include "utils/time_utils.hpp"
 #include "entity.hpp"
-#include "game_utils.hpp"
 #include "physics.hpp"
 #include "weapon.hpp"
 

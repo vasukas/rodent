@@ -143,3 +143,7 @@ vec2i Camera::direct_cast( vec2fp p ) const
 	return vec2i(std::roundf((v[0] + 1)*(w/2)),
 	             std::roundf((v[1] + 1)*(h/2)));
 }
+vec2fp Camera::coord_size() const
+{
+	return vport.size() / cur.mag;
+}

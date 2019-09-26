@@ -26,6 +26,8 @@ public:
 	vec2fp mouse_cast(vec2i mou) const; ///< Returns world position from screen coords
 	vec2i direct_cast(vec2fp p) const; ///< Returns screen coords from world position
 	
+	vec2fp coord_size() const; ///< Returns size of viewport in coordinates
+	
 private:
 	Rect vport = {};
 	Frame cur;

@@ -110,7 +110,7 @@ public:
 	
 	GamePresenter_Impl(const InitParams& pars)
 	{
-		RenAAL::get().inst_begin();
+		RenAAL::get().inst_begin( pars.lvl->cell_size );
 		
 		for (auto& l : pars.lvl->ls_grid) RenAAL::get().inst_add({l.first, l.second}, false, 0.07f, 1.5f);
 		RenAAL::get().inst_add_end();

@@ -1,9 +1,9 @@
-#include "game/game_utils.hpp"
 #include "game/level_gen.hpp"
 #include "render/control.hpp"
 #include "render/ren_imm.hpp"
 #include "render/texture.hpp"
 #include "utils/res_image.hpp"
+#include "utils/time_utils.hpp"
 #include "level_map.hpp"
 
 
@@ -21,7 +21,7 @@ public:
 	
 	LevelMap_Impl(const LevelTerrain& lt)
 	{
-		e_sw.set(TimeSpan::seconds(0.15));
+		e_sw.reset(TimeSpan::seconds(0.15));
 		coord_k = vec2fp::one(1) / (vec2fp(lt.grid_size) * lt.cell_size);
 		
 		img = lt.draw_grid();

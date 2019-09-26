@@ -122,8 +122,9 @@ void ResBase_Impl::init_ren()
 		}
 		void gen(ParticleParams& p)
 		{
-			p.lt = rnd_stat().range(1.5, 2.5);
-			p.ft = p.lt * 0.5; p.lt *= 0.5;
+			float total_len = rnd_stat().range(1, 2);
+			p.lt = total_len * 0.2;
+			p.ft = total_len * 0.8;
 			p.clr = clr;
 			
 			for (int i=0; i<3; ++i) {
@@ -133,6 +134,7 @@ void ResBase_Impl::init_ren()
 			
 			vec2fp r = {rad, 0};
 			r.rotate(t);
+			r *= rnd_stat().range(0.7, 1.1);
 			float vt = (p.lt + p.ft) * 0.75;
 			
 			if (!implode)
@@ -326,7 +328,7 @@ void ResBase_Impl::init_ren()
 		auto g = new WpnExplosion;
 		ld_es[FE_WPN_EXPLOSION].reset(g);
 		
-		g->clr   = FColor(1, 0.3, 0.1);
+		g->clr   = FColor(1, 0.3, 0.1, 0.8);
 		g->clr_n = FColor(0, 0.2, 0.1);
 		g->clr_p = FColor(0.2, 0.8, 0.3);
 	}{
@@ -426,6 +428,10 @@ void ResBase_Impl::init_ren()
 				throw std::runtime_error(md.second + " - model not found");
 		}
 	}
+	
+	// copy models
+	
+	mlns[MODEL_ROCKET_PROJ] = mlns[MODEL_ROCKET_AMMO];
 	
 	// center models
 	
@@ -540,7 +546,6 @@ void ResBase_Impl::init_ren()
 	sp_proj(MODEL_MINIGUN_PROJ_ALT, hsz_proj);
 	sp_proj(MODEL_ELECTRO_PROJ_ALT, hsz_proj_big);
 	
-	mlns[MODEL_ROCKET_PROJ] = mlns[MODEL_ROCKET_AMMO];
 	scale_to(MODEL_ROCKET_PROJ, hsz_proj);
 	
 	

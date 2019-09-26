@@ -9,83 +9,82 @@
 #include "shader.hpp"
 #include "texture.hpp"
 
-#define USE_NORM_INT 0 // caused bugs on old AMD card
-
 
 
 struct Noise
 {
-	static const int tex_depth = 16;
-	
-	GLA_Texture tex;
-	float t = 0.f;
-	
-	std::optional <std::future <std::pair <std::vector <uint8_t>, int>>> tex_async;
-	
 	Noise()
 	{
 		tex.target = GL_TEXTURE_3D;
+	}
+	void generate(float cell_size)
+	{
+		size = 32;
+		depth = 20;
+		ck = cell_size;
 		
-		tex_async = std::async(std::launch::async, []
+		has_tex = false;
+		tex_async.reset();
+		
+		tex_async = std::async(std::launch::async, [this]
 		{
-			double k = 0.13;
-			const int tex_size = 16 / k;
-			
-			std::vector<uint8_t> img_px( tex_size * tex_size * tex_depth * 3 );
+			std::vector<uint8_t> img_px( size * size * depth * 3 );
 			TimeSpan time0 = TimeSpan::since_start();
 			
-			for (int i = 0; i < tex_size * tex_size * tex_depth; ++i)
+			std::vector<float> prev_vals( size * size * 2 );
+			RandomGen rnd;
+			
+			for (int z = 0; z < depth; ++z)
+			for (int y = 0; y < size;  ++y)
+			for (int x = 0; x < size;  ++x)
 			{
-				double x = k * (i / (tex_size * tex_size) * 2);
-				double y = k * (i / tex_size % tex_size);
-				double z = k * (i % tex_size);
+				float nH = rnd.range_n();
+				float nV = rnd.range_n();
 				
-	#define noise(x,y,z) perlin_noise_oct(x,y,z, 0.5, 2.0, 2)
-	//#define noise(x,y,z) perlin_noise(x,y,z)
-				double H = noise(x, y, z) * 0.5 + 0.5;
-				double v = noise(x, y, z + 16.) * 0.5 + 0.5;
-	#undef noise
-				H = lerp(170, 210, H); // 0 - 360
-				v = lerp(15, 30, v); // 0 - 100
-				double S = 100; // 0 - 100
+				float& pH = prev_vals[(y * size + x)*2 + 0];
+				float& pV = prev_vals[(y * size + x)*2 + 1];
+				float H, V;
 				
-				int hi = H / 60;
-				double vm = (100. - S) * v / 100.;
-				double a = (v - vm) * (H - hi * 60) / 60.;
-				double vi = vm + a;
-				double vd = v - a;
-				v *= 2.55;
-				vi *= 2.55;
-				vd *= 2.55;
+				if (!z) {
+					H = pH = nH;
+					V = pV = nV;
+				}
+				else {
+					auto calc = [](float& old, float cur)
+					{
+						float v = cur - old;
+						float len = std::fabs(v);
+						if (len > 0.3) v *= 0.3 / len;
+						
+						v += old;
+						old = cur;
+						return v;
+					};
+					H = calc(pH, nH);
+					V = calc(pV, nV);
+				}
 				
-				double r, g, b;
-				if		(hi == 0) {r = v;  g = vi; b = vm;}
-				else if (hi == 1) {r = vd; g = v;  b = vm;}
-				else if (hi == 2) {r = vm; g = v;  b = vi;}
-				else if (hi == 3) {r = vm; g = vd; b = v;}
-				else if (hi == 4) {r = vi; g = vm; b = v;}
-				else if (hi == 5) {r = v;  g = vm; b = vd;}
-				else r = g = b = 255.;
+				H = lerp(170, 210, H) / 360;
+				V = lerp(0.15, 0.30, V);
 				
-				img_px[i*3+0] = r;
-				img_px[i*3+1] = g;
-				img_px[i*3+2] = b;
+				uint8_t* px = img_px.data() + (z * (size * size) + y * size + x)*3;
+				uint32_t px_val = FColor(H, 1, V).hsv_to_rgb().to_px();
+				px[0] = px_val >> 24;
+				px[1] = px_val >> 16;
+				px[2] = px_val >> 8;
 			}
 			
 			VLOGI("RenAAL generation time: {:.3f} seconds", (TimeSpan::since_start() - time0).seconds());
-			
-			return std::make_pair(std::move(img_px), tex_size);
+			return img_px;
 		});
 	}
-	void setup(Shader* sh, TimeSpan passed)
+	bool check()
 	{
-		glActiveTexture(GL_TEXTURE1);
-		tex.bind();
-		
 		if (tex_async && tex_async->wait_for (std::chrono::seconds(0)) == std::future_status::ready)
 		{
 			auto res = tex_async->get();
 			tex_async.reset();
+			has_tex = true;
 			
 			tex.bind();
 			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -93,19 +92,45 @@ struct Noise
 			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
 			glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-			glTexImage3D(GL_TEXTURE_3D, 0, GL_RGB, res.second, res.second, tex_depth, 0, GL_RGB, GL_UNSIGNED_BYTE, res.first.data());
+			glTexImage3D(GL_TEXTURE_3D, 0, GL_RGB, size, size, depth, 0, GL_RGB, GL_UNSIGNED_BYTE, res.data());
 			
-			tex.set_byte_size( res.second * res.second * tex_depth * 3 );
+			tex.set_byte_size( size * size * depth * 3 );
 		}
+		return has_tex;
+	}
+	void setup(Shader* sh, TimeSpan passed)
+	{
+		glActiveTexture(GL_TEXTURE1);
+		tex.bind();
 		
-		sh->set1f("t", t / tex_depth * 1.3);
+		sh->set1f("t", t / depth * 0.7);
 		t += passed.seconds();
 		
-//		auto& cam = RenderControl::get().get_world_camera()->get_state();
-		sh->set2f("offset", {});
+		auto cam = RenderControl::get().get_world_camera();
 		auto ssz = RenderControl::get().get_size();
-		sh->set2f("scrk", float(ssz.x) / ssz.y, 1);
+		
+		vec2fp ssz_k = {float(ssz.x) / ssz.y, 1};
+		ssz_k /= ck;
+		
+		vec2fp scr_z = cam->coord_size();
+		vec2fp cpos = cam->get_state().pos;
+		cpos.y = -cpos.y;
+		cpos *= 0.8; // looks bit better for some reason
+		
+		sh->set2f("offset", cpos / (scr_z / ssz_k));
+		sh->set2f("scrk", ssz_k.x, ssz_k.y);
 	}
+	
+private:
+	int size = 1; // x,y
+	int depth = 1; // z (time)
+	float ck = 1; // cell size
+	
+	GLA_Texture tex;
+	float t = 0.f;
+	
+	bool has_tex = false;
+	std::optional <std::future< std::vector<uint8_t> >> tex_async;
 };
 
 
@@ -128,9 +153,6 @@ public:
 	
 	GLA_VertexArray vao;
 	std::vector<float> data_f; // Buffer data to send
-#if USE_NORM_INT
-	std::vector<uint8_t> data_i;
-#endif
 
 	size_t objs_off = 0; ///< Last vertex count
 	std::vector<Obj> objs;
@@ -193,12 +215,7 @@ public:
 		float endk = (len + aa_width) / aa_width;
 		
 #define PF(X) data_f.push_back(X)
-		
-#if USE_NORM_INT
-#define PI(x) data_i.push_back( norm_i8(x) )
-#else
 #define PI PF
-#endif
 		
 		// first triangle (11 - 21 - 12)
 		
@@ -239,17 +256,10 @@ public:
 		width += aa_width;
 		float wpar = width / aa_width;
 		
-#if USE_NORM_INT
-		size_t dsz = ps.size() * 6 * 4;
-#else
 		size_t dsz = ps.size() * 6 * 7;
-#endif
 		if (4096 > dsz) dsz = 4096;
 		reserve_more_block(objs, 1024);
 		reserve_more_block(data_f, dsz);
-#if USE_NORM_INT
-		reserve_more_block(data_i, dsz);
-#endif
 
 		size_t n = ps.size();
 		if (loop) ++n;
@@ -263,15 +273,9 @@ public:
 	
 	RenAAL_Impl()
 	{
-#if USE_NORM_INT
-		vao.set_buffers({
-			std::make_shared<GLA_Buffer>(4, GL_FLOAT, false, GL_STREAM_DRAW),
-		    std::make_shared<GLA_Buffer>(3, GL_BYTE,  true,  GL_STREAM_DRAW)
-		});
-#else
 		auto buf = std::make_shared<GLA_Buffer>(0);
 		vao.set_attribs({ {buf, 4}, {buf, 3} });
-#endif
+		
 		sh      = RenderControl::get().load_shader("aal");
 		sh_inst = RenderControl::get().load_shader("aal_inst");
 		
@@ -321,9 +325,6 @@ public:
 		
 		reserve_more_block(objs, 1024);
 		reserve_more_block(data_f, 4096);
-#if USE_NORM_INT
-		reserve_more_block(data_i, 4096);
-#endif
 		
 		add_line(p0, p1, width, wpar, aa_width);
 		add_objs(1, clr, clr_mul);
@@ -346,9 +347,6 @@ public:
 		if (!objs.empty())
 		{
 			vao.bufs[0]->update( data_f.size(), data_f.data() );
-#if USE_NORM_INT
-			vao.bufs[1]->update( data_i.size(), data_i.data() );
-#endif
 			vao.bind();
 			
 			sh->bind();
@@ -366,9 +364,6 @@ public:
 			}
 			
 			data_f.clear();
-#if USE_NORM_INT
-			data_i.clear();
-#endif
 			objs_off = 0;
 			objs.clear();
 			prev_clr = 0;
@@ -397,6 +392,7 @@ public:
 	void render_grid(unsigned int fbo_out)
 	{
 		if (!draw_grid) return;
+		if (!fbo_noi.check()) return;
 		
 		// draw to buffer
 		
@@ -449,28 +445,18 @@ public:
 	
 	
 	
-	void inst_begin()
+	void inst_begin(float grid_cell_size)
 	{
-#if USE_NORM_INT
-		inst_vao.set_buffers({
-			std::make_shared<GLA_Buffer>(4, GL_FLOAT, false, GL_STATIC_DRAW),
-		    std::make_shared<GLA_Buffer>(3, GL_BYTE,  true,  GL_STATIC_DRAW)
-		});
-#else
 		auto buf = std::make_shared<GLA_Buffer>(0);
 		inst_vao.set_attribs({ {buf, 4}, {buf, 3} });
-#endif
 		inst_objs.clear();
+		
+		fbo_noi.generate(grid_cell_size);
 	}
 	void inst_end()
 	{
 		inst_vao.bufs[0]->update( data_f.size(), data_f.data() );
 		data_f.clear(); data_f.shrink_to_fit();
-
-#if USE_NORM_INT
-		inst_vao.bufs[1]->update( data_i.size(), data_i.data() );
-		data_i.clear(); data_i.shrink_to_fit();
-#endif
 	}
 	void inst_add(const std::vector<vec2fp>& ps, bool loop, float width, float aa_width)
 	{
@@ -479,11 +465,7 @@ public:
 	size_t inst_add_end()
 	{
 		size_t last = inst_objs.empty() ? 0 : inst_objs.back().first + inst_objs.back().second;
-#if USE_NORM_INT
-		size_t cur = data_f.size() / 4;
-#else
 		size_t cur = data_f.size() / 7;
-#endif
 		size_t id = inst_objs.size();
 		inst_objs.emplace_back(last, cur - last);
 		return id;

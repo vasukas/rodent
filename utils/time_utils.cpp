@@ -1,7 +1,8 @@
-#include "game_utils.hpp"
+#include "vaslib/vas_math.hpp"
+#include "time_utils.hpp"
 
-SmoothSwitch::SmoothSwitch(TimeSpan tmo, std::optional<TimeSpan> tmo_out) {set(tmo, tmo_out);}
-void SmoothSwitch::set(TimeSpan tmo, std::optional<TimeSpan> tmo_out_new)
+SmoothSwitch::SmoothSwitch(TimeSpan tmo, std::optional<TimeSpan> tmo_out) {reset(tmo, tmo_out);}
+void SmoothSwitch::reset(TimeSpan tmo, std::optional<TimeSpan> tmo_out_new)
 {
 	float v = value();
 	tmo_in = tmo;

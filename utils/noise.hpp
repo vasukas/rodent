@@ -31,10 +31,4 @@ struct RandomGen
 /// Returns static rndgen
 RandomGen& rnd_stat();
 
-/// Returns value in range [-1; 1]
-double perlin_noise(double x, double y, double z);
-
-/// Returns value in range [-1; 1]
-double perlin_noise_oct(double x, double y, double z, double pers, double frqm, int octaves);
-
 #endif // NOISE_HPP

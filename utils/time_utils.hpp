@@ -1,7 +1,8 @@
-#ifndef GAME_UTILS_HPP
-#define GAME_UTILS_HPP
+#ifndef TIME_UTILS_HPP
+#define TIME_UTILS_HPP
 
 #include <optional>
+#include <vector>
 #include "vaslib/vas_time.hpp"
 
 
@@ -20,7 +21,7 @@ struct SmoothSwitch
 	TimeSpan min_sus = {}; ///< Minimal time value is sustained at 1
 	
 	SmoothSwitch(TimeSpan tmo = {}, std::optional<TimeSpan> tmo_out = {});
-	void set(TimeSpan tmo, std::optional<TimeSpan> tmo_out = {});
+	void reset(TimeSpan tmo, std::optional<TimeSpan> tmo_out = {});
 	
 	void step(TimeSpan passed, bool enabled);
 	
@@ -35,4 +36,4 @@ private:
 	void set_v(float v);
 };
 
-#endif // GAME_UTILS_HPP
+#endif // TIME_UTILS_HPP

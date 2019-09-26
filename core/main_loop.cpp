@@ -1,4 +1,3 @@
-#include <future>
 #include <mutex>
 #include <thread>
 #include "client/level_map.hpp"
@@ -8,17 +7,14 @@
 #include "game/game_core.hpp"
 #include "game/level_ctr.hpp"
 #include "game/level_gen.hpp"
-#include "game/player.hpp"
 #include "game/player_mgr.hpp"
 #include "game/s_objs.hpp"
 #include "render/camera.hpp"
 #include "render/control.hpp"
-#include "render/particles.hpp"
 #include "render/postproc.hpp"
 #include "render/ren_aal.hpp"
 #include "render/ren_imm.hpp"
-#include "utils/noise.hpp"
-#include "vaslib/vas_cpp_utils.hpp"
+#include "utils/time_utils.hpp"
 #include "vaslib/vas_log.hpp"
 #include "main_loop.hpp"
 
@@ -237,13 +233,15 @@ public:
 	};
 	std::optional<GP_Init> gp_init;
 	
+	bool use_gamepad = false;
+	
 	bool ph_debug_draw = false;
 	vigAverage dbg_serv_avg;
 	RAII_Guard dbg_serv_g;
 	
-	bool use_gamepad = false;
-	
 	std::unique_ptr<LevelMap> lmap;
+	
+	const float cam_default_mag = 18.f;
 	TimeSpan cam_telep_tmo;
 	
 	
@@ -262,7 +260,7 @@ public:
 		
 		Camera* cam = RenderControl::get().get_world_camera();
 		Camera::Frame cf = cam->get_state();
-		cf.mag = 18.f;
+		cf.mag = cam_default_mag;
 		cam->set_state(cf);
 		
 		// controls
@@ -323,7 +321,7 @@ public:
 			{
 				Camera* cam = RenderControl::get().get_world_camera();
 				Camera::Frame cf = cam->get_state();
-				cf.mag = aequ(cf.mag, 18, 0.1) ? 10.f : 18.f;
+				cf.mag = aequ(cf.mag, cam_default_mag, 0.1) ? 10.f : cam_default_mag;
 				cam->set_state(cf);
 			}
 			else if (k == SDL_SCANCODE_F4)
@@ -367,11 +365,11 @@ public:
 			
 			if (auto ent = core->get_pmg().get_ent())
 			{
-				const float tar_min = 2.f;
-				const float tar_max = 15.f;
-				const float per_second = 0.1 / TimeSpan::fps(60).seconds();
-				
 				auto cam = RenderControl::get().get_world_camera();
+				
+				const float tar_min = GameConst::hsz_rat * 2;
+				const float tar_max = 15.f * (cam_default_mag / cam->get_state().mag);
+				const float per_second = 0.08 / TimeSpan::fps(60).seconds();
 				
 				const vec2fp pos = ent->get_phy().get_pos();
 				vec2fp tar = pos;
@@ -388,7 +386,7 @@ public:
 				
 				auto frm = cam->get_state();
 				
-				const vec2fp scr = cam->mouse_cast(RenderControl::get_size()) - cam->mouse_cast({}) / 2;
+				const vec2fp scr = cam->coord_size() / 2;
 				const vec2fp tar_d = (tar - frm.pos);
 				
 				if (std::fabs(tar_d.x) > scr.x || std::fabs(tar_d.y) > scr.y)
@@ -411,8 +409,10 @@ public:
 				}
 				else
 				{
+					vec2fp dt = (tar - frm.pos) * (per_second * passed.seconds());
+					
 					cam_telep_tmo = {};
-					frm.pos = lerp(frm.pos, tar, per_second * passed.seconds());
+					frm.pos += dt;
 					cam->set_state(frm);
 				}
 			}
