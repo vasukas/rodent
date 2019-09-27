@@ -310,6 +310,7 @@ void PlayerLogic::step()
 		}
 		else if (a == PlayerController::A_WPN_1) eqp.set_wpn(0);
 		else if (a == PlayerController::A_WPN_2) eqp.set_wpn(1);
+		else if (a == PlayerController::A_WPN_3) eqp.set_wpn(2);
 		else if (a == PlayerController::A_LASER_DESIG)
 			self->ren.show_ray = !self->ren.show_ray;
 	}
@@ -394,5 +395,6 @@ PlayerEntity::PlayerEntity(vec2fp pos, std::shared_ptr<PlayerController> ctr)
 	
 	eqp.wpns.emplace_back( Weapon::create_std(WeaponIndex::Minigun) );
 	eqp.wpns.emplace_back( Weapon::create_std(WeaponIndex::Rocket) );
+	eqp.wpns.emplace_back( Weapon::create_std(WeaponIndex::Electro) );
 	eqp.set_wpn(0);
 }

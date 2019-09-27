@@ -78,6 +78,14 @@ void EC_Equipment::step()
 		if (auto m = wpn->get_rof()) if (!m->ok()) m->wait -= GameCore::step_len;
 		has_shot = false;
 	}
+	
+	for (auto& wpn : wpns)
+	{
+		if (wpn.get() != wpn_ptr()) {
+			if (auto m = wpn->get_rof())
+				if (!m->ok()) m->wait -= GameCore::step_len;
+		}
+	}
 }
 bool EC_Equipment::shoot(vec2fp target)
 {
@@ -85,13 +93,14 @@ bool EC_Equipment::shoot(vec2fp target)
 	
 	auto wpn = wpn_ptr();
 	if (!wpn || !wpn->is_ready()) return false;
-	wpn->shoot(ent, target);
+	
+	has_shot = true;
+	if (!wpn->shoot(ent, target)) return false;
 	
 	if (auto m = wpn->get_rof()) m->shoot();
 	if (auto m = wpn->get_heat()) m->shoot();
 	if (auto m = wpn->get_ammo(); m && !infinite_ammo) m->shoot();
 	
-	has_shot = true;
 	return true;
 }
 bool EC_Equipment::set_wpn(size_t index)
@@ -103,7 +112,6 @@ bool EC_Equipment::set_wpn(size_t index)
 	{
 		bool ok = true;
 		if (auto m = wpn->get_heat()) ok &= m->ok();
-		if (auto m = wpn->get_rof())  ok &= m->ok();
 		
 		if (!ok)
 		{
@@ -140,8 +148,10 @@ bool EC_Equipment::set_wpn(size_t index)
 		auto rc = ent->get_ren();
 		if (rc) {
 			Weapon::RenInfo ri = wpn->get_reninfo();
+			int w_hand = ri.hand ? *ri.hand : hand;
+			
 			float r = ent->get_phy().get_radius();
-			rc->attach( ECompRender::ATT_WEAPON, Transform{vec2fp(r, r/2 * hand)}, ri.model, FColor(1, 0.4, 0, 1) );
+			rc->attach( ECompRender::ATT_WEAPON, Transform{vec2fp(r, r/2 * w_hand)}, ri.model, FColor(1, 0.4, 0, 1) );
 		}
 	}
 	return true;
@@ -379,7 +389,7 @@ public:
 		heat.shots_per_second = 30;
 		heat.thr_off = 0.1;
 	}
-	void shoot(Entity* ent, vec2fp target) override
+	bool shoot(Entity* ent, vec2fp target) override
 	{
 		vec2fp p = ent->get_phy().get_pos();
 		vec2fp v = target - p;
@@ -391,6 +401,7 @@ public:
 		v.rotate( GameCore::get().get_random().range(-1, 1) * deg_to_rad(10) );
 
 		new ProjectileEntity(p, v, ent, pars, MODEL_MINIGUN_PROJ, FColor(1, 1, 0.2, 1.5));
+		return true;
 	}
 	float get_bullet_speed() const override {return 18.f;}
 	ModAmmo* get_ammo() override {return &ammo;}
@@ -419,7 +430,7 @@ public:
 		pars.imp = 80.f;
 		pars.trail = true;
 	}
-	void shoot(Entity* ent, vec2fp target) override
+	bool shoot(Entity* ent, vec2fp target) override
 	{
 		vec2fp p = ent->get_phy().get_pos();
 		vec2fp v = target - p;
@@ -430,11 +441,234 @@ public:
 		v *= get_bullet_speed();
 		
 		new ProjectileEntity(p, v, ent, pars, MODEL_ROCKET_PROJ, FColor(0.2, 1, 0.6, 1.5));
+		return true;
 	}
 	float get_bullet_speed() const override {return 15.f;}
 	ModRof* get_rof() override {return &rof;}
 	ModAmmo* get_ammo() override {return &ammo;}
 	RenInfo get_reninfo() const override {return {"Rocket", MODEL_ROCKET};}
+};
+
+
+
+#include "render/ren_aal.hpp"
+
+class ElectroCharge : public Entity
+{
+public:
+	struct SrcParams
+	{
+		size_t team;
+		std::vector <Entity*> prev = {};
+		
+		bool ignore(Entity* ent)
+		{
+			auto it = std::find(prev.begin(), prev.end(), ent);
+			bool ign = it != prev.end() || ent->get_team() == team;
+			if (!ign) prev.push_back(ent);
+			return ign;
+		}
+	};
+	struct RenComp : ECompRender
+	{
+		struct Line {
+			vec2fp a, b;
+			float r;
+		};
+		std::vector<Line> ls;
+		float t = 1, tps;
+		
+		RenComp(Entity* ent, std::vector<Line> ls, TimeSpan lt)
+		    : ECompRender(ent), ls(std::move(ls)), tps(1.f / lt.seconds())
+		{}
+		void step() override
+		{
+			// aal width - 3
+			for (auto& l : ls)
+				RenAAL::get().draw_line(l.a, l.b, FColor(0.6, 0.85, 1).to_px(), 0.1f, l.r * 5.f, l.r * t * 2.5);
+			t -= tps * GamePresenter::get()->get_passed().seconds();
+		}
+	};
+	
+	static constexpr float radius = 10.f;
+	
+	static std::vector<RenComp::Line> gen_ls(vec2fp a, vec2fp b, bool add)
+	{
+		const float min_len = 0.7;
+		const float min_squ = min_len * min_len;
+		
+		std::vector<RenComp::Line> ls;
+		ls.reserve(64);
+		
+		if (add) {
+			auto rvec = [] {
+				vec2fp p(rnd_stat().range(0.2, 1), 0);
+				p.fastrotate( rnd_stat().range(-M_PI, M_PI) );
+				return p;
+			};
+			ls.push_back({a, b + rvec(), 0.5});
+			ls.push_back({a, b + rvec(), 0.1});
+		}
+		ls.push_back({a, b, 1});
+		
+		for (size_t i=0; i<ls.size(); ++i)
+		{
+			auto& ln = ls[i];
+			float sl = ln.a.dist_squ(ln.b);
+			if (sl > min_squ)
+			{
+				float d = rnd_stat().range(0.2, 0.8);
+				float rot_k = std::max(min_len / std::sqrt(sl), 0.4f);
+				
+				vec2fp c = (ln.b - ln.a) * d;
+				c.fastrotate( rnd_stat().range(-M_PI_2, M_PI_2) * rot_k );
+				c += ln.a;
+				
+				vec2fp nb = ln.b;
+				ln.b = c;
+				ls.push_back({c, nb, ln.r});
+			}
+		}
+		
+		return ls;
+	}
+	static bool generate(vec2fp pos, SrcParams src, vec2fp dir_lim, bool is_first)
+	{
+		PhysicsWorld::CastFilter check(
+			[](auto, b2Fixture* f)
+			{
+				if (f->IsSensor())
+				{
+					if (auto fi = getptr(f); fi && fi->get_armor_index()) return true;
+					return false;
+				}
+				return true;
+			},
+			[]{
+				b2Filter f;
+				f.categoryBits = EC_Physics::CF_BULLET;
+				f.maskBits = ~f.categoryBits;
+				return f;
+			}(),
+			false
+		);
+		std::vector<PhysicsWorld::CastResult> rs;
+		GameCore::get().get_phy().circle_cast_all(rs, conv(pos), radius, check);
+		
+		std::vector<std::pair<vec2fp, std::vector<RenComp::Line>>> n_cs;
+		
+		struct Res
+		{
+			EC_Health* hc;
+			vec2fp poi;
+			std::optional<size_t> armor;
+		};
+		std::vector<Res> rs_o;
+		rs_o.reserve(16);
+		
+		for (auto& r : rs)
+		{
+			if (src.ignore(r.ent)) continue;
+			
+			auto hc = r.ent->get_hlc();
+			if (!hc) continue;
+			
+			auto rc = GameCore::get().get_phy().raycast_nearest(conv(pos), conv(r.ent->get_pos()),
+				{[&](auto ent, auto fix){
+			         FixtureInfo* f = getptr(fix);
+			         return ent == r.ent || (f && (f->typeflags & FixtureInfo::TYPEFLAG_WALL));}});
+			vec2fp r_poi = rc? conv(rc->poi) : r.ent->get_pos();
+			if (dot(dir_lim, (pos - r_poi).get_norm()) > -0.2) continue;
+			
+			auto& ro = rs_o.emplace_back();
+			ro.hc = hc;
+			ro.poi = r_poi;
+			if (r.fix) ro.armor = r.fix->get_armor_index();
+		}
+		
+		const size_t max_tars = 2;
+		if (rs_o.size() > max_tars)
+		{
+			for (size_t i=0; i<rs_o.size(); ++i)
+				std::swap(rs_o[i], rnd_stat().random_el(rs_o));
+		}
+		
+		for (size_t i=0; i < std::min(max_tars, rs_o.size()); ++i)
+		{
+			auto& r = rs_o[i];
+			
+			DamageQuant q;
+			q.type = DamageType::Kinetic;
+			q.amount = 20;
+			q.wpos = r.poi;
+			q.armor = r.armor;
+			r.hc->apply(q);
+			
+			auto& n = n_cs.emplace_back();
+			n.first = r.poi;
+			n.second = gen_ls(pos, n.first, is_first);
+			
+			GamePresenter::get()->effect(FE_HIT_SHIELD, {Transform{r.poi}, 6});
+		}
+		
+		for (auto& n : n_cs)
+			new ElectroCharge(n.first, src, std::move(n.second), (n.first - pos).get_norm());
+		
+		return !n_cs.empty();
+	}
+	
+	TimeSpan left = TimeSpan::seconds(0.3);
+	EC_VirtualBody phy;
+	RenComp ren;
+	SrcParams src;
+	vec2fp dir_lim;
+	
+	ElectroCharge(vec2fp pos, SrcParams src, std::vector<RenComp::Line> ls, vec2fp dir_lim)
+		: phy(this, Transform{pos}), ren(this, std::move(ls), left), src(src), dir_lim(dir_lim)
+	{
+		reg();
+	}
+	ECompPhysics& get_phy() override {return phy;}
+	ECompRender* get_ren() override {return &ren;}
+	void step() override
+	{
+		left -= GameCore::step_len;
+		if (left.is_negative())
+		{
+			generate(phy.get_pos(), src, dir_lim, false);
+			destroy();
+		}
+	}
+};
+
+
+
+class WpnElectro : public Weapon
+{
+public:
+	ModRof rof;
+	ModAmmo ammo;
+	
+	WpnElectro()
+	    :
+	    rof(TimeSpan::seconds(0.3)),
+	    ammo(WeaponIndex::Electro, 1, 60, 20)
+	{}
+	bool shoot(Entity* ent, vec2fp target) override
+	{
+		vec2fp p = ent->get_phy().get_pos();
+		vec2fp v = target - p;
+		
+		v.norm();
+		p += v * ent->get_phy().get_radius();
+		
+		return ElectroCharge::generate(p, {ent->get_team()}, v, true);
+	}
+	
+	float get_bullet_speed() const override {return 0;}
+	ModRof* get_rof() override {return &rof;}
+	ModAmmo* get_ammo() override {return &ammo;}
+	RenInfo get_reninfo() const override {return {"E-Chain", MODEL_ELECTRO, 0};}
 };
 
 
@@ -449,11 +683,13 @@ Weapon* Weapon::create_std(WeaponIndex i)
 	case WeaponIndex::Rocket:
 		return new WpnRocket;
 		
+	case WeaponIndex::Electro:
+		return new WpnElectro;
+		
 	case WeaponIndex::Bat:
 	case WeaponIndex::Handgun:
 	case WeaponIndex::Bolter:
 	case WeaponIndex::Grenade:
-	case WeaponIndex::Electro:
 		throw std::logic_error("Weapon::create_std() not implemented");
 	}
 	throw std::logic_error("Weapon::create_std() invalid index");

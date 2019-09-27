@@ -28,8 +28,8 @@ public:
 	static Weapon* create_std(WeaponIndex i);
 	virtual ~Weapon() = default;
 	
-	/// Must never fail
-	virtual void shoot(Entity* ent, vec2fp target) = 0;
+	/// May fail, but shouldn't
+	virtual bool shoot(Entity* src_ent, vec2fp target) = 0;
 	
 	/// Average, meters per second
 	virtual float get_bullet_speed() const = 0;
@@ -43,6 +43,7 @@ public:
 	{
 		std::string name;
 		ModelType model;
+		std::optional<int> hand = {};
 	};
 	
 	struct ModRof
@@ -98,7 +99,7 @@ protected:
 
 struct EC_Equipment : EComp
 {
-	std::vector<std::unique_ptr<Weapon>> wpns;
+	std::vector<std::unique_ptr<Weapon>> wpns; ///< Must contain no nulls
 	int hand = 1; // 1 right, 0 center, -1 left
 	
 	/// If true, ammo not consumed for any weapon
