@@ -73,6 +73,7 @@ enum FreeEffect
 	FE_SHOT_DUST,
 	FE_SPEED_DUST,
 	FE_SPAWN,
+	FE_WPN_CHARGE,
 	
 	FE_TOTAL_COUNT_INTERNAL ///< Do not use
 };

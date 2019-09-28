@@ -114,12 +114,12 @@ public:
 //			const vec2i el_off = vec2i::one(4);
 			
 			auto eqp = plr_ent->get_eqp();
-			for (auto& wpn : eqp->wpns)
+			for (auto& wpn : eqp->raw_wpns())
 			{
 				bool is_cur = wpn.get() == eqp->wpn_ptr();
 				if (!is_cur && !wpn_menu) continue;
 				
-				auto ri = wpn->get_reninfo();
+				auto& ri = *wpn->info;
 				
 				vec2i pos, size = el_size;
 				vig_lo_place(pos, size);
@@ -127,13 +127,17 @@ public:
 //				auto mpars = fit_rect( ResBase::get().get_size(ri.model), el_size - el_off );
 //				RenAAL::get().draw_inst(Transform{pos + mpars.second}, FColor(), ri.model);
 				
+				EC_Equipment::Ammo* ammo;
+				if (wpn->info->ammo == AmmoType::None) ammo = nullptr;
+				else ammo = &eqp->get_ammo(wpn->info->ammo);
+				
 				uint32_t clr;
 				if (is_cur)
 				{
-					if (auto m = wpn->get_ammo(); m && !m->ok()) clr = 0xff0000ff;
+					if (ammo && !eqp->has_ammo(*wpn)) clr = 0xff0000ff;
 					else clr = 0x00ff00ff;
 				}
-				else if (auto m = wpn->get_ammo(); m && !m->ok()) clr = 0xff0000ff;
+				else if (ammo && !eqp->has_ammo(*wpn)) clr = 0xff0000ff;
 				else clr = 0xff8000ff;
 				RenImm::get().draw_frame(Rectfp{pos, el_size, true}, clr, 2);
 				
@@ -142,21 +146,21 @@ public:
 				
 				s += ri.name;
 				
-				if (auto m = wpn->get_ammo())
+				if (ammo)
 				{
 					if (eqp->infinite_ammo) s += "\nAMMO CHEAT ENABLED";
-					else s += FMT_FORMAT("\nAmmo: {} / {}", static_cast<int>(m->cur), static_cast<int>(m->max));
+					else s += FMT_FORMAT("\nAmmo: {} / {}", int_round(ammo->value), int_round(ammo->max));
 				}
 				if (is_cur)
 				{
-					if (auto m = wpn->get_heat())
+					if (auto& m = wpn->overheat)
 					{
-						if (!m->ok()) s += "\nCOOLDOWN";
+						if (!m->is_ok()) s += "\nCOOLDOWN";
 						else if (m->value > 0.5) s += "\nOverheat";
 						else s += "\n ";
 					}
-					if (auto m = wpn->get_rof();
-					    m && m->delay > TimeSpan::seconds(0.5) && !m->ok()) s += "\nReload";
+//					if (auto m = wpn->get_rof();
+//					    m && m->delay > TimeSpan::seconds(0.5) && !m->ok()) s += "\nReload";
 				}
 				
 				vig_label(s);

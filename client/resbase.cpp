@@ -297,6 +297,32 @@ void ResBase_Impl::init_ren()
 			p.decel_to_zero();
 		}
 	};
+	struct WpnCharge : ParticleGroupGenerator
+	{
+		ParticleBatchPars bp;
+		
+		size_t begin(const ParticleBatchPars& pars, ParticleParams& p)
+		{
+			bp = pars;
+			p.px = bp.tr.pos.x;
+			p.py = bp.tr.pos.y;
+			p.size = 0.12;
+			return bp.power * 5;
+		}
+		void gen(ParticleParams& p)
+		{
+			p.lt = rnd_stat().range(0.5, 1.5);
+			p.ft = rnd_stat().range(0.5, 1);
+			
+			p.clr = bp.clr;
+			for (int i=0; i<3; ++i) p.clr[i] += 0.1 * rnd_stat().range_n2();
+			
+			vec2fp vel(rnd_stat().range(1, 4), 0);
+			vel.fastrotate( bp.tr.rot + deg_to_rad(70) * rnd_stat().normal_fixed() );
+			p.vx = vel.x;
+			p.vy = vel.y;
+		}
+	};
 
 
 
@@ -356,6 +382,9 @@ void ResBase_Impl::init_ren()
 		ld_es[FE_SPAWN].reset(g);
 		
 		g->implode = true;
+	}{
+		auto g = new WpnCharge;
+		ld_es[FE_WPN_CHARGE].reset(g);
 	}
 	
 	

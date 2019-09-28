@@ -2,6 +2,7 @@
 #include "vaslib/vas_log.hpp"
 #include "game_core.hpp"
 #include "player.hpp"
+#include "weapon_all.hpp"
 
 #include "render/camera.hpp"
 #include "render/control.hpp"
@@ -291,26 +292,26 @@ void PlayerLogic::step()
 	
 	// actions
 	
-	bool accel    = cst.is[PlayerController::A_ACCEL];
-	bool shooting = cst.is[PlayerController::A_SHOOT];
+	bool accel = cst.is[PlayerController::A_ACCEL];
 	
 	for (auto& a : cst.acts)
 	{
 		if		(a == PlayerController::A_WPN_PREV)
 		{
-			size_t i = eqp.wpn_index();
-			if (i != size_t_inval && i) --i;
-			eqp.set_wpn(i);
+			auto i = eqp.wpn_index();
+			if (i && *i) eqp.set_wpn(*i-1);
 		}
 		else if (a == PlayerController::A_WPN_NEXT)
 		{
-			size_t i = eqp.wpn_index();
-			if (i != size_t_inval && i != eqp.wpns.size() - 1) ++i;
-			eqp.set_wpn(i);
+			auto i = eqp.wpn_index();
+			if (i && *i != eqp.raw_wpns().size() - 1) eqp.set_wpn(*i+1);
 		}
 		else if (a == PlayerController::A_WPN_1) eqp.set_wpn(0);
 		else if (a == PlayerController::A_WPN_2) eqp.set_wpn(1);
 		else if (a == PlayerController::A_WPN_3) eqp.set_wpn(2);
+		else if (a == PlayerController::A_WPN_4) eqp.set_wpn(3);
+		else if (a == PlayerController::A_WPN_5) eqp.set_wpn(4);
+		else if (a == PlayerController::A_WPN_6) eqp.set_wpn(5);
 		else if (a == PlayerController::A_LASER_DESIG)
 			self->ren.show_ray = !self->ren.show_ray;
 	}
@@ -325,9 +326,7 @@ void PlayerLogic::step()
 	prev_tar = tar;
 	
 	self->mov.upd_vel(cst.mov, accel, prev_tar);
-	
-	if (shooting)
-		eqp.shoot(tar);
+	eqp.try_shoot(tar, cst.is[PlayerController::A_SHOOT], cst.is[PlayerController::A_SHOOT_ALT]);
 	
 	// set rotation
 	
@@ -393,8 +392,17 @@ PlayerEntity::PlayerEntity(vec2fp pos, std::shared_ptr<PlayerController> ctr)
 	pers_shld.reset(new DmgShield (150, 10, TimeSpan::seconds(2)));
 	hlc.add_prot(pers_shld, ARMI_PERSONAL_SHLD);
 	
-	eqp.wpns.emplace_back( Weapon::create_std(WeaponIndex::Minigun) );
-	eqp.wpns.emplace_back( Weapon::create_std(WeaponIndex::Rocket) );
-	eqp.wpns.emplace_back( Weapon::create_std(WeaponIndex::Electro) );
+	eqp.infinite_ammo = false;
+	eqp.hand = 1;
+	
+	eqp.get_ammo(AmmoType::Bullet).add(200);
+	eqp.get_ammo(AmmoType::Rocket).add(12);
+	eqp.get_ammo(AmmoType::Energy).add(40);
+	
+	eqp.add_wpn(new WpnMinigun);
+	eqp.add_wpn(new WpnRocket);
+	eqp.add_wpn(new WpnElectro);
+	eqp.add_wpn(new WpnFoam);
+	eqp.add_wpn(new WpnRifle);
 	eqp.set_wpn(0);
 }

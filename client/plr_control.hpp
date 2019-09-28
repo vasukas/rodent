@@ -96,6 +96,8 @@ public:
 		A_WPN_2,
 		A_WPN_3,
 		A_WPN_4,
+		A_WPN_5,
+		A_WPN_6,
 		
 		// internal
 		AX_MOV_Y_NEG,

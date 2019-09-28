@@ -1,6 +1,7 @@
 #include "utils/noise.hpp"
 #include "game_core.hpp"
 #include "s_objs.hpp"
+#include "weapon_all.hpp"
 
 
 EWall::EWall(const std::vector<std::vector<vec2fp>>& walls)
@@ -98,20 +99,9 @@ void ESupply::on_cnt(const CollisionEvent& ce)
 		auto eqp = ce.other->get_eqp();
 		if (!eqp) return;
 		
-		for (auto& w : eqp->wpns)
-		{
-			auto ammo = w->get_ammo();
-			if (!ammo) continue;
-			
-			if (ammo->type != std::get<AmmoPack>(val).type)
-				continue;
-			
-			if (!ammo->add(std::get<AmmoPack>(val).amount))
-				continue;
-			
+		auto& ap = std::get<AmmoPack>(val);
+		if (eqp->get_ammo(ap.type).add(ap.amount))
 			destroy();
-			break;
-		}
 	}
 }
 
@@ -137,10 +127,7 @@ ETurret::ETurret(vec2fp at, size_t team)
 	b2FixtureDef fd;
 	phy.add_circle(fd, GameConst::hsz_box_small, 1);
 	
-	eqp.infinite_ammo = true;
-	eqp.hand = 0;
-	
-	eqp.wpns.emplace_back( Weapon::create_std(WeaponIndex::Minigun) );
+	eqp.add_wpn(new WpnMinigun);
 	eqp.set_wpn(0);
 }
 
@@ -176,10 +163,7 @@ EEnemyDrone::EEnemyDrone(vec2fp at)
 	hlc.ph_k = 0.2;
 	hlc.hook(phy);
 	
-	eqp.infinite_ammo = true;
-	eqp.hand = 0;
-	
-	eqp.wpns.emplace_back( Weapon::create_std(WeaponIndex::Rocket) );
+	eqp.add_wpn(new WpnRocket);
 	eqp.set_wpn(0);
 	
 	logic.min_dist = 8;

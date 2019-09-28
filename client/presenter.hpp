@@ -18,6 +18,7 @@ struct PresCmdObjEffect;
 struct PresCmdEffect;
 struct PresCmdDbgRect;
 struct PresCmdDbgLine;
+struct PresCmdEffectFunc;
 struct PresCmdAttach;
 
 using PresCommand = std::variant
@@ -28,6 +29,7 @@ using PresCommand = std::variant
 	PresCmdEffect,
 	PresCmdDbgRect,
 	PresCmdDbgLine,
+	PresCmdEffectFunc,
 	PresCmdAttach
 >;
 
@@ -139,6 +141,9 @@ struct PresCmdDbgLine {
 	uint32_t clr;
 	float wid;
 };
+struct PresCmdEffectFunc {
+	std::function<bool(TimeSpan)> eff;
+};
 
 // non-standard
 struct PresCmdAttach {
@@ -175,6 +180,9 @@ public:
 	void dbg_line(vec2fp a, vec2fp b, uint32_t clr, float wid = 0.2f); ///< Displayed only for one logic step
 	void dbg_rect(Rectfp area, uint32_t clr); ///< Displayed only for one logic step
 	void dbg_rect(vec2fp ctr, uint32_t clr, float rad = 0.5f); ///< Displayed only for one logic step
+	
+	/// Temporary effect, must return false when should be destroyed
+	void add_effect(std::function<bool(TimeSpan passed)> eff);
 };
 
 #endif // GAME_PRESENTER_HPP

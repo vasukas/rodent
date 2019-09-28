@@ -100,6 +100,8 @@ public:
 	std::vector<std::pair<ECompRender*, PresCommand>> cmds;
 	
 	std::vector<PartDelay> part_del;
+	std::vector<std::function<bool(TimeSpan)>> ef_fs;
+	
 	std::vector<PresCmdDbgRect> dbg_rs;
 	std::vector<PresCmdDbgLine> dbg_ls;
 	
@@ -169,6 +171,12 @@ public:
 		RenImm::get().set_context(RenImm::DEFCTX_WORLD);
 		for (auto& d : dbg_rs) RenImm::get().draw_rect(d.dst, d.clr);
 		for (auto& d : dbg_ls) RenImm::get().draw_line(d.a, d.b, d.clr, d.wid);
+		
+		for (auto i = ef_fs.begin(); i != ef_fs.end(); )
+		{
+			if ((*i)(passed)) ++i;
+			else i = ef_fs.erase(i);
+		}
 	}
 	TimeSpan get_passed()
 	{
@@ -224,6 +232,11 @@ public:
 		reserve_more_block(dbg_ls, 64);
 		dbg_ls.emplace_back(c);
 	}
+	void operator()(PresCmdEffectFunc& c)
+	{
+		reserve_more_block(ef_fs, 128);
+		ef_fs.emplace_back(std::move(c.eff));
+	}
 	void operator()(PresCmdAttach& c)
 	{
 		reserve_more_block(cmds, 128);
@@ -245,6 +258,10 @@ void GamePresenter::dbg_rect(Rectfp area, uint32_t clr)
 void GamePresenter::dbg_rect(vec2fp ctr, uint32_t clr, float rad)
 {
 	dbg_rect(Rectfp::from_center(ctr, vec2fp::one(rad)), clr);
+}
+void GamePresenter::add_effect(std::function<bool(TimeSpan passed)> eff)
+{
+	if (eff) add_cmd(PresCmdEffectFunc{std::move(eff)});
 }
 
 

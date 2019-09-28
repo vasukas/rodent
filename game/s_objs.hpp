@@ -42,7 +42,7 @@ class ESupply final : public Entity
 public:
 	struct AmmoPack
 	{
-		WeaponIndex type;
+		AmmoType type;
 		float amount;
 	};
 	

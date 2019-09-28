@@ -168,7 +168,7 @@ PlayerController::PlayerController()
 		b.but = Gamepad::B_RIGHT;
 	}
 	
-	for (int i = A_WPN_1, cou = 0; i <= A_WPN_4; ++i, ++cou)
+	for (int i = A_WPN_1, cou = 0; i <= A_WPN_6; ++i, ++cou)
 	{
 		Bind& b = binds[i];
 		b.name = FMT_FORMAT("Weapon {}", cou + 1);

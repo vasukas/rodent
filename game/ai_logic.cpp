@@ -147,11 +147,11 @@ void AI_DroneLogic::step()
 		const float da = delta.angle();
 		
 		if (tar_pred.enabled) {
-			auto bs = ent->get_eqp()->get_wpn().get_bullet_speed();
+			auto bs = ent->get_eqp()->get_wpn().info->bullet_speed;
 			pos += tar_pred.correction(ti.dist, bs, ti.ent);
 		}
 		
-		ent->get_eqp()->shoot(pos);
+		ent->get_eqp()->try_shoot(pos, true, false);
 		if (auto r = ent->get_ren()) r->set_face(da);
 		
 		// maintain optimal distance

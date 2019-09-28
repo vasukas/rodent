@@ -23,8 +23,7 @@ enum : size_t
 {
 	TEAM_ENVIRON = 0, ///< Environment
 	TEAM_BOTS = 1,
-	TEAM_PLAYER = 2,
-	TEAM_FREEWPN = 3 ///< Weapon without source
+	TEAM_PLAYER = 2
 };
 
 #endif // COMMON_DEFS_HPP

@@ -101,6 +101,7 @@ SOURCES += \
 	game/player_mgr.cpp \
 	game/s_objs.cpp \
 	game/weapon.cpp \
+	game/weapon_all.cpp \
 	render/camera.cpp \
 	render/control.cpp \
 	render/gl_utils.cpp \
@@ -151,6 +152,7 @@ HEADERS += \
 	game/player_mgr.hpp \
 	game/s_objs.hpp \
 	game/weapon.hpp \
+	game/weapon_all.hpp \
 	render/camera.hpp \
 	render/control.hpp \
 	render/gl_utils.hpp \

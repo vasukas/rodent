@@ -141,8 +141,12 @@ void LevelControl::fin_init()
 			break;
 			
 		case SP_SUPPLY_RND:
-			if (GameCore::get().get_random().flag()) new ESupply(p.pos, {WeaponIndex::Minigun, 100.f});
-			else                                     new ESupply(p.pos, {WeaponIndex::Rocket,  10.f});
+			{
+				size_t n = GameCore::get().get_random().range_index(3);
+				if (n == 0) new ESupply(p.pos, {AmmoType::Bullet, 100.f});
+				if (n == 1) new ESupply(p.pos, {AmmoType::Rocket, 6.f});
+				if (n == 2) new ESupply(p.pos, {AmmoType::Energy, 15.f});
+			}
 			break;
 			
 		case SP_PLAYER:

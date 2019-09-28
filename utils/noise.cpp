@@ -3,7 +3,7 @@
 
 
 
-RandomGen::RandomGen(): d_real(0,1), d_norm(-1, 1) {}
+RandomGen::RandomGen(): d_real(0,1), d_norm(0, 1) {}
 bool RandomGen::flag()
 {
 	return range_n() < 0.5;
@@ -11,6 +11,10 @@ bool RandomGen::flag()
 double RandomGen::range_n()
 {
 	return d_real(gen);
+}
+double RandomGen::range_n2()
+{
+	return d_real(gen) * 2 - 1;
 }
 double RandomGen::range(double v0, double v1)
 {
@@ -23,6 +27,10 @@ size_t RandomGen::range_index(size_t num, size_t off)
 double RandomGen::normal()
 {
 	return d_norm(gen);
+}
+double RandomGen::normal_fixed()
+{
+	return std::max(-1., std::min(1., normal() / 3));
 }
 std::string RandomGen::save() const
 {
