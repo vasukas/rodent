@@ -211,6 +211,7 @@ private:
 	TimeSpan charge_tmo;
 	
 	std::optional<ShootResult> shoot(ShootParams pars) override;
+	std::optional<UI_Info> get_ui_info() override;
 };
 
 

@@ -50,7 +50,7 @@ struct PlayerMovement : EComp
 	bool accel_inf = false; ///< Hack - if true, acceleration is always available
 	
 	PlayerMovement(Entity* ent);
-	void upd_vel(vec2fp dir, bool is_accel, vec2fp look_pos);
+	void upd_vel(vec2fp dir, bool is_accel, vec2fp look_pos); ///< Must be called exactly once per step
 	
 	/// Returns if acceleration can be enabled and current charge value
 	std::pair<bool, float> get_t_accel() const {return {acc_flag, clampf_n(acc_val)};}
@@ -73,7 +73,7 @@ private:
 	const float acc_on_thr = 0.6;
 	
 	vec2fp tar_dir = {};
-	float inert_k = 0.5;
+	float inert_t = 0;
 	
 	void step() override;
 };
@@ -82,21 +82,27 @@ private:
 
 struct ShieldControl
 {
-	TimeSpan tmo; // death timeout (not used internally)
-	
 	ShieldControl(Entity& root, size_t armor_index);
 	void enable();
 	void disable();
 	
-	bool is_exist() const;
-	bool is_enabled() const;
 	DmgShield* get_ft() {return sh.get();}
+	bool is_enabled() {return !is_dead && sh->enabled;}
+	std::optional<TimeSpan> get_dead_tmo();
+	
+	/// Gets switch status, returns new switch status
+	bool step(bool sw_state);
 	
 private:
 	Entity& root;
 	size_t armor_index;
+	const Transform tr;
 	std::shared_ptr<DmgShield> sh;
 	b2Fixture* fix = nullptr;
+	
+	bool is_dead = true;
+	TimeSpan tmo;
+	TimeSpan inact_time;
 };
 
 
@@ -127,8 +133,8 @@ class PlayerEntity final : public Entity
 public:
 	enum
 	{
-		ARMI_PERSONAL_SHLD,
-		ARMI_SHLD_PROJ
+		ARMI_PERSONAL_SHLD = 0, ///< Filter
+		ARMI_SHLD_PROJ = 0 ///< Armor
 	};
 	
 	EC_Physics     phy;

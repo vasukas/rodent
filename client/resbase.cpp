@@ -323,6 +323,47 @@ void ResBase_Impl::init_ren()
 			p.vy = vel.y;
 		}
 	};
+	struct CircAura : ParticleGroupGenerator
+	{
+		ParticleBatchPars bp;
+		size_t i, num;
+		float rot_k;
+		
+		size_t begin(const ParticleBatchPars& pars, ParticleParams&)
+		{
+			bp = pars;
+			
+			i = 0;
+			num = (2 * M_PI * bp.rad) / 0.3;
+			rot_k = M_PI / num;
+			
+			return num;
+		}
+		void gen(ParticleParams& p)
+		{
+			float ttl = rnd_stat().range(0.5, 1.5);
+			float f_t = rnd_stat().range(0.1, 0.4);
+			
+			p.lt = ttl * f_t;
+			p.ft = ttl * (1 - f_t);
+			
+			p.clr = bp.clr;
+			for (int i=0; i<3; ++i) p.clr[i] += 0.2 * rnd_stat().range_n2();
+			
+			vec2fp vel(bp.rad, 0);
+			vel.fastrotate((i*2 + rnd_stat().range_n2()) * rot_k);
+			++i;
+			
+			p.px = bp.tr.pos.x + vel.x;
+			p.py = bp.tr.pos.y + vel.y;
+			
+			vel *= bp.power * (1 + 0.2 * rnd_stat().range_n2()) / bp.rad;
+			p.vx = vel.x;
+			p.vy = vel.y;
+			
+			p.size = rnd_stat().range(0.1, 0.3);
+		}
+	};
 
 
 
@@ -385,6 +426,9 @@ void ResBase_Impl::init_ren()
 	}{
 		auto g = new WpnCharge;
 		ld_es[FE_WPN_CHARGE].reset(g);
+	}{
+		auto g = new CircAura;
+		ld_es[FE_CIRCLE_AURA].reset(g);
 	}
 	
 	

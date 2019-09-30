@@ -112,6 +112,7 @@ struct DamageFilter
 struct DmgShield : DamageFilter
 {
 	bool enabled = true;
+	bool is_filter = true; // used only for rendering
 	
 	DmgShield(int capacity, int regen_per_second, TimeSpan regen_wait = TimeSpan::seconds(3));
 	void proc(EC_Health&, DamageQuant& q);

@@ -50,6 +50,11 @@ public:
 		void cool();
 	};
 	
+	struct UI_Info
+	{
+		std::optional<float> charge_t; ///< Current shot charge level, [0, 1]
+	};
+	
 	const Info* const info;
 	std::optional<Overheat> overheat; ///< Controlled by equip
 	
@@ -83,6 +88,9 @@ public:
 	/// Checks internal conditions. 
 	/// Default checks default ammo
 	virtual bool is_ready();
+	
+	virtual std::optional<UI_Info> get_ui_info() {return {};}
+	std::optional<TimeSpan> get_reload_timeout() const {if (rof_left.is_positive()) return rof_left; return {};}
 	
 private:
 	friend EC_Equipment;

@@ -100,7 +100,7 @@ public:
 			}
 			else
 			{
-				if (sh.tmo.is_positive()) vig_label_a("Ready in {:.3f}", sh.tmo.seconds());
+				if (auto t = sh.get_dead_tmo()) vig_label_a("Ready in {:.3f}", t->seconds());
 				else vig_label("Shield disabled");
 			}
 			vig_lo_next();
@@ -159,8 +159,16 @@ public:
 						else if (m->value > 0.5) s += "\nOverheat";
 						else s += "\n ";
 					}
-//					if (auto m = wpn->get_rof();
-//					    m && m->delay > TimeSpan::seconds(0.5) && !m->ok()) s += "\nReload";
+					if (auto m = wpn->info->def_delay; m && m > TimeSpan::seconds(0.5))
+					{
+						if (wpn->get_reload_timeout())
+							s += "\nReload";
+					}
+					if (auto m = wpn->get_ui_info())
+					{
+						if (m->charge_t)
+							s += FMT_FORMAT("\nCharge: {:3}%", int_round(*m->charge_t * 100));
+					}
 				}
 				
 				vig_label(s);

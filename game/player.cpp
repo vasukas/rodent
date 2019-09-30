@@ -95,7 +95,7 @@ PlayerMovement::PlayerMovement(Entity* ent)
 	: EComp(ent)
 {
 	reg(ECompType::StepPostUtil);
-	accel_ss.min_sus = TimeSpan::seconds(0.3);
+	accel_ss.min_sus = TimeSpan::seconds(0.2);
 }
 void PlayerMovement::upd_vel(vec2fp dir, bool is_accel, vec2fp look_pos)
 {
@@ -159,24 +159,33 @@ void PlayerMovement::upd_vel(vec2fp dir, bool is_accel, vec2fp look_pos)
 	if (vd.len_squ() > zero_thr) vd.norm_to( slide_k );
 	else vd = {};
 	
-	if (dir.x >  zero_thr && side_col[0]) {dir.x = 0; dir.y += vd.y;}
-	if (dir.y >  zero_thr && side_col[1]) {dir.y = 0; dir.x += vd.x;}
-	if (dir.x < -zero_thr && side_col[2]) {dir.x = 0; dir.y += vd.y;}
-	if (dir.y < -zero_thr && side_col[3]) {dir.y = 0; dir.x += vd.x;}
+	if (dir.x >  zero_thr && side_col[0]) dir.y += vd.y;
+	if (dir.y >  zero_thr && side_col[1]) dir.x += vd.x;
+	if (dir.x < -zero_thr && side_col[2]) dir.y += vd.y;
+	if (dir.y < -zero_thr && side_col[3]) dir.x += vd.x;
+	
+	if (dir.x >  zero_thr && side_col[0]) dir.x = 0;
+	if (dir.x < -zero_thr && side_col[2]) dir.x = 0;
+	if (dir.y >  zero_thr && side_col[1]) dir.y = 0;
+	if (dir.y < -zero_thr && side_col[3]) dir.y = 0;
 	
 	// move
 	
-	if (dir.len_squ() > zero_thr) {
-		dir.norm_to(*spd);
-		prev_dir = dir;
-	}
-	else dir = {};
+	const float in_tps = GameCore::time_mul / 1.5; // seconds
+	if (is_accel) inert_t = std::min(1.f, inert_t + in_tps);
+	else inert_t = std::max(0.f, inert_t - in_tps);
 	
-	tar_dir = dir;
-	inert_k = 1.f / (is_accel? 0.1 : 0.2);
+	if (dir.len_squ() > zero_thr)
+	{
+		dir.norm_to(*spd);
+		tar_dir = prev_dir = dir;
+	}
+	else tar_dir = {};
 }
 void PlayerMovement::step()
 {
+	const float inert_k = lerp(10, 3, inert_t);
+	
 	auto& body = ent->get_phobj().body;
 	b2Vec2 vel = body->GetLinearVelocity();
 	
@@ -200,45 +209,86 @@ void PlayerMovement::step()
 
 
 ShieldControl::ShieldControl(Entity& root, size_t armor_index)
-	: root(root), armor_index(armor_index)
+	: root(root), armor_index(armor_index), tr({root.get_phobj().get_radius() + GameConst::hsz_pshl.x, 0})
 {
 	sh.reset( new DmgShield(400, 40) );
 	root.get_hlc()->add_prot(sh, armor_index);
 }
 void ShieldControl::enable()
 {
-	if (fix) return;
+	if (!is_dead) return;
+	is_dead = false;
 	
-	const Transform tr{{root.get_phobj().get_radius() + GameConst::hsz_pshl.x, 0}};
+	sh->enabled = false;
+	sh->is_filter = false;
+	tmo = TimeSpan::seconds(0.7 * clampf(inact_time.seconds() / 5, 0.2, 1));
+	inact_time = {};
 	
 	b2FixtureDef fd;
 	fd.filter.maskBits = EC_Physics::CF_BULLET;
 	fd.isSensor = true;
 	fix = root.get_phobj().add_box(fd, GameConst::hsz_pshl, 0.1f, tr, new FixtureArmor(armor_index));
-	
-	root.get_ren()->attach(ECompRender::ATT_SHIELD, tr, MODEL_PC_SHLD, FColor(0.9, 0.9, 1, 1));
-	root.get_ren()->parts(MODEL_PC_SHLD, ME_AURA, {tr, 0.35, FColor(0.9, 0.9, 1, 2)});
 }
 void ShieldControl::disable()
 {
-	if (!fix) return;
+	if (is_dead) return;
+	is_dead = true;
 	
 	root.get_phobj().destroy(fix);
 	fix = nullptr;
 	
-	Transform tr{{root.get_phobj().get_radius() + GameConst::hsz_pshl.x, 0}};
-	float pow = sh->enabled? 0.4 : 1;
+	float pow = sh->get_hp().is_alive()? 0.4 : 2;
 	
 	root.get_ren()->detach(ECompRender::ATT_SHIELD);
-	root.get_ren()->parts(MODEL_PC_SHLD, ME_AURA, {tr, pow, FColor(0.9, 0.9, 1, sh->enabled? 2 : 5)});
+	root.get_ren()->parts(MODEL_PC_SHLD, ME_AURA, {tr, pow, FColor(0.9, 0.9, 1, sh->get_hp().is_alive()? 2 : 5)});
 }
-bool ShieldControl::is_exist() const
+std::optional<TimeSpan> ShieldControl::get_dead_tmo()
 {
-	return sh->enabled && sh->get_hp().is_alive();
+	std::optional<TimeSpan> t;
+	if (is_dead && tmo.is_positive()) t = tmo;
+	return t;
 }
-bool ShieldControl::is_enabled() const
+bool ShieldControl::step(bool sw_state)
 {
-	return fix;
+	if (is_dead)
+	{
+		inact_time += GameCore::step_len;
+		if (!tmo.is_negative())
+		{
+			tmo -= GameCore::step_len;
+			return false;
+		}
+		else if (sw_state) enable();
+	}
+	else
+	{
+		if (!tmo.is_negative())
+		{
+			tmo -= GameCore::step_len;
+			if (!sw_state)
+			{
+				tmo = {};
+				is_dead = true;
+			}
+			else if (tmo.is_negative())
+			{
+				sh->enabled = true;
+				root.get_ren()->parts(MODEL_PC_SHLD, ME_AURA, {tr, 0.35, FColor(0.9, 0.9, 1, 2)});
+				root.get_ren()->attach(ECompRender::ATT_SHIELD, tr, MODEL_PC_SHLD, FColor(0.9, 0.9, 1, 1));
+			}
+			else root.get_ren()->parts(MODEL_PC_SHLD, ME_AURA, {tr, 0.05, FColor(0.9, 0.9, 1, 0.3)});
+		}
+		else if (sh->enabled)
+		{
+			if (!sh->get_hp().is_alive())
+			{
+				disable();
+				tmo = TimeSpan::seconds(5);
+			}
+			else if (!sw_state) disable();
+		}
+	}
+	return sw_state;
 }
 
 
@@ -264,31 +314,7 @@ void PlayerLogic::step()
 	
 	// shield
 	
-	if (shlc.is_enabled())
-	{
-		if (!shlc.is_exist())
-		{
-			shlc.disable();
-			shlc.tmo.set_seconds(5);
-			ctr->set_switch(PlayerController::A_SHIELD_SW, false);
-		}
-		else if (!cst.is[PlayerController::A_SHIELD_SW])
-		{
-			shlc.disable();
-		}
-	}
-	else
-	{
-		if (!shlc.tmo.is_negative())
-		{
-			shlc.tmo -= GameCore::step_len;
-			ctr->set_switch(PlayerController::A_SHIELD_SW, false);
-		}
-		if (cst.is[PlayerController::A_SHIELD_SW] && shlc.tmo.is_negative())
-		{
-			shlc.enable();
-		}
-	}
+	ctr->set_switch(PlayerController::A_SHIELD_SW, shlc.step(cst.is[PlayerController::A_SHIELD_SW]));
 	
 	// actions
 	
@@ -385,12 +411,8 @@ PlayerEntity::PlayerEntity(vec2fp pos, std::shared_ptr<PlayerController> ctr)
 	hp.regen_cd = TimeSpan::seconds(0.7);
 	hp.regen_wait = TimeSpan::seconds(5);
 	
-	fd = {};
-	fd.isSensor = true;
-	phy.add_circle(fd, GameConst::hsz_rat + 0.2f, 1, new FixtureArmor(ARMI_PERSONAL_SHLD));
-	
 	pers_shld.reset(new DmgShield (150, 10, TimeSpan::seconds(2)));
-	hlc.add_prot(pers_shld, ARMI_PERSONAL_SHLD);
+	hlc.add_filter(pers_shld, ARMI_PERSONAL_SHLD);
 	
 	eqp.infinite_ammo = false;
 	eqp.hand = 1;

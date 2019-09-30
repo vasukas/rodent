@@ -34,7 +34,8 @@ struct ParticleBatchPars
 {
 	Transform tr = {};
 	float power = 1.f;
-	FColor clr = {1, 1, 1, 1};
+	FColor clr = {1,1,1,1};
+	float rad = 1.f;
 };
 
 

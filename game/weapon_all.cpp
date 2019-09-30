@@ -503,7 +503,7 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 		StdProjectile::explode(ent->get_team(), ent->index, conv(v), *hit, pp);
 		
 		ShootResult res = {max_ammo * charge_lvl, max_cd * charge_lvl};
-		charge_lvl = {};
+		charge_lvl = 0.f;
 		charge_tmo = {};
 		return res;
 	}
@@ -514,6 +514,16 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 		if (ok) return ShootResult{};
 	}
 	
+	return {};
+}
+std::optional<Weapon::UI_Info> WpnElectro::get_ui_info()
+{
+	if (charge_lvl > 0.f)
+	{
+		UI_Info inf;
+		inf.charge_t = charge_lvl;
+		return inf;
+	}
 	return {};
 }
 

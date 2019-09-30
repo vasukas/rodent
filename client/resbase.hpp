@@ -74,6 +74,7 @@ enum FreeEffect
 	FE_SPEED_DUST,
 	FE_SPAWN,
 	FE_WPN_CHARGE,
+	FE_CIRCLE_AURA,
 	
 	FE_TOTAL_COUNT_INTERNAL ///< Do not use
 };

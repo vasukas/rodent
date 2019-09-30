@@ -150,6 +150,7 @@ void EC_Health::rem(std::vector<std::shared_ptr<DamageFilter>>& fs, size_t i)
 void EC_Health::step()
 {
 	for (auto& f : pr_area) if (f) f->step(*this);
+	for (auto& f : fils)    if (f) f->step(*this);
 	hp.step();
 }
 
@@ -161,13 +162,35 @@ DmgShield::DmgShield(int capacity, int regen_per_second, TimeSpan regen_wait)
 	hp.set_hps(regen_per_second);
 	hp.regen_wait = regen_wait;
 }
-void DmgShield::proc(EC_Health&, DamageQuant& q)
+void DmgShield::proc(EC_Health& hlc, DamageQuant& q)
 {
 	if (!enabled || !hp.is_alive()) return;
+	auto dmg_ren = q.amount;
+	
 	hp.apply(-q.amount);
 	q.amount = 0;
 	
-	if (q.wpos) {
+	if (is_filter) {
+		auto& phy = hlc.ent->get_phy();
+		
+		ParticleBatchPars bp;
+		bp.tr = Transform{phy.get_pos()};
+		bp.rad = phy.get_radius() + 0.5f;
+		int times = 1;
+		
+		if (hp.is_alive()) {
+			bp.power = dmg_ren * 0.02f;
+			bp.clr = FColor(0.4, 1, 1, 0.5);
+		}
+		else {
+			bp.power = 3;
+			bp.clr = FColor(1, 0.5, 0.9, 2);
+			times = 3;
+		}
+		for (int i=0; i<times; ++i)
+		GamePresenter::get()->effect(FE_CIRCLE_AURA, bp);
+	}
+	else if (q.wpos) {
 		GamePresenter::get()->effect(FE_HIT_SHIELD, {Transform{*q.wpos}, hp.t_state() * 3.f});
 		q.wpos.reset();
 	}
