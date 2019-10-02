@@ -9,42 +9,15 @@
 
 
 
-struct PPF_Kuwahara : PP_Filter
-{
-	float r = 4.f;
-	bool dir = true;
-	
-	PPF_Kuwahara()
-	{
-		sh = RenderControl::get().load_shader( dir? "pp/kuwahara_dir" : "pp/kuwahara", {}, false );
-	}
-	void proc() override
-	{
-		int xr = r, yr = r;
-		sh->bind();
-		sh->set1i("x_radius", xr);
-		sh->set1i("y_radius", yr);
-		sh->set1f("samp_mul", 1. / ((xr+1) * (yr+1)) );
-		
-		auto sz = RenderControl::get_size();
-		sh->set2f("tc_size", sz.x, sz.y);
-		
-		draw(true);
-	}
-};
-
-
 struct PPF_Glowblur : PP_Filter
 {
-	static const int n_max = 8; // same as in shader
 	const float a = 12.f; // sigma
-	
 	int n = 3, n_old = -1;
 	int pass = 1;
 	
 	PPF_Glowblur()
 	{
-		sh = RenderControl::get().load_shader("pp/gauss", [this](Shader&){ n_old = -1; }, false);
+		sh = Shader::load_cb("pp/gauss", [this](Shader&){ n_old = -1; });
 	}
 	bool is_ok_int() override
 	{
@@ -57,8 +30,10 @@ struct PPF_Glowblur : PP_Filter
 		
 		if (n_old != n)
 		{
-			if (n > n_max) n = n_max;
-			n_old = n;
+			auto def = sh->get_def("KERN_SIZE");
+			
+			const int n_max = def ? std::atoi(def->value.c_str()) : 8;
+			n_old = n = std::min(n, n_max);
 			
 			int size = n*2+1;
 			float em = -1 / (2 * a * a);
@@ -95,7 +70,7 @@ struct PPF_Bleed : PP_Filter
 	
 	PPF_Bleed()
 	{
-		sh = RenderControl::get().load_shader("pp/bleed", {}, false);
+		sh = Shader::load("pp/bleed");
 	}
 	bool is_ok_int() override
 	{
@@ -122,10 +97,10 @@ struct PPF_Tint : PP_Filter
 	
 	PPF_Tint()
 	{
-		sh = RenderControl::get().load_shader("pp/tint", [this](Shader& sh){
+		sh = Shader::load_cb("pp/tint", [this](Shader& sh){
 		     sh.set_clr("mul", mul);
 		     sh.set_clr("add", add);
-		}, false);
+		});
 	}
 	bool is_ok_int() override
 	{
@@ -212,71 +187,68 @@ public:
 	{
 		auto g = RenderControl::get().get_ppg();
 		
-		g->add_node(new PPN_InputDraw("grid", [](auto fbo)
+		new PPN_InputDraw("grid", [](auto fbo)
 		{
 			RenAAL::get().render_grid(fbo);
-		}));
+		});
 		
-		g->add_node(new PPN_InputDraw("aal", [](auto fbo)
+		new PPN_InputDraw("aal", [](auto fbo)
 		{
 			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
 			glBlendEquation(GL_MAX);
 			
 			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 			RenAAL::get().render();
-		}));
+		});
 		
-		g->add_node(new PPN_InputDraw("parts", [](auto fbo)
+		new PPN_InputDraw("parts", [](auto fbo)
 		{
 			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
 			glBlendEquation(GL_FUNC_ADD);
 			
 			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 			ParticleRenderer::get().render();
-		}));
+		});
 		
-		g->add_node(new PPN_InputDraw("imm", [](auto fbo)
+		new PPN_InputDraw("imm", [](auto fbo)
 		{
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glBlendEquation(GL_FUNC_ADD);
 			
 			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-			RenImm::get().render_pre();
 			RenImm::get().render(RenImm::DEFCTX_WORLD);
-		}));
+		});
 		
-		g->add_node(new PPN_InputDraw("ui", [](auto fbo)
+		new PPN_InputDraw("ui", [](auto fbo)
 		{
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glBlendEquation(GL_FUNC_ADD);
 			
 			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 			RenImm::get().render(RenImm::DEFCTX_UI);
-			RenImm::get().render_post();
-		}));
+		});
 		
-		g->add_node(new PPN_OutputScreen);
+		new PPN_OutputScreen;
 		
 		std::vector<std::unique_ptr<PP_Filter>> fts;
 		{	
-			fts.emplace_back(new PPF_Kuwahara)->enabled = false;
 			fts.emplace_back(new PPF_Bleed)->enabled = true;
-			g->add_node (new PPN_Chain("E1", std::move(fts), []
+			new PPN_Chain("E1", std::move(fts), []
 			{
 				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 				glBlendEquation(GL_FUNC_ADD);
-			}));
+			});
 		}{
 			fts.emplace_back(new PPF_Glowblur)->enabled = true;
-			g->add_node (new PPN_Chain("E2", std::move(fts), []
+			new PPN_Chain("E2", std::move(fts), []
 			{
 				glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
 				glBlendEquation(GL_FUNC_ADD);
-			}));
+			});
 		}{
 			tint = new PPF_Tint;
 			fts.emplace_back(tint)->enabled = true;
-			g->add_node (new PPN_Chain("post", std::move(fts), {}));
+			new PPN_Chain("post", std::move(fts), {});
 		}
 		
 		g->connect("grid", "post", 1);

@@ -1,8 +1,7 @@
 // RenImm - simple texture triangles (for R8 texture)
 
-// ==================
-#vert
-#version 330 core
+//@vert
+#version 330
 
 uniform mat4 proj;
 
@@ -16,10 +15,10 @@ void main()
 	gl_Position = proj * vec4(data.xy, 0, 1);
 }
 
-#end
-// ==================
-#frag
-#version 330 core
+
+
+//@frag
+#version 330
 
 uniform sampler2D tex;
 uniform vec4 clr;
@@ -33,4 +32,3 @@ void main()
 	res = vec4(clr.rgb, clr.a * a);
 }
 
-#end

@@ -1,7 +1,6 @@
-// ==================
-#vert_pass
-#frag
-#version 330 core
+//@vert vert_pass
+//@frag
+#version 330
 
 uniform sampler2D tex;
 
@@ -15,4 +14,3 @@ void main() {
 	res = texture(tex, tc) * mul + add;
 }
 
-#end

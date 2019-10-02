@@ -1,8 +1,7 @@
 // ParticleRenderer
 
-// ==================
-#vert
-#version 330 core
+//@vert
+#version 330
 
 uniform mat4 proj;
 
@@ -29,10 +28,10 @@ void main() {
 	size = data[1].w;
 }
 
-#end
-// ==================
-#geom
-#version 330 core
+
+
+//@geom
+#version 330
 
 layout(points) in;
 layout(triangle_strip, max_vertices=4) out;
@@ -77,10 +76,10 @@ void main() {
 	EndPrimitive();
 }
 
-#end
-// ==================
-#frag
-#version 330 core
+
+
+//@frag
+#version 330
 
 in vec2 tc;
 in vec4 tclr;
@@ -91,4 +90,3 @@ void main() {
 	res = tclr * a;
 }
 
-#end

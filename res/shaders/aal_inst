@@ -1,8 +1,7 @@
 // RenAAL - "glowing" anti-aliased lines
 
-// ==================
-#vert
-#version 330 core
+//@vert
+#version 330
 
 uniform mat4 proj;
 uniform vec4 obj_tr;
@@ -25,10 +24,10 @@ void main()
 	gl_Position = proj * vec4(rot * data.xy + obj_tr.xy, 0, 1);
 }
 
-#end
-// ==================
-#frag
-#version 330 core
+
+
+//@frag
+#version 330
 
 uniform sampler2D tex;
 uniform vec4 clr;
@@ -47,4 +46,3 @@ void main()
 	res = clr * a;
 }
 
-#end

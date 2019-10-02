@@ -17,10 +17,9 @@ public:
 	const bool has_input;
 	const bool has_output;
 	
-	PP_Node(std::string name, bool has_input = true, bool has_output = true)
-		: name(std::move(name)), has_input(has_input), has_output(has_output)
-	{}
-	virtual ~PP_Node() = default;
+	
+	PP_Node(std::string name, bool has_input = true, bool has_output = true); ///< Adds self to PP_Graph
+	virtual ~PP_Node(); ///< Removes self from graph
 	
 	/// Called once before each step. Returns true if node is enabled
 	virtual bool prepare() = 0;
@@ -37,19 +36,20 @@ public:
 class PP_Graph
 {
 public:
-	/// Assumes ownership
-	virtual void add_node(PP_Node* node) = 0;
+	static PP_Graph& get(); ///< Returns singleton
 	
-	/// Enables connection between nodes. 
 	/// Output order - lower drawn earlier amongst providers for same target
 	virtual void connect(std::string output, std::string input, int order = 0) = 0;
 	
 protected:
 	friend class RenderControl_Impl;
-	static PP_Graph* create();
-	virtual ~PP_Graph() = default;
-	
+	static PP_Graph* init();
+	virtual ~PP_Graph();
 	virtual void render() = 0;
+	
+	friend PP_Node;
+	virtual void add_node(PP_Node* node) = 0;
+	virtual void del_node(PP_Node* node) = 0;
 };
 
 
@@ -58,6 +58,8 @@ protected:
 class PPN_Chain : public PP_Node
 {
 public:
+	bool enabled = true;
+	
 	// pre_draw is called before rendering to output buffer
 	PPN_Chain(std::string name, std::vector<std::unique_ptr<PP_Filter>> fts_in, std::function<void()> pre_draw_in);
 	
@@ -131,7 +133,7 @@ public:
 	virtual void proc() = 0;
 	
 	/// Is internal state ok
-	bool is_ok() {return sh && sh->get_obj() != 0 && is_ok_int();}
+	bool is_ok() {return sh && sh->is_ok() && is_ok_int();}
 	virtual bool is_ok_int() {return true;}
 	
 protected:

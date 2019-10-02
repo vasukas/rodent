@@ -94,7 +94,7 @@ public:
 	std::shared_ptr<GLA_Buffer> bufs[2];
 	std::vector<float> upd_data; // buffer data
 	
-	std::unique_ptr<Shader> sh_calc;
+	Shader* sh_calc = nullptr;
 	Shader* sh_draw = nullptr;
 	
 	struct Group {
@@ -111,15 +111,9 @@ public:
 	
 	ParticleRenderer_Impl()
 	{
-		auto load_calc = [this]()
+		sh_calc = Shader::load("ps_calc", true, false);
+		sh_calc->pre_link = [](Shader& sh)
 		{
-			auto src = readfile((Shader::load_path + "ps_calc").c_str());
-			GLuint vo = Shader::compile(GL_VERTEX_SHADER, src.value());
-			if (!vo) throw std::runtime_error("check log for details");
-			
-			GLuint prog = glCreateProgram();
-			glAttachShader(prog, vo);
-			
 			const char *vars[] = {
 			    "newd[0]",
 			    "newd[1]",
@@ -127,15 +121,9 @@ public:
 			    "newd[3]",
 			    "newd[4]"
 			};
-			glTransformFeedbackVaryings(prog, 5, vars, GL_INTERLEAVED_ATTRIBS);
-			
-			bool ok = Shader::link_fin(prog);
-			glDeleteShader(vo);
-			if (!ok) throw std::runtime_error("check log for details");
-			
-			sh_calc.reset(new Shader(prog));
-			sh_calc->dbg_name = "ps_calc";
+			glTransformFeedbackVaryings(sh.get_prog(), 5, vars, GL_INTERLEAVED_ATTRIBS);
 		};
+		sh_calc->rebuild();
 		
 		for (int i=0; i<2; ++i) {
 			bufs[i].reset( new GLA_Buffer(0) );
@@ -143,7 +131,7 @@ public:
 		}
 		
 		resize_bufs(0);
-		sh_draw = RenderControl::get().load_shader("ps_draw", [&](Shader&){load_calc();});
+		sh_draw = Shader::load("ps_draw", true);
 		
 		dbgm_g = vig_reg_menu(VigMenu::DebugRenderer, [this](){vig_label_a("Particles: {:5} / {:5}\n", gs_off_max, part_lim);});
 	}

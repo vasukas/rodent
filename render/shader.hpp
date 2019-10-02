@@ -11,39 +11,86 @@
 class Shader
 {
 public:
-	/// Used by load(), should contain trailing slash
-	static std::string load_path;
+	struct Define
+	{
+		std::string name;
+		std::string value; ///< Call rebuild() to apply changes
+		
+		bool is_src = false; ///< Set to true if was defined in shader (not used internally)
+		bool is_default = true; ///< Set to false if value shouldn't be replaced with default on reload
+	};
 	
-	/// Compiles shader object from source; returns 0 on fail
-	static GLuint compile( GLenum type, std::string_view str );
+	std::vector<Define> def_list; ///< Parameters, either specified by shader or added manually
 	
-	/// Links shader program; returns 0 on fail.
-	/// Doesn't delete shaders
-	static GLuint link( const std::vector< GLuint >& shaders );
-	
-	/// Links shader program with shaders already attached; returns 0 on fail (deleting program)
-	static GLuint link_fin( GLuint prog );
-	
-	/// Creates shader program; returns null on fail.
-	/// 'shaders' contain pairs of shader type and source code for it.
-	/// Convenience wrapper around compile() and link() for run-time generated shaders
-	static Shader* make( const char* dbg_name, const std::vector< std::pair< GLenum, std::string_view >>& shaders );
-	
-	/// Loads shader program from load path
-	static Shader* load( const char* short_filename );
+	std::function<void(Shader&)> on_reb; ///< Called on rebuild, shader is already bound
+	std::function<void(Shader&)> pre_link; ///< Called on rebuild between attaching shaders and linking
 	
 	
 	
-	std::string dbg_name;
+	/// Never returns null
+	static Shader* load(const char *name, bool is_critical = false, bool do_build = true);
 	
-	explicit Shader( GLuint prog );
-	~Shader(); ///< Destroys program object
+	/// Non-critical, sets on_reb and builds shader
+	static Shader* load_cb(const char *name, std::function<void(Shader&)> on_reb);
 	
-	void operator =( Shader&& sh );
-	GLuint get_obj();
+	const std::string& get_name() const {return name;}
+	bool is_ok() const {return prog;} ///< Returns true if can be used
 	
-	bool do_validate(); ///< Performs validation check
-	void bind();
+	Define* get_def(std::string_view name); ///< Returns define from 'def_list' or null if not found
+	GLuint get_prog() {return prog;} ///< May return 0
+	
+	bool rebuild(bool forced = true); ///< Just rebuilds program
+	bool reload(); ///< Loads shader sources and rebuilds program if needed
+	
+	void bind(); ///< Builds shader if not already
+	
+	void set1i(const char *name, int v);
+	void set1f(const char *name, float v);
+	void set2f(const char *name, float a, float b);
+	void set3f(const char *name, float x, float y, float z);
+	void set4f(const char *name, float r, float g, float b, float a);
+	void setfv(const char *name, const float *v, int n);
+	void set2mx(const char *name, const float *v, bool do_transpose = false);
+	void set3mx(const char *name, const float *v, bool do_transpose = false);
+	void set4mx(const char *name, const float *v, bool do_transpose = false);
+	void set_rgba(const char *name, uint32_t clr, float mul = 1.f);
+	void set_clr(const char *name, const FColor& clr);
+	void set2f(const char *name, const vec2fp& p);
+	
+	
+	
+private:
+	friend class RenderControl_Impl;
+	
+	struct DEL {void operator()(Shader* p){delete p;}};
+	static std::vector<std::unique_ptr<Shader, DEL>> sh_col;
+	
+	struct SingleShader
+	{
+		std::string name; ///< file name
+		GLenum type;
+		std::string full_name; ///< name with type
+		std::string src_version; ///< #version
+		std::string src_code;
+		std::vector<Define> defs;
+	};
+	
+	static std::shared_ptr<SingleShader> read_shader(std::vector<std::string_view>& lines, size_t& i, const std::string& full_name);
+	static std::shared_ptr<SingleShader> get_shd(GLenum type, std::string name);
+	
+	GLuint prog = 0; ///< Program object (can be 0)
+	std::vector<std::shared_ptr<SingleShader>> src; ///< Indices into 'sh_src'
+	
+	std::string name;
+	bool validate = false;
+	
+	
+	
+	Shader() = default;
+	~Shader() {reset_prog();}
+	void reset_prog();
+	
+	//
 	
 	/// Returns binding point or -1 if not found
 	GLint find_loc( const char *uniform_name );
@@ -59,29 +106,7 @@ public:
 	static void set4mx(int loc, const float *v, bool do_transpose = false);
 	static void set_rgba(int loc, uint32_t clr, float mul = 1.f);
 	static void set_clr(int loc, const FColor& clr);
-	
-	void set1i(const char *name, int v);
-	void set1f(const char *name, float v);
-	void set2f(const char *name, float a, float b);
-	void set3f(const char *name, float x, float y, float z);
-	void set4f(const char *name, float r, float g, float b, float a);
-	void setfv(const char *name, const float *v, int n);
-	void set2mx(const char *name, const float *v, bool do_transpose = false);
-	void set3mx(const char *name, const float *v, bool do_transpose = false);
-	void set4mx(const char *name, const float *v, bool do_transpose = false);
-	void set_rgba(const char *name, uint32_t clr, float mul = 1.f);
-	void set_clr(const char *name, const FColor& clr);
-	
-	void set2f(int loc, vec2fp p) { set2f(loc, p.x, p.y); }
-	void set2f(const char *name, vec2fp p) { set2f(name, p.x, p.y); }
-	
-private:
-	/// Program object (can be 0, though shouldn't)
-	GLuint prog;
-	
-	/// Set this to true to validate shader on next bind. 
-	/// Check requires Verbose log level and flag is reset after
-	bool validate = true;
+	static void set2f(int loc, const vec2fp& p);
 };
 
 #endif // SHADER_HPP

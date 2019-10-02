@@ -29,16 +29,9 @@ public:
 	enum CtxIndex
 	{
 		DEFCTX_WORLD, ///< Draws with RenderControl world camera to default framebuffer with imm* shaders
-//		DEFCTX_BACK,  ///< Same as DEFCTX_WORLD, but drawn before it
 		DEFCTX_UI,    ///< Same as DEFCTX_WORLD, but using RenderControl UI camera
 		
 		DEFCTX_NONE   ///< Doesn't draw anything
-	};
-	
-	/// Effect command
-	enum EffectCmd
-	{
-		EFF_POP ///< Disables last applied effect
 	};
 	
 	///

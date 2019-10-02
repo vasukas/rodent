@@ -72,14 +72,6 @@ public:
 	int max_tex_size = 1024;
 	Camera cam, cam_ui;
 	
-	struct ShaderInfo
-	{
-		std::unique_ptr <Shader> sh;
-		std::function <void(Shader&)> reload_cb;
-		bool is_crit;
-	};
-	std::unordered_map <std::string, ShaderInfo> shads;
-	
 	GLA_VertexArray* ndc_screen2_obj = nullptr;
 	
 	ParticleRenderer* r_part = nullptr;
@@ -119,10 +111,6 @@ public:
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, ctx_flags);
 		
 		SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
-//		SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
-//		SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
-//		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
-//		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
 		
 		auto wnd_sz = AppSettings::get().wnd_size;
 		nonfs_size = wnd_sz;
@@ -235,7 +223,7 @@ public:
 		INIT(r_part, ParticleRenderer);
 		
 		try {
-			pp_graph = PP_Graph::create();
+			pp_graph = PP_Graph::init();
 			pp_main = Postproc::init();
 			VLOGI("Postproc initialized");
 		}
@@ -261,7 +249,7 @@ public:
 		
 		delete r_text;
 		
-		shads.clear();
+		Shader::sh_col.clear();
 		delete ndc_screen2_obj;
 	
 		SDL_GL_DeleteContext( glctx );
@@ -314,7 +302,9 @@ public:
 			cam_ui.set_state(frm);
 			
 			try {
+				RenImm::get().render_pre();
 				pp_graph->render();
+				RenImm::get().render_post();
 			}
 			catch (std::exception& e) {
 				VLOGE("RenderControl::render() postproc failed: {}", e.what());
@@ -397,65 +387,10 @@ public:
 	{
 		return fs_cur;
 	}
-	Shader* load_shader( const char *name, std::function <void(Shader&)> reload_cb, bool is_crit )
-	{
-		std::string n = name;
-		
-		auto it = shads.find( n );
-		if (it == shads.end())
-		{
-			it = shads.emplace( n, ShaderInfo({ std::unique_ptr< Shader >( Shader::load(name) ), reload_cb, is_crit }) ).first;
-			auto& s = it->second.sh;
-			
-			if (!s.get())
-			{
-				if (it->second.is_crit)
-				{
-					if (shader_fail) crit_error = true;
-					reload_fail = true;
-				}
-				s.reset( new Shader (0) );
-			}
-			else if (reload_cb)
-			{
-				glUseProgram( s->get_obj() );
-				reload_cb( *s );
-			}
-		}
-		return it->second.sh.get();
-	}
 	void reload_shaders()
 	{
-		VLOGI("Reloading all shaders...");
-		reload_fail = false;
-		
-		for (auto &p : shads)
-		{
-			auto& s = p.second.sh;
-			auto n = Shader::load( p.first.data() );
-			
-			if (n)
-			{
-				*s = std::move( *n );
-				delete n;
-				
-				if (p.second.reload_cb)
-				{
-					glUseProgram( s->get_obj() );
-					p.second.reload_cb( *s );
-				}
-			}
-			else
-			{
-				if (s->get_obj())
-					*s = Shader( 0 );
-				
-				if (p.second.is_crit)
-					reload_fail = true;
-			}
-		}
-		
-		if (reload_fail) VLOGW("Reload failed, renderer disabled");
+		for (auto& s : Shader::sh_col)
+			s->reload();
 	}
 	GLA_VertexArray& ndc_screen2()
 	{

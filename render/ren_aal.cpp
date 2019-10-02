@@ -276,8 +276,8 @@ public:
 		auto buf = std::make_shared<GLA_Buffer>(0);
 		vao.set_attribs({ {buf, 4}, {buf, 3} });
 		
-		sh      = RenderControl::get().load_shader("aal");
-		sh_inst = RenderControl::get().load_shader("aal_inst");
+		sh      = Shader::load("aal", true);
+		sh_inst = Shader::load("aal_inst", true);
 		
 		const int n = 200;
 		float data[n];
@@ -310,7 +310,7 @@ public:
 		
 		// for grid
 		
-		fbo_sh = RenderControl::get().load_shader("pp/aal_grid", [](Shader& sh){ sh.set1i("noi", 1); });
+		fbo_sh = Shader::load_cb("pp/aal_grid", [](Shader& sh){ sh.set1i("noi", 1); });
 		fbo_g = RenderControl::get().add_size_cb([this]{ fbo_clr.set(GL_RGBA, RenderControl::get_size(), 0, 4); }, true);
 
 		fbo.bind();

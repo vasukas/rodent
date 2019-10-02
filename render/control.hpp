@@ -11,7 +11,6 @@ struct GLA_VertexArray;
 class  PP_Graph;
 union  SDL_Event;
 struct SDL_Window;
-class  Shader;
 
 
 
@@ -24,8 +23,6 @@ public:
 		FULLSCREEN_ENABLED,
 		FULLSCREEN_DESKTOP
 	};
-	
-	bool shader_fail = false; ///< If true, fails if load_shader fails
 	
 	static bool opt_gldbg;
 	static bool opt_fullscreen;
@@ -75,13 +72,7 @@ public:
 	
 	
 	
-	/// Loads shader and stores it internally. Never returns null. 
-	/// Reload callback is called every time when shader is loaded, including first one. 
-	/// Shader is already bound before calling callback. 
-	/// If is_crit is false, shader treated as optional and doesn't cause internal renderer errors
-	virtual Shader* load_shader( const char *name, std::function <void(Shader&)> reload_cb = {}, bool is_crit = true ) = 0;
-	
-	/// Reloads and recompiles all shaders
+	/// Reloads all shaders
 	virtual void reload_shaders() = 0;
 	
 	/// Returns internal VAO representing full screen in NDC as two triangles - 6 vertices of vec2

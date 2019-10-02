@@ -1,7 +1,6 @@
-// ==================
-#vert_pass
-#frag
-#version 330 core
+//@vert vert_pass
+//@frag
+#version 330
 
 uniform sampler2D tex;
 
@@ -17,4 +16,3 @@ void main() {
 	res.b += k/2 * (texture(tex, vec2(tc.x - 0.001, tc.y)).b + texture(tex, vec2(tc.x, tc.y - 0.002)).b);
 }
 
-#end

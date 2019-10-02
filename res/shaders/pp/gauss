@@ -1,12 +1,13 @@
-// ==================
-#vert_texel
-#frag
-#version 330 core
+//@vert vert_pass_texel
+//@frag
+#version 330
+
+//@def KERN_SIZE 17
 
 uniform sampler2D tex;
 uniform int horiz;
 uniform int size;
-uniform float mul[17];
+uniform float mul[KERN_SIZE];
 
 in vec2 tc;
 out vec4 out_clr;
@@ -27,6 +28,4 @@ void main() {
 	}
 	out_clr = clr;
 }
-
-#end
 

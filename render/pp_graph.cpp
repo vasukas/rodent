@@ -3,6 +3,18 @@
 
 
 
+PP_Node::PP_Node(std::string name, bool has_input, bool has_output)
+	: name(std::move(name)), has_input(has_input), has_output(has_output)
+{
+	PP_Graph::get().add_node(this);
+}
+PP_Node::~PP_Node()
+{
+	PP_Graph::get().del_node(this);
+}
+
+
+
 class PP_Graph_Impl : public PP_Graph
 {
 public:
@@ -36,18 +48,14 @@ public:
 	std::vector<NodeInfo*> ord;
 	bool rebuild_req = false;
 	
+	bool is_deleted = false;
 	
 	
-	void add_node(PP_Node* node) override
+	
+	~PP_Graph_Impl()
 	{
-		for (auto& n : nodes) {
-			if (n.ptr->name == node->name)
-				THROW_FMTSTR("PP_Graph::add_node() name already used - {}", node->name);
-		}
-		
-		auto& n = nodes.emplace_back();
-		n.ptr.reset(node);
-		n.index = nodes.size() - 1;
+		is_deleted = true;
+		nodes.clear();
 	}
 	void connect(std::string out_name, std::string in_name, int ordering) override
 	{
@@ -95,6 +103,48 @@ public:
 			auto fbo = i? nodes[*i].ptr->get_input_fbo() : 0;
 			s->ptr->proc(fbo);
 		}
+	}
+	void add_node(PP_Node* node) override
+	{
+		for (auto& n : nodes) {
+			if (n.ptr->name == node->name)
+				THROW_FMTSTR("PP_Graph::add_node() name already used - {}", node->name);
+		}
+		
+		auto& n = nodes.emplace_back();
+		n.ptr.reset(node);
+		n.index = nodes.size() - 1;
+	}
+	void del_node(PP_Node* node) override
+	{
+		if (is_deleted) return;
+		
+		auto it = std::find_if( nodes.begin(), nodes.end(), [&](auto& v){return v.ptr.get() == node;} );
+		// always found
+
+		bool is_tar = false;
+		for (auto& n : nodes) {
+			if (n.target == it->index) {
+				is_tar = true;
+				break;
+			}
+		}
+		
+		if (is_tar)
+		{
+			it->enabled = false;
+			
+			rebuild();
+			rebuild_req = false;
+			
+			for (auto& n : nodes) {
+				if (n.target == it->index)
+					n.target = n.reb.i_tar;
+			}
+		}
+		else if (it->enabled) rebuild_req = true;
+		
+		nodes.erase(it);
 	}
 	
 	
@@ -207,9 +257,16 @@ public:
 		VLOGV("=== End dump ===");
 	}
 };
-PP_Graph* PP_Graph::create() {
-	return new PP_Graph_Impl;
+
+
+
+static PP_Graph* rni;
+PP_Graph& PP_Graph::get() {
+	if (!rni) LOG_THROW_X("RenImm::get() null");
+	return *rni;
 }
+PP_Graph* PP_Graph::init() {return rni = new PP_Graph_Impl;}
+PP_Graph::~PP_Graph() {rni = nullptr;}
 
 
 
@@ -229,6 +286,8 @@ PPN_Chain::PPN_Chain(std::string name, std::vector<std::unique_ptr<PP_Filter>> f
 }
 bool PPN_Chain::prepare()
 {
+	if (!enabled) return false;
+	
 	bool any = false;
 	for (auto& f : fts) if (f->enabled && f->is_ok()) {any = true; break;}
 	

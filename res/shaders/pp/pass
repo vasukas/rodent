@@ -1,8 +1,7 @@
 // fullscreen passthrough shader
 
-// ==================
-#vert
-#version 330 core
+//@vert
+#version 330
 
 layout(location = 0) in vec2 vert;
 out vec2 tc;
@@ -11,11 +10,11 @@ void main() {
 	tc = vert * 0.5 + 0.5;
 	gl_Position = vec4(vert, 0, 1);
 }
-#end
 
-// ==================
-#frag
-#version 330 core
+
+
+//@frag
+#version 330
 
 uniform sampler2D tex;
 
@@ -25,5 +24,4 @@ out vec4 res;
 void main() {
 	res = texture(tex, tc);
 }
-#end
 

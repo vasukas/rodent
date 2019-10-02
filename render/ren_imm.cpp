@@ -43,8 +43,7 @@ public:
 			T_SHAD, // set shader and camera matrix, index is SHAD_*
 			T_CLIP, // set clip rect, index into 'clips' or INVIX for default
 			T_TEX, // set texture, index is object
-			T_CLR, // set color, index is uint32_t
-			T_ECMD // effect command, index is EffectCmd
+			T_CLR // set color, index is uint32_t
 		};
 		Type type;
 		size_t index;
@@ -261,19 +260,14 @@ public:
 		ctxs.resize(DEFCTX_NONE);
 		Context* cx;
 		
-//		cx = &ctxs[DEFCTX_BACK].ctx;
-//		cx->sh      = RenderControl::get().load_shader("imm");
-//		cx->sh_text = RenderControl::get().load_shader("imm_text");
-//		cx->cam = RenderControl::get().get_world_camera();
-		
 		cx = &ctxs[DEFCTX_WORLD].ctx;
-		cx->sh      = RenderControl::get().load_shader("imm");
-		cx->sh_text = RenderControl::get().load_shader("imm_text");
+		cx->sh      = Shader::load("imm", true);
+		cx->sh_text = Shader::load("imm_text", true);
 		cx->cam = RenderControl::get().get_world_camera();
 		
 		cx = &ctxs[DEFCTX_UI].ctx;
-		cx->sh      = RenderControl::get().load_shader("imm");
-		cx->sh_text = RenderControl::get().load_shader("imm_text");
+		cx->sh      = Shader::load("imm", true);
+		cx->sh_text = Shader::load("imm_text", true);
 		cx->cam = RenderControl::get().get_ui_camera();
 	}
 	Context& get_context (CtxIndex id)
@@ -288,7 +282,7 @@ public:
 		if (id == DEFCTX_NONE) ctx_ok = false; // and it doesn't matter that index is invalid
 		else {
 			auto &c = ctxs[ ctx_cur ].ctx;
-			ctx_ok = ( c.cam && c.sh && c.sh->get_obj() );
+			ctx_ok = ( c.cam && c.sh && c.sh->is_ok() );
 		}
 	}
 	
@@ -613,20 +607,9 @@ public:
 		if (cx.clip_stack.empty()) cx.cmds.push_back({ Cmd::T_CLIP, size_t_inval });
 		else                       cx.cmds.push_back({ Cmd::T_CLIP, cx.clip_stack.back().second });
 	}
-	void draw_cmd( EffectCmd cmd )
-	{
-		if (!ctx_ok) return;
-		auto& cx = ctxs[ ctx_cur ];
-		
-		reserve_more_block( cx.cmds, 256 );
-		cx.cmds.push_back({ Cmd::T_ECMD, static_cast<size_t>(cmd) });
-	}
 	void render_pre()
 	{
 		vao.bufs[0]->update( data.size(), data.data() );
-//		vao.bind();
-		glActiveTexture( GL_TEXTURE0 );
-		
 		glGetIntegerv( GL_VIEWPORT, vp );
 	}
 	void render(CtxIndex cx_id)
@@ -639,6 +622,7 @@ public:
 		const float *mx = ps.cam->get_full_matrix();
 		
 		vao.bind();
+		glActiveTexture( GL_TEXTURE0 );
 		
 		for (auto& cmd : cx.cmds)
 		{
@@ -671,14 +655,6 @@ public:
 				sh = (cmd.index == SHAD_MAIN ? ps.sh : ps.sh_text);
 				sh->bind();
 				sh->set4mx( "proj", mx );
-				break;
-				
-			case Cmd::T_ECMD:
-				switch (static_cast< EffectCmd >( cmd.index ))
-				{
-				case EFF_POP:
-					break;
-				}
 				break;
 			}
 		}

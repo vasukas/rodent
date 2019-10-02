@@ -1,7 +1,6 @@
-// ==================
-#vert_pass
-#frag
-#version 330 core
+//@vert vert_pass
+//@frag
+#version 330
 
 uniform sampler2D tex;
 uniform sampler3D noi;
@@ -18,4 +17,3 @@ void main() {
 	res = texture(tex, tc) * vec4(texture(noi, vec3(nc, t)).rgb, 1);
 }
 
-#end
