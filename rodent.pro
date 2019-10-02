@@ -122,6 +122,7 @@ SOURCES += \
 	utils/svg_simple.cpp \
 	utils/time_utils.cpp \
 	vaslib/vas_atlas_packer.cpp \
+	vaslib/vas_containers.cpp \
 	vaslib/vas_file.cpp \
 	vaslib/vas_font.cpp \
 	vaslib/vas_log.cpp \

@@ -33,13 +33,16 @@ std::string string_32to8(std::u32string_view s);
 bool string_atoi(std::string_view s, int& value, int base = 10);
 bool string_atoi(std::string_view s, int64_t& value, int base = 10);
 
-bool string_atof(const std::string& s, double& value);
-bool string_atof(const std::string& s, float& value);
+bool string_atof(std::string_view s, double& value);
+bool string_atof(std::string_view s, float& value);
 
 
 
 /// Splits string by any of delimiters
 std::vector<std::string> string_split(std::string_view s, const std::vector<std::string>& delims, bool remove_empty = true);
+
+/// Splits string by any of delimiters without copying
+std::vector<std::string_view> string_split_view(std::string_view s, const std::vector<std::string>& delims = {"\n"}, bool remove_empty = true);
 
 
 

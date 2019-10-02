@@ -161,13 +161,13 @@ bool string_atoi (std::string_view s, int64_t& value, int base)
 	if (sign == -1) value = -value;
 	return true;
 }
-bool string_atof (const std::string& s, double& value)
+bool string_atof (std::string_view s, double& value)
 {
 	char *end = nullptr;
 	value = strtod( s.data(), &end );
 	return end && end - s.data() == static_cast<ptrdiff_t>(s.length());
 }
-bool string_atof (const std::string& s, float& value)
+bool string_atof (std::string_view s, float& value)
 {
 	char *end = nullptr;
 	value = strtof( s.data(), &end );
@@ -178,6 +178,21 @@ bool string_atof (const std::string& s, float& value)
 
 std::vector<std::string> string_split(std::string_view s, const std::vector<std::string> &delims, bool remove_empty) {
 	std::vector<std::string> rs;
+	std::size_t pos = 0;
+	while (true) {
+		std::size_t np = std::string::npos;
+		for (auto &d : delims) np = std::min(np, s.find_first_of(d, pos));
+		if (np != pos || !remove_empty) {
+			rs.emplace_back( s.substr(pos, np - pos) );
+			if (np == std::string::npos) break;
+		}
+		pos = np + 1;
+	}
+	if (!rs.empty() && rs.back().empty()) rs.pop_back();
+	return rs;
+}
+std::vector<std::string_view> string_split_view(std::string_view s, const std::vector<std::string>& delims, bool remove_empty) {
+	std::vector<std::string_view> rs;
 	std::size_t pos = 0;
 	while (true) {
 		std::size_t np = std::string::npos;

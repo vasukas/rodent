@@ -294,9 +294,8 @@ public:
 	}
 	size_t read( void *buf, size_t buf_size )
 	{
-		errno = 0;
 		size_t n = std::fread( buf, 1, buf_size, src );
-		if (n != buf_size && errno)
+		if (n != buf_size && std::ferror( src ))
 		{
 			VLOGE( "File_STD::read() failed - {}", errno_str() );
 			if (error_throw) THROW_FMTSTR( "File::read() failed" );

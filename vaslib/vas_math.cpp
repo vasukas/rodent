@@ -266,7 +266,7 @@ std::pair<float, vec2fp> fit_rect(vec2fp size, vec2fp into)
 {
 	vec2fp pk = into / size;
 	float k = std::min(pk.x, pk.y);
-	return {k, into - size * k};
+	return {k, (into - size * k) / 2};
 }
 
 
