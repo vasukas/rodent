@@ -2,7 +2,6 @@
 /build/
 /external/
 /rodent.*.user
-/rod.*
-/rodent
+/rodent.log
 /*.sh
 

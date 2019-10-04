@@ -1,5 +1,5 @@
 #include <deque>
-#include "core/vig.hpp"
+#include "core/settings.hpp"
 #include "postproc.hpp"
 #include "pp_graph.hpp"
 
@@ -21,7 +21,7 @@ struct PPF_Glowblur : PP_Filter
 	}
 	bool is_ok_int() override
 	{
-		return pass != 0;
+		return n > 0 && pass > 0;
 	}
 	void proc() override
 	{
@@ -39,9 +39,9 @@ struct PPF_Glowblur : PP_Filter
 			float em = -1 / (2 * a * a);
 			float cm = 1 / sqrt(2 * M_PI * a * a);
 			
-			double s = 0;
-			float ker[n_max*2+1];
-			for (int i=0; i<=size; i++) {
+			float s = 0;
+			std::vector<float> ker(size);
+			for (int i=0; i<size; i++) {
 				int d = i - n;
 				ker[i] = exp(d*d * em) * cm;
 				s += ker[i];
@@ -50,7 +50,7 @@ struct PPF_Glowblur : PP_Filter
 			ker[n] = 1;
 			
 			sh->set1i("size", n);
-			sh->setfv("mul", ker, size);
+			sh->setfv("mul", ker.data(), size);
 		}
 		for (int i=0; i<pass; ++i)
 		{
@@ -166,6 +166,101 @@ struct PPF_Tint : PP_Filter
 };
 
 
+class PP_Bloom : public PP_Node
+{
+public:
+	std::function<bool()> is_enabled;
+	
+	PP_Bloom(std::string name)
+	    : PP_Node(std::move(name))
+	{
+		rsz_g = RenderControl::get().add_size_cb([this]
+		{
+			for (int i=0; i<2; ++i)
+			{
+				tex_s[i].set(GL_RGBA, RenderControl::get_size(), 0, 4);
+				fbo_s[i].attach_tex(GL_COLOR_ATTACHMENT0, tex_s[i]);
+			}
+		}
+		, true);
+		
+		sh_blur = Shader::load("pp/gauss", false, false);
+		sh_blur->pre_reb = [this](Shader& sh)
+		{
+			sh.get_def("KERN_SIZE")->value = std::to_string(n*2+1);
+		};
+		sh_blur->on_reb = [this](Shader& sh)
+		{
+			int size = n*2+1;
+			std::vector<float> ker(size);
+			for (int i=0; i<size; i++) {
+				int d = i - n;
+				ker[i] = d? 1.f / (d * rad / n) : 1;
+			}
+			
+			sh.set1i("size", n);
+			sh.setfv("mul", ker.data(), size);
+		};
+		sh_blur->rebuild();
+		
+		sh_mix = Shader::load("pp/pass");
+	}
+	
+private:
+	const int n = 12; // 8
+	const float rad = 3;
+	
+	GLA_Framebuffer fbo_s[2];
+	GLA_Texture tex_s[2];
+	RAII_Guard rsz_g;
+	
+	Shader* sh_blur;
+	Shader* sh_mix;
+	
+	bool prepare() override
+	{
+		if (is_enabled && !is_enabled())
+			return false;
+		
+		if (!sh_blur->is_ok() || !sh_mix->is_ok())
+			return false;
+		
+		for (int i=0; i<2; ++i)
+		{
+			fbo_s[i].bind();
+			glClearColor(0, 0, 0, 0);
+			glClear(GL_COLOR_BUFFER_BIT);
+		}
+		return true;
+	}
+	void proc(GLuint output_fbo) override
+	{
+		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
+		glBlendEquation(GL_FUNC_ADD);
+		
+		glActiveTexture(GL_TEXTURE0);
+		RenderControl::get().ndc_screen2().bind();
+		
+		fbo_s[1].bind();
+		tex_s[0].bind();
+		sh_blur->bind();
+		sh_blur->set2f("scr_px_size", RenderControl::get_size());
+		sh_blur->set1i("horiz", 1);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		
+		glBindFramebuffer(GL_FRAMEBUFFER, output_fbo);
+		tex_s[1].bind();
+		sh_blur->set1i("horiz", 0);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		
+		tex_s[0].bind();
+		sh_mix->bind();
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+	}
+	GLuint get_input_fbo() override {return fbo_s[0].fbo;}
+};
+
+
 
 class Postproc_Impl : public Postproc
 {
@@ -186,6 +281,7 @@ public:
 	Postproc_Impl()
 	{
 		auto g = RenderControl::get().get_ppg();
+		new PPN_OutputScreen;
 		
 		new PPN_InputDraw("grid", [](auto fbo)
 		{
@@ -228,27 +324,32 @@ public:
 			RenImm::get().render(RenImm::DEFCTX_UI);
 		});
 		
-		new PPN_OutputScreen;
-		
 		std::vector<std::unique_ptr<PP_Filter>> fts;
 		{	
-			fts.emplace_back(new PPF_Bleed)->enabled = true;
+			fts.emplace_back(new PPF_Bleed);
 			new PPN_Chain("E1", std::move(fts), []
 			{
 				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 				glBlendEquation(GL_FUNC_ADD);
 			});
 		}{
-			fts.emplace_back(new PPF_Glowblur)->enabled = true;
-			new PPN_Chain("E2", std::move(fts), []
+			fts.emplace_back(new PPF_Glowblur);
+			auto ch = new PPN_Chain("E2", std::move(fts), []
 			{
 				glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
 				glBlendEquation(GL_FUNC_ADD);
 			});
+			ch->is_enabled = []{
+				return AppSettings::get().use_particles_pp;
+			};
 		}{
-			tint = new PPF_Tint;
-			fts.emplace_back(tint)->enabled = true;
+			fts.emplace_back(tint = new PPF_Tint);
 			new PPN_Chain("post", std::move(fts), {});
+		}{
+			auto ch = new PP_Bloom("bloom");
+			ch->is_enabled = []{
+				return AppSettings::get().use_particles_bloom;
+			};
 		}
 		
 		g->connect("grid", "post", 1);
@@ -257,9 +358,12 @@ public:
 		g->connect("parts", "E2");
 		
 		g->connect("E1", "post", 2);
-		g->connect("E2", "post", 3);
+//		g->connect("E2", "post", 3);
 		g->connect("post", "display", 1);
 		g->connect("ui", "display", 3);
+		
+		g->connect("E2", "bloom");
+		g->connect("bloom", "post", 3);
 	}
 };
 

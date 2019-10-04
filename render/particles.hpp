@@ -12,9 +12,10 @@
 /// Single particle
 struct ParticleParams
 {
-	float px, py, pr; // position
-	float vx, vy, vr; // velocity
-	float ax, ay, ar; // acceleration
+	vec2fp pos; // position
+	vec2fp vel; // velocity
+	vec2fp acc; // acceleration
+	
 	FColor clr;
 	float lt, ft; // life and fade times, seconds
 	float size; // particle radius

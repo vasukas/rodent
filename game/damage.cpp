@@ -174,11 +174,12 @@ void DmgShield::proc(EC_Health& hlc, DamageQuant& q)
 		auto& phy = hlc.ent->get_phy();
 		
 		ParticleBatchPars bp;
-		bp.tr = Transform{phy.get_pos()};
-		bp.rad = phy.get_radius() + 0.5f;
 		int times = 1;
 		
 		if (hp.is_alive()) {
+			if (hit_ren_tmo.is_positive()) return;
+			hit_ren_tmo = TimeSpan::seconds(0.5);
+			
 			bp.power = dmg_ren * 0.02f;
 			bp.clr = FColor(0.4, 1, 1, 0.5);
 		}
@@ -187,8 +188,12 @@ void DmgShield::proc(EC_Health& hlc, DamageQuant& q)
 			bp.clr = FColor(1, 0.5, 0.9, 2);
 			times = 3;
 		}
+		
+		bp.tr = Transform{phy.get_pos()};
+		bp.rad = phy.get_radius() + 0.5f;
+		
 		for (int i=0; i<times; ++i)
-		GamePresenter::get()->effect(FE_CIRCLE_AURA, bp);
+			GamePresenter::get()->effect(FE_CIRCLE_AURA, bp);
 	}
 	else if (q.wpos) {
 		GamePresenter::get()->effect(FE_HIT_SHIELD, {Transform{*q.wpos}, hp.t_state() * 3.f});
@@ -198,6 +203,7 @@ void DmgShield::proc(EC_Health& hlc, DamageQuant& q)
 void DmgShield::step(EC_Health&)
 {
 	hp.step();
+	if (hit_ren_tmo.is_positive()) hit_ren_tmo -= GameCore::step_len;
 }
 
 

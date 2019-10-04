@@ -72,8 +72,7 @@ void ResBase_Impl::init_ren()
 			power = clampf(pars.power, p_min, p_max);
 			clr_t = clr0 + (clr1 - clr0) * clampf(power / p_max - p_min, 0.1, 0.9);
 			
-			p.px = tr.pos.x;
-			p.py = tr.pos.y;
+			p.pos = tr.pos;
 			p.size = size;
 			p.lt = 0;
 			
@@ -82,10 +81,8 @@ void ResBase_Impl::init_ren()
 		void gen(ParticleParams& p)
 		{
 			float vk = rnd_stat().range(0.5, 2) * clampf(power, 0.1, 2) + spd_min;
-			vec2fp vel{vk, 0};
-			vel.fastrotate( tr.rot + rnd_stat().range(-a_lim, a_lim) );
-			p.vx = vel.x;
-			p.vy = vel.y;
+			p.vel = {vk, 0};
+			p.vel.fastrotate( tr.rot + rnd_stat().range(-a_lim, a_lim) );
 			
 			p.ft = rnd_stat().range(2, 3.5) * alpha;
 			float t = rnd_stat().range_n();
@@ -139,19 +136,13 @@ void ResBase_Impl::init_ren()
 			
 			if (!implode)
 			{
-				p.px = ctr.x;
-				p.py = ctr.y;
-				
-				p.vx = r.x / vt;
-				p.vy = r.y / vt;
+				p.pos = ctr;
+				p.vel = r / vt;
 			}
 			else
 			{
-				p.px = ctr.x + r.x;
-				p.py = ctr.y + r.y;
-				
-				p.vx = -r.x / vt * 2;
-				p.vy = -r.y / vt * 2;
+				p.pos = ctr + r;
+				p.vel = r / vt * -2;
 			}
 			
 			t += dt;
@@ -200,18 +191,14 @@ void ResBase_Impl::init_ren()
 		{
 			auto& l = ls[li];
 			float t = (lc + 0.5f) / l.n;
-			vec2fp pos = lerp(l.a, l.b, t);
+			p.pos = lerp(l.a, l.b, t);
 			if (++lc == l.n) {++li; lc = 0;}
 			
-			vec2fp rp = pos;
-			rp.fastrotate(tr.rot);
-			p.px = rp.x + tr.pos.x;
-			p.py = rp.y + tr.pos.y;
+			p.pos.fastrotate(tr.rot);
+			p.pos += tr.pos;
 			
-			vec2fp rv = vec2fp(0, rnd_stat().range(0.1, 0.5));
-			rv.fastrotate( rnd_stat().range(-M_PI, M_PI) );
-			p.vx = rv.x;
-			p.vy = rv.y;
+			p.vel.set(0, rnd_stat().range(0.1, 0.5));
+			p.vel.fastrotate( rnd_stat().range(-M_PI, M_PI) );
 			
 			p.ft = rnd_stat().range(3, 5);
 		}
@@ -282,16 +269,13 @@ void ResBase_Impl::init_ren()
 			float t = (lc + 0.5f) / l.n;
 			if (++lc == l.n) {++li; lc = 0;}
 			
-			vec2fp rp = lerp(l.a, l.b, t);
-			rp.fastrotate(tr.rot);
-			p.px = rp.x + tr.pos.x;
-			p.py = rp.y + tr.pos.y;
+			p.pos = lerp(l.a, l.b, t);
+			p.pos.fastrotate(tr.rot);
+			p.pos += tr.pos;
 			
-			vec2fp rv = slerp(l.av, l.bv, t);
-			rv.fastrotate( tr.rot + rnd_stat().range(-1, 1) * deg_to_rad(20) );
-			rv.norm_to( rnd_stat().range(0.5, 0.7) );
-			p.vx = rv.x;
-			p.vy = rv.y;
+			p.vel = slerp(l.av, l.bv, t);
+			p.vel.fastrotate( tr.rot + rnd_stat().range(-1, 1) * deg_to_rad(20) );
+			p.vel.norm_to( rnd_stat().range(0.5, 0.7) );
 			
 			p.ft = rnd_stat().range(time_k * 0.5, time_k);
 			p.decel_to_zero();
@@ -304,8 +288,7 @@ void ResBase_Impl::init_ren()
 		size_t begin(const ParticleBatchPars& pars, ParticleParams& p)
 		{
 			bp = pars;
-			p.px = bp.tr.pos.x;
-			p.py = bp.tr.pos.y;
+			p.pos = bp.tr.pos;
 			p.size = 0.12;
 			return bp.power * 5;
 		}
@@ -317,10 +300,8 @@ void ResBase_Impl::init_ren()
 			p.clr = bp.clr;
 			for (int i=0; i<3; ++i) p.clr[i] += 0.1 * rnd_stat().range_n2();
 			
-			vec2fp vel(rnd_stat().range(1, 4), 0);
-			vel.fastrotate( bp.tr.rot + deg_to_rad(70) * rnd_stat().normal_fixed() );
-			p.vx = vel.x;
-			p.vy = vel.y;
+			p.vel.set(rnd_stat().range(1, 4), 0);
+			p.vel.fastrotate( bp.tr.rot + deg_to_rad(70) * rnd_stat().normal_fixed() );
 		}
 	};
 	struct CircAura : ParticleGroupGenerator
@@ -350,16 +331,12 @@ void ResBase_Impl::init_ren()
 			p.clr = bp.clr;
 			for (int i=0; i<3; ++i) p.clr[i] += 0.2 * rnd_stat().range_n2();
 			
-			vec2fp vel(bp.rad, 0);
-			vel.fastrotate((i*2 + rnd_stat().range_n2()) * rot_k);
+			p.vel.set(bp.rad, 0);
+			p.vel.fastrotate((i*2 + rnd_stat().range_n2()) * rot_k);
 			++i;
 			
-			p.px = bp.tr.pos.x + vel.x;
-			p.py = bp.tr.pos.y + vel.y;
-			
-			vel *= bp.power * (1 + 0.2 * rnd_stat().range_n2()) / bp.rad;
-			p.vx = vel.x;
-			p.vy = vel.y;
+			p.pos = bp.tr.pos + p.vel;
+			p.vel *= bp.power * (1 + 0.2 * rnd_stat().range_n2()) / bp.rad;
 			
 			p.size = rnd_stat().range(0.1, 0.3);
 		}

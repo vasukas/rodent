@@ -83,7 +83,8 @@ bool EC_Equipment::shoot(Weapon::ShootParams pars)
 	if (!res->delay) res->delay = wpn->info->def_delay;
 	if (!res->heat)  res->heat  = wpn->info->def_heat;
 	
-	if (!res->delay) res->delay = GameCore::step_len;
+	if (!res->delay || *res->delay < GameCore::step_len)
+		res->delay = GameCore::step_len;
 	
 	if (wpn->overheat) wpn->overheat->shoot(*res->heat * res->delay->seconds());
 	wpn->rof_left = *res->delay;

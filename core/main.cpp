@@ -48,55 +48,6 @@ static void set_wnd_pars()
 
 
 
-enum GamePath
-{
-	GAME_PATH_LOG, ///< May be empty
-	GAME_PATH_RESOURCES,
-	GAME_PATH_SETTINGS
-};
-static std::string get_game_path(GamePath path)
-{
-#if !USE_RELEASE_PATHS
-	switch (path)
-	{
-	case GAME_PATH_LOG:
-		return "rod.log";
-	case GAME_PATH_RESOURCES:
-		return "";
-	case GAME_PATH_SETTINGS:
-		return "res/settings.cfg";
-	}
-#else
-	static bool first = true;
-	static std::string base;
-	static std::string pref;
-	if (first)
-	{
-		first = false;
-		
-		auto s = SDL_GetBasePath();
-		if (!s) VLOGE("SDL_GetBasePath failed - {}", SDL_GetError());
-		else {base = s; SDL_free(s);}
-		
-		s = SDL_GetPrefPath("madkrabs", "rodent");
-		if (!s) VLOGE("SDL_GetPrefPath failed - {}", SDL_GetError());
-		else {pref = s; SDL_free(s);}
-	}
-	switch (path)
-	{
-	case GAME_PATH_LOG:
-		return pref + "game.log";
-		
-	case GAME_PATH_RESOURCES:
-		return base;
-		
-	case GAME_PATH_SETTINGS:
-		return pref + "settings.cfg";
-	}
-#endif
-	VLOGX("get_game_path() invalid enum: {}", static_cast<int>(path));
-	return {};
-}
 static void platform_info()
 {
 	SDL_version sv_comp;
@@ -153,8 +104,7 @@ int main( int argc, char *argv[] )
 	std::optional<bool>     cli_logclr;
 	std::optional<LogLevel> cli_verb;
 	
-	std::string log_filename = get_game_path(GAME_PATH_LOG);
-	AppSettings::cfg_path = get_game_path(GAME_PATH_SETTINGS);
+	std::string log_filename = AppSettings::get().path_log; // init settings
 
 	ArgvParse arg;
 	arg.set(argc-1, argv+1);
@@ -170,6 +120,7 @@ Options:
   --log    <FILE> override default log path
   --logclr <0/1>  enable colors in log
   --cfg    <FILE> override default config path
+  --res    <DIR>  override default resources dir
 
   -v0 -v -vv  different log verbosity levels, from default (info) to verbose
   --gldbg     create debug OpenGL context and log all GL messages as verbose
@@ -184,7 +135,8 @@ Mode options (--game):
 			}
 			else if (arg.is("--log")) log_filename = arg.str();
 			else if (arg.is("--logclr")) cli_logclr = arg.flag();
-			else if (arg.is("--cfg")) AppSettings::cfg_path = arg.str();
+			else if (arg.is("--cfg")) AppSettings::get_mut().path_settings  = arg.str();
+			else if (arg.is("--res")) AppSettings::get_mut().path_resources = arg.str();
 			else if (arg.is("-v0")) cli_verb = LogLevel::Info;
 			else if (arg.is("-v"))  cli_verb = LogLevel::Debug;
 			else if (arg.is("-vv")) cli_verb = LogLevel::Verbose;
@@ -234,7 +186,7 @@ Mode options (--game):
 	
 	platform_info();
 	
-	if (!set_current_dir( get_game_path(GAME_PATH_RESOURCES).c_str() )) VLOGW("Can't set resources directory");
+	if (!set_current_dir( AppSettings::get().path_resources.c_str() )) VLOGW("Can't set resources directory");
 	if (!AppSettings::get_mut().load())
 	{
 		VLOGE("Can't load settings. Check working directory - it must contain 'res' folder");

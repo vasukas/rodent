@@ -230,6 +230,9 @@ bool Shader::rebuild(bool forced)
 	if (src.empty())
 		return false;
 	
+	if (pre_reb)
+		pre_reb(*this);
+	
 	// get defines
 	
 	const GLchar* src_s[3];

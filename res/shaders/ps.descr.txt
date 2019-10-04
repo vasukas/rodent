@@ -1,6 +1,7 @@
 data:
- 0	3x pos 1x left
- 1	3x vel 1x size
+ 0	2x pos 2x vel
+ 1  1x left 1x size 2x?
  2	4x clr_calc
- 3	3x acc 1x fade
+ 3	2x acc 1x fade 1x?
  4	4x clr
+

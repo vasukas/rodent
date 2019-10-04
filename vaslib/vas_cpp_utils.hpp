@@ -1,6 +1,7 @@
 #ifndef VAS_CPP_UTILS_HPP
 #define VAS_CPP_UTILS_HPP
 
+#include <algorithm>
 #include <functional>
 #include <vector>
 

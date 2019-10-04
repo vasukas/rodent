@@ -35,8 +35,10 @@ public:
 		{
 			bool loopdet = false;
 			bool proc = false;
+			bool force_dis = false;
 			
 			std::optional<size_t> i_tar;
+			int i_order; // inherited order
 			
 			size_t prov_num = 0; // total input count
 			size_t ready = 0; // current ready inputs
@@ -149,7 +151,7 @@ public:
 	
 	
 	
-	void rebuild_sub_1(NodeInfo& n, std::optional<size_t>& target)
+	void rebuild_sub_1(NodeInfo& n, std::optional<size_t>& target, int& new_order, int prev_order)
 	{
 		if (n.reb.loopdet) THROW_FMTSTR("PP_Graph::rebuild() detected loop at - {}", n.ptr->name);
 		n.reb.loopdet = true;
@@ -157,23 +159,32 @@ public:
 		if (n.enabled)
 		{
 			target = n.index;
+			new_order = prev_order;
 			
 			if (!n.reb.proc)
 			{
 				n.reb.proc = true;
 				if (n.target)
 				{
-					rebuild_sub_1(nodes[*n.target], n.reb.i_tar);
+					rebuild_sub_1(nodes[*n.target], n.reb.i_tar, n.reb.i_order, n.ordering);
 					++ nodes[*n.reb.i_tar].reb.prov_num;
 				}
 			}
 		}
 		else if (n.target)
 		{
-			rebuild_sub_1(nodes[*n.target], target);
+			rebuild_sub_1(nodes[*n.target], target, new_order, n.ordering);
 		}
 		
 		n.reb.loopdet = false;
+	}
+	bool rebuild_sub_3(NodeInfo& n)
+	{
+		bool ok;
+		if (n.reb.i_tar) ok = rebuild_sub_3(nodes[*n.reb.i_tar]);
+		else ok = !n.ptr->has_output;
+		if (!ok) n.reb.force_dis = true;
+		return ok;
 	}
 	void rebuild_sub_2(NodeInfo& n)
 	{
@@ -201,19 +212,27 @@ public:
 		{
 			if (n.enabled && !n.ptr->has_input)
 			{
-				std::optional<size_t> tar; // ignored
-				rebuild_sub_1(n, tar);
+				std::optional<size_t> ign; int ign2;
+				rebuild_sub_1(n, ign, ign2, 0);
 				has_entry = true;
 			}
 		}
 		if (!has_entry)
 			THROW_FMTSTR("PP_Graph::rebuild() no entry nodes");
 		
+		// disable invalid chains
+		
+		for (auto& n : nodes)
+		{
+			if (n.enabled && !n.ptr->has_input)
+				rebuild_sub_3(n);
+		}
+		
 		// add in readiness order
 	
 		for (auto& n : nodes)
 		{
-			if (n.enabled && !n.ptr->has_input)
+			if (n.enabled && !n.reb.force_dis && !n.ptr->has_input)
 				rebuild_sub_2(n);
 		}
 		
@@ -227,7 +246,7 @@ public:
 			
 			if (na->reb.i_tar == nb->reb.i_tar &&
 			    na->reb.i_tar &&
-			    na->ordering > nb->ordering
+			    na->reb.i_order > nb->reb.i_order
 			    )
 				std::swap(na, nb);
 		}
@@ -243,17 +262,18 @@ public:
 	{
 		auto put = [this](NodeInfo& n)
 		{
-			VLOGV("{} {} -> {}/{} [{}]",
-			      n.enabled? ' ' : 'x',
+			VLOGV("{} {} -> {}[{}] / {}[{}]",
+			      n.enabled? (n.reb.force_dis? 'd' : ' ') : 'x',
 			      n.ptr->name,
 			      n.target? nodes[*n.target].ptr->name : "NONE",
+			      n.ordering,
 			      n.reb.i_tar? nodes[*n.reb.i_tar].ptr->name : "NONE",
-			      n.ordering);
+			      n.reb.i_order);
 		};
 		
 		VLOGV("=== PP_Graph dump ===");
 		for (auto& s : ord) put(*s);
-		for (auto& n : nodes) if (!n.enabled) put(n);
+		for (auto& n : nodes) if (!n.enabled || n.reb.force_dis) put(n);
 		VLOGV("=== End dump ===");
 	}
 };
@@ -286,7 +306,8 @@ PPN_Chain::PPN_Chain(std::string name, std::vector<std::unique_ptr<PP_Filter>> f
 }
 bool PPN_Chain::prepare()
 {
-	if (!enabled) return false;
+	if (is_enabled && !is_enabled())
+		return false;
 	
 	bool any = false;
 	for (auto& f : fts) if (f->enabled && f->is_ok()) {any = true; break;}

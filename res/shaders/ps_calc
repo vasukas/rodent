@@ -10,20 +10,20 @@ out vec4 newd[5];
 
 void main() {
 	// pos += vel
-	newd[0].xyz = data[0].xyz + data[1].xyz * passed;
+	newd[0].xy = data[0].xy + data[0].zw * passed;
 
 	// vel += acc
-	newd[1].xyz = data[1].xyz + data[3].xyz * passed;
+	newd[0].zw = data[0].zw + data[3].xy * passed;
 
 	// color
-	float alpha = data[0].w * data[3].w;
+	float alpha = data[1].x * data[3].z;
 	newd[2] = vec4(data[4].rgb, data[4].a * clamp(alpha, 0, 1));
 
-	// time -= passed
-	newd[0].w = data[0].w - passed;
+	// left -= passed
+	newd[1].x = data[1].x - passed;
 
 	// copy const
-	newd[1].w = data[1].w;
+	newd[1].y = data[1].y;
 	newd[3] = data[3];
 	newd[4] = data[4];
 }

@@ -13,19 +13,13 @@ out Data {
 };
 
 void main() {
-	mat4 rot = mat4(1.0);
-	rot[0][0] = cos(data[0].z);
-	rot[1][0] = -sin(data[0].z);
-	rot[0][1] = -rot[1][0];
-	rot[1][1] = rot[0][0];
+	mat4 t_par = mat4(1.0);
+	t_par[3][0] = data[0].x;
+	t_par[3][1] = data[0].y;
 
-	mat4 trans = mat4(1.0);
-	trans[3][0] = data[0].x;
-	trans[3][1] = data[0].y;
-
-	mx = proj * trans * rot;
+	mx = proj * t_par;
 	clr = data[2];
-	size = data[1].w;
+	size = data[1].y;
 }
 
 

@@ -12,14 +12,12 @@
 
 void ParticleParams::set_zero(bool vel, bool accel)
 {
-	if (vel) vx = vy = vr = 0;
-	if (accel) ax = ay = ar = 0;
+	if (vel) vel = {};
+	if (accel) acc = {};
 }
 void ParticleParams::decel_to_zero()
 {
-	ax = -vx / (ft + lt);
-	ay = -vy / (ft + lt);
-	ar = -vr / (ft + lt);
+	acc = vel / -(ft + lt);
 }
 void ParticleGroupGenerator::draw(const ParticleBatchPars& pars)
 {
@@ -43,20 +41,16 @@ size_t ParticleGroupStd::begin(const ParticleBatchPars &pars, ParticleParams& p)
 void ParticleGroupStd::gen(ParticleParams& p)
 {
 	// position
-	p.pr = t_tr.rot + rnd_stat().range(rot_min, rot_max);
+	float ppr = t_tr.rot + rnd_stat().range(rot_min, rot_max);
 	vec2fp rv = {radius_fixed? radius : (float) rnd_stat().range(0, radius), 0.f};
-	rv.rotate(p.pr);
-	p.px = t_tr.pos.x + rv.x;
-	p.py = t_tr.pos.y + rv.y;
+	rv.fastrotate(ppr);
+	p.pos = t_tr.pos + rv;
 	
 	// speed
 	float sp = rnd_stat().range(speed_min, t_spdmax);
 	float sa = rnd_stat().range(rot_min, rot_max);
-	p.vx = sp * cos(sa);
-	p.vy = sp * sin(sa);
-	
-	p.vr = rnd_stat().range(rot_speed_min, t_rotmax);
-	if (rnd_stat().range(-1, 1) < 0) p.vr = -p.vr;
+	p.vel = {sp, 0};
+	p.vel.fastrotate(sa);
 	
 	// color
 	if (colors.size()) {
@@ -198,8 +192,9 @@ public:
 	void render()
 	{
 		if (gs.empty()) return;
+		auto passed = RenderControl::get().get_passed();
 		
-		update( RenderControl::get().get_passed() );
+		update(passed);
 		if (!gs_off_max) return;
 		
 		sh_draw->bind();
@@ -211,8 +206,7 @@ public:
 	void add(ParticleGroupGenerator& group, const ParticleBatchPars& pars)
 	{
 		ParticleParams p;
-		p.pr = p.vr = 0;
-		p.ax = p.ay = p.ar = 0;
+		p.acc = {};
 		
 		int num = group.begin(pars, p);
 		if (!num) {
@@ -243,26 +237,25 @@ public:
 			float total = p.lt + p.ft;
 			max_time = std::max(max_time, total);
 			
-			// pos, left
-			d[0] = p.px;
-			d[1] = p.py;
-			d[2] = p.pr;
-			d[3] = total;
+			// pos, vel
+			d[0] = p.pos.x;
+			d[1] = p.pos.y;
+			d[2] = p.vel.x;
+			d[3] = p.vel.y;
 			d += 4;
 			
-			// vel, size
-			d[0] = p.vx;
-			d[1] = p.vy;
-			d[2] = p.vr;
-			d[3] = p.size;
-// +4 color calculated in shader
-			d += 8;
+			// left, size
+			d[0] = total;
+			d[1] = p.size;
+//			d[2] = 0;
+//			d[3] = 0;
+			d += 8; // +4 color calculated in shader
 			
-			// acc, fade
-			d[0] = p.ax;
-			d[1] = p.ay;
-			d[2] = p.ar;
-			d[3] = 1.f / p.ft;
+			// acc, fade, eid
+			d[0] = p.acc.x;
+			d[1] = p.acc.y;
+			d[2] = 1.f / p.ft;
+//			d[3] = 0;
 			d += 4;
 			
 			// color (const)

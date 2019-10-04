@@ -22,7 +22,8 @@ public:
 	
 	std::vector<Define> def_list; ///< Parameters, either specified by shader or added manually
 	
-	std::function<void(Shader&)> on_reb; ///< Called on rebuild, shader is already bound
+	std::function<void(Shader&)> pre_reb; ///< Called on rebuild before compiling and linking shader
+	std::function<void(Shader&)> on_reb; ///< Called on rebuild, shader is already built and bound
 	std::function<void(Shader&)> pre_link; ///< Called on rebuild between attaching shaders and linking
 	
 	

@@ -6,6 +6,10 @@
 
 struct AppSettings
 {
+	std::string path_log; ///< Log filename
+	std::string path_resources; ///< Set as current dir; includes trailing slash
+	std::string path_settings; ///< Config filename
+	
 	vec2i wnd_size = {1024, 600};
 	int fscreen = 0;
 	
@@ -20,13 +24,18 @@ struct AppSettings
 
 	int font_supersample = 2;
 	
+	bool use_particles_pp = true;
+	bool use_particles_bloom = true;
 	
 	
-	static std::string cfg_path;
+	
 	static const AppSettings& get();
 	static AppSettings& get_mut();
 	
 	bool load();
+	
+private:
+	AppSettings();
 };
 
 #endif // SETTINGS_HPP

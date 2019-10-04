@@ -14,7 +14,8 @@
 PlayerRender::PlayerRender(Entity* ent)
 	: ECompRender(ent)
 {
-	parts(MODEL_PC_RAT, ME_AURA, {{}, 5, FColor(0.3, 0.7, 1, 2)});
+	parts(FE_SPAWN, {{}, GameConst::hsz_rat});
+	parts(MODEL_PC_RAT, ME_AURA, {{}, 3, FColor(0.3, 0.7, 1, 0.7)});
 }
 void PlayerRender::on_destroy()
 {
@@ -276,7 +277,7 @@ bool ShieldControl::step(bool sw_state)
 				root.get_ren()->parts(MODEL_PC_SHLD, ME_AURA, {tr, 0.35, FColor(0.9, 0.9, 1, 2)});
 				root.get_ren()->attach(ECompRender::ATT_SHIELD, tr, MODEL_PC_SHLD, FColor(0.9, 0.9, 1, 1));
 			}
-			else root.get_ren()->parts(MODEL_PC_SHLD, ME_AURA, {tr, 0.05, FColor(0.9, 0.9, 1, 0.3)});
+			else root.get_ren()->parts(MODEL_PC_SHLD, ME_AURA, {tr, 0.05, FColor(0.9, 0.5, 0.8, 0.3)});
 		}
 		else if (sh->enabled)
 		{

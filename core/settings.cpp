@@ -1,16 +1,62 @@
+#include <SDL2/SDL_filesystem.h>
 #include "vaslib/vas_log.hpp"
 #include "utils/block_cfg.hpp"
 #include "settings.hpp"
 
-std::string AppSettings::cfg_path = "<UNSET>";
-static AppSettings app_sets;
+const AppSettings& AppSettings::get() { return get_mut(); }
+AppSettings& AppSettings::get_mut()
+{
+	static std::unique_ptr<AppSettings> sets;
+	if (!sets) sets.reset(new AppSettings);
+	return *sets;
+}
 
-const AppSettings& AppSettings::get() { return app_sets; }
-AppSettings& AppSettings::get_mut() { return app_sets; }
+AppSettings::AppSettings()
+{
+#if !USE_RELEASE_PATHS
+	path_log = "rodent.log";
+	path_resources = "";
+	path_settings = "res/settings.cfg";
+	
+#else
+#warning Not tested
+	
+	std::string base;
+	std::string pref;
+	
+	if (char* s = SDL_GetBasePath())
+	{
+		base = s;
+		SDL_free(s);
+		VLOGD("SDL_GetBasePath = {}", base);
+	}
+	else
+	{
+		base = ".";
+		VLOGE("SDL_GetBasePath failed - {}", SDL_GetError());
+	}
+	
+	if (char* s = SDL_GetBasePath())
+	{
+		pref = s;
+		SDL_free(s);
+		VLOGD("SDL_GetPrefPath = {}", pref);
+	}
+	else
+	{
+		pref = ".";
+		VLOGE("SDL_GetPrefPath failed - {}", SDL_GetError());
+	}
+	
+	path_log = pref + "game.log";
+	path_resources = base;
+	path_settings = pref + "settings.cfg";
+#endif
+}
 
 bool AppSettings::load()
 {
-	VLOGI( "AppSettings::load() from \"{}\"", cfg_path );
+	VLOGI( "AppSettings::load() from \"{}\"", path_settings );
 	std::vector <BC_Cmd> cs;
 	
 	int i, i2;
@@ -42,5 +88,11 @@ bool AppSettings::load()
 	c = &cs.emplace_back( true, true, "font_supersample", [&](){ font_supersample = i; return i > 1; });
 	c->val(i);
 	
-	return bc_parsefile( cfg_path.c_str(), std::move(cs), 2, BC_Block::F_IGNORE_UNKNOWN );
+	c = &cs.emplace_back( true, true, "use_particles_pp", [&](){ use_particles_pp = i; return true; } );
+	c->val(i);
+	
+	c = &cs.emplace_back( true, true, "use_particles_bloom", [&](){ use_particles_bloom = i; return true; } );
+	c->val(i);
+	
+	return bc_parsefile( path_settings.c_str(), std::move(cs), 2, BC_Block::F_IGNORE_UNKNOWN );
 }

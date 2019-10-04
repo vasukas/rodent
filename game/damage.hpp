@@ -123,6 +123,7 @@ struct DmgShield : DamageFilter
 	
 private:
 	HealthPool hp;
+	TimeSpan hit_ren_tmo;
 };
 
 

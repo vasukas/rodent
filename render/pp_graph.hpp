@@ -14,8 +14,8 @@ class PP_Node
 {
 public:
 	const std::string name;
-	const bool has_input;
-	const bool has_output;
+	const bool has_input; ///< Is target (disabled if have no inputs)
+	const bool has_output; ///< Is provider (disabled if have no target)
 	
 	
 	PP_Node(std::string name, bool has_input = true, bool has_output = true); ///< Adds self to PP_Graph
@@ -58,7 +58,7 @@ protected:
 class PPN_Chain : public PP_Node
 {
 public:
-	bool enabled = true;
+	std::function<bool()> is_enabled;
 	
 	// pre_draw is called before rendering to output buffer
 	PPN_Chain(std::string name, std::vector<std::unique_ptr<PP_Filter>> fts_in, std::function<void()> pre_draw_in);
@@ -125,7 +125,7 @@ private:
 class PP_Filter
 {
 public:
-	bool enabled = false;
+	bool enabled = true;
 	Shader* sh = nullptr;
 	
 	
