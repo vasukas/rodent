@@ -1,4 +1,5 @@
 #include "client/presenter.hpp"
+#include "utils/noise.hpp"
 #include "ai_logic.hpp"
 #include "game_core.hpp"
 #include "player_mgr.hpp"
@@ -6,34 +7,114 @@
 
 
 
-vec2fp AI_TargetPredictor::correction(float distance, float bullet_speed, Entity *target)
-{	
-	float ttr = distance / bullet_speed; // time to reach
-	vec2fp tar_vel; // target velocity
-	
-	if (GameCore::get().get_pmg().is_player(target)) tar_vel = GameCore::get().get_pmg().get_avg_vel();
-	else tar_vel = target->get_phy().get_vel().pos;
-	
-	return tar_vel * ttr;
+void AI_NetworkGroup::post_target(Entity* ent)
+{
+	tar = TargetInfo{};
+	tar->eid = ent->index;
+	tar->pos = ent->get_pos();
+	tar->seen_at = GameCore::get().get_step_counter();
+	tar->is_visible = true;
+}
+void AI_NetworkGroup::reset_target(vec2fp self_pos)
+{
+	if (tar && !tar->is_visible && LevelControl::get().is_same_coord(tar->pos, self_pos))
+		tar.reset();
+}
+std::optional<AI_NetworkGroup::TargetInfo> AI_NetworkGroup::last_target()
+{
+	if (tar && !GameCore::get().get_ent(tar->eid)) tar.reset();
+	if (tar && tar->seen_at != GameCore::get().get_step_counter()) tar->is_visible = false;
+	return tar;
 }
 
 
 
-void AI_TargetProvider::check_lpos(std::optional<vec2fp> &lpos, Entity* self)
+AI_TargetProvider::AI_TargetProvider(Entity* ent, std::shared_ptr<AI_NetworkGroup> group)
+	: EComp(ent), group(std::move(group))
 {
-	if (lpos) {
-		const float rad = 3;
-		if (self->get_pos().dist_squ(*lpos) < rad * rad)
-			lpos.reset();
+	reg(ECompType::StepPreUtil);
+	
+	if (auto hc = ent->get_hlc())
+		EVS_CONNECT1(hc->on_damage, on_dmg);
+}
+void AI_TargetProvider::step()
+{
+	InfoInternal ii = update();
+	if (ii.ent)
+	{
+		info = Visible{ii.ent, ii.dist};
+		if (group) group->post_target(ii.ent);
+	}
+	else if (!group) info = NoTarget{};
+	else
+	{
+		auto lt = group->last_target();
+		if (!lt) info = NoTarget{};
+		else {
+			group->reset_target( ent->get_pos() );
+			if (auto lt = group->last_target())
+				info = LastKnown{lt->pos};
+		}
+	}
+}
+void AI_TargetProvider::on_dmg(const DamageQuant& q)
+{
+	if (!group) return;
+	if (!std::holds_alternative<Visible>(info))
+	{
+		if (auto ent = GameCore::get().get_ent(q.src_eid))
+			group->post_target(ent);
 	}
 }
 
 
 
+void AI_Attack::shoot(AI_TargetProvider::Visible tar, Entity* self)
+{
+	auto wpn = &self->get_eqp()->get_wpn();
+	if (!wpn) return;
+	
+	vec2fp p = tar.ent->get_pos();
+	if (use_prediction)
+	{
+		vec2fp corr = correction(tar.dist, wpn->info->bullet_speed, tar.ent);
+		GamePresenter::get()->dbg_line(p, p + corr, 0xff0000ff);
+		p += corr;
+	}
+	
+	self->get_eqp()->try_shoot(p, true, false);
+}
+void AI_Attack::shoot(vec2fp at, Entity* self)
+{
+	self->get_eqp()->try_shoot(at, true, false);
+}
+vec2fp AI_Attack::correction(float distance, float bullet_speed, Entity* target)
+{
+	const float acc_k = GameCore::step_len / TimeSpan::seconds(0.5);
+	
+	vec2fp tar_vel = target->get_phy().get_vel().pos;
+	if (target->index == prev_tar) vel_acc += (tar_vel - vel_acc) * acc_k;
+	else {
+		prev_tar = target->index;
+		vel_acc = tar_vel;
+	}
+	
+	float ttr = distance / bullet_speed; // time to reach
+	ttr += GameCore::get().get_random().range(0.1, 0.25); // hack
+	return vel_acc * ttr;
+}
+
+
+
+constexpr float ai_evade_add = 1.5f; // additional evade distance
+constexpr float ai_evade_size = 0.7f; // minimal perimeter delta
+constexpr float ai_evade_speed = 5.f;
+
 AI_Movement::AI_Movement(Entity* ent, float spd_slow, float spd_norm, float spd_accel)
 	: EComp(ent), spd_k({spd_slow, spd_norm, spd_accel})
 {
 	reg(ECompType::StepPostUtil);
+	evade_rad = ent->get_phy().get_radius() + ai_evade_add;
 }
 void AI_Movement::set_target(std::optional<vec2fp> new_tar, SpeedType speed)
 {
@@ -46,79 +127,74 @@ void AI_Movement::set_target(std::optional<vec2fp> new_tar, SpeedType speed)
 	}
 	else
 	{
-		if (preq && preq->first .equals(*new_tar, near_dist)) return;
-		if (path && path->back().equals(*new_tar, near_dist)) return;
+		auto same = [&](vec2fp p) {return LevelControl::get().is_same_coord(*new_tar, p);};
+		if (path && same(path->ps.back())) return;
+		if (preq && same(preq->target)) return;
+		
+		// check if target is behind wall
 		
 		auto rc = GameCore::get().get_phy().raycast_nearest( conv(ent->get_pos()), conv(*new_tar),
 		{[](auto, b2Fixture* f){ auto fi = getptr(f); return fi && (fi->typeflags & FixtureInfo::TYPEFLAG_WALL); }});
 		
 		if (rc)
 		{
-			preq.emplace(*new_tar, PathRequest( ent->get_pos(), *new_tar ));
 			path.reset();
+			auto& p = preq.emplace();
+			p.target = *new_tar;
+			p.req = PathRequest( ent->get_pos(), *new_tar );
 		}
 		else
 		{
 			preq.reset();
-			path.emplace().push_back(*new_tar);
-			path_fixed_dir.reset();
-			path_index = 0;
+			auto& p = path.emplace();
+			p.ps.push_back(*new_tar);
+			p.next = 0;
 		}
 	}
 }
 vec2fp AI_Movement::step_path()
 {
-	const vec2fp delta = (*path)[path_index] - ent->get_pos();
+	const vec2fp delta = path->ps[path->next] - ent->get_pos();
 	
 	vec2fp dir = delta;
 	dir.norm_to( spd_k[cur_spd] );
 	
-	vec2fp line_dir = dir;
-	line_dir.rot90cw();
-	
-	if (delta.len_squ() < reach_dist * reach_dist)
+	if (LevelControl::get().is_same_coord(path->ps[path->next], ent->get_pos()))
 	{
-		if (!path_fixed_dir) path_fixed_dir = dir;
-		return *path_fixed_dir;
-	}
-	else if (path_fixed_dir)
-	{
-		path_fixed_dir.reset();
-		
-		if (++path_index == path->size())
+		if (++path->next == path->ps.size())
 		{
 			path.reset();
 			return {};
 		}
 		return step_path();
 	}
-	
 	return dir;
 }
 void AI_Movement::step()
 {
-	b2Vec2 f = {0, 0};
+	b2Vec2 f = get_evade();
 	
 	if (preq)
 	{
-		auto res = preq->second.result();
-		if (res)
+		if (auto res = preq->req.result())
 		{
 			if (!res->not_found)
 			{
-				path = std::move(res->ps);
-				path_fixed_dir.reset();
-				path_index = 1;
+				auto& p = path.emplace();
+				p.ps = std::move(res->ps);
+				p.next = 1;
 			}
 			preq.reset();
 		}
 	}
-	else if (path) {
-		for (size_t i=1; i<path->size(); ++i)
-			GamePresenter::get()->dbg_line( (*path)[i-1], (*path)[i], -1 );
-		GamePresenter::get()->dbg_line( ent->get_pos(), (*path)[path_index], 0xff000080 );
+	else if (path)
+	{
+//		for (size_t i=1; i<path->ps.size(); ++i)
+//			GamePresenter::get()->dbg_line( path->ps[i-1], path->ps[i], -1 );
+//		GamePresenter::get()->dbg_line( ent->get_pos(), path->ps[path->next], 0xff000080 );
 		
-		f = conv(step_path());
+		f += conv(step_path());
+		f += get_evade_vel(f);
 	}
 	
 	auto& body = ent->get_phobj().body;
@@ -127,37 +203,93 @@ void AI_Movement::step()
 	f *= inert_k[cur_spd];
 	body->ApplyForceToCenter(f, f.LengthSquared() > 0.01);
 }
+b2Vec2 AI_Movement::get_evade()
+{
+	auto& ph = ent->get_phobj();
+	float min_size = ai_evade_size;
+	
+	float a = min_size / evade_rad; // delta = 2pi / num, num = 2pi * rad / min_size
+	a *= evade_index;
+	++evade_index; // won't overflow
+	
+	b2Vec2 pos = ph.body->GetWorldCenter();
+	b2Vec2 tar = b2Mul(b2Rot(a), b2Vec2(evade_rad, 0));
+	
+	b2Vec2 corr = {0, 0};
+	for (int i=0; i<4; ++i)
+	{
+		tar = tar.Skew();
+		auto rc = GameCore::get().get_phy().raycast_nearest(pos, pos + tar);
+		if (rc)
+		{
+			b2Vec2 delta = rc->poi - pos;
+			float d = delta.Length();
+			if (d < evade_rad && d > min_size)
+				corr += (ai_evade_speed / -d) * delta;
+		}
+	}
+	return corr;
+}
+b2Vec2 AI_Movement::get_evade_vel(b2Vec2 vel)
+{
+	constexpr float ahead_k = 0.5;
+	
+	auto& ph = ent->get_phobj();
+	const b2Vec2 dir = ahead_k * vel;
+	const float dist_max = ahead_k * dir.Length();
+	
+	float off[2] = {-1, 1};
+	float dist[2];
+	
+	for (int i=0; i<2; ++i)
+	{
+		b2Vec2 pos = off[i] * dir.Skew();
+		pos.Normalize();
+		pos *= dist_max;
+		pos += ph.body->GetWorldCenter();
+		
+		auto rc = GameCore::get().get_phy().raycast_nearest(pos, pos + dir);
+		dist[i] = rc? (rc->poi - pos).LengthSquared() : dist_max;
+	}
+	
+	if (std::fabs(dist[0] - dist[1]) < 1.f) return {0, 0};
+	int i = dist[0] < dist[1] ? 0 : 1;
+	
+	b2Vec2 corr = off[i] * dir.Skew();
+	corr.Normalize();
+	corr *= 0.5f * std::fabs(std::sqrt(dist[0]) - std::sqrt(dist[1]));
+	return corr;
+}
 
 
 
-AI_DroneLogic::AI_DroneLogic(Entity* ent, std::unique_ptr<AI_TargetProvider> tar, AI_Movement* mov)
-	: EComp(ent), tar(std::move(tar)), mov(mov)
+AI_DroneLogic::AI_DroneLogic(Entity* ent, AI_TargetProvider* tar, AI_Movement* mov)
+	: EComp(ent), tar(tar), mov(mov)
 {
 	reg(ECompType::StepLogic);
 }
 void AI_DroneLogic::step()
 {
-	tar->step();
-	auto ti = tar->get_target();
+	auto& ti_var = tar->get_info();
 	
-	if (ti.ent)
+	if (auto ti = std::get_if<AI_TargetProvider::Visible>(&ti_var))
 	{
-		vec2fp pos = ti.ent->get_pos();
+		if (GameCore::get().dbg_ai_attack)
+			atk.shoot(*ti, ent);
+		
+		vec2fp pos = ti->ent->get_pos();
 		const vec2fp delta = pos - ent->get_pos();
 		const float da = delta.angle();
 		
-		if (tar_pred.enabled) {
-			auto bs = ent->get_eqp()->get_wpn().info->bullet_speed;
-			pos += tar_pred.correction(ti.dist, bs, ti.ent);
-		}
-		
-		ent->get_eqp()->try_shoot(pos, true, false);
 		if (auto r = ent->get_ren()) r->set_face(da);
+		
+		seen_tmo = {};
+		seen_pos = pos;
 		
 		// maintain optimal distance
 		if (mov)
 		{
-			if (ti.dist < min_dist)
+			if (ti->dist < min_dist)
 			{
 				vec2fp pos = ent->get_pos();
 				vec2fp tar = pos + delta.get_norm() * -min_dist;
@@ -168,7 +300,7 @@ void AI_DroneLogic::step()
 				tar -= vec2fp( ent->get_phy().get_radius(), 0 ).get_rotated( da );
 				mov->set_target(tar, AI_Movement::SPEED_SLOW);
 			}
-			else if (ti.dist > opt_dist)
+			else if (ti->dist > opt_dist)
 			{
 				vec2fp pos = ent->get_pos();
 				vec2fp tar = pos + delta.get_norm() * opt_dist;
@@ -179,49 +311,57 @@ void AI_DroneLogic::step()
 			else mov->set_target({});
 		}
 	}
-	else if (mov)
+	else if (auto ti = std::get_if<AI_TargetProvider::LastKnown>(&ti_var); ti && mov)
 	{
-		mov->set_target(ti.pos);
+		mov->set_target(ti->pos);
 		
-		if (auto r = ent->get_ren(); r && ti.pos) {
-			vec2fp delta = *ti.pos - ent->get_pos();
+		if (auto r = ent->get_ren()) {
+			vec2fp delta = ti->pos - ent->get_pos();
 			r->set_face(delta.angle());
 		}
+	}
+	else if (mov)
+	{
+		mov->set_target({});
+	}
+	
+	//
+	
+	if (seen_tmo.seconds() < 2.1f)
+	{
+		if (GameCore::get().dbg_ai_attack && seen_tmo.is_positive())
+			atk.shoot(seen_pos, ent);
+		
+		seen_tmo += GameCore::step_len;
 	}
 }
 
 
 
-AI_TargetPlayer::AI_TargetPlayer(Entity* ent, float vis_rad)
-	: ent(ent), vis_rad(vis_rad)
+AI_TargetPlayer::AI_TargetPlayer(Entity* ent, float vis_rad, std::shared_ptr<AI_NetworkGroup> grp)
+	: AI_TargetProvider(ent, std::move(grp)), vis_rad(vis_rad)
 {}
-void AI_TargetPlayer::step()
+AI_TargetProvider::InfoInternal AI_TargetPlayer::update()
 {
-	ti.ent = nullptr;
-	ti.dist = 0.f;
-	check_lpos(ti.pos, ent);
-	
 	auto plr = GameCore::get().get_pmg().get_ent();
-	if (!plr) return; // no target
+	if (!plr) return {}; // no target
 	
 	vec2fp pos = ent->get_pos();
 	vec2fp tar = plr->get_pos();
 	
 	float dist = pos.dist_squ(tar);
-	if (dist > vis_rad * vis_rad) return; // out of range
+	if (dist > vis_rad * vis_rad) return {}; // out of range
 	
 	auto rc = GameCore::get().get_phy().los_check(pos, plr);
-	if (!rc) return; // not visible
+	if (!rc) return {}; // not visible
 	
-	ti.ent = plr;
-	ti.pos = tar;
-	ti.dist = *rc;
+	return {plr, *rc};
 }
 
 
 
 AI_TargetSensor::AI_TargetSensor(EC_Physics& ph, float vis_rad)
-	: ent(ph.ent), vis_rad(vis_rad)
+	: AI_TargetProvider(ph.ent), vis_rad(vis_rad)
 {
 	b2FixtureDef fd;
 	fd.isSensor = true;
@@ -234,7 +374,7 @@ AI_TargetSensor::~AI_TargetSensor()
 {
 	ent->get_phobj().destroy(fix);
 }
-void AI_TargetSensor::step()
+AI_TargetProvider::InfoInternal AI_TargetSensor::update()
 {
 	vec2fp pos = ent->get_pos();
 	
@@ -265,12 +405,8 @@ void AI_TargetSensor::step()
 	
 	if (!sel) // no nearest
 	{
-		ti.ent = nullptr;
-		ti.dist = 0.f;
-		check_lpos(ti.pos, ent);
-		
 		prev_tar = {};
-		return;
+		return {};
 	}
 	
 	if (prev_dist || sel->index == prev_tar) // locked exists
@@ -279,17 +415,13 @@ void AI_TargetSensor::step()
 		
 		if (sel->index == prev_tar) // same as nearest
 		{
-			ti.pos = ti.ent->get_pos();
-			ti.dist = sel_dist;
-			return;
+			return {sel, sel_dist};
 		}
 		
 		// timeout not expired, check distance re-lock
 		if (tmo.is_positive() && *prev_dist - sel_dist < chx_dist)
 		{
-			ti.pos = ti.ent->get_pos();
-			ti.dist = *prev_dist;
-			return;
+			return {sel, *prev_dist};
 		}
 	}
 	
@@ -297,10 +429,7 @@ void AI_TargetSensor::step()
 	
 	prev_tar = sel->index;
 	tmo = chx_tmo;
-	
-	ti.ent = sel;
-	ti.pos = sel->get_phy().get_pos();
-	ti.dist = sel_dist;
+	return {sel, sel_dist};
 }
 void AI_TargetSensor::on_cnt(const CollisionEvent& ev)
 {
@@ -318,52 +447,5 @@ void AI_TargetSensor::on_cnt(const CollisionEvent& ev)
 	{
 		auto it = std::find( tars.begin(), tars.end(), ev.other->index );
 		if (it != tars.end()) tars.erase(it);
-	}
-}
-
-
-
-std::optional<vec2fp> AI_TargetNetwork::Group::get_pos()
-{
-	std::optional<vec2fp> r;
-	for (auto& n : nodes)
-	{
-		auto ti = n->prov->get_target();
-		if (ti.ent) return ti.ent->get_pos();
-		if (ti.pos) r = ti.pos;
-	}
-	return r;
-}
-AI_TargetNetwork::AI_TargetNetwork(Entity* ent, std::shared_ptr<Group> grp, std::unique_ptr<AI_TargetProvider> prov)
-	: ent(ent), grp(std::move(grp)), prov(std::move(prov))
-{
-	this->grp->nodes.push_back(this);
-}
-AI_TargetNetwork::~AI_TargetNetwork()
-{
-	auto it = std::find( grp->nodes.begin(), grp->nodes.end(), this );
-	grp->nodes.erase(it);
-}
-void AI_TargetNetwork::step()
-{
-	prov->step();
-	ti = prov->get_target();
-	
-	if (ti.ent || ti.pos)
-	{
-		net_pos.reset();
-		return;
-	}
-	
-	check_lpos(net_pos, ent);
-	ti.pos = net_pos;
-	ti.dist = 0;
-	
-	tmo -= GameCore::step_len;
-	if (tmo.is_negative())
-	{
-		tmo = ask_tmo;
-		if (auto p = grp->get_pos())
-			net_pos = p;
 	}
 }

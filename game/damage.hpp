@@ -26,6 +26,7 @@ struct DamageQuant
 	int amount;
 	std::optional<size_t> armor = {}; ///< Armored area index
 	std::optional<vec2fp> wpos = {}; ///< World position (to display particles)
+	EntityIndex src_eid = {}; ///< Who caused damage
 };
 
 

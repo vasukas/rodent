@@ -283,7 +283,16 @@ public:
 		dbg_serv_g = vig_reg_menu(VigMenu::DebugGame, [this]
 		{
 			std::unique_lock lock(ren_lock);
+			if (!pres) return;
+			
 			dbg_serv_avg.draw();
+			vig_lo_next();
+			
+			vig_label_a("Raycasts:   {:4}\n", GameCore::get().get_phy().raycast_count);
+			vig_label_a("AABB query: {:4}\n", GameCore::get().get_phy().aabb_query_count);
+			vig_lo_next();
+			
+			vig_checkbox(GameCore::get().dbg_ai_attack, "AI attack");
 			vig_lo_next();
 			
 			if (auto ent = core->get_pmg().get_ent())
@@ -292,6 +301,8 @@ public:
 				vig_label_a("x:{:5.2f} y:{:5.2f}", pos.x, pos.y);
 				vig_lo_next();
 				vig_checkbox(ent->get_eqp()->infinite_ammo, "Infinite ammo");
+				if (vig_checkbox(core->get_pmg().god_mode, "God mode"))
+					core->get_pmg().update_godmode();
 			}
 		});
 		

@@ -121,7 +121,8 @@ ETurret::ETurret(vec2fp at, size_t team)
     ren(this, MODEL_BOX_SMALL, FColor(1, 0, 1, 1)),
     hlc(this, 400),
     eqp(this),
-    logic(this, std::make_unique<AI_TargetSensor>(phy, 20), nullptr),
+    l_tar(phy, 20),
+    logic(this, &l_tar, nullptr),
     team(team)
 {
 	b2FixtureDef fd;
@@ -132,10 +133,10 @@ ETurret::ETurret(vec2fp at, size_t team)
 }
 
 
-static std::unique_ptr<AI_TargetProvider> drone_prov(Entity* ent)
+static std::shared_ptr<AI_NetworkGroup> drone_grp()
 {
-	static std::shared_ptr<AI_TargetNetwork::Group> all = std::make_shared<AI_TargetNetwork::Group>();
-	return std::make_unique<AI_TargetNetwork>(ent, all, std::make_unique<AI_TargetPlayer>(ent, 25));
+	static std::shared_ptr<AI_NetworkGroup> all = std::make_shared<AI_NetworkGroup>();
+	return all;
 }
 
 EEnemyDrone::EEnemyDrone(vec2fp at)
@@ -151,7 +152,8 @@ EEnemyDrone::EEnemyDrone(vec2fp at)
 	hlc(this, 70),
 	eqp(this),
 	mov(this, 4, 7, 9),
-	logic(this, drone_prov(this), &mov)
+	l_tar(this, 25, drone_grp()),
+	logic(this, &l_tar, &mov)
 {
 	b2FixtureDef fd;
 	fd.friction = 0.8;

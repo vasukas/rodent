@@ -15,7 +15,6 @@ public:
 	
 	virtual Entity* get_ent() const = 0; ///< May return null
 	virtual bool is_player(Entity* ent) const = 0;
-	virtual vec2fp get_avg_vel() const = 0; ///< For AI prediction
 	
 	virtual void render(TimeSpan passed) = 0; ///< May be called not at each cycle
 	virtual void update_godmode() = 0; ///< Call if changed 'god_mode'

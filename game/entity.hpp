@@ -27,6 +27,7 @@ using EntityPtr = std::unique_ptr<Entity, EntityDeleter>;
 enum class ECompType
 {
 	// step is called on these at each core step, in same order
+	StepPreUtil,
 	StepLogic,
 	StepPostUtil,
 	

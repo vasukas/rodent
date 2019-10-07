@@ -16,14 +16,14 @@ struct PathRequest
 		bool not_found; ///< Set to true if no path was found
 	};
 	
+	PathRequest() = default;
 	PathRequest(vec2fp from, vec2fp to);
 	~PathRequest();
 	
-//	PathRequest() = default;
-	PathRequest(const PathRequest&) = delete;
+	PathRequest(PathRequest&&);
+	PathRequest& operator=(PathRequest&&);
 	
-	PathRequest(PathRequest&&) = default;
-//	PathRequest& operator=(PathRequest&&) = default;
+	PathRequest(const PathRequest&) = delete;
 	
 	bool is_ok() const; ///< Returns true if result is available or waiting
 	bool is_ready() const; ///< Returns true if result computed and not yet returned
@@ -83,6 +83,9 @@ public:
 	const std::vector<Spawn>& get_spawns() const {return spps;}
 	
 	AsyncPathSearch& get_aps() {return *aps;}
+	
+	vec2i to_cell_coord(vec2fp p) const {return (p / cell_size).int_floor();}
+	bool is_same_coord(vec2fp a, vec2fp b) const {return to_cell_coord(a) == to_cell_coord(b);}
 	
 protected:
 	vec2i size;

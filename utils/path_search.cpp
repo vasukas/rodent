@@ -42,11 +42,14 @@ public:
 	{
 		bool is_pass;
 		uint_fast8_t closed; // counter
-		size_t prev; // ID of parent node
+		uint_fast16_t prev; // ID of parent node
+#if USE_DIAG
+		uint_fast8_t dir_mask;
+#endif
 	};
 	struct QueueNode
 	{
-		size_t index;
+		uint_fast16_t index;
 		PathCost cost; // g-value
 		PathCost weight; // f = g + h
 		
@@ -88,17 +91,34 @@ public:
 		
 		for (size_t i=0; i < cost_grid.size(); ++i)
 		{
-			f_ns[i].is_pass = cost_grid[i] != 0;
+			f_ns[i].is_pass = (cost_grid[i] != 0);
 			f_ns[i].closed = 0;
+#if USE_DIAG
+			f_ns[i].dir_mask = 0;
+#endif
 		}
 		closed_cou = 0;
 		
+#if USE_DIAG
+		auto cell = [&](int x, int y) -> auto& {return f_ns[y * f_size.x + x];};
+		
+		for (int y=1; y < size.y - 1; ++y)
+		for (int x=1; x < size.x - 1; ++x)
+		{
+			auto& dm = cell(x, y).dir_mask;
+			if (!cell(x, y-1).is_pass) dm |= (1 << 0) | (1 << 2);
+			if (!cell(x, y+1).is_pass) dm |= (1 << 5) | (1 << 7);
+			if (!cell(x-1, y).is_pass) dm |= (1 << 0) | (1 << 5);
+			if (!cell(x+1, y).is_pass) dm |= (1 << 2) | (1 << 7);
+		}
+#endif
+			
 		ssize_t pt = f_size.x;
 #if USE_DIAG
 		dirs = {{
-			{-pt -1, dirs_diag}, {-pt, dirs_diff}, {-pt +1, dirs_diag},
-			{    -1, dirs_diff},                   {    +1, dirs_diff},
-			{ pt -1, dirs_diag}, { pt, dirs_diff}, { pt +1, dirs_diag}
+			{-pt -1, dirs_diag}, {-pt, dirs_diff}, {-pt +1, dirs_diag}, // 0 1 2
+			{    -1, dirs_diff},                   {    +1, dirs_diff}, // 3   4
+			{ pt -1, dirs_diag}, { pt, dirs_diff}, { pt +1, dirs_diag}  // 5 6 7
 		}};
 #else
 		dirs = {{
@@ -243,8 +263,17 @@ public:
 			if (qn.index == i_dst)
 				return rebuild_path(i_dst, qn.cost + 2);
 			
+#if USE_DIAG
+			int dir_bit = 1;
+#endif
 			for (auto& d : dirs)
 			{
+#if USE_DIAG
+				bool no_dir = f_ns[qn.index].dir_mask & dir_bit;
+				dir_bit <<= 1;
+				if (no_dir) continue;
+#endif
+				
 				size_t n_ix = qn.index + d.offset;
 				auto& n = f_ns[n_ix];
 				if (!n.is_pass || n.closed == closed_cou) continue;

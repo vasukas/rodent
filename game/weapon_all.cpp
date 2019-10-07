@@ -38,6 +38,7 @@ void StdProjectile::explode(size_t src_team, EntityIndex src_eid, b2Vec2 self_ve
 			q.amount *= k;
 			q.armor = armor;
 			q.wpos = conv(at);
+			q.src_eid = src_eid;
 			hc->apply(q);
 		}
 		if (pars.imp != 0.f)

@@ -24,6 +24,8 @@ public:
 		std::unique_ptr<PlayerManager> pmg;
 	};
 	
+	bool dbg_ai_attack; ///< Is AI attack enabled
+	
 	static GameCore& get(); ///< Returns singleton
 	static GameCore* create(InitParams pars); ///< Creates empty handler and inits all systems
 	virtual ~GameCore(); ///< Destroys all systems

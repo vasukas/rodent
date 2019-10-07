@@ -24,12 +24,6 @@ public:
 	EntityIndex plr_eid = {};
 	PlayerEntity* plr_ent = nullptr;
 	
-	// average velocity
-	
-	std::vector<vec2fp> av_pos;
-	size_t av_index = 0;
-	vec2fp plr_avel = {};
-	
 	// interface
 	
 	struct Message
@@ -49,8 +43,6 @@ public:
 	PlayerManager_Impl(std::shared_ptr<PlayerController> pc_ctr)
 		: pc_ctr(std::move(pc_ctr))
 	{
-		av_pos.resize(TimeSpan::seconds(1) / GameCore::step_len, vec2fp{});
-		
 //		TimeSpan st = TimeSpan::seconds(1.5);
 //		std::string s = "Press ESCAPE to see controls";
 //		if (pc_ctr->get_gpad()) {st *= 2; s += "\nPress START to enable gamepad";}
@@ -63,10 +55,6 @@ public:
 	bool is_player(Entity* ent) const override
 	{
 		return ent->index == plr_eid;
-	}
-	vec2fp get_avg_vel() const override
-	{
-		return plr_avel;
 	}
 	
 	
@@ -227,17 +215,6 @@ public:
 	void step() override
 	{
 		try_spawn_plr();
-		
-		if (plr_ent)
-		{
-			auto vel = plr_ent->get_phy().get_vel().pos;
-			av_pos[av_index % av_pos.size()] = vel;
-			++av_index; // overflow is ok
-			
-			plr_avel = {};
-			for (auto& p : av_pos) plr_avel += p;
-			plr_avel /= av_pos.size();
-		}
 	}
 	
 	

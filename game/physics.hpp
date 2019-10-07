@@ -65,6 +65,8 @@ struct CollisionEvent
 	FixtureInfo* fix_other; ///< Fixture userdata for another entity
 	vec2fp point; ///< Averaged world point of impact
 	float imp; ///< Resolution impulse (set only for T_RESOLVE)
+	
+	b2Contact* contact; ///< Actual contact
 };
 
 
@@ -171,6 +173,9 @@ public:
 	GameCore& core;
 	b2World world;
 	
+	size_t raycast_count = 0;
+	size_t aabb_query_count = 0;
+	
 	
 	PhysicsWorld(GameCore& core);
 	~PhysicsWorld();
@@ -179,7 +184,7 @@ public:
 	
 	
 	/// Returns distance if entity is directly visible
-	std::optional<float> los_check(vec2fp from, Entity* target);
+	std::optional<float> los_check(vec2fp from, Entity* target, std::optional<float> width = {}, bool is_bullet = false);
 	
 	/// Appends result - all object along ray
 	void raycast_all(std::vector<RaycastResult>& es, b2Vec2 from, b2Vec2 to, CastFilter cf = {});

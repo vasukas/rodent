@@ -35,6 +35,23 @@ PathRequest::~PathRequest()
 {
 	if (i) LevelControl::get().get_aps().rem_task(*i);
 }
+PathRequest::PathRequest(PathRequest&& p)
+{
+	*this = std::move(p);
+}
+PathRequest& PathRequest::operator=(PathRequest&& p)
+{
+	if (i) LevelControl::get().get_aps().rem_task(*i);
+	
+	p0 = p.p0;
+	i = p.i;
+	res = std::move(p.res);
+	
+	if (p.i) p.i.reset();
+	if (p.res) p.res.reset();
+	
+	return *this;
+}
 bool PathRequest::is_ok() const
 {
 	return i || res;

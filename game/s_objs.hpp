@@ -68,6 +68,7 @@ public:
 	EC_RenderBot ren;
 	EC_Health hlc;
 	EC_Equipment eqp;
+	AI_TargetSensor l_tar;
 	AI_DroneLogic logic;
 	size_t team;
 	
@@ -89,6 +90,7 @@ public:
 	EC_Health hlc;
 	EC_Equipment eqp;
 	AI_Movement mov;
+	AI_TargetPlayer l_tar;
 	AI_DroneLogic logic;
 	
 	EEnemyDrone(vec2fp at);

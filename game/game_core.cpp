@@ -32,6 +32,8 @@ public:
 	
 	GameCore_Impl(InitParams pars)
 	{
+		dbg_ai_attack = true;
+		
 		ents.block_size = 256;
 		phy.reset(new PhysicsWorld(*this));
 		pmg = std::move(pars.pmg);
@@ -49,6 +51,9 @@ public:
 	void step()
 	{
 		++step_cou;
+		
+		phy->raycast_count = 0;
+		phy->aabb_query_count = 0;
 		
 		// delete entities
 		
@@ -83,6 +88,7 @@ public:
 				             enum_name(type), ent? ent->dbg_id() : "null", e.what());
 			}
 		};
+		step_comp(ECompType::StepPreUtil);
 		step_comp(ECompType::StepLogic);
 		step_comp(ECompType::StepPostUtil);
 		

@@ -10,6 +10,7 @@ const char *enum_name(ECompType type)
 {
 	switch (type)
 	{
+	case ECompType::StepPreUtil:  return "PreUtil";
 	case ECompType::StepLogic:    return "Logic";
 	case ECompType::StepPostUtil: return "PostUtil";
 	case ECompType::TOTAL_COUNT:  return "TOTAL_COUNT"; 

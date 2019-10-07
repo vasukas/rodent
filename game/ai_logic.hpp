@@ -1,37 +1,80 @@
 #ifndef AI_LOGIC_HPP
 #define AI_LOGIC_HPP
 
+#include <variant>
 #include "entity.hpp"
 #include "level_ctr.hpp"
 #include "physics.hpp"
+#include "weapon.hpp"
 
 
 
-struct AI_TargetPredictor
+struct AI_NetworkGroup
 {
-	bool enabled = true; ///< Not used internally
+	struct TargetInfo
+	{
+		EntityIndex eid;
+		vec2fp pos;
+		uint32_t seen_at; ///< When last seen, GameCore steps
+		bool is_visible; ///< Set if visible now
+	};
 	
-	vec2fp correction(float distance, float bullet_speed, Entity* target); ///< Returns relative correction
+	
+	void post_target(Entity* ent); ///< Target is visible
+	void reset_target(vec2fp self_pos); ///< Target isn't near this position
+	std::optional<TargetInfo> last_target(); ///< Newest info on target
+	
+private:
+	std::optional<TargetInfo> tar;
 };
 
 
 
-struct AI_TargetProvider
+struct AI_TargetProvider : EComp
 {
-	struct TargetInfo
-	{
-		Entity* ent; ///< Null if not visible
-		float dist; ///< Distance to target (may be set to zero if not visible)
-		std::optional<vec2fp> pos; ///< Position to find target
-	};
+	struct NoTarget  {};
+	struct LastKnown {vec2fp pos;}; ///< Target was seen at this pos
+	struct Visible   {Entity* ent; float dist;}; ///< Target is directly visible
+	using Info = std::variant<NoTarget, LastKnown, Visible>;
 	
-	virtual ~AI_TargetProvider() = default;
-	virtual void step() {}
+	std::shared_ptr<AI_NetworkGroup> group;
 	
-	virtual TargetInfo get_target() const = 0;
+	
+	AI_TargetProvider(Entity* ent, std::shared_ptr<AI_NetworkGroup> group = {});
+	const Info& get_info() const {return info;}
 	
 protected:
-	void check_lpos(std::optional<vec2fp>& lpos, Entity* self);
+	EVS_SUBSCR;
+	
+	struct InfoInternal
+	{
+		Entity* ent = nullptr;
+		float dist = 0;
+	};
+	virtual InfoInternal update() = 0; ///< Called once per step, returns visible target
+	
+private:
+	Info info;
+	
+	void step() override;
+	void on_dmg(const DamageQuant& q);
+};
+
+
+
+struct AI_Attack
+{
+	bool use_prediction = true;
+	
+	
+	void shoot(AI_TargetProvider::Visible info, Entity* self);
+	void shoot(vec2fp at, Entity* self);
+	
+private:
+	EntityIndex prev_tar;
+	vec2fp vel_acc = {};
+	
+	vec2fp correction(float distance, float bullet_speed, Entity* target);
 };
 
 
@@ -49,40 +92,51 @@ struct AI_Movement : EComp
 	
 	AI_Movement(Entity* ent, float spd_slow, float spd_norm, float spd_accel); ///< Registers
 	void set_target(std::optional<vec2fp> new_tar, SpeedType speed = SPEED_NORMAL);
-	bool has_target() const {return preq || path;}
 	
 private:
 	const std::array<float, TOTAL_COUNT_INTERNAL> spd_k;
-	const std::array<float, TOTAL_COUNT_INTERNAL> inert_k = {2, 1, 2};
+	const std::array<float, TOTAL_COUNT_INTERNAL> inert_k = {6, 4, 8};
 	
-	const float near_dist = LevelControl::get().cell_size * 2;
-	const float reach_dist = LevelControl::get().cell_size * 0.6;
+	struct Preq {
+		vec2fp target;
+		PathRequest req;
+	};
+	struct Path {
+		std::vector<vec2fp> ps;
+		size_t next; ///< Index into 'ps'
+	};
 	
-	std::optional<std::pair<vec2fp, PathRequest>> preq; ///< Pending request and endpoint
-	std::optional<std::vector<vec2fp>> path;
-	std::optional<vec2fp> path_fixed_dir;
-	size_t path_index; ///< Next point, valid only if 'path' is
-	
+	std::optional<Preq> preq;
+	std::optional<Path> path;
 	size_t cur_spd = 1;
+	
+	float evade_rad;
+	size_t evade_index = 0;
+	
 	
 	vec2fp step_path();
 	void step() override;
+	b2Vec2 get_evade();
+	b2Vec2 get_evade_vel(b2Vec2 vel);
 };
 
 
 
 struct AI_DroneLogic : EComp
 {
-	std::unique_ptr<AI_TargetProvider> tar; ///< Must be non-null
+	AI_TargetProvider* tar; ///< Must be non-null
 	AI_Movement* mov; ///< May be null
 	
-	AI_TargetPredictor tar_pred;
+	AI_Attack atk;
 	float min_dist = 0; ///< Closest optimal distance
 	float opt_dist = 100; ///< Farthest optimal distance
 	
-	AI_DroneLogic(Entity* ent, std::unique_ptr<AI_TargetProvider>, AI_Movement* mov);
+	AI_DroneLogic(Entity* ent, AI_TargetProvider* tar, AI_Movement* mov);
 	
 private:
+	TimeSpan seen_tmo = TimeSpan::seconds(1000);
+	vec2fp seen_pos;
+	
 	void step() override;
 };
 
@@ -90,15 +144,12 @@ private:
 
 struct AI_TargetPlayer : AI_TargetProvider
 {
-	AI_TargetPlayer(Entity* ent, float vis_rad);
-	void step() override;
-	TargetInfo get_target() const override {return ti;}
+	AI_TargetPlayer(Entity* ent, float vis_rad, std::shared_ptr<AI_NetworkGroup> grp);
 	
 private:
-	Entity* ent;
 	float vis_rad;
 	
-	TargetInfo ti = {};
+	InfoInternal update() override;
 };
 
 
@@ -112,50 +163,17 @@ struct AI_TargetSensor : AI_TargetProvider
 	
 	AI_TargetSensor(EC_Physics& ph, float vis_rad);
 	~AI_TargetSensor();
-	void step() override;
-	TargetInfo get_target() const override {return ti;}
 	
 private:
-	EVS_SUBSCR;
-	
-	Entity* ent;
 	float vis_rad;
 	b2Fixture* fix;
 	
 	std::vector<EntityIndex> tars;
 	EntityIndex prev_tar; ///< locked target
 	TimeSpan tmo;
-	TargetInfo ti = {};
 	
+	InfoInternal update() override;
 	void on_cnt(const CollisionEvent& ev);
-};
-
-
-
-struct AI_TargetNetwork : AI_TargetProvider
-{
-	struct Group
-	{
-		std::vector<AI_TargetNetwork*> nodes;
-		std::optional<vec2fp> get_pos();
-	};
-	
-	TimeSpan ask_tmo = TimeSpan::seconds(1);
-	
-	AI_TargetNetwork(Entity* ent, std::shared_ptr<Group> grp, std::unique_ptr<AI_TargetProvider> prov);
-	~AI_TargetNetwork();
-	
-	void step() override;
-	TargetInfo get_target() const override {return ti;}
-	
-private:
-	Entity* ent;
-	std::shared_ptr<Group> grp;
-	std::unique_ptr<AI_TargetProvider> prov;
-	
-	TimeSpan tmo;
-	TargetInfo ti = {};
-	std::optional<vec2fp> net_pos;
 };
 
 #endif // AI_LOGIC_HPP
