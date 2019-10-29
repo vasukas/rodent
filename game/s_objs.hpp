@@ -3,7 +3,7 @@
 
 #include <variant>
 #include "client/presenter.hpp"
-#include "ai_logic.hpp"
+#include "game_ai/ai_drone.hpp"
 #include "level_ctr.hpp"
 #include "physics.hpp"
 #include "weapon.hpp"
@@ -68,8 +68,8 @@ public:
 	EC_RenderBot ren;
 	EC_Health hlc;
 	EC_Equipment eqp;
+	AI_Drone logic;
 	AI_TargetSensor l_tar;
-	AI_DroneLogic logic;
 	size_t team;
 	
 	ETurret(vec2fp at, size_t team);
@@ -79,6 +79,7 @@ public:
 	EC_Health*    get_hlc() override {return &hlc;}
 	EC_Equipment* get_eqp() override {return &eqp;}
 	size_t get_team() const override {return team;}
+	AI_Drone* get_ai_drone() override {return &logic;}
 };
 
 
@@ -89,9 +90,9 @@ public:
 	EC_RenderBot ren;
 	EC_Health hlc;
 	EC_Equipment eqp;
-	AI_Movement mov;
+	AI_Drone logic;
 	AI_TargetPlayer l_tar;
-	AI_DroneLogic logic;
+	AI_Movement mov;
 	
 	EEnemyDrone(vec2fp at);
 	
@@ -100,6 +101,7 @@ public:
 	EC_Health*    get_hlc() override {return &hlc;}
 	EC_Equipment* get_eqp() override {return &eqp;}
 	size_t get_team() const override {return TEAM_BOTS;}
+	AI_Drone* get_ai_drone() override {return &logic;}
 };
 
 #endif // S_OBJS_HPP

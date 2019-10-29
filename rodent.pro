@@ -90,7 +90,10 @@ SOURCES += \
 	external/Box2D/Dynamics/b2WorldCallbacks.cpp \
 	external/fmt/format.cc \
 	external/fmt/posix.cc \
-	game/ai_logic.cpp \
+	game_ai/ai_components.cpp \
+	game_ai/ai_drone.cpp \
+	game_ai/ai_group.cpp \
+	game_ai/ai_group_target.cpp \
 	game/damage.cpp \
 	game/entity.cpp \
 	game/game_core.cpp \
@@ -141,7 +144,11 @@ HEADERS += \
 	core/main_loop.hpp \
 	core/settings.hpp \
 	core/vig.hpp \
-	game/ai_logic.hpp \
+	game_ai/ai_common.hpp \
+	game_ai/ai_components.hpp \
+	game_ai/ai_drone.hpp \
+	game_ai/ai_group.hpp \
+	game_ai/ai_group_target.hpp \
 	game/common_defs.hpp \
 	game/damage.hpp \
 	game/entity.hpp \

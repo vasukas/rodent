@@ -9,6 +9,7 @@
 #include "game/level_gen.hpp"
 #include "game/player_mgr.hpp"
 #include "game/s_objs.hpp"
+#include "game_ai/ai_group.hpp"
 #include "render/camera.hpp"
 #include "render/control.hpp"
 #include "render/postproc.hpp"
@@ -220,6 +221,7 @@ class ML_Game : public MainLoop
 public:
 	std::unique_ptr<GamePresenter> pres;
 	std::unique_ptr<LevelControl> lvl;
+	std::unique_ptr<AI_Controller> ai_ctr;
 	std::unique_ptr<GameCore> core;
 	std::shared_ptr<PlayerController> pc_ctr;
 	
@@ -463,6 +465,7 @@ public:
 		GameCore::InitParams gci;
 		gci.pmg.reset( PlayerManager::create(pc_ctr) );
 		
+		ai_ctr.reset( AI_Controller::init() );
 		lmap.reset( LevelMap::init(*lt) );
 		core.reset( GameCore::create( std::move(gci) ) );
 		lvl.reset( LevelControl::init(*lt) );
@@ -496,6 +499,7 @@ public:
 			{
 				std::unique_lock lock(ren_lock);
 				core->step();
+				ai_ctr->step();
 			}
 			auto dt = TimeSpan::since_start() - t0;
 			

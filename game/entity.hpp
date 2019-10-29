@@ -10,6 +10,7 @@
 class Entity;
 class GameCore;
 
+class AI_Drone;
 struct ECompRender;
 struct EC_Equipment;
 struct EC_Health;
@@ -106,6 +107,7 @@ public:
 	virtual EC_Equipment* get_eqp() {return nullptr;}
 	
 	virtual size_t get_team() const {return TEAM_ENVIRON;}
+	virtual AI_Drone* get_ai_drone() {return nullptr;}
 	
 	vec2fp get_pos() {return get_phy().get_pos();}
 

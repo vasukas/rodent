@@ -1,3 +1,4 @@
+#include "game_ai/ai_group.hpp"
 #include "utils/noise.hpp"
 #include "game_core.hpp"
 #include "s_objs.hpp"
@@ -106,7 +107,40 @@ void ESupply::on_cnt(const CollisionEvent& ce)
 }
 
 
-#define TURRET_RADIUS (20.f)
+
+static std::shared_ptr<AI_Group> allgroup()
+{
+	static std::shared_ptr<AI_Group> all = std::make_shared<AI_Group>( Rect{{}, LevelControl::get().get_size(), true} );
+	return all;
+}
+static std::shared_ptr<AI_Drone::State> idle_noop()
+{
+	static auto p = std::make_shared<AI_Drone::State>( AI_Drone::IdleNoop{} );
+	return p;
+}
+static std::shared_ptr<AI_DroneParams> pars_turret()
+{
+	static std::shared_ptr<AI_DroneParams> pars;
+	if (!pars) {
+		pars = std::make_shared<AI_DroneParams>();
+		pars->dist_suspect = pars->dist_visible = 20;
+	}
+	return pars;
+}
+static std::shared_ptr<AI_DroneParams> pars_drone()
+{
+	static std::shared_ptr<AI_DroneParams> pars;
+	if (!pars) {
+		pars = std::make_shared<AI_DroneParams>();
+		pars->speed = {4, 7, 9};
+		pars->dist_minimal = 8;
+		pars->dist_optimal = 14;
+		pars->dist_visible = 20;
+		pars->dist_suspect = 25;
+	}
+	return pars;
+}
+
 
 static b2BodyDef ETurret_bd(vec2fp at)
 {
@@ -121,8 +155,8 @@ ETurret::ETurret(vec2fp at, size_t team)
     ren(this, MODEL_BOX_SMALL, FColor(1, 0, 1, 1)),
     hlc(this, 400),
     eqp(this),
-    l_tar(phy, 20),
-    logic(this, &l_tar, nullptr),
+    logic(this, pars_turret(), allgroup(), idle_noop()),
+    l_tar(&logic),
     team(team)
 {
 	b2FixtureDef fd;
@@ -133,32 +167,27 @@ ETurret::ETurret(vec2fp at, size_t team)
 }
 
 
-static std::shared_ptr<AI_NetworkGroup> drone_grp()
-{
-	static std::shared_ptr<AI_NetworkGroup> all = std::make_shared<AI_NetworkGroup>();
-	return all;
-}
-
 EEnemyDrone::EEnemyDrone(vec2fp at)
 	:
 	phy(this, [](vec2fp at){
         b2BodyDef def;
 		def.position = conv(at);
 		def.type = b2_dynamicBody;
-		def.fixedRotation = true;
+//		def.fixedRotation = true;
 		return def;
 	}(at)),
 	ren(this, MODEL_DRONE, FColor(1, 0, 0, 1)),
 	hlc(this, 70),
 	eqp(this),
-	mov(this, 4, 7, 9),
-	l_tar(this, 25, drone_grp()),
-	logic(this, &l_tar, &mov)
+	logic(this, pars_drone(), allgroup(), std::make_shared<AI_Drone::State>(AI_Drone::IdlePoint{at})),
+	l_tar(&logic),
+	mov(&logic)
 {
 	b2FixtureDef fd;
 	fd.friction = 0.8;
 	fd.restitution = 0.4;
-	phy.add_box(fd, vec2fp::one(GameConst::hsz_drone), 25);
+//	phy.add_box(fd, vec2fp::one(GameConst::hsz_drone), 25);
+	phy.add_circle(fd, GameConst::hsz_drone * 1.4, 25); // sqrt2 - diagonal
 	
 	hlc.add_filter(std::make_shared<DmgShield>(100, 20));
 	hlc.ph_thr = 100;
@@ -167,7 +196,4 @@ EEnemyDrone::EEnemyDrone(vec2fp at)
 	
 	eqp.add_wpn(new WpnRocket);
 	eqp.set_wpn(0);
-	
-	logic.min_dist = 8;
-	logic.opt_dist = 14;
 }
