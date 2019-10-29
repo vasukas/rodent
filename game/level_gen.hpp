@@ -50,7 +50,7 @@ struct LevelTerrain
 	static LevelTerrain* load_testlvl(float cell_size, const char *filename = "res/test_level.png");
 	
 	///
-	ImageInfo draw_grid() const;
+	ImageInfo draw_grid(bool is_debug) const;
 	
 	/// Saves level as image
 	void test_save(const char *prefix = "level_test") const;

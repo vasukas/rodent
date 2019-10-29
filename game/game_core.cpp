@@ -25,6 +25,8 @@ public:
 	std::vector<std::unique_ptr <Entity, Del_Entity>> e_todel; // freed at the end of step
 	
 	uint32_t step_cou = 0;
+	TimeSpan step_time_cou = {};
+	
 	RandomGen rndg;
 	bool step_flag = false;
 	
@@ -46,11 +48,13 @@ public:
 	RandomGen&     get_random() noexcept {return rndg;}
 	
 	uint32_t      get_step_counter() const noexcept {return step_cou;}
+	TimeSpan      get_step_time()    const noexcept {return step_time_cou;}
 	bool          is_in_step()       const noexcept {return step_flag;}
 	
 	void step()
 	{
 		++step_cou;
+		step_time_cou += step_len;
 		
 		phy->raycast_count = 0;
 		phy->aabb_query_count = 0;

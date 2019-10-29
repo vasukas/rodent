@@ -21,12 +21,12 @@ struct TimeSpan
 	
 	static TimeSpan since_start(); ///< Returns amount of time passed since program start using steady clock
 	
-	[[nodiscard]] static TimeSpan fps(int t) {return seconds( 1.f / t );}
+	[[nodiscard]] static constexpr TimeSpan fps(int t) {return seconds( 1.f / t );}
 	int fps() const {return 1.f / seconds();}
 	
-	[[nodiscard]] static TimeSpan seconds( double  t ) { return TimeSpan( t * 1000 * 1000 ); }
-	[[nodiscard]] static TimeSpan ms     ( int     t ) { return TimeSpan( t * 1000 ); }
-	[[nodiscard]] static TimeSpan micro  ( int64_t t ) { return TimeSpan( t ); }
+	[[nodiscard]] static constexpr TimeSpan seconds( double  t ) { return TimeSpan( t * 1000 * 1000 ); }
+	[[nodiscard]] static constexpr TimeSpan ms     ( int     t ) { return TimeSpan( t * 1000 ); }
+	[[nodiscard]] static constexpr TimeSpan micro  ( int64_t t ) { return TimeSpan( t ); }
 	
 	double  seconds() const { return mks_value / (1000.f * 1000.f); }
 	int     ms()      const { return mks_value / 1000; }
@@ -47,6 +47,8 @@ struct TimeSpan
 	TimeSpan  operator * ( float t ) const { return TimeSpan( mks_value * t ); }
 	TimeSpan& operator *=( float t )       { mks_value *= t; return *this; }
 	
+	TimeSpan operator -() const { return TimeSpan(-mks_value); }
+	
 	/// Returns 0 if t is 0
 	double operator / ( const TimeSpan& t ) const;
 	
@@ -60,7 +62,7 @@ struct TimeSpan
 	
 private:
 	int64_t mks_value;
-	explicit TimeSpan( int64_t mks_value ) : mks_value (mks_value) {}
+	explicit constexpr TimeSpan( int64_t mks_value ) : mks_value (mks_value) {}
 };
 
 

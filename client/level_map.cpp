@@ -24,7 +24,7 @@ public:
 		e_sw.reset(TimeSpan::seconds(0.15));
 		coord_k = vec2fp::one(1) / (vec2fp(lt.grid_size) * lt.cell_size);
 		
-		img = lt.draw_grid();
+		img = lt.draw_grid(false);
 		img->convert(ImageInfo::FMT_RGBA);
 		img->map_pixel([](auto px)
 		{

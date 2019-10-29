@@ -52,6 +52,9 @@ public:
 	/// Returns index number of the next step (starting with 1)
 	virtual uint32_t get_step_counter() const noexcept = 0;
 	
+	/// Returns time since start
+	virtual TimeSpan get_step_time() const noexcept = 0;
+	
 	/// Returns true if step currently executed (for functions called inside it)
 	virtual bool is_in_step() const noexcept = 0;
 	

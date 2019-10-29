@@ -6,9 +6,6 @@
 #include "game_core.hpp"
 #include "s_objs.hpp"
 
-constexpr int path_max_dist = 20;
-constexpr int path_max_dist_sq = path_max_dist * path_max_dist;
-
 
 
 PathRequest::PathRequest(vec2fp from, vec2fp to)
@@ -19,16 +16,11 @@ PathRequest::PathRequest(vec2fp from, vec2fp to)
 	
 	if (pa == pb)
 	{
-		res = Result{{from, from}, 0, true};
-		return;
-	}
-	if ((pa - pb).len_squ() > path_max_dist_sq)
-	{
 		res = Result{{from, from}, 0, false};
 		return;
 	}
 	
-	i = LevelControl::get().get_aps().add_task(pa, pb);
+	i = LevelControl::get().get_aps().add_task(pa, pb, {});
 	p0 = {from, to};
 }
 PathRequest::~PathRequest()
@@ -90,6 +82,10 @@ bool PathRequest::is_ready() const
 	}
 	return true;
 }
+vec2fp PathRequest::get_endpoint() const
+{
+	return p0.second;
+}
 std::optional<PathRequest::Result> PathRequest::result()
 {
 	if (!is_ready()) return {};
@@ -126,8 +122,7 @@ LevelControl::LevelControl(const LevelTerrain& lt)
 	for (size_t i=0; i < cells.size(); ++i) aps_ps[i] = cells[i].is_wall ? 0 : 1;
 	
 	aps.reset( AsyncPathSearch::create_default() );
-	aps->sleep_time = GameCore::step_len;
-	aps->update(size, std::move(aps_ps), path_max_dist);
+	aps->update(size, std::move(aps_ps));
 }
 LevelControl::Cell* LevelControl::cell(vec2i pos) noexcept
 {

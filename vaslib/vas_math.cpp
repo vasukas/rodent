@@ -172,6 +172,9 @@ bool is_in_polygon(vec2i p, const vec2i* ps, size_t pn)
 
 
 
+float vec2fp::fastangle() const {
+	return angle(); // placeholder
+}
 float vec2fp::angle() const {
 	float a = std::atan2(y, x);
 	return std::isfinite(a)? a : 0.f;
@@ -420,6 +423,10 @@ bool Rectfp::contains( const Rectfp& r ) const
 {
 	return a.x <= r.a.x && a.y <= r.a.y && 
 	       b.x >= r.b.x && b.y >= r.b.y;
+}
+bool Rectfp::contains(vec2fp p) const
+{
+	return a.x < p.x && b.x > p.x && a.y < p.y && b.y > p.y;
 }
 
 

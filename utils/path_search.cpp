@@ -1,3 +1,4 @@
+#include <condition_variable>
 #include <mutex>
 #include <queue>
 #include <thread>
@@ -25,6 +26,7 @@ public:
 
 		State state = ST_NONE;
 		vec2i pa, pb;
+		AddInfo info;
 		Result res;
 		
 		operator bool() const {return state != ST_NONE;}
@@ -34,6 +36,7 @@ public:
 	std::mutex mux;
 	SparseArray<Slot> ss;
 	std::thread thr;
+	std::condition_variable work_cv;
 	
 	/// Fixed-point, to handle diags
 	using PathCost = uint_fast32_t;
@@ -69,7 +72,8 @@ public:
 	std::priority_queue <QueueNode, std::vector<QueueNode>, std::greater<QueueNode>> open_q;
 	uint_fast8_t closed_cou = 0;
 	
-	const PathCost dirs_diff = 0x10000; // also same as 1.0
+	const size_t path_cost_bits = 16; // number of bits in fractional part 
+	const PathCost dirs_diff = 1 << path_cost_bits; // same as 1.0
 	const PathCost dirs_diag = std::sqrt(2) * dirs_diff;
 	
 	
@@ -80,10 +84,11 @@ public:
 	~APS_Astar()
 	{
 		thr_term = true;
+		work_cv.notify_all();
 		if (thr.joinable())
 			thr.join();
 	}
-	void update(vec2i size, std::vector<uint8_t> cost_grid, int) override
+	void update(vec2i size, std::vector<uint8_t> cost_grid) override
 	{
 		std::unique_lock lock(mux);
 		f_size = size;
@@ -128,7 +133,7 @@ public:
 		}};
 #endif
 	}
-	size_t add_task(vec2i from, vec2i to) override
+	size_t add_task(vec2i from, vec2i to, AddInfo info) override
 	{
 		std::unique_lock lock(mux);
 		size_t i = ss.new_index();
@@ -136,8 +141,10 @@ public:
 		auto& s = ss[i];
 		s.pa = from;
 		s.pb = to;
+		s.info = info;
 		s.state = Slot::ST_WAITING;
 		
+		work_cv.notify_all();
 		return i;
 	}
 	void rem_task(size_t index) override
@@ -168,14 +175,17 @@ public:
 	}
 	void thr_func()
 	{
-		while (!thr_term)
+		while (true)
 		{
-			if (!ss.existing_count())
-				sleep(sleep_time);
+			std::unique_lock lock(mux);
+			work_cv.wait(lock, [&]
+			{
+				return thr_term || ss.existing_count();
+			});
+			if (thr_term) break;
 			
 			// find waiting slot
 			
-			std::unique_lock lock(mux);
 			size_t index = size_t_inval;
 			
 			auto it_end = ss.end();
@@ -201,7 +211,7 @@ public:
 			// non-blocking calc
 			
 			lock.unlock();
-			auto res = calc_path(p_src, p_dst);
+			auto res = calc_path(p_src, p_dst, s->info);
 			lock.lock();
 			
 			// set result
@@ -235,12 +245,13 @@ public:
 			
 		return r;
 	}
-	Result calc_path(vec2i p_src, vec2i p_dst)
+	Result calc_path(vec2i p_src, vec2i p_dst, AddInfo info)
 	{
 		++closed_cou;
 		
 		size_t i_src = p_src.y * f_size.x + p_src.x;
 		size_t i_dst = p_dst.y * f_size.x + p_dst.x;
+		PathCost maxlen = (info.max_length + 2) << path_cost_bits;
 		
 		auto hval = [&](size_t ix) -> PathCost
 		{
@@ -262,6 +273,8 @@ public:
 			
 			if (qn.index == i_dst)
 				return rebuild_path(i_dst, qn.cost + 2);
+			
+			if (qn.cost > maxlen) break;
 			
 #if USE_DIAG
 			int dir_bit = 1;

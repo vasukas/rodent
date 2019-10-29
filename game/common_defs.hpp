@@ -19,6 +19,8 @@ const float hsz_drone = 0.6;
 const vec2fp hsz_pshl = {0.7, 1.2}; ///< Projected shield
 }
 
+
+
 enum : size_t
 {
 	TEAM_ENVIRON = 0, ///< Environment

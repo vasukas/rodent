@@ -100,15 +100,15 @@ public:
 	
 	
 	virtual EC_Physics&   get_phobj(); ///< Throws if wrong type
-	vec2fp get_pos() {return get_phy().get_pos();}
-	
-	virtual ECompPhysics& get_phy(); ///< Throws if doesn't exist
+	virtual ECompPhysics& get_phy();   ///< Throws if doesn't exist
 	virtual ECompRender*  get_ren() {return nullptr;}
 	virtual EC_Health*    get_hlc() {return nullptr;}
 	virtual EC_Equipment* get_eqp() {return nullptr;}
 	
 	virtual size_t get_team() const {return TEAM_ENVIRON;}
 	
+	vec2fp get_pos() {return get_phy().get_pos();}
+
 	
 	/// Deletes entity immediatly or at the end of the step. Index garanteed to be not used in next step
 	void destroy();

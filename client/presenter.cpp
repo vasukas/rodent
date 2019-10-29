@@ -6,6 +6,11 @@
 #include "vaslib/vas_log.hpp"
 #include "presenter.hpp"
 
+#include "render/camera.hpp"
+#include "render/control.hpp"
+#include "render/ren_text.hpp"
+#include "utils/noise.hpp"
+
 
 
 ECompRender::ECompRender(Entity* ent)
@@ -65,6 +70,9 @@ void EC_RenderBot::on_destroy()
 }
 void EC_RenderBot::step()
 {
+	if (!aequ(rot, rot_tar, 1e-3))
+		rot = lerp_angle(rot, rot_tar, std::min(1., 10 * GamePresenter::get()->get_passed().seconds()));
+	
 	const Transform fixed{get_pos().pos, rot};
 	RenAAL::get().draw_inst(fixed, clr, model);
 	
@@ -95,6 +103,32 @@ public:
 		ParticleGroupGenerator* gen;
 		ParticleBatchPars pars;
 	};
+	struct FloatTextRender
+	{
+		vec2fp at, dps;
+		TextRenderInfo tri;
+		float size;
+		uint32_t clr;
+		int base_a;
+		float t, tps;
+		
+		FloatTextRender(FloatText&& ft)
+		{
+			at = ft.at;
+			tri.str_a = ft.str.data();
+			tri.build();
+			size = ft.size;
+			
+			clr = ft.color & (~0xff);
+			base_a = ft.color & 0xff;
+			
+			t = 1 + ft.show_len / ft.fade_len;
+			tps = 1.f / std::max(0.1, ft.fade_len.seconds());
+			
+			dps.set(std::min(0.5, 1 / (ft.show_len + ft.fade_len).seconds()), 0);
+			dps.fastrotate( rnd_stat().range_n2() * M_PI );
+		}
+	};
 	
 	std::vector<PresCommand> cmds_queue;
 	std::vector<std::pair<ECompRender*, PresCommand>> cmds;
@@ -104,6 +138,8 @@ public:
 	
 	std::vector<PresCmdDbgRect> dbg_rs;
 	std::vector<PresCmdDbgLine> dbg_ls;
+	std::vector<PresCmdDbgText> dbg_ts;
+	std::vector<FloatTextRender> f_texts;
 	
 	SparseArray<ECompRender*> cs;
 	TimeSpan last;
@@ -136,6 +172,7 @@ public:
 	{
 		dbg_rs.clear();
 		dbg_ls.clear();
+		dbg_ts.clear();
 		
 		for (auto& c : cmds_queue) std::visit(*this, c);
 		cmds_queue.clear();
@@ -172,10 +209,26 @@ public:
 		for (auto& d : dbg_rs) RenImm::get().draw_rect(d.dst, d.clr);
 		for (auto& d : dbg_ls) RenImm::get().draw_line(d.a, d.b, d.clr, d.wid);
 		
+		float text_k = 1.f / RenderControl::get().get_world_camera()->get_state().mag;
+		for (auto& d : dbg_ts) RenImm::get().draw_text(d.at, d.str, RenImm::White, false, text_k);
+		
 		for (auto i = ef_fs.begin(); i != ef_fs.end(); )
 		{
 			if ((*i)(passed)) ++i;
 			else i = ef_fs.erase(i);
+		}
+		
+		for (auto it = f_texts.begin(); it != f_texts.end(); )
+		{
+			uint32_t clr = it->clr;
+			clr |= std::min(it->base_a, int_round(it->base_a * it->t));
+			RenImm::get().draw_text(it->at, it->tri, clr, true, text_k * it->size);
+			
+			it->at += it->dps * passed.seconds();
+			it->t  -= it->tps * passed.seconds();
+			
+			if (it->t > 0) ++it;
+			else it = f_texts.erase(it);
 		}
 	}
 	TimeSpan get_passed()
@@ -232,10 +285,20 @@ public:
 		reserve_more_block(dbg_ls, 64);
 		dbg_ls.emplace_back(c);
 	}
+	void operator()(PresCmdDbgText& c)
+	{
+		reserve_more_block(dbg_ts, 64);
+		dbg_ts.emplace_back(std::move(c));
+	}
 	void operator()(PresCmdEffectFunc& c)
 	{
 		reserve_more_block(ef_fs, 128);
 		ef_fs.emplace_back(std::move(c.eff));
+	}
+	void operator()(FloatText& c)
+	{
+		reserve_more_block(f_texts, 128);
+		f_texts.emplace_back(std::move(c));
 	}
 	void operator()(PresCmdAttach& c)
 	{
@@ -259,9 +322,17 @@ void GamePresenter::dbg_rect(vec2fp ctr, uint32_t clr, float rad)
 {
 	dbg_rect(Rectfp::from_center(ctr, vec2fp::one(rad)), clr);
 }
+void GamePresenter::dbg_text(vec2fp at, std::string str)
+{
+	add_cmd(PresCmdDbgText{at, std::move(str)});
+}
 void GamePresenter::add_effect(std::function<bool(TimeSpan passed)> eff)
 {
 	if (eff) add_cmd(PresCmdEffectFunc{std::move(eff)});
+}
+void GamePresenter::add_float_text(FloatText text)
+{
+	add_cmd(std::move(text));
 }
 
 

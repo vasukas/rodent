@@ -27,6 +27,7 @@ struct PathRequest
 	
 	bool is_ok() const; ///< Returns true if result is available or waiting
 	bool is_ready() const; ///< Returns true if result computed and not yet returned
+	vec2fp get_endpoint() const; ///< Returns last path point specified in 'to'
 	
 	/// Returns (moved) result if ready
 	std::optional<Result> result();
@@ -85,6 +86,7 @@ public:
 	AsyncPathSearch& get_aps() {return *aps;}
 	
 	vec2i to_cell_coord(vec2fp p) const {return (p / cell_size).int_floor();}
+	vec2fp to_center_coord(vec2i  p) const {return vec2fp(p) * cell_size + vec2fp::one(cell_size * 0.5);}
 	bool is_same_coord(vec2fp a, vec2fp b) const {return to_cell_coord(a) == to_cell_coord(b);}
 	
 protected:

@@ -18,8 +18,19 @@ struct PresCmdObjEffect;
 struct PresCmdEffect;
 struct PresCmdDbgRect;
 struct PresCmdDbgLine;
+struct PresCmdDbgText;
 struct PresCmdEffectFunc;
 struct PresCmdAttach;
+
+struct FloatText
+{
+	vec2fp at;
+	std::string str;
+	uint32_t color = 0xffffffff;
+	float size = 1;
+	TimeSpan show_len = TimeSpan::seconds(1.0);
+	TimeSpan fade_len = TimeSpan::seconds(1.5);
+};
 
 using PresCommand = std::variant
 <
@@ -29,7 +40,9 @@ using PresCommand = std::variant
 	PresCmdEffect,
 	PresCmdDbgRect,
 	PresCmdDbgLine,
+	PresCmdDbgText,
 	PresCmdEffectFunc,
+	FloatText,
 	PresCmdAttach
 >;
 
@@ -92,10 +105,11 @@ struct EC_RenderBot : ECompRender
 	ModelType model;
 	FColor clr;
 	
-	float rot = 0.f; ///< override
+	float rot = 0; ///< override current
+	float rot_tar = 0; ///< override target
 	
 	EC_RenderBot(Entity* ent, ModelType model, FColor clr);
-	void set_face(float angle) override {rot = angle;}
+	void set_face(float angle) override {rot_tar = angle;}
 	
 private:
 	struct Attach
@@ -141,6 +155,10 @@ struct PresCmdDbgLine {
 	uint32_t clr;
 	float wid;
 };
+struct PresCmdDbgText {
+	vec2fp at;
+	std::string str;
+};
 struct PresCmdEffectFunc {
 	std::function<bool(TimeSpan)> eff;
 };
@@ -177,12 +195,15 @@ public:
 	
 	void effect(FreeEffect effect, const ParticleBatchPars& pars);
 	
-	void dbg_line(vec2fp a, vec2fp b, uint32_t clr, float wid = 0.2f); ///< Displayed only for one logic step
-	void dbg_rect(Rectfp area, uint32_t clr); ///< Displayed only for one logic step
-	void dbg_rect(vec2fp ctr, uint32_t clr, float rad = 0.5f); ///< Displayed only for one logic step
+	// Displayed only for one logic step
+	void dbg_line(vec2fp a, vec2fp b, uint32_t clr, float wid = 0.2f);
+	void dbg_rect(Rectfp area, uint32_t clr);
+	void dbg_rect(vec2fp ctr, uint32_t clr, float rad = 0.5f);
+	void dbg_text(vec2fp at, std::string str);
 	
 	/// Temporary effect, must return false when should be destroyed
 	void add_effect(std::function<bool(TimeSpan passed)> eff);
+	void add_float_text(FloatText text);
 };
 
 #endif // GAME_PRESENTER_HPP

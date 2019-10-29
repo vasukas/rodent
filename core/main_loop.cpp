@@ -397,7 +397,7 @@ public:
 				
 				auto frm = cam->get_state();
 				
-				const vec2fp scr = cam->coord_size() / 2;
+				const vec2fp scr = cam->coord_size();
 				const vec2fp tar_d = (tar - frm.pos);
 				
 				if (std::fabs(tar_d.x) > scr.x || std::fabs(tar_d.y) > scr.y)

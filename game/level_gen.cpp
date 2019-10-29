@@ -1133,23 +1133,22 @@ std::vector<std::pair<vec2fp, vec2fp>> LevelTerrain::gen_grid() const
 
 
 
-ImageInfo LevelTerrain::draw_grid() const
+ImageInfo LevelTerrain::draw_grid(bool is_debug) const
 {
 	ImageInfo img;
 	ImagePointBrush br;
-	img.reset(grid_size, ImageInfo::FMT_ALPHA);
 	
 	auto& ls = ls_wall;
 	auto& gs = ls_grid;
 	
 	int cz = int_round(cell_size);
-	img.reset(grid_size * cz, ImageInfo::FMT_ALPHA);
+	img.reset(grid_size * cz, is_debug? ImageInfo::FMT_RGB : ImageInfo::FMT_ALPHA);
 	
-	br.clr = 64;
+	br.clr = is_debug? 0x000080 : 64;
 	for (auto& g : gs)
 		draw_line(img, g.first.int_round(), g.second.int_round(), br);
 	
-	br.clr = 255;
+	br.clr = is_debug? 0xc0c0c0 : 255;
 	for (auto& c : ls)
 	{
 		vec2i prev = c.front().int_round();
@@ -1158,6 +1157,20 @@ ImageInfo LevelTerrain::draw_grid() const
 			auto p = c[i].int_round();
 			draw_line(img, prev, p, br);
 			prev = p;
+		}
+	}
+	
+	if (is_debug)
+	{
+		br.clr = 0x00ff00;
+		for (auto& r : rooms)
+		{
+			auto p0 = r.area.lower() * cz + vec2i::one(1);
+			auto p1 = r.area.upper() * cz - vec2i::one(1);
+			draw_line(img, {p0.x, p0.y}, {p1.x, p0.y}, br);
+			draw_line(img, {p1.x, p1.y}, {p1.x, p0.y}, br);
+			draw_line(img, {p1.x, p1.y}, {p0.x, p1.y}, br);
+			draw_line(img, {p0.x, p0.y}, {p0.x, p1.y}, br);
 		}
 	}
 	
@@ -1188,5 +1201,5 @@ void LevelTerrain::test_save(const char *prefix) const
 	}
 	
 	img.save(fn_grid.c_str());
-	draw_grid().save(fn_line.c_str());
+	draw_grid(true).save(fn_line.c_str());
 }

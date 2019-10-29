@@ -106,7 +106,7 @@ struct vec2i {
 	bool is_zero() const {return x == 0 && y == 0;}
 	
 	float len() const {return std::sqrt(x*x + y*y);} ///< Length
-	float angle() const {return y && x? std::atan2( y, x ) : 0;} ///< Rotation angle (radians)
+	float angle() const {return y && x? std::atan2( y, x ) : 0;} ///< Rotation angle (radians, [-pi, +pi])
 	uint len_squ() const {return x*x + y*y;} ///< Square of length
 	
 	uint ilen() const {return isqrt(x*x + y*y);} ///< Integer length (approximate)
@@ -179,7 +179,8 @@ struct vec2fp {
 	float len() const {return std::sqrt(x*x + y*y);} ///< Length
 	float len_squ() const {return x*x + y*y;} ///< Squared length
 	
-	float angle() const; ///< Rotation angle (radians)
+	float fastangle() const; ///< Approximate rotation angle (radians, [-pi, +pi])
+	float angle() const; ///< Rotation angle (radians, [-pi, +pi])
 	
 	float dist(const vec2fp& v) const {return (*this - v).len();} ///< Straight distance
 	float ndg_dist(const vec2fp& v) const {return std::fabs(x - v.x) + std::fabs(y - v.y);} ///< Manhattan distance
@@ -315,6 +316,8 @@ struct Rectfp
 	void merge( const Rectfp& r ); ///< Expands this rectangle to enclose another
 	bool overlaps( const Rectfp& r ) const; ///< Checks if rectangles overlap, including edges
 	bool contains( const Rectfp& r ) const; ///< Checks if another rectangle is completely within this
+	
+	bool contains( vec2fp p ) const; ///< Checks if point is inside, excluding edges
 };
 
 
