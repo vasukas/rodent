@@ -35,24 +35,27 @@ public:
 	bool thr_term = false;
 	std::mutex mux;
 	SparseArray<Slot> ss;
-	std::thread thr;
 	std::condition_variable work_cv;
+	std::thread thr;
 	
 	/// Fixed-point, to handle diags
 	using PathCost = uint_fast32_t;
+
+	///
+	using NodeIndex = uint_fast16_t;
 	
 	struct Node
 	{
 		bool is_pass;
 		uint_fast8_t closed; // counter
-		uint_fast16_t prev; // ID of parent node
+		NodeIndex prev; // ID of parent node
 #if USE_DIAG
 		uint_fast8_t dir_mask;
 #endif
 	};
 	struct QueueNode
 	{
-		uint_fast16_t index;
+		NodeIndex index;
 		PathCost cost; // g-value
 		PathCost weight; // f = g + h
 		
@@ -237,7 +240,7 @@ public:
 			r.ps.emplace_back( i % f_size.x, i / f_size.x );
 			i = f_ns[i].prev;
 		}
-		while (f_ns[i].prev != size_t_inval);
+		while (f_ns[i].prev != NodeIndex(-1));
 		
 		size_t n = r.ps.size() - 1;
 		for (size_t i=0; i < r.ps.size() /2; ++i)
@@ -261,10 +264,10 @@ public:
 		};
 		
 		open_q = decltype(open_q)();
-		open_q.push({ i_src, 0, hval(i_src) });
+		open_q.push({ static_cast<NodeIndex>(i_src), 0, hval(i_src) });
 		
 		f_ns[i_src].closed = closed_cou;
-		f_ns[i_src].prev = size_t_inval;
+		f_ns[i_src].prev = NodeIndex(-1);
 		
 		while (!open_q.empty())
 		{
@@ -295,7 +298,7 @@ public:
 				n.prev = qn.index;
 				
 				PathCost c = qn.cost + d.diff;
-				open_q.push({ n_ix, c, c + hval(n_ix) });
+				open_q.push({ static_cast<NodeIndex>(n_ix), c, c + hval(n_ix) });
 			}
 		}
 		return {};

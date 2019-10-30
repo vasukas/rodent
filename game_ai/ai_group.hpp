@@ -3,7 +3,7 @@
 
 #include "ai_common.hpp"
 
-class AI_GroupTarget;
+struct AI_GroupTarget;
 
 
 
