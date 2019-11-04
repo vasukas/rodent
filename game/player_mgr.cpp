@@ -18,6 +18,7 @@ public:
 	
 	std::shared_ptr<PlayerController> pc_ctr;
 	TimeSpan plr_resp; // respawn timeout
+	vec2i last_plr_pos = {}; // level coords
 	
 	// entity
 	
@@ -211,10 +212,28 @@ public:
 				}
 			}
 		}
+		
+		if (plr_ent)
+			plr_ent->get_eqp()->infinite_ammo = true;
 	}
 	void step() override
 	{
 		try_spawn_plr();
+	}
+	std::pair<Rect, Rect> get_ai_rects() override
+	{
+		// halfsizes
+		const vec2i hsz_on  = (vec2fp(30, 25) / LevelControl::get().cell_size).int_round();
+		const vec2i hsz_off = (vec2fp(45, 37) / LevelControl::get().cell_size).int_round();
+		
+		if (auto ent = GameCore::get().get_ent(plr_eid))
+			last_plr_pos = (ent->get_pos() / LevelControl::get().cell_size).int_round();
+		
+		vec2i ctr = last_plr_pos;
+		return {
+			{ctr - hsz_on,  ctr + hsz_on,  false},
+			{ctr - hsz_off, ctr + hsz_off, false}
+		};
 	}
 	
 	

@@ -105,7 +105,7 @@ struct EC_Equipment : EComp
 	{
 		float value = 0, max = 1;
 		
-		bool add(float amount); ///< Or subtract. Returns false if already at max
+		float add(float amount); ///< Or subtract. Returns actual amount added/subtracted
 		bool has(float amount) {return value >= amount;}
 		bool has(Weapon& w) {return w.info->def_ammo ? has(*w.info->def_ammo) : true;}
 	};

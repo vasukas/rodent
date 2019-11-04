@@ -23,7 +23,7 @@ public:
 	struct TaskEngage {
 		EntityIndex eid;
 		vec2fp last_pos;
-		AI_GroupTarget* tar;
+		AI_GroupTarget* tar; ///< May be invalid; only for AI_Group
 	};
 	
 	using Task = std::variant<TaskIdle, TaskSuspect, TaskSearch, TaskEngage>;
@@ -71,6 +71,7 @@ public:
 	~AI_Drone();
 	
 	void set_task(Task new_task);
+	void update_enabled(bool now_enabled);
 	
 	AI_DroneParams& get_pars()  {return *pars;}
 	AI_Group&       get_group() {return *grp;}

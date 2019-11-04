@@ -9,14 +9,15 @@
 AI_Drone::AI_Drone(Entity* ent, std::shared_ptr<AI_DroneParams> pars, std::shared_ptr<AI_Group> grp, std::shared_ptr<State> def_idle)
 	: EComp(ent), pars(std::move(pars)), grp(std::move(grp)), def_idle(std::move(def_idle))
 {
-	reg(ECompType::StepLogic);
 	this->grp->reg_upd(this, true);
-	
 	prov = nullptr;
 }
 AI_Drone::~AI_Drone()
 {
 	grp->reg_upd(this, false);
+	
+	if (auto st = std::get_if<Suspect>(&state))
+		grp->proxy_inspect(st->p);
 }
 void AI_Drone::set_task(Task new_task)
 {
@@ -58,6 +59,21 @@ void AI_Drone::set_task(Task new_task)
 		
 		if (mov) mov->set_target({});
 		has_lost = false;
+	}
+}
+void AI_Drone::update_enabled(bool now_enabled)
+{
+	if (now_enabled)
+	{
+		reg(ECompType::StepLogic);
+		prov->reg(ECompType::StepPreUtil);
+		if (mov) mov->reg(ECompType::StepPostUtil);
+	}
+	else
+	{
+		unreg(ECompType::StepLogic);
+		prov->unreg(ECompType::StepPreUtil);
+		if (mov) mov->unreg(ECompType::StepPostUtil);
 	}
 }
 void AI_Drone::step()

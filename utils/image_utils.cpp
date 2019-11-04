@@ -19,7 +19,10 @@ void draw_line(ImageInfo& img, vec2i p0, vec2i p1, ImageBrush& brush)
 	while (auto p = g.step())
 		brush.apply(img, *p);
 }
-
+void fill_rect(ImageInfo& img, Rect r, ImageBrush& brush)
+{
+	r.map([&](vec2i p){ brush.apply(img, p); });
+}
 
 
 

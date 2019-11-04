@@ -55,11 +55,7 @@ public:
 	
 	enum SpawnType
 	{
-		SP_PLAYER,
-		SP_TEST_TURRET,
-		SP_TEST_BOX,
-		SP_TEST_DRONE,
-		SP_SUPPLY_RND
+		SP_PLAYER
 	};
 	
 	struct Spawn
@@ -75,14 +71,13 @@ public:
 	static LevelControl* init(const LevelTerrain& lt); ///< Creates singleton
 	static LevelControl& get(); ///< Returns singleton
 	~LevelControl();
+	void fin_init(LevelTerrain& lt); ///< Spawns entities, generates spawn points. May change stuff
 	
 	vec2i get_size() const {return size;}
 	Cell* cell(vec2i pos) noexcept;
 	Cell& cref(vec2i pos);
 	
-	void fin_init();
 	const std::vector<Spawn>& get_spawns() const {return spps;}
-	
 	AsyncPathSearch& get_aps() {return *aps;}
 	
 	vec2i to_cell_coord(vec2fp p) const {return (p / cell_size).int_floor();}

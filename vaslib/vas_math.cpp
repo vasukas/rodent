@@ -428,6 +428,11 @@ bool Rectfp::contains(vec2fp p) const
 {
 	return a.x < p.x && b.x > p.x && a.y < p.y && b.y > p.y;
 }
+bool Rectfp::contains(vec2fp p, float width) const
+{
+	return a.x < p.x - width && b.x > p.x + width &&
+	       a.y < p.y - width && b.y > p.y + width;
+}
 
 
 

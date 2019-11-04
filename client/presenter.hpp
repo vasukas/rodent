@@ -50,12 +50,16 @@ using PresCommand = std::variant
 
 struct ECompRender : EComp
 {
+	// WARNING: step() and syn() may not be called at each step
+	
 	enum AttachType
 	{
 		ATT_WEAPON,
 		ATT_SHIELD,
 		ATT_TOTAL_COUNT ///< Do not use
 	};
+	
+	bool disable_culling = false; ///< If true, never culled
 	
 	ECompRender(Entity* ent);
 	virtual ~ECompRender() = default;
@@ -76,9 +80,10 @@ protected:
 	
 private:
 	friend class GamePresenter_Impl;
+	bool _is_ok = true;
+	bool _in_vport = false; // is shown
 	Transform _pos, _vel;
 	size_t _comp_id = size_t_inval;
-	bool _is_ok = true;
 	
 	friend class GameCore_Impl;
 	void on_destroy_ent();

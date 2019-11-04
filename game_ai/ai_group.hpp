@@ -32,6 +32,7 @@ class AI_Group final
 public:
 	const Rect g_area; ///< Grid coordinates
 	const Rectfp area; ///< World coordinates
+	bool is_enabled = false;
 	
 	AI_Group(Rect area);
 	~AI_Group();
@@ -46,6 +47,8 @@ public:
 	const std::vector<AI_Drone*>& get_drones() const {return drones;}
 	
 	std::optional<vec2fp> get_aos_next(AI_Drone* d, bool Left_or_right);
+	
+	void set_idle(); ///< Forcefully sets state to idle
 	
 private:
 	std::vector<AI_Drone*> drones;

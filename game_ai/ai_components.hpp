@@ -6,6 +6,8 @@
 
 struct DamageQuant;
 
+// Note: by default components are NOT registered
+
 
 
 struct AI_Movement final : EComp

@@ -19,6 +19,9 @@ public:
 	virtual void render(TimeSpan passed) = 0; ///< May be called not at each cycle
 	virtual void update_godmode() = 0; ///< Call if changed 'god_mode'
 	
+	/// Current AI activation and deactivation rects
+	virtual std::pair<Rect, Rect> get_ai_rects() = 0;
+	
 protected:
 	friend class GameCore_Impl;
 	virtual void step() = 0;

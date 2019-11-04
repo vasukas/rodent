@@ -10,7 +10,7 @@
 AI_Movement::AI_Movement(AI_Drone* drone)
 	: EComp(drone->ent), spd_k(drone->get_pars().speed.data())
 {
-	reg(ECompType::StepPostUtil);
+//	reg(ECompType::StepPostUtil); // controlled by AI_Drone
 	drone->mov = this;
 }
 bool AI_Movement::set_target(std::optional<vec2fp> new_tar, AI_Speed speed)
@@ -183,7 +183,7 @@ Entity* AI_Attack::check_los(vec2fp pos, Entity* target, Entity* self)
 AI_TargetProvider::AI_TargetProvider(AI_Drone* drone)
 	: EComp(drone->ent), pars(drone->get_pars())
 {
-	reg(ECompType::StepPreUtil);
+//	reg(ECompType::StepPreUtil); // controlled by AI_Drone
 	drone->prov = this;
 	
 	if (auto hc = ent->get_hlc())
@@ -350,14 +350,13 @@ void AI_TargetSensor::on_cnt(const CollisionEvent& ev)
 {
 	if (!ev.fix_this || typeid(*ev.fix_this) != typeid(FI_Sensor)) return;
 	
+	if (ev.other->get_team() == TEAM_ENVIRON ||
+	    ev.other->get_team() == ent->get_team()) return;
+	
 	if (ev.type == CollisionEvent::T_BEGIN)
 	{
-		if ((ent->get_team() == TEAM_BOTS && ev.other->get_team() == TEAM_PLAYER) ||
-		    (ent->get_team() == TEAM_PLAYER && ev.other->get_team() == TEAM_BOTS))
-		{
-			if (is_primary(ent)) tars.push_back({ ev.other->index, false });
-			else proj_tars.push_back({ ev.other->index });
-		}
+		if (is_primary(ent)) tars.push_back({ ev.other->index, false });
+		else proj_tars.push_back({ ev.other->index });
 	}
 	else if (ev.type == CollisionEvent::T_END)
 	{

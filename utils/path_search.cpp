@@ -75,15 +75,17 @@ public:
 	std::priority_queue <QueueNode, std::vector<QueueNode>, std::greater<QueueNode>> open_q;
 	uint_fast8_t closed_cou = 0;
 	
-	const size_t path_cost_bits = 16; // number of bits in fractional part 
-	const PathCost dirs_diff = 1 << path_cost_bits; // same as 1.0
+	const size_t path_cost_bits = 16; ///< number of bits in fractional part 
+	const PathCost dirs_diff = 1 << path_cost_bits; ///< same as 1.0 (always)
 	const PathCost dirs_diag = std::sqrt(2) * dirs_diff;
 	
 	
 	
-	APS_Astar()
-	    : thr([this]{thr_func();})
-	{}
+	APS_Astar(bool create_thread)
+	{
+		if (create_thread)
+			thr = std::thread([this]{thr_func();});
+	}
 	~APS_Astar()
 	{
 		thr_term = true;
@@ -231,6 +233,8 @@ public:
 			s->state = Slot::ST_RESULT;
 		}
 	}
+	
+	
 	Result rebuild_path(size_t i, size_t len)
 	{
 		Result r;
@@ -240,7 +244,7 @@ public:
 			r.ps.emplace_back( i % f_size.x, i / f_size.x );
 			i = f_ns[i].prev;
 		}
-		while (f_ns[i].prev != NodeIndex(-1));
+		while (i != NodeIndex(-1));
 		
 		size_t n = r.ps.size() - 1;
 		for (size_t i=0; i < r.ps.size() /2; ++i)
@@ -248,7 +252,7 @@ public:
 			
 		return r;
 	}
-	Result calc_path(vec2i p_src, vec2i p_dst, AddInfo info)
+	std::pair<NodeIndex, PathCost> find_path(vec2i p_src, vec2i p_dst, AddInfo info)
 	{
 		++closed_cou;
 		
@@ -275,7 +279,7 @@ public:
 			open_q.pop();
 			
 			if (qn.index == i_dst)
-				return rebuild_path(i_dst, qn.cost + 2);
+				return {i_dst, (qn.cost >> path_cost_bits) + 2};
 			
 			if (qn.cost > maxlen) break;
 			
@@ -301,9 +305,31 @@ public:
 				open_q.push({ static_cast<NodeIndex>(n_ix), c, c + hval(n_ix) });
 			}
 		}
-		return {};
+		return {(NodeIndex) -1, 0};
+	}
+	Result calc_path(vec2i p_src, vec2i p_dst, AddInfo info)
+	{
+		auto res = find_path(p_src, p_dst, std::move(info));
+		if (res.first == (NodeIndex) -1) return {};
+		return rebuild_path(res.first, res.second);
+	}
+	
+	
+	
+	Result sync_task(vec2i from, vec2i to, AddInfo info) override
+	{
+		return calc_path(from, to, std::move(info));
+	}
+	size_t sync_length(vec2i from, vec2i to, AddInfo info) override
+	{
+		auto res = find_path(from, to, std::move(info));
+		if (res.first == (NodeIndex) -1) return size_t_inval;
+		return res.second;
 	}
 };
 AsyncPathSearch* AsyncPathSearch::create_default() {
-	return new APS_Astar;
+	return new APS_Astar(true);
+}
+AsyncPathSearch* AsyncPathSearch::create_default_nonthread() {
+	return new APS_Astar(false);
 }

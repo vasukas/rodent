@@ -19,11 +19,12 @@ public:
 	};
 	
 	static AsyncPathSearch* create_default();
+	static AsyncPathSearch* create_default_nonthread();
 	virtual ~AsyncPathSearch() = default;
 	
-	// Cost 0 indicates impassable; row-major. (COST NOT IMPLEMENTED)
-	// No tasks must be queued when calling this.
-	// Grid MUST be completely surrounded by impassable cells
+	/// Cost 0 indicates impassable; row-major. (COST NOT IMPLEMENTED). 
+	/// No tasks must be queued when calling this. 
+	/// Grid MUST be completely surrounded by impassable cells
 	virtual void update(vec2i size, std::vector<uint8_t> cost_grid) = 0;
 	
 	// Task indices MUST be valid
@@ -35,6 +36,12 @@ public:
 	
 	/// Removes if ready
 	virtual std::optional<Result> get_task(size_t index) = 0;
+	
+	/// Executes task synchronously w/o any checks
+	virtual Result sync_task(vec2i from, vec2i to, AddInfo info) = 0;
+	
+	/// Synchronously calculates path length (return size_t_inval if none)
+	virtual size_t sync_length(vec2i from, vec2i to, AddInfo info) = 0;
 };
 
 #endif // PATH_SEARCH_HPP

@@ -110,7 +110,7 @@ const TimeSpan suspect_wait = TimeSpan::seconds(3);
 const TimeSpan proxy_inspect_timeout = TimeSpan::seconds(2);
 
 /// Time to wait before going idle after all drones arrived at final points
-const TimeSpan group_search_time = TimeSpan::seconds(5);
+const TimeSpan group_search_time = TimeSpan::seconds(10);
 
 
 

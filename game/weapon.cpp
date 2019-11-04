@@ -38,11 +38,11 @@ void Weapon::Overheat::cool()
 	if (value < 0) value = 0;
 	if (value < thr_off) flag = false;
 }
-bool EC_Equipment::Ammo::add(float amount)
+float EC_Equipment::Ammo::add(float amount)
 {
-	if (amount > 0 && value >= max) return false;
-	value = clampf(value + amount, 0, max);
-	return true;
+	amount = clampf(amount, -value, max - value);
+	value += amount;
+	return amount;
 }
 
 

@@ -330,6 +330,9 @@ std::vector<std::vector<vec2fp>> AI_GroupTarget::build_search(Rect grid_area) co
 	auto& ring_dist = AI_Const::search_ring_dist;
 	auto& lc = LevelControl::get();
 	
+	if (!grid_area.contains_le( lc.to_cell_coord(last_pos) ))
+		return {};
+	
 	std::vector<uint8_t> cs;
 	cs.resize( grid_area.size().area() );
 	
@@ -385,7 +388,7 @@ std::vector<std::vector<vec2fp>> AI_GroupTarget::build_search(Rect grid_area) co
 		}
 	}
 	
-	if (rings.back().empty()) rings.pop_back(); // must have at least one
+	if (!rings.empty() && rings.back().empty()) rings.pop_back();
 	return rings;
 }
 AI_AOS* AI_GroupTarget::get_current_aos()
@@ -407,6 +410,15 @@ void AI_GroupTarget::ref(AI_Group* g)
 }
 void AI_GroupTarget::unref(AI_Group* g)
 {
+	for (auto& d : g->get_drones())
+	{
+		if (auto tk = std::get_if<AI_Drone::TaskEngage>(&d->task);
+		    tk && tk->tar == this)
+		{
+			d->set_task( AI_Drone::TaskIdle{} );
+		}
+	}
+	
 	auto it = std::find(groups.begin(), groups.end(), g);
 	groups.erase(it);
 	

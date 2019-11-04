@@ -15,6 +15,7 @@
 #include "render/postproc.hpp"
 #include "render/ren_aal.hpp"
 #include "render/ren_imm.hpp"
+#include "utils/noise.hpp"
 #include "utils/time_utils.hpp"
 #include "vaslib/vas_log.hpp"
 #include "main_loop.hpp"
@@ -457,10 +458,10 @@ public:
 	{	
 		TimeSpan t0 = TimeSpan::since_start();
 		
-//		std::shared_ptr<LevelTerrain> lt( LevelTerrain::generate({ {260,120}, 3 }) );
-		std::shared_ptr<LevelTerrain> lt( LevelTerrain::load_testlvl(3) );
+		RandomGen lt_rnd; // 260,120
+		std::shared_ptr<LevelTerrain> lt( LevelTerrain::generate({ &lt_rnd, {180,100}, 3 }) );
 //		lt->test_save();
-//		exit(666);
+//		std::abort();
 		
 		GameCore::InitParams gci;
 		gci.pmg.reset( PlayerManager::create(pc_ctr) );
@@ -481,7 +482,7 @@ public:
 		}
 		
 		new EWall(lt->ls_wall);
-		lvl->fin_init();
+		lvl->fin_init(*lt);
 		
 		VLOGI("init_game() finished in {:.3f} seconds", (TimeSpan::since_start() - t0).seconds());
 	}

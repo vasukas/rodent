@@ -144,6 +144,8 @@ public:
 	SparseArray<ECompRender*> cs;
 	TimeSpan last;
 	
+	vec2fp vport_offset = {4, 3}; ///< Occlusion rect size offset
+	
 	
 	
 	GamePresenter_Impl(const InitParams& pars)
@@ -177,9 +179,14 @@ public:
 		for (auto& c : cmds_queue) std::visit(*this, c);
 		cmds_queue.clear();
 		
+		Rectfp vport = vport_rect();
 		for (auto& c : cs)
 		{
 			auto& phy = c->ent->get_phy();
+			
+			c->_in_vport = c->disable_culling || vport.contains( phy.get_pos() );
+			if (!c->_in_vport) continue;
+			
 			c->_pos = phy.get_trans();
 			c->_vel = phy.get_vel();
 			c->sync();
@@ -201,6 +208,7 @@ public:
 		last = passed;
 		for (auto& c : cs)
 		{
+			if (!c->_in_vport) continue;
 			c->step();
 			c->_pos.add(c->_vel * passed.seconds());
 		}
@@ -237,6 +245,12 @@ public:
 	}
 	
 	
+	
+	Rectfp vport_rect()
+	{
+		auto cam = RenderControl::get().get_world_camera();
+		return Rectfp::from_center( cam->get_state().pos, (cam->coord_size() /2) + vport_offset );
+	}
 	
 	template <typename T>
 	void add_pd(T& cmd, ECompRender* ptr, ParticleGroupGenerator* gen)

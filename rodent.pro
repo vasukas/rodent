@@ -90,21 +90,21 @@ SOURCES += \
 	external/Box2D/Dynamics/b2WorldCallbacks.cpp \
 	external/fmt/format.cc \
 	external/fmt/posix.cc \
-	game_ai/ai_components.cpp \
-	game_ai/ai_drone.cpp \
-	game_ai/ai_group.cpp \
-	game_ai/ai_group_target.cpp \
 	game/damage.cpp \
 	game/entity.cpp \
 	game/game_core.cpp \
-	game/level_ctr.cpp \
 	game/level_gen.cpp \
+	game/level_ctr.cpp \
 	game/physics.cpp \
 	game/player.cpp \
 	game/player_mgr.cpp \
 	game/s_objs.cpp \
 	game/weapon.cpp \
 	game/weapon_all.cpp \
+	game_ai/ai_components.cpp \
+	game_ai/ai_drone.cpp \
+	game_ai/ai_group.cpp \
+	game_ai/ai_group_target.cpp \
 	render/camera.cpp \
 	render/control.cpp \
 	render/gl_utils.cpp \
@@ -144,23 +144,23 @@ HEADERS += \
 	core/main_loop.hpp \
 	core/settings.hpp \
 	core/vig.hpp \
-	game_ai/ai_common.hpp \
-	game_ai/ai_components.hpp \
-	game_ai/ai_drone.hpp \
-	game_ai/ai_group.hpp \
-	game_ai/ai_group_target.hpp \
 	game/common_defs.hpp \
 	game/damage.hpp \
 	game/entity.hpp \
 	game/game_core.hpp \
-	game/level_ctr.hpp \
 	game/level_gen.hpp \
+	game/level_ctr.hpp \
 	game/physics.hpp \
 	game/player.hpp \
 	game/player_mgr.hpp \
 	game/s_objs.hpp \
 	game/weapon.hpp \
 	game/weapon_all.hpp \
+	game_ai/ai_common.hpp \
+	game_ai/ai_components.hpp \
+	game_ai/ai_drone.hpp \
+	game_ai/ai_group.hpp \
+	game_ai/ai_group_target.hpp \
 	render/camera.hpp \
 	render/control.hpp \
 	render/gl_utils.hpp \

@@ -1,4 +1,5 @@
 #include "game/game_core.hpp"
+#include "game/player_mgr.hpp"
 #include "utils/noise.hpp"
 #include "ai_drone.hpp"
 #include "ai_group.hpp"
@@ -14,8 +15,31 @@ public:
 	
 	void step()
 	{
+		auto [r_on, r_off] = GameCore::get().get_pmg().get_ai_rects();
+		
 		for (auto& t : tars) t->update_aos();
-		for (auto& g : gs) g->step();
+		for (auto& g : gs)
+		{
+			if (g->is_enabled)
+			{
+				if (!g->g_area.intersects(r_off))
+				{
+					g->is_enabled = false;
+					for (auto& d : g->get_drones())
+						d->update_enabled(false);
+					
+					if (!std::holds_alternative<AI_Group::Idle>(g->state))
+						g->set_idle();
+				}
+				else g->step();
+			}
+			else if (g->g_area.intersects(r_on))
+			{
+				g->is_enabled = true;
+				for (auto& d : g->get_drones())
+					d->update_enabled(true);
+			}
+		}
 	}
 	void reg(AI_Group* g)
 	{
@@ -187,6 +211,12 @@ std::optional<vec2fp> AI_Group::get_aos_next(AI_Drone* d, bool Left_or_right)
 	}
 	return {};
 }
+void AI_Group::set_idle()
+{
+	reset_state();
+	upd_tasks = true;
+	state = Idle{};
+}
 void AI_Group::step()
 {
 	if (std::holds_alternative<Idle>(state)) {}
@@ -203,80 +233,88 @@ void AI_Group::step()
 				}
 				else
 				{
+					if (!area.contains( (*it)->last_pos, LevelControl::get().cell_size * 0.1 ))
+					{
+						set_idle();
+						break;
+					}
+					
 					size_t num = 0;
 					for (auto& d : drones) if (!d->get_pars().is_camper && d->mov) ++num;
 					
 					if (!num)
 					{
-						upd_tasks = true;
-						state = Idle{};
-					}
-					else
-					{
-						auto rings = (*it)->build_search(g_area);
-						
-						float a_diff = 2*M_PI / num;
-						float a_cur = GameCore::get().get_random().range_n2() * a_diff;
-						
-						std::vector<uint8_t> used;
-						used.resize(num);
-						
-						for (auto& d : drones)
-						{
-							if (!d->get_pars().is_camper && d->mov)
-							{
-								vec2fp pos = d->ent->get_pos();
-								float rot = (pos - (*it)->last_pos).fastangle();
-								
-								size_t opt_slot = int_round((M_PI + rot - a_cur) / a_diff);
-								opt_slot %= used.size();
-								
-								if (used[opt_slot])
-								{
-									for (size_t i, off = 1 ;; ++off)
-									{
-										i = (opt_slot + off) % used.size();
-										if (!used[i]) {opt_slot = i; break;}
-										
-										i = (opt_slot - off) % used.size();
-										if (!used[i]) {opt_slot = i; break;}
-									}
-								}
-								used[opt_slot] = 1;
-								
-								rot = opt_slot * a_diff + a_cur;
-								
-								//
-								
-								std::vector<vec2fp> ps;
-								ps.reserve( rings.size() );
-								
-								for (auto& r : rings)
-								{
-									rot += 0.5 * a_diff * GameCore::get().get_random().range_n2();
-									
-									vec2fp sel = r.front();
-									float sd = std::fabs(angle_delta(rot, (sel - pos).fastangle()));
-									
-									for (auto& p : r)
-									{
-										float d = std::fabs(angle_delta(rot, (p - pos).fastangle()));
-										if (d < sd) {
-											sel = p;
-											sd = d;
-										}
-									}
-									ps.emplace_back(sel);
-								}
-								
-								d->set_task(AI_Drone::TaskSearch{ std::move(ps) });
-							}
-						}
-						
-						upd_tasks = false;
-						state = Search{*it};
+						state = Search{*it, true};
 						break;
 					}
+					
+					auto rings = (*it)->build_search(g_area);
+					if (rings.empty())
+					{
+						state = Search{*it, true};
+						break;
+					}
+					
+					float a_diff = 2*M_PI / num;
+					float a_cur = GameCore::get().get_random().range_n2() * a_diff;
+					
+					std::vector<uint8_t> used;
+					used.resize(num);
+					
+					for (auto& d : drones)
+					{
+						if (!d->get_pars().is_camper && d->mov)
+						{
+							vec2fp pos = d->ent->get_pos();
+							float rot = (pos - (*it)->last_pos).fastangle();
+							
+							size_t opt_slot = int_round((M_PI + rot - a_cur) / a_diff);
+							opt_slot %= used.size();
+							
+							if (used[opt_slot])
+							{
+								for (size_t i, off = 1 ;; ++off)
+								{
+									i = (opt_slot + off) % used.size();
+									if (!used[i]) {opt_slot = i; break;}
+									
+									i = (opt_slot - off) % used.size();
+									if (!used[i]) {opt_slot = i; break;}
+								}
+							}
+							used[opt_slot] = 1;
+							
+							rot = opt_slot * a_diff + a_cur;
+							
+							//
+							
+							std::vector<vec2fp> ps;
+							ps.reserve( rings.size() );
+							
+							for (auto& r : rings)
+							{
+								rot += 0.5 * a_diff * GameCore::get().get_random().range_n2();
+								
+								vec2fp sel = r.front();
+								float sd = std::fabs(angle_delta(rot, (sel - pos).fastangle()));
+								
+								for (auto& p : r)
+								{
+									float d = std::fabs(angle_delta(rot, (p - pos).fastangle()));
+									if (d < sd) {
+										sel = p;
+										sd = d;
+									}
+								}
+								ps.emplace_back(sel);
+							}
+							
+							d->set_task(AI_Drone::TaskSearch{ std::move(ps) });
+						}
+					}
+					
+					state = Search{*it};
+					break;
 				}
 			}
 			else ++it;
@@ -299,12 +337,7 @@ void AI_Group::step()
 		else
 		{
 			st->left -= GameCore::step_len;
-			if (st->left.is_negative())
-			{
-				reset_state();
-				state = Idle{};
-				upd_tasks = true;
-			}
+			if (st->left.is_negative()) set_idle();
 		}
 	}
 	

@@ -1,5 +1,6 @@
 #include "utils/image_utils.hpp"
 #include "utils/noise.hpp"
+#include "utils/path_search.hpp"
 #include "vaslib/vas_cpp_utils.hpp"
 #include "vaslib/vas_log.hpp"
 #include "vaslib/vas_time.hpp"
@@ -8,8 +9,11 @@
 
 struct Gen1
 {
-	// Note: corridor data (cells & neis) may be incorrect and is mostly ignored
 	struct RoomClass;
+	struct RoomSizeType;
+	
+	// Note: corridor data (cells & neis) may be incorrect and is mostly ignored
+	// search in file - "WARNING:" (though not everything is marked)
 	
 	struct CorridorEntry
 	{
@@ -27,7 +31,12 @@ struct Gen1
 		Rect area;
 		
 		std::vector<size_t> cor_i;
-		const RoomClass* klass;
+		
+		const RoomSizeType* r_szt;
+		const RoomClass* r_class = nullptr; // null at first
+		
+		float far_value = 0; // the bigger, the less room connectivity is
+		int depth; // tmp
 	};
 	struct Cell
 	{
@@ -35,34 +44,75 @@ struct Gen1
 		std::optional<size_t> cor_i;
 		std::optional<size_t> room_i;
 		std::optional<size_t> room_was; ///< before placing islands etc
+		bool is_door = false;
 		
-		bool is_border = false;
+		bool is_border = false; // room border
+		bool protect = false; // chance of NOT changing after initial gen
+		
 		int depth; // tmp
+		int cry_gen;
+		bool isolated = true;
 	};
 	
 	
 	
-	struct RoomClass
+	enum RoomSizeTypeEnum
 	{
-		float kch = 0; // chance
-		LevelTerrain::RoomType lc_type = LevelTerrain::RM_DEFAULT;
+		RSZ_SMALL,
+		RSZ_MIDDLE,
+		RSZ_BIG,
+		RSZ_HUGE,
 		
+		RSZ_TOTAL_COUNT
+	};
+	
+	struct RoomSizeType
+	{
+		RoomSizeTypeEnum type;
+		
+		float kch = 0; // chance (modified later)
 		vec2i sz_min; // room size
 		vec2i sz_max;
 		
-		// island params
-		float isl_f = 0.7; // chance to generate any at all
-		int isl_per = 30; // 1 per how much area
-		int isl_max = 8;
-		int isl_chn_mul = 1; // retrys per each
-		vec2i isl_sz_min = {1,1};
-		vec2i isl_sz_max = {2,5};
+		// crystal params
+		float cry_f = 0.5; // generation chance
+		int cry_per = 12; // 1 origin per how much area
+		int cry_max = 10; // max length
+	};
+	
+	enum ObstacleType
+	{
+		OBS_NONE,
+		OBS_CRYSTAL,
+		OBS_CRYSTAL_CLEARED,
+		OBS_COLUMN,
+		OBS_RIBS
+	};
+	
+	struct RoomClass
+	{
+		float kch = 0; // chance (original)
+		LevelTerrain::RoomType lc_type = LevelTerrain::RM_DEFAULT;
+		uint32_t dbg_color = 0;
+		
+		ObstacleType obs_t = OBS_NONE;
+		std::vector<std::pair<RoomSizeTypeEnum, float>> rsz_types; // and (normalized) chances
+		float place_prio = 0; // placement priority (higher - earlier), NON-negative
+		
+		size_t rm_count_min = 0; // total count of rooms of such type
+		size_t rm_count_max = size_t_inval;
+		size_t rm_count = 0; // current
+		
+		// flags
+		float k_has_doors = 0; // chance of having door
+		float k_wall_protect = 0; // wall protect value
 	};
 	
 	struct GenParams
 	{
 		// room params
-		std::vector<RoomClass> rm_cs;
+		std::array<RoomSizeType, RSZ_TOTAL_COUNT> rm_szs;
+		std::vector<RoomClass> rm_cs; // [0] must be RM_DEFAULT; sorted by priority
 		
 		int rm_cor_per = 4; // perimeter cells for one cor
 		int rm_cor_max = 12; // max cor count
@@ -74,17 +124,14 @@ struct Gen1
 		float cor_rot_f = 0.2; // rotation chance on step
 		float cor_dup_f = 0.5; // duplicate corrdior chance
 		float cor_cnt_f = 0.8; // corridor interconnection chance
-		
-		// flags
-		bool gen_islands = true;
 	};
 	
-	const GenParams gp;
+	GenParams gp;
 	
 	
 	
 	//
-	vec2i size;
+	vec2i l_size;
 	std::vector<Cell> cs;
 	
 	//
@@ -92,79 +139,180 @@ struct Gen1
 	std::vector<Corridor> g_cors;
 	
 	//
-	RandomGen rnd;
-	std::vector<size_t> place_q; // rooms to be yet placed
+	RandomGen& rnd;
+	std::vector<size_t> place_q; // rooms yet to be placed
 	
 	
 	
-	static GenParams gp_1()
+	static GenParams gp_main()
 	{
 		GenParams gp;
+		
 		{
-			auto& r = gp.rm_cs.emplace_back();
+			auto& r = gp.rm_szs[RSZ_SMALL];
+			r.type = RSZ_SMALL;
 			r.kch = 0.5;
-			r.sz_min = {2,2};
-			r.sz_max = {5,4};
-			r.isl_f = 0;
-			r.lc_type = LevelTerrain::RM_SMALL;
-		}{
-			auto& r = gp.rm_cs.emplace_back();
-			r.kch = 2;
-			r.sz_min = {7,6};
-			r.sz_max = {12,8};
-			r.isl_per = 20;
-			r.isl_chn_mul = 2;
-		}{	
-			auto& r = gp.rm_cs.emplace_back();
-			r.kch = 1;
-			r.sz_min = {12,8};
-			r.sz_max = {24,18};
-			r.isl_f = 1;
-			r.isl_per = 40;
-			r.isl_sz_max = {4,6};
-			r.isl_chn_mul = 3;
-		}
-		for (auto& r : gp.rm_cs) r.isl_per /= 2;
-		
-		//
-		gp.rm_cor_per = 4; // perimeter cells for one cor
-		gp.rm_cor_max = 8; // max cor count
-		gp.rm_cor_add = 4; // additional trys
-		
-		// corridor params
-		gp.cor_len_min = 2; // min length
-		gp.cor_len_max = 6; // max length
-		gp.cor_rot_f = -1; // rotation chance on step
-		gp.cor_dup_f = 0.1; // duplicate corrdior chance
-		gp.cor_cnt_f = 0.5; // corridor interconnection chance
-		
-		return gp;
-	}
-	static GenParams gp_2()
-	{
-		GenParams gp;
-		{
-			auto& r = gp.rm_cs.emplace_back();
-			r.kch = 0.5;
-			r.sz_min = {2,2};
-			r.sz_max = {5,4};
-			r.isl_f = 0;
-			r.lc_type = LevelTerrain::RM_SMALL;
-		}{
-			auto& r = gp.rm_cs.emplace_back();
-			r.kch = 2;
 			r.sz_min = {3,3};
 			r.sz_max = {6,5};
-			r.isl_per = 20;
-			r.isl_chn_mul = 2;
+		}{
+			auto& r = gp.rm_szs[RSZ_MIDDLE];
+			r.type = RSZ_MIDDLE;
+			r.kch = 1.5;
+			r.sz_min = {5,5};
+			r.sz_max = {12,10};
+		}{
+			auto& r = gp.rm_szs[RSZ_BIG];
+			r.type = RSZ_BIG;
+			r.kch = 1;
+			r.sz_min = {10,8};
+			r.sz_max = {18,14};
+		}{
+			auto& r = gp.rm_szs[RSZ_HUGE];
+			r.type = RSZ_HUGE;
+			r.kch = 0.3;
+			r.sz_min = {16,16};
+			r.sz_max = {28,20};
+		}
+		
+		//
+		
+		{
+			gp.rm_cs.emplace_back();
+			// default
 		}{
 			auto& r = gp.rm_cs.emplace_back();
-			r.kch = 1;
-			r.sz_min = {6,5};
-			r.sz_max = {12,10};
-			r.isl_f = 1;
-			r.isl_per = 40;
-			r.isl_sz_max = {4,6};
+			r.lc_type = LevelTerrain::RM_CONNECT;
+			r.dbg_color = -1;
+			
+			r.kch = 0.2;
+			r.rsz_types = {{RSZ_SMALL, 0.8}, {RSZ_MIDDLE, 0.2}};
+			
+			r.k_wall_protect = 0.2;
+		}{
+			auto& r = gp.rm_cs.emplace_back();
+			r.lc_type = LevelTerrain::RM_LIVING;
+			// min assigned later
+			r.dbg_color = 0xff8000;
+			
+			r.kch = 0.1;
+			r.obs_t = OBS_CRYSTAL_CLEARED;
+			r.rsz_types = {{RSZ_SMALL, 0.5}, {RSZ_MIDDLE, 0.5}};
+			
+			r.k_has_doors = 0.5;
+			r.k_wall_protect = 0.4;
+		}{
+			auto& r = gp.rm_cs.emplace_back();
+			r.lc_type = LevelTerrain::RM_WORKER;
+			r.dbg_color = 0x808080;
+			
+			r.kch = 0.4;
+			r.obs_t = OBS_CRYSTAL;
+			r.rsz_types = {{RSZ_SMALL, 1}, {RSZ_MIDDLE, 0.7}, {RSZ_BIG, 0.2}, {RSZ_HUGE, 0.1}};
+			
+			r.k_has_doors = 0.3;
+			r.k_wall_protect = 0.3;
+		}{
+			auto& r = gp.rm_cs.emplace_back();
+			r.lc_type = LevelTerrain::RM_REPAIR;
+			r.dbg_color = 0x0080ff;
+			
+			r.kch = 0.1;
+			r.rsz_types = {{RSZ_SMALL, 1}};
+			
+			r.k_has_doors = 0.5;
+			r.k_wall_protect = 0.8;
+		}{
+			auto& r = gp.rm_cs.emplace_back();
+			r.lc_type = LevelTerrain::RM_FACTORY;
+			r.rm_count_min = r.rm_count_max = 3;
+			r.dbg_color = 0xa0a000;
+			
+			r.kch = 0.5;
+			r.obs_t = OBS_RIBS;
+			r.rsz_types = {{RSZ_BIG, 0.4}, {RSZ_HUGE, 0.6}};
+			
+			r.k_wall_protect = 1;
+			r.k_has_doors = 1;
+			
+			r.place_prio = 0.5;
+		}{
+			auto& r = gp.rm_cs.emplace_back();
+			r.lc_type = LevelTerrain::RM_LAB;
+			r.rm_count_min = 1;
+			r.rm_count_max = 6;
+			r.dbg_color = 0x00a060;
+			
+			r.kch = 0.2;
+			r.obs_t = OBS_RIBS;
+			r.rsz_types = {{RSZ_MIDDLE, 0.3}, {RSZ_BIG, 1}, {RSZ_HUGE, 0.4}};
+			
+			r.k_wall_protect = 1;
+			r.k_has_doors = 1;
+			
+			r.place_prio = 0.5;
+		}{
+			auto& r = gp.rm_cs.emplace_back();
+			r.lc_type = LevelTerrain::RM_STORAGE;
+			r.rm_count_min = 1;
+			r.rm_count_max = 16;
+			r.dbg_color = 0x00a000;
+			
+			r.kch = 0.4;
+			r.obs_t = OBS_COLUMN;
+			r.rsz_types = {{RSZ_MIDDLE, 0.7}, {RSZ_BIG, 0.3}, {RSZ_HUGE, 0.1}};
+			
+			r.k_wall_protect = 0.9;
+			r.k_has_doors = 0.7;
+		}{
+			auto& r = gp.rm_cs.emplace_back();
+			r.lc_type = LevelTerrain::RM_KEY;
+			// min-max assigned later
+			r.dbg_color = 0xc000c0;
+			
+			r.kch = 0.1;
+			r.rsz_types = {{RSZ_SMALL, 1}};
+			
+			r.k_wall_protect = 0.9;
+			r.k_has_doors = 0.7;
+			
+			r.place_prio = 1;
+		}{
+			auto& r = gp.rm_cs.emplace_back();
+			r.lc_type = LevelTerrain::RM_TERMINAL;
+			r.rm_count_min = r.rm_count_max = 1;
+			r.dbg_color = 0xc000c0;
+			
+			r.kch = 0.1;
+			r.obs_t = OBS_RIBS;
+			r.rsz_types = {{RSZ_HUGE, 1}};
+			
+			r.k_wall_protect = 1;
+			r.k_has_doors = 1;
+			
+			r.place_prio = 1;
+		}{
+			auto& r = gp.rm_cs.emplace_back();
+			r.lc_type = LevelTerrain::RM_TRANSIT;
+			r.rm_count_min = 3;
+			r.rm_count_max = 6;
+			r.dbg_color = 0xc000c0;
+			
+			r.kch = 0.2;
+			r.rsz_types = {{RSZ_SMALL, 0.7}, {RSZ_MIDDLE, 0.3}};
+			
+			r.k_wall_protect = 1;
+			
+			r.place_prio = 0.8;
+		}{
+			auto& r = gp.rm_cs.emplace_back();
+			r.lc_type = LevelTerrain::RM_ABANDON;
+			r.dbg_color = 0xff0000;
+			
+			r.kch = 0.2;
+			r.obs_t = OBS_CRYSTAL;
+			r.rsz_types = {{RSZ_SMALL, 0.5}, {RSZ_MIDDLE, 0.5}};
+			
+			r.k_has_doors = 0.5;
 		}
 		
 		//
@@ -179,43 +327,90 @@ struct Gen1
 		gp.cor_dup_f = 0.5; // duplicate corrdior chance
 		gp.cor_cnt_f = 0.8; // corridor interconnection chance
 		
-		// flags
-		gp.gen_islands = false;
-		
 		return gp;
 	}
 	static GenParams gp_postp(GenParams gp)
 	{
 		float s = 0;
-		for (auto& r : gp.rm_cs) s += r.kch;
+		for (auto& r : gp.rm_szs) s += r.kch;
 		
 		float t = 0;
-		for (auto& r : gp.rm_cs) {
+		for (auto& r : gp.rm_szs) {
 			t += r.kch / s;
 			r.kch = t;
 		}
 		
+		//
+		
+		for (auto& r : gp.rm_cs)
+		{
+			float s = 0;
+			for (auto& z : r.rsz_types) s += z.second;
+			for (auto& z : r.rsz_types) z.second /= s;
+		}
+		
+		std::sort( gp.rm_cs.begin(), gp.rm_cs.end(), [](auto& a, auto& b){ return a.place_prio > b.place_prio; } );
+		
 		return gp;
 	}
-	Gen1(vec2i size_in)
-	    :gp(gp_postp(gp_2()))
+	Gen1(RandomGen* rnd_in, vec2i size_in)
+	    : gp(gp_postp(gp_main())), rnd(*rnd_in)
 	{
+		// set key rooms
+		
+		auto get_type = [&](auto type) -> RoomClass* {
+			for (auto& r : gp.rm_cs)
+				if (r.lc_type == type)
+					return const_cast<RoomClass*>(&r);
+			return nullptr;
+		};
+		
+		size_t key_total = 7;
+		size_t key_rooms = int_round(rnd.range( 3, key_total ));
+		
+		get_type(LevelTerrain::RM_KEY)->rm_count_min = key_rooms;
+		get_type(LevelTerrain::RM_KEY)->rm_count_max = key_rooms;
+		get_type(LevelTerrain::RM_LIVING)->rm_count_min = key_total - key_rooms;
+		
+		// try loop
+		
+		size_t n = 0;
+		while (!full_generate(size_in)) {
+			++n;
+			if (n == 20) throw std::runtime_error("LevelControl:: Too many retries (safeguard)");
+		}
+		VLOGI("LevelControl::      retries: {}", n);
+	}
+	bool full_generate(vec2i size_in)
+	{
+		// reset
+		
+		cs.clear();
+		g_rooms.clear();
+		g_cors.clear();
+		place_q.clear();
+		
+		/// Square grid non-diagonal directions
+		const std::array<vec2i, 4> sg_dirs{{{-1,0}, {1,0}, {0,-1}, {0,1}}};
+		
 		// setup
 		
-		size = size_in + gp.rm_cs.back().sz_max;
+		l_size = size_in + gp.rm_szs.back().sz_max;
 		
-		cs.resize( size.area() );
-		for (int y=0; y<size.y; ++y)
-		for (int x=0; x<size.x; ++x)
-			cs[y * size.x + x].pos = {x, y};
+		cs.resize( l_size.area() );
+		for (int y=0; y < l_size.y; ++y)
+		for (int x=0; x < l_size.x; ++x)
+			cs[y * l_size.x + x].pos = {x, y};
 		
 		// generate rooms and corridors
 		
 		auto nr = &g_rooms.emplace_back();
 		nr->index = 0;
 		nr->area.sz = {3, 3};
-		nr->area.off = size/2 - nr->area.sz/2;
-		nr->klass = &gp.rm_cs[0];
+		nr->area.off = l_size/2 - nr->area.sz/2;
+		nr->r_szt = &gp.rm_szs[0];
+		nr->r_class = &gp.rm_cs[0];
+		nr->area.map([this](vec2i p){ cref(p).protect = true; });
 		mark_room(*nr);
 		place_q.push_back(nr->index);
 		
@@ -230,153 +425,336 @@ struct Gen1
 		
 		VLOGI("LevelControl::      {} rooms, {} corridors", g_rooms.size(), g_cors.size());
 		
-		// remove rooms with single connection
+		// get shuffled rooms (except first)
 		
-		auto rem_cor = [this](size_t i)
+		std::vector<Room*> rnd_rooms;
+		rnd_rooms.reserve( g_rooms.size() - 1 );
+		
+		for (size_t i = 0; i < g_rooms.size() - 1; ++i)
+			rnd_rooms.push_back(&g_rooms[i + 1]);
+		
+		for (size_t i = rnd_rooms.size() - 1; i > 0; --i)
+			std::swap(rnd_rooms[i], rnd_rooms[rnd.range_index(i)]);
+		
+		// assign room type - helpers
+		
+		auto set_room_type = [&](Room& r, RoomClass& rc)
 		{
-			for (auto& e : g_cors[i].ents) {
-				auto& v = g_rooms[*e.room_i].cor_i;
-				auto it = std::find( v.begin(), v.end(), i );
-				if (it != v.end()) v.erase(it);
-			}
-			g_cors.erase( g_cors.begin() + i );
-			for (auto& c : cs) {
-				if (!c.cor_i) {}
-				else if (*c.cor_i == i) c.cor_i.reset();
-				else if (*c.cor_i  > i) --*c.cor_i;
-			}
-			for (auto& r : g_rooms) {
-				for (auto& ci : r.cor_i)
-					if (ci > i) --ci;
-			}
-		};
-		auto rem_room = [this, &rem_cor](size_t i)
-		{
-			g_rooms[i].area.map_outer([&](auto pos) {
-				bool ok = false;
-				if (auto c = getc(pos + vec2i( 1, 0)); c && c->room_i && *c->room_i != i) ok = true;
-				if (auto c = getc(pos + vec2i(-1, 0)); c && c->room_i && *c->room_i != i) ok = true;
-				if (auto c = getc(pos + vec2i(0,  1)); c && c->room_i && *c->room_i != i) ok = true;
-				if (auto c = getc(pos + vec2i(0, -1)); c && c->room_i && *c->room_i != i) ok = true;
-				if (!ok) cref(pos).is_border = false;
-			});
+			rc.rm_count ++;
+			r.r_class = &rc;
 			
-			for (auto& ci : g_rooms[i].cor_i) rem_cor(ci);
-			g_rooms.erase( g_rooms.begin() + i );
-			for (auto& c : cs) {
-				if (!c.room_i) {}
-				else if (*c.room_i == i) c.room_i.reset();
-				else if (*c.room_i  > i) --*c.room_i;
+			if (rc.k_wall_protect > 0.01)
+			{
+				r.area.map_outer([&](vec2i p) {
+					auto& flag = cref(p).protect;
+					if (!flag) flag = rnd.range_n() < rc.k_wall_protect;
+				});
 			}
-			for (auto& c : g_cors) {
-				for (auto& e : c.ents)
-					if (e.room_i && *e.room_i > i) --*e.room_i;
-			}
-			for (; i < g_rooms.size(); ++i) --g_rooms[i].index;
 		};
 		
-		while (true)
+		auto room_typesize_kch = [&](Room& r, const RoomClass& rc) -> std::optional<float>
 		{
-			bool any = false;
-			for (size_t i=0; i<g_rooms.size(); )
-			{
-				if (g_rooms[i].cor_i.size() > 1) ++i;
-				else {
-					rem_room(i);
-					any = true;
-				}
+			for (auto& z : rc.rsz_types) {
+				if (z.first == r.r_szt->type)
+					return z.second;
 			}
-			if (!any) break;
+			return {};
+		};
+		
+		// assign room type - neccessary
+		
+		for (auto& rc : gp.rm_cs)
+		{
+			while (rc.rm_count < rc.rm_count_min)
+			{
+				bool any = false;
+				for (auto r : rnd_rooms)
+				{
+					if (r->r_class) continue;
+					
+					float zch;
+					if (auto t = room_typesize_kch(*r, rc)) zch = *t;
+					else continue;
+					
+					any = true;
+					if (rnd.range_n() >= zch) continue;
+					
+					set_room_type(*r, rc);
+					if (rc.rm_count >= rc.rm_count_min) break;
+				}
+				if (!any) return false;
+			}
 		}
 		
-		// set room was
+		// assign room type - others
+		
+		std::vector<std::pair<float, RoomClass*>> r_rc_kchs; // just array
+		r_rc_kchs.resize( gp.rm_cs.size() );
+		
+		for (auto r : rnd_rooms)
+		{
+			if (r->r_class) continue;
+			
+			// get types
+			
+			auto& r_ks = r_rc_kchs;
+			size_t r_kn = 0;
+			bool any = false;
+			
+			for (auto& rc : gp.rm_cs)
+			{
+				if (rc.rm_count >= rc.rm_count_max || rc.kch < 1e-5) continue;
+				
+				float zch;
+				if (auto t = room_typesize_kch(*r, rc)) zch = *t;
+				else continue;
+				
+				any = true;
+				if (rnd.range_n() >= zch) continue;
+				
+				r_ks[r_kn] = {rc.kch, &rc};
+				++r_kn;
+			}
+			
+			if (!r_kn && any) // if random failed
+			{
+				RoomClass* b_ptr = nullptr;
+				float b_prio = -1;
+				
+				for (auto& rc : gp.rm_cs)
+				{
+					if (rc.rm_count >= rc.rm_count_max || rc.kch < 1e-5) continue;
+					if (!room_typesize_kch(*r, rc)) continue;
+					
+					if (b_prio < rc.place_prio || (b_prio - 0.01 < rc.place_prio && rnd.flag()))
+					{
+						b_ptr = &rc;
+						b_prio = rc.place_prio;
+					}
+				}
+				
+				if (b_ptr) {
+					r_ks[r_kn] = {b_ptr->kch, b_ptr};
+					r_kn = 1;
+				}
+			}
+			if (!r_kn) // can't place any room
+			{
+				set_room_type(*r, gp.rm_cs[0]);
+				continue;
+			}
+			
+			// get rnd
+			
+			float sum = 0;
+			for (size_t i=0; i<r_kn; ++i) sum += r_ks[i].first;
+			
+			float rc_kch = rnd.range_n() * sum;
+			float t = 0;
+			
+			size_t i = 0;
+			for (; i < r_kn - 1; ++i)
+			{
+				t += r_ks[i].first;
+				if (rc_kch < t) break;
+			}
+			
+			set_room_type(*r, *r_ks[i].second);
+		}
+		
+		// calculate room far_value
+		
+		const int far_value_depth = 6;
+		
+		std::vector<Room*> far_value_next;
+		std::vector<Room*> far_value_cur;
+		
+		for (auto& r_cur : g_rooms)
+		{
+			for (auto& r : g_rooms) r.depth = far_value_depth + 1;
+			far_value_next.push_back(&r_cur);
+			
+			for (int depth = 0; depth <= far_value_depth; ++depth)
+			{
+				far_value_cur.clear();
+				far_value_cur.swap( far_value_next );
+				
+				for (auto r : far_value_cur)
+				{
+					if (r->depth <= depth) continue;
+					r->far_value += depth;
+					
+					if (depth != far_value_depth)
+					{
+						r->depth = depth;
+						
+						for (auto& ci : r->cor_i)
+						for (auto& e : g_cors[ci].ents)
+						{
+							if (!e.room_i || *e.room_i == r->index) continue;
+							far_value_next.push_back( &g_rooms[*e.room_i] );
+						}
+					}
+				}
+			}
+		}
+		
+		{	auto mm = std::minmax_element( g_rooms.begin(), g_rooms.end(),
+			                               [](auto& a, auto& b){return a.far_value < b.far_value;} );
+			float off = -mm.first->far_value;
+			float mul = 1.f / (mm.second->far_value + off);
+			
+			for (auto& r : g_rooms)
+				r.far_value = 1 - (r.far_value + off) * mul;
+		}
+		
+		// set room_was
 		
 		for (auto& r : g_rooms)
 			r.area.map([&](auto p){ cref(p).room_was = r.index; });
 		
-		// generate islands
+		// init path search
 		
-		if (gp.gen_islands)
+		std::unique_ptr<AsyncPathSearch> aps;
+		aps.reset( AsyncPathSearch::create_default_nonthread() );
 		{
-			auto check_entries = [this](Room& r)
+			std::vector<uint8_t> g( l_size.area() );
+			for (size_t i=0; i < cs.size(); ++i)
 			{
-				const int d_max = std::numeric_limits<int>::max();
-				const Rect zn = {r.area.lower() - vec2i{1,1}, r.area.upper() + vec2i{1,1}, false};
+				bool is_wall = !cs[i].cor_i && !cs[i].room_i;
+				g[i] = is_wall ? 0 : 1;
+			}
+			aps->update( l_size, std::move(g) );
+		}
+		
+		// generate obstacles
+		
+		std::vector<vec2i> cry_add_next;
+		std::vector<vec2i> cry_add_cur;
+		
+		for (auto& r : g_rooms)
+		{	
+			bool do_gen;
+			float prot_kch;
+			
+			switch (r.r_class->obs_t)
+			{
+			case OBS_CRYSTAL_CLEARED:
+				prot_kch = 0;
+				do_gen = true;
+				break;
 				
-				bool cor_any = false;
-				zn.map([&](auto p)
+			case OBS_CRYSTAL:
+				prot_kch = 1;
+				do_gen = true;
+				break;
+				
+			default:
+				do_gen = false;
+				break;
+			}
+			if (!do_gen) continue;
+			
+			//
+			
+			auto& rc = *r.r_szt;
+			int orig_num = r.area.size().area() / rc.cry_per;
+			if (!orig_num) continue;
+			
+			//
+			
+			int area_prot = 0;
+			
+			r.area.map([&](auto p)
+			{
+				auto& c = cref(p);
+				if (c.protect) ++area_prot;
+				else cref(p).cry_gen = 0;
+			});
+			
+			for (size_t i=0;   i < r.cor_i.size(); ++i)
+			for (size_t j=i+1; j < r.cor_i.size(); ++j)
+			{
+				auto set = [&](vec2i p)
 				{
 					auto& c = cref(p);
-					if (c.cor_i) {
-						c.depth = cor_any? d_max : 0;
-						cor_any = true;
-					}
-					else if (!c.room_i) c.depth = -1;
-					else c.depth = d_max;
-				});
-				
-				for (int d=0 ;; ++d)
-				{
-					bool ok = false;
-					
-					zn.map([&](auto pos)
+					if (c.room_i == r.index && !c.cry_gen)
 					{
-						auto& c = cref(pos);
-						if (c.depth != d) return;
-						
-						const vec2i ps[] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
-						for (auto& p : ps)
-						{
-							auto& nc = cref(pos + p);
-							if (nc.depth > d) {
-								nc.depth = d + 1;
-								ok = true;
-							}
-						}
-					});
-					if (!ok) break;
-				}
+						c.cry_gen = 1;
+						++area_prot;
+					}
+				};
 				
-				return zn.map_check([&](auto p){ return cref(p).depth != d_max; });
+				auto gc = [&](size_t ix) {return g_cors[ r.cor_i[ix] ].cells.front();};
+				auto res = aps->sync_task( gc(i), gc(j), {} );
+				
+				for (auto& p : res.ps)
+					set(p);
+				
+				for (size_t i=1; i < res.ps.size(); ++i)
+				{
+					auto p0 = res.ps[i-1];
+					auto p1 = res.ps[i];
+					
+					if (p0.x != p1.x && p0.y != p1.y)
+						set({p0.x, p1.y});
+				}
+			}
+			
+			orig_num = std::min(orig_num, r.area.sz.area() - area_prot);
+			if (!orig_num) continue;
+			
+			//
+			
+			cry_add_next.reserve( r.area.sz.area() - area_prot );
+			r.area.map([&](vec2i p)
+			{
+				auto& c = cref(p);
+				if (!c.protect && !c.cry_gen)
+					cry_add_next.push_back(p);
+			});
+			
+			for (size_t i = cry_add_next.size() - 1; i > 0; --i)
+				std::swap(cry_add_next[i], cry_add_next[rnd.range_index(i)]);
+			
+			cry_add_next.resize( orig_num );
+			
+			//
+			
+			auto nsum = [&](vec2i p) {
+				int s = 0;
+				for (auto& d : sg_dirs) s += cref(p + d).cry_gen;
+				return s;
 			};
 			
-			for (auto& r : g_rooms)
-			{	
-				auto& rc = *r.klass;
-				if (rnd.range_n() > rc.isl_f) continue;
+			int gen = 1;
+			while (!cry_add_next.empty())
+			{
+				cry_add_cur.clear();
+				cry_add_cur.swap( cry_add_next );
 				
-				int num = std::min( rc.isl_max, r.area.size().area() / rc.isl_per );
-				if (!num) num = 1;
-				for (int i=0; i<num; ++i)
+				for (auto& p0 : cry_add_cur)
 				{
-					for (int j=0; j<rc.isl_chn_mul; ++j)
-					{
-						vec2i sz;
-						sz.x = round(rnd.range(rc.isl_sz_min.x, rc.isl_sz_max.x));
-						sz.y = round(rnd.range(rc.isl_sz_min.y, rc.isl_sz_max.y));
-						
-						if (sz.x >= r.area.size().x) continue;
-						if (sz.y >= r.area.size().y) continue;
-						
-						vec2i off;
-						off.x = round(rnd.range(0, r.area.size().x - sz.x));
-						off.y = round(rnd.range(0, r.area.size().y - sz.y));
-						off += r.area.off;
-						
-						Rect isl = {off, sz, true};
-						isl.map([&](auto p) {
-							auto& c = cref(p);
-							if (c.room_i == r.index) c.room_i.reset();
-						});
-						
-						if (check_entries(r)) break;
-						else {
-							isl.map([&](auto p) {
-								auto& c = cref(p);
-								if (c.room_was == r.index) c.room_i = r.index;
-							});
-						}
-					}
+					auto& c = cref(p0);
+					if (c.cry_gen) continue;
+					
+					c.cry_gen = gen;
+					c.protect = rnd.range_n() < prot_kch;
+					c.room_i.reset();
+				}
+	
+				for (auto& p0 : cry_add_cur)
+				for (auto& d : sg_dirs)
+				{
+					vec2i p = p0 + d;
+					auto& c = cref(p);
+					if (c.room_i != r.index || c.protect || c.cry_gen) continue;
+	
+					float t = nsum(p);
+					t = 1.f - t / rc.cry_max;
+	
+					if (rnd.range_n() < t * rc.cry_f)
+						cry_add_next.push_back(p);
 				}
 			}
 		}
@@ -392,7 +770,7 @@ struct Gen1
 				};
 				auto rmrest = [&](int x, int y) {
 					auto& c = cref(r.area.off + vec2i{x, y});
-					c.room_i = c.room_was;
+					if (!c.protect) c.room_i = c.room_was;
 				};
 				
 				for (int y = 0; y < r.area.sz.y - 1; ++y)
@@ -418,8 +796,8 @@ struct Gen1
 		
 		// remove 1-wide passageways
 		
-		for (int y = 2; y < size.y - 3; ++y)
-		for (int x = 1; x < size.x - 1; ++x)
+		for (int y = 2; y < l_size.y - 3; ++y)
+		for (int x = 1; x < l_size.x - 1; ++x)
 		{
 			auto iswall = [&](int x, int y) {
 				auto& c = cref(vec2i{x, y});
@@ -428,7 +806,7 @@ struct Gen1
 			
 			std::optional<int> y1;
 			int x1 = x;
-			for (; x1 < size.x - 1; ++x1)
+			for (; x1 < l_size.x - 1; ++x1)
 			{
 				if (iswall(x1, y-1) && !iswall(x1, y) && iswall(x1, y+1))
 				{
@@ -467,13 +845,14 @@ struct Gen1
 			for (; x < x1; ++x)
 			{
 				auto& c = cref({x, *y1});
+				if (c.protect) continue;
 				if (c.room_was) c.room_i = c.room_was;
 				else c.cor_i = cref({x, y}).cor_i;
 			}
 		}
 		
-		for (int x = 2; x < size.x - 3; ++x)
-		for (int y = 1; y < size.y - 1; ++y)
+		for (int x = 2; x < l_size.x - 3; ++x)
+		for (int y = 1; y < l_size.y - 1; ++y)
 		{
 			auto iswall = [&](int x, int y) {
 				auto& c = cref(vec2i{x, y});
@@ -482,7 +861,7 @@ struct Gen1
 			
 			std::optional<int> x1;
 			int y1 = y;
-			for (; y1 < size.y - 1; ++y1)
+			for (; y1 < l_size.y - 1; ++y1)
 			{
 				if (iswall(x-1, y1) && !iswall(x, y1) && iswall(x+1, y1))
 				{
@@ -521,6 +900,7 @@ struct Gen1
 			for (; y < y1; ++y)
 			{
 				auto& c = cref({*x1, y});
+				if (c.protect) continue;
 				if (c.room_was) c.room_i = c.room_was;
 				else c.cor_i = cref({x, y}).cor_i;
 			}
@@ -528,8 +908,8 @@ struct Gen1
 		
 		// remove 1-wide diags
 		
-		for (int y=1; y < size.y - 2; ++y)
-		for (int x=1; x < size.x - 2; ++x)
+		for (int y=1; y < l_size.y - 2; ++y)
+		for (int x=1; x < l_size.x - 2; ++x)
 		{
 			auto iswall = [&](int ox, int oy) {
 				auto& c = cref({x + ox, y + oy});
@@ -539,6 +919,7 @@ struct Gen1
 				auto& c = cref({x + ox, y + oy});
 				if (c.room_was) c.room_i = c.room_was;
 				else {
+					if (c.protect) return;
 					if (!c.cor_i) c.cor_i = cref({x+0, y+0}).cor_i;
 					if (!c.cor_i) c.cor_i = cref({x+1, y+0}).cor_i;
 					if (!c.cor_i) c.cor_i = cref({x+0, y+1}).cor_i;
@@ -552,14 +933,280 @@ struct Gen1
 			else if (!iswall(0,0) && !iswall(1,0) && !iswall(0,1) &&  iswall(1, 1) && (iswall( 2, 0) || iswall(0,  2))) corr(1,1);
 		}
 		
-		// fin
+		// generate doors
 		
-		// prepare player spawn
-		g_rooms[0].area.map([this](vec2i p)
+		for (auto& r : g_rooms)
 		{
-			auto& c = cref(p);
-			c.room_i = c.room_was;
-		});
+			if (r.r_class->k_has_doors < 1e-5) continue;
+			
+			auto f = [&](vec2i p, vec2i into, vec2i next)
+			{
+				bool any = false;
+				int i = 0;
+				for (; i < 3; ++i)
+				{
+					auto& cc = cref(p + i*next);
+					auto& rc = cref(p + i*next + into);
+					if (cc.is_door || !cc.cor_i || !rc.room_i) break;
+					
+					auto& oc = cref(p + i*next - into);
+					any |= (oc.room_i || oc.cor_i);
+				}
+				
+				if (!i || !any) return;
+				if (cref(p -   next).cor_i) return;
+				if (cref(p + i*next).cor_i) return;
+				if (rnd.range_n() >= r.r_class->k_has_doors) return;
+				
+				for (; i >= 0; --i)
+				{
+					auto& cc = cref(p + i*next);
+					auto& rc = cref(p + i*next + into);
+					
+					cc.is_door = true;
+					cc.protect = true;
+					rc.protect = true;
+				}
+			};
+			
+			for (int y = r.area.lower().y; y < r.area.upper().y; ++y)
+			{
+				f({ r.area.lower().x - 1, y }, { 1, 0}, {0, 1});
+				f({ r.area.upper().x,     y }, {-1, 0}, {0, 1});
+			}
+			for (int x = r.area.lower().x; x < r.area.upper().x; ++x)
+			{
+				f({ x, r.area.lower().y - 1 }, {0,  1}, {1, 0});
+				f({ x, r.area.upper().y     }, {0, -1}, {1, 0});
+			}
+		}
+		
+		// gen structures
+		
+		auto obs_gen_ribs = [&](Room& r)
+		{
+			int w_off; // offset from walls
+			int c_len; // claw length (x)
+			int c_wid; // claw width (y)
+			
+			int c_len_max = 6;
+			int c_wid_max = 8;
+			
+			switch (r.r_szt->type)
+			{
+			case RSZ_SMALL:
+			case RSZ_MIDDLE:
+				w_off = 2;
+				c_len = 2;
+				c_wid = 3;
+				break;
+				
+			case RSZ_BIG:
+				w_off = 2;
+				c_len = 4;
+				c_wid = 4;
+				break;
+				
+			case RSZ_HUGE:
+			case RSZ_TOTAL_COUNT: // suppress warning
+				w_off = 2;
+				c_len = 6;
+				c_wid = 4;
+				break;
+			}
+			
+			int x_left = r.area.sz.x - (c_len*2 + w_off*3);
+			int y_left = r.area.sz.y - (c_wid*2 + w_off*3);
+			if (x_left < 0 || y_left < 0) return false;
+			
+			auto set = [&](vec2i p)
+			{
+				auto& c = cref(r.area.off + p);
+				if (!c.protect) {
+					c.room_i.reset();
+					c.protect = true;
+				}
+			};
+			auto mirror = [&](vec2i off)
+			{
+				int x0 = off.x; int x1 = r.area.sz.x - 1 - off.x;
+				int y0 = off.y; int y1 = r.area.sz.y - 1 - off.y;
+				
+				set({ x0, y0 });
+				set({ x1, y0 });
+				set({ x0, y1 });
+				set({ x1, y1 });
+			};
+			auto claw = [&](vec2i off, vec2i size, bool draw_rib)
+			{
+				size.x = std::min(size.x, c_len_max);
+				size.y = std::min(size.y, c_wid_max);
+				
+				for (int x=0; x < size.x; ++x)
+				{
+					mirror(off + vec2i(x, 0));
+					mirror(off + vec2i(x, size.y - 1));
+				}
+				for (int y=1; y < size.y - 1; ++y)
+					mirror(off + vec2i(1, y));
+				
+				if (draw_rib)
+				{
+					for (int y=0; y < size.y; ++y)
+						mirror(off + vec2i(size.x + w_off, y));
+				}
+			};
+			
+			bool draw_ribs = false;
+			if (x_left >= (w_off + 1)*2)
+			{
+				x_left -= (w_off + 1)*2;
+				draw_ribs = true;
+			}
+			claw({ w_off, w_off }, vec2i(c_len + x_left /2, c_wid + y_left /2), draw_ribs);
+			return true;
+		};
+		
+		auto obs_gen_cols = [&](Room& r)
+		{
+			// 1 + space between columns
+			int x_spc, y_spc;
+			
+			switch (r.r_szt->type)
+			{
+			case RSZ_SMALL:
+				x_spc = y_spc = 10000;
+				break;
+				
+			case RSZ_MIDDLE:
+				x_spc = 1 + 3;
+				y_spc = 1 + 2;
+				break;
+				
+			case RSZ_BIG:
+			case RSZ_HUGE:
+			case RSZ_TOTAL_COUNT: // suppress warning
+				x_spc = 1 + 4;
+				y_spc = 1 + 3;
+				break;
+			}
+			
+			int xn = r.area.sz.x / x_spc;
+			int yn = r.area.sz.y / y_spc;
+			if (!xn || !yn) return false;
+			
+			if (xn > 1 && r.area.sz.x < x_spc*2 + 1) xn = 1;
+			if (yn > 1 && r.area.sz.y < y_spc*2 + 1) yn = 1;
+			
+			int x_ctr = r.area.sz.x / 2;
+			if ((xn & 1) && !(r.area.sz.x & 1))
+			{
+				x_ctr -= x_spc/2;
+				--xn;
+			}
+			else if (!(xn & 1) && !(r.area.sz.x & 1))
+			{
+				x_ctr -= x_spc/2;
+			}
+			
+			int y_ctr = r.area.sz.y / 2;
+			if ((yn & 1) && !(r.area.sz.y & 1))
+			{
+				y_ctr -= y_spc/2;
+				--yn;
+			}
+			else if (!(yn & 1) && !(r.area.sz.y & 1))
+			{
+				y_ctr -= y_spc/2;
+			}
+			
+			//
+			
+			auto set = [&](vec2i p)
+			{
+				auto& c = cref(r.area.off + p);
+				if (!c.protect) {
+					c.room_i.reset();
+					c.protect = true;
+				}
+			};
+			
+			for (int yc = 0; yc <= yn /2; ++yc)
+			for (int xc = 0; xc <= xn /2; ++xc)
+			{
+				int x0 = x_ctr - x_spc*xc; int x1 = r.area.sz.x - 1 - (x_ctr - x_spc*xc);
+				int y0 = y_ctr - y_spc*yc; int y1 = r.area.sz.y - 1 - (y_ctr - y_spc*yc);
+				
+				set({ x0, y0 });
+				set({ x1, y0 });
+				set({ x0, y1 });
+				set({ x1, y1 });
+			}
+			return true;
+		};
+		
+		for (auto& r : g_rooms)
+		{
+			if		(r.r_class->obs_t == OBS_RIBS)   obs_gen_ribs(r);
+			else if (r.r_class->obs_t == OBS_COLUMN) obs_gen_cols(r);
+		}
+		
+		// set isolated
+		
+		std::vector<vec2i> isol_open;
+		std::vector<vec2i> isol_next;
+		isol_open.reserve( l_size.area() );
+		isol_next.reserve( l_size.area() );
+		
+		g_rooms[0].area.map([&](vec2i p){ isol_open.push_back(p); });
+		for (auto& c : cs) c.depth = (c.cor_i || c.room_i) ? l_size.area() : -1;
+		
+		int depth = 0;
+		while (!isol_open.empty())
+		{
+			isol_next.clear();
+			
+			for (auto& p : isol_open)
+			{
+				auto& c = cref(p);
+				if (c.depth > depth)
+				{
+					c.depth = depth;
+					c.isolated = false;
+					
+					for (auto& d : sg_dirs)
+						isol_next.push_back(p + d);
+				}
+			}
+			
+			isol_open.swap(isol_next);
+		}
+		
+		// delete isolated rooms
+		// WARNING: Only room indices in CELLS are rearranged
+		
+		for (auto it = g_rooms.begin(); it != g_rooms.end(); )
+		{
+			if (!it->area.map_check([&](vec2i p){ return cref(p).isolated; }))
+			{
+				++it;
+				continue;
+			}
+			// TODO: rearrange indices
+			else
+			{
+				size_t i = it - g_rooms.begin();
+				it = g_rooms.erase(it);
+
+				for (auto& c : cs) {
+					if (!c.room_i || *c.room_i < i) continue;
+					if (*c.room_i == i) c.room_i.reset();
+					else --*c.room_i;
+				}
+			}
+		}
+		
+		// fin
 		
 		rm_diags();
 		
@@ -567,6 +1214,7 @@ struct Gen1
 //		g_cors.shrink_to_fit();
 	
 		VLOGI("Remains: {} rooms, {} corridors", g_rooms.size(), g_cors.size());
+		return true;
 	}
 	void mark_room(Room& r)
 	{
@@ -688,16 +1336,16 @@ struct Gen1
 			{
 				dir = c0.second;
 				
-				const RoomClass* rc = nullptr;
+				const RoomSizeType* rc = nullptr;
 				float rc_kch = rnd.range_n();
-				for (auto& r : gp.rm_cs)
+				for (auto& r : gp.rm_szs)
 				{
 					if (rc_kch < r.kch) {
 						rc = &r;
 						break;
 					}
 				}
-				if (!rc) rc = &gp.rm_cs.back();
+				if (!rc) rc = &gp.rm_szs.back();
 				
 				Rect ar;
 				ar.sz.x = round(rnd.range(rc->sz_min.x, rc->sz_max.x));
@@ -713,8 +1361,8 @@ struct Gen1
 				int safety = gp.cor_len_max + 3;
 				if (ar.off.x - safety < 0 ||
 				    ar.off.y - safety < 0 ||
-				    ar.off.x + safety + ar.sz.x > size.x ||
-				    ar.off.y + safety + ar.sz.y > size.y
+				    ar.off.x + safety + ar.sz.x > l_size.x ||
+				    ar.off.y + safety + ar.sz.y > l_size.y
 				    )
 					return;
 				
@@ -731,7 +1379,7 @@ struct Gen1
 				
 				nr->index = g_rooms.size() - 1;
 				nr->area = ar;
-				nr->klass = rc;
+				nr->r_szt = rc;
 				mark_room(*nr);
 				place_q.push_back(nr->index);
 				
@@ -763,8 +1411,8 @@ struct Gen1
 	}
 	Cell* getc(vec2i pos)
 	{
-		if (pos.x < 0 || pos.y < 0 || pos.x >= size.x || pos.y >= size.y) return nullptr;
-		return &cs[pos.y * size.x + pos.x];
+		if (pos.x < 0 || pos.y < 0 || pos.x >= l_size.x || pos.y >= l_size.y) return nullptr;
+		return &cs[pos.y * l_size.x + pos.x];
 	}
 	Cell& cref(vec2i pos)
 	{
@@ -773,6 +1421,7 @@ struct Gen1
 	}
 	void remove_border()
 	{
+		vec2i& size = l_size;
 		const vec2i orig_size = size;
 		
 		int x_rem = 0, y_rem = 0;
@@ -868,7 +1517,7 @@ struct Gen1
 	{
 		remove_border();
 		
-		t.grid_size = size;
+		t.grid_size = l_size;
 		t.cs.reserve( cs.size() );
 		t.rooms.reserve( g_rooms.size() );
 		
@@ -876,16 +1525,23 @@ struct Gen1
 		{
 			auto& nr = t.rooms.emplace_back();
 			nr.area = r.area;
-			nr.type = r.klass->lc_type;
+			nr.far_value = r.far_value;
+			nr.type = r.r_class->lc_type;
+			nr.dbg_color = r.r_class->dbg_color;
 		}
+		
 		for (auto& c : cs)
 		{
 			auto& nc = t.cs.emplace_back();
 			nc.is_wall = (!c.cor_i && !c.room_i);
+			nc.is_door = !nc.is_wall && c.is_door;
+			
+			nc.isolated = !nc.is_wall && c.isolated;
+			if (nc.isolated) nc.is_wall = true;
+			
+			if (c.room_i)
+				nc.room = &t.rooms[*c.room_i];
 		}
-		
-		auto& r0 = g_rooms[0].area;
-		t.spps.emplace_back(LevelControl::SP_PLAYER, r0.off + r0.sz /2);
 	}
 };
 
@@ -897,7 +1553,7 @@ LevelTerrain* LevelTerrain::generate(const GenParams& pars)
 	LevelTerrain& lt = *lt_ptr;
 	
 	TimeSpan t0 = TimeSpan::since_start();
-	Gen1( pars.grid_size ).convert( lt );
+	Gen1( pars.rnd, pars.grid_size ).convert( lt );
 	lt.cell_size = pars.cell_size;
 	
 	TimeSpan t1 = TimeSpan::since_start();
@@ -924,67 +1580,6 @@ LevelTerrain* LevelTerrain::generate(const GenParams& pars)
 	}
 	
 	return lt_ptr;
-}
-LevelTerrain* LevelTerrain::load_testlvl(float cell_size, const char *filename)
-{
-	ImageInfo img;
-	if (!img.load(filename, ImageInfo::FMT_RGB))
-		throw std::runtime_error("LevelTerrain::load_testlvl() failed");
-	
-	LevelTerrain* lt = new LevelTerrain;
-	lt->cell_size = cell_size;
-	lt->grid_size = img.get_size();
-	lt->cs.resize( lt->grid_size.area() );
-	
-	auto& rm = lt->rooms.emplace_back();
-	rm.area = {{1,1}, lt->grid_size - vec2i::one(2), true};
-	rm.type = RM_DEFAULT;
-	
-	rm.area.map([lt](auto p) {
-		lt->cs[p.y * lt->grid_size.x + p.x].is_wall = false;
-	});
-	
-	for (int y=0; y < lt->grid_size.y; ++y)
-	for (int x=0; x < lt->grid_size.x; ++x)
-	{
-		int v = img.get_pixel_fast({x,y});
-		switch (v)
-		{
-		case 0:
-			lt->cs[y * lt->grid_size.x + x].is_wall = true;
-			break;
-			
-		case 0xffffff:
-			break;
-			
-		case 0xff0000:
-			lt->spps.emplace_back(LevelControl::SP_PLAYER, vec2i{x,y});
-			break;
-			
-		case 0x00ff00:
-			lt->spps.emplace_back(LevelControl::SP_TEST_TURRET, vec2i{x,y});
-			break;
-			
-		case 0xffff00:
-			lt->spps.emplace_back(LevelControl::SP_TEST_BOX, vec2i{x,y});
-			break;
-			
-		case 0xff8080:
-			lt->spps.emplace_back(LevelControl::SP_TEST_DRONE, vec2i{x,y});
-			break;
-			
-		case 0xff8000:
-			lt->spps.emplace_back(LevelControl::SP_SUPPLY_RND, vec2i{x,y});
-			break;
-			
-		default:
-			THROW_FMTSTR("LevelTerrain::load_testlvl() unknown color at {}:{}", x, y);
-		}
-	}
-	
-	lt->ls_wall = lt->vectorize();
-	lt->ls_grid = lt->gen_grid();
-	return lt;
 }
 
 
@@ -1144,6 +1739,40 @@ ImageInfo LevelTerrain::draw_grid(bool is_debug) const
 	int cz = int_round(cell_size);
 	img.reset(grid_size * cz, is_debug? ImageInfo::FMT_RGB : ImageInfo::FMT_ALPHA);
 	
+	if (is_debug)
+	{
+		for (auto& r : rooms)
+		{
+			br.clr = r.dbg_color;
+			fill_rect(img, {r.area.lower() * cz, r.area.size() * cz, true}, br);
+			
+			br.clr = 0;
+			r.area.map([&](auto p)
+			{
+				auto& c = cs[p.y * grid_size.x + p.x];
+				if (c.is_wall || c.isolated)
+				{
+					for (int i=0; i<cz; ++i)
+					for (int j=0; j<cz; ++j)
+						br.apply(img, p*cz + vec2i(j, i));
+				}
+			});
+		}
+		
+		br.clr = 0xffff00;
+		for (int y=0; y < grid_size.y; ++y)
+		for (int x=0; x < grid_size.x; ++x)
+		{
+			auto& c = cs[y * grid_size.x + x];
+			if (!c.is_door) continue;
+			
+			vec2i p = {x,y};
+			for (int i=0; i<cz; ++i)
+			for (int j=0; j<cz; ++j)
+				br.apply(img, p*cz + vec2i(j, i));
+		}
+	}
+	
 	br.clr = is_debug? 0x000080 : 64;
 	for (auto& g : gs)
 		draw_line(img, g.first.int_round(), g.second.int_round(), br);
@@ -1160,46 +1789,43 @@ ImageInfo LevelTerrain::draw_grid(bool is_debug) const
 		}
 	}
 	
-	if (is_debug)
-	{
-		br.clr = 0x00ff00;
-		for (auto& r : rooms)
-		{
-			auto p0 = r.area.lower() * cz + vec2i::one(1);
-			auto p1 = r.area.upper() * cz - vec2i::one(1);
-			draw_line(img, {p0.x, p0.y}, {p1.x, p0.y}, br);
-			draw_line(img, {p1.x, p1.y}, {p1.x, p0.y}, br);
-			draw_line(img, {p1.x, p1.y}, {p0.x, p1.y}, br);
-			draw_line(img, {p0.x, p0.y}, {p0.x, p1.y}, br);
-		}
-	}
-	
 	return img;
 }
-void LevelTerrain::test_save(const char *prefix) const
+void LevelTerrain::test_save(const char *prefix, bool img_line, bool img_grid) const
 {
 	std::string fn_line = std::string(prefix) + "_line.png";
 	std::string fn_grid = std::string(prefix) + "_grid.png";
 	
+	if (img_line)
+		draw_grid(true).save(fn_line.c_str());
+	
+	if (!img_grid) return;
+	
 	ImageInfo img;
-	img.reset(grid_size, ImageInfo::FMT_ALPHA);
+	img.reset(grid_size, ImageInfo::FMT_RGB);
 	
 	for (int y=0; y < grid_size.y; ++y)
 	for (int x=0; x < grid_size.x; ++x)
 	{
 		auto& c = cs[y * grid_size.x + x];
+		uint32_t v;
 		
-		int v;
-		if (1) {
-			auto i = std::find_if(rooms.begin(), rooms.end(), [&](auto& v){ return v.area.contains_le({x,y}); });
-			if (i != rooms.end()) v = c.is_wall? 64 : 255;
-			else                  v = c.is_wall? 0  : 128;
+		if (c.isolated) v = 0x802020;
+		else {
+			auto r = std::find_if(rooms.begin(), rooms.end(), [&](auto& v){ return v.area.contains_le({x,y}); });
+			if (r == rooms.end()) {
+				if (c.is_door) v = 0x00ffff;
+				else v = c.is_wall ? 0 : 0x909090;
+			}
+			else if (c.is_wall) v = 0x404040;
+			else {
+				v = 0xffff00;
+				v |= int_round(lerp(0xff, 0xa0, r->far_value));
+			}
 		}
-		else v = (!c.is_wall) * 255;
 		
-		img.raw()[y * grid_size.x + x] = v;
+		img.set_pixel_fast({x, y}, v);
 	}
 	
 	img.save(fn_grid.c_str());
-	draw_grid(true).save(fn_line.c_str());
 }

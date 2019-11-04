@@ -1,8 +1,8 @@
 #ifndef VAS_MATH_HPP
 #define VAS_MATH_HPP
 
-#ifdef __unix__ // on Windows it should be defined in project parameters
-#define _USE_MATH_DEFINES
+#ifdef __unix__
+#define _USE_MATH_DEFINES // on Windows it should be defined in project parameters
 #endif
 
 #include <algorithm>
@@ -246,7 +246,8 @@ struct Rect {
 	
 	const vec2i& lower() const {return off;}
 	      vec2i  upper() const {return off + sz;}
-	const vec2i& size()  const {return sz;}
+	const vec2i&  size() const {return sz;}
+	      vec2i center() const {return off + sz /2;}
 	
 	void lower(vec2i v) {off = v;}
 	void upper(vec2i v) {sz = v - off;}
@@ -318,6 +319,7 @@ struct Rectfp
 	bool contains( const Rectfp& r ) const; ///< Checks if another rectangle is completely within this
 	
 	bool contains( vec2fp p ) const; ///< Checks if point is inside, excluding edges
+	bool contains( vec2fp p, float width ) const; ///< Checks if point is inside; edges are shrinked by width
 };
 
 

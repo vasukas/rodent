@@ -21,7 +21,7 @@ struct ImagePointBrush : ImageBrush
 };
 
 void draw_line(ImageInfo& img, vec2i p0, vec2i p1, ImageBrush& brush);
-
+void fill_rect(ImageInfo& img, Rect r, ImageBrush& brush);
 
 
 
