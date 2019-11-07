@@ -109,6 +109,7 @@ public:
 	virtual size_t get_team() const {return TEAM_ENVIRON;}
 	virtual AI_Drone* get_ai_drone() {return nullptr;}
 	
+	virtual std::string ui_descr() const {return {};}
 	vec2fp get_pos() {return get_phy().get_pos();}
 
 	

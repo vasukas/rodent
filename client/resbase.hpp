@@ -6,6 +6,7 @@
 #include "vaslib/vas_math.hpp"
 
 struct ParticleGroupGenerator;
+struct TextureReg;
 
 
 
@@ -16,6 +17,7 @@ enum ModelType
 	
 	MODEL_ERROR, ///< Model-not-found model
 	MODEL_NONE, ///< Displays nothing
+	MODEL_WINRAR,
 	
 	MODEL_PC_RAT, ///< Player character
 	MODEL_PC_SHLD, ///< Projected shield
@@ -25,6 +27,9 @@ enum ModelType
 	
 	MODEL_MEDKIT,
 	MODEL_ARMOR,
+	
+	MODEL_TERMINAL_KEY,
+	MODEL_TERMINAL_FIN,
 	
 	MODEL_BAT,
 	MODEL_HANDGUN,
@@ -91,6 +96,7 @@ public:
 	virtual ParticleGroupGenerator* get_eff(FreeEffect eff) = 0;
 	
 	virtual vec2fp get_size(ModelType type) = 0;
+	virtual TextureReg get_image(ModelType type) = 0; ///< May change
 	
 protected:
 	friend class GamePresenter_Impl;

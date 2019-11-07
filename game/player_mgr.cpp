@@ -1,11 +1,13 @@
 #include "client/plr_control.hpp"
 #include "core/vig.hpp"
+#include "render/camera.hpp"
 #include "render/control.hpp"
 #include "render/ren_imm.hpp"
 #include "game_core.hpp"
 #include "level_ctr.hpp"
 #include "player.hpp"
 #include "player_mgr.hpp"
+#include "s_objs.hpp"
 
 
 
@@ -19,6 +21,14 @@ public:
 	std::shared_ptr<PlayerController> pc_ctr;
 	TimeSpan plr_resp; // respawn timeout
 	vec2i last_plr_pos = {}; // level coords
+	
+	// objective
+	
+	const size_t obj_need = 3;
+	size_t obj_count = 0;
+	EFinalTerminal* obj_term = nullptr;
+	bool obj_msg = false;
+	bool lct_found = false;
 	
 	// entity
 	
@@ -41,13 +51,13 @@ public:
 	
 	
 	
-	PlayerManager_Impl(std::shared_ptr<PlayerController> pc_ctr)
-		: pc_ctr(std::move(pc_ctr))
+	PlayerManager_Impl(std::shared_ptr<PlayerController> pc_ctr_in)
+		: pc_ctr(std::move(pc_ctr_in))
 	{
-//		TimeSpan st = TimeSpan::seconds(1.5);
-//		std::string s = "Press ESCAPE to see controls";
-//		if (pc_ctr->get_gpad()) {st *= 2; s += "\nPress START to enable gamepad";}
-//		msgs.emplace_back(std::move(s), st, TimeSpan::seconds(1.5));
+		TimeSpan st = TimeSpan::seconds(1.5);
+		std::string s = "Press ESCAPE to see controls";
+		if (pc_ctr->get_gpad()) {st *= 2; s += "\nPress START to enable gamepad";}
+		msgs.emplace_back(std::move(s), st, TimeSpan::seconds(1.5));
 	}
 	Entity* get_ent() const override
 	{
@@ -184,6 +194,64 @@ public:
 				else msgs.pop_back();
 			}
 		}
+		
+		if (plr_ent)
+		{
+			std::string stat_str;
+			
+			if (auto res = GameCore::get().get_phy().point_cast(conv( pc_ctr->get_state().tar_pos ), 0.5))
+			{
+				auto s = res->ent->ui_descr();
+				if (s.empty()) s = "UNDEFINED";
+				stat_str += FMT_FORMAT("Looking at: {}\n", s);
+			}
+			
+			auto room = LevelControl::get().get_room(plr_ent->get_pos());
+			stat_str += FMT_FORMAT("Room: {}\n", room? room->name : "Corridor");
+			if (!lct_found && room && room->is_final_term)
+			{
+				lct_found = true;
+				add_msg("You have found\nlevel control room");
+			}
+			
+			if (obj_count < obj_need)
+				stat_str += FMT_FORMAT("Objective: collect security tokens ({} left)", obj_need - obj_count);
+			else if (obj_term)
+			{
+				if (obj_term->timer_end.is_positive())
+				{
+					TimeSpan left = obj_term->timer_end - GameCore::get().get_step_time();
+					if (left.is_negative()) stat_str += "Objective: use level control terminal";
+					else stat_str += FMT_FORMAT("Objective: wait for level control terminal to boot - {:.1f} seconds", left.seconds());
+				}
+				else if (!lct_found) stat_str += "Objective: find level control terminal";
+				else stat_str += "Objective: activate level control terminal";
+			}
+			RenImm::get().draw_text_hud({0, -1}, stat_str);
+			
+			//
+			
+			std::vector<PhysicsWorld::CastResult> res;
+			GameCore::get().get_phy().circle_cast_all(res, conv(plr_ent->get_pos()), GameConst::hsz_rat + 2,
+			{[&](auto, b2Fixture* f){return getptr(f) && (getptr(f)->typeflags & FixtureInfo::TYPEFLAG_INTERACTIVE);}, {}, false});
+			
+			if (res.size() == 1)
+			{
+				auto e = dynamic_cast<EInteractive*>(res[0].ent);
+				if (!e) THROW_FMTSTR("Entity is not EInteractive - {}", res[0].ent->dbg_id());
+
+				auto usage = e->use_string();
+				RenImm::get().draw_text(
+					RenderControl::get().get_world_camera()->direct_cast(e->get_pos()),
+					usage.second, usage.first? 0xffffffff : 0xff6060ff, true);
+				
+				if (pc_ctr->get_state().is[ PlayerController::A_INTERACT ])
+					e->use(plr_ent);
+			}
+		}
+		else {
+			RenImm::get().draw_text_hud({0, -1}, FMT_FORMAT("Rematerialization in {:.1f} seconds", plr_resp.seconds()));
+		}
 	}
 	void update_godmode() override
 	{
@@ -218,7 +286,22 @@ public:
 	}
 	void step() override
 	{
+		if (!obj_term)
+		{
+			GameCore::get().get_phy().post_step([this]
+			{
+				auto pos = LevelControl::get().get_closest(LevelControl::SP_FINAL_TERMINAL, {});
+				obj_term = new EFinalTerminal(pos);
+			});
+		}
+		
 		try_spawn_plr();
+		
+		if (!obj_msg && obj_term && obj_term->timer_end.is_positive() && obj_term->timer_end < GameCore::get().get_step_time())
+		{
+			obj_msg = true;
+			add_msg("Terminal is ready");
+		}
 	}
 	std::pair<Rect, Rect> get_ai_rects() override
 	{
@@ -234,6 +317,25 @@ public:
 			{ctr - hsz_on,  ctr + hsz_on,  false},
 			{ctr - hsz_off, ctr + hsz_off, false}
 		};
+	}
+	void inc_objective() override
+	{
+		++obj_count;
+		if (obj_count == obj_need)
+		{
+			if (lct_found) add_msg("Go to level control terminal");
+			else add_msg("Find level control terminal");
+			obj_term->enabled = true;
+		}
+		else /*if (obj_count < 3)*/ // this bug is funny
+		{
+			size_t n = obj_need - obj_count;
+			GamePresenter::get()->add_float_text({ plr_ent->get_pos(), FMT_FORMAT("Security token!\nNeed {} more", n) });
+		}
+	}
+	bool is_game_finished() override
+	{
+		return obj_term && obj_term->is_activated && obj_term->timer_end < GameCore::get().get_step_time();
 	}
 	
 	
@@ -281,6 +383,10 @@ public:
 		plr_ent = new PlayerEntity (plr_pos, pc_ctr);
 		plr_eid = plr_ent->index;
 		update_godmode();
+	}
+	void add_msg(std::string s)
+	{
+		msgs.emplace_back(std::move(s), TimeSpan::seconds(1.5), TimeSpan::seconds(1.5));
 	}
 };
 PlayerManager* PlayerManager::create(std::shared_ptr<PlayerController> pc_ctr) {

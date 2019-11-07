@@ -24,7 +24,9 @@ struct LevelTerrain
 		RM_KEY,
 		RM_TERMINAL,
 		RM_TRANSIT,
-		RM_ABANDON
+		RM_ABANDON,
+		
+		RM_TYPE_TOTAL_COUNT
 	};
 	struct Room
 	{

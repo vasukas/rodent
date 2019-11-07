@@ -1,8 +1,12 @@
+#include <future>
 #include "game/common_defs.hpp"
 #include "render/ren_aal.hpp"
 #include "render/particles.hpp"
+#include "utils/image_utils.hpp"
 #include "utils/noise.hpp"
 #include "utils/svg_simple.hpp"
+#include "vaslib/vas_atlas_packer.hpp"
+#include "vaslib/vas_log.hpp"
 #include "presenter.hpp"
 
 // just looks better
@@ -25,6 +29,10 @@ public:
 	std::array <std::array<std::unique_ptr<ParticleGroupGenerator>, ME_TOTAL_COUNT_INTERNAL>, MODEL_TOTAL_COUNT_INTERNAL> ld_me;
 	std::array <std::unique_ptr<ParticleGroupGenerator>, FE_TOTAL_COUNT_INTERNAL> ld_es;
 	std::array <vec2fp, MODEL_TOTAL_COUNT_INTERNAL> md_sz = {};
+	std::array <TextureReg, MODEL_TOTAL_COUNT_INTERNAL> md_img = {};
+	
+	std::unique_ptr<Texture> tex;
+	std::future<ImageInfo> async;
 	
 	ParticleGroupGenerator* get_eff(ModelType type, ModelEffect eff)
 	{
@@ -37,6 +45,16 @@ public:
 	vec2fp get_size(ModelType type)
 	{
 		return md_sz[type];
+	}
+	TextureReg get_image(ModelType type)
+	{
+		if (async.valid() && async.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+		{
+			auto res = async.get();
+			tex.reset(Texture::create_from(res));
+			for (auto& i : md_img) i.tex = tex.get();
+		}
+		return md_img[type];
 	}
 	void init_ren();
 };
@@ -415,13 +433,14 @@ void ResBase_Impl::init_ren()
 		std::vector<std::vector<vec2fp>> ls;
 		bool fix_rotation = true;
 	};
-	ModelInfo mlns[MODEL_TOTAL_COUNT_INTERNAL];
+	std::array<ModelInfo, MODEL_TOTAL_COUNT_INTERNAL> mlns;
 	
 	
 	
 	std::pair<ModelType, std::string> md_ns[] =
 	{
 	    {MODEL_ERROR, "error"},
+	    {MODEL_WINRAR, "winrar"},
 	    
 	    {MODEL_PC_RAT, "rat"},
 	    {MODEL_PC_SHLD, "pshl"},
@@ -431,6 +450,9 @@ void ResBase_Impl::init_ren()
 	    
 	    {MODEL_MEDKIT, "medkit"},
 	    {MODEL_ARMOR, "armor"},
+	    
+	    {MODEL_TERMINAL_KEY, "term_key"},
+	    {MODEL_TERMINAL_FIN, "term_final"},
 	    
 	    {MODEL_BAT, "bat"},
 	    {MODEL_HANDGUN, "claw"},
@@ -505,6 +527,8 @@ void ResBase_Impl::init_ren()
 	const int no_fix_rot[] =
 	{
 	    MODEL_ERROR,
+	    MODEL_WINRAR,
+	    
 	    MODEL_MEDKIT,
 		MODEL_ARMOR,
 	    
@@ -565,6 +589,9 @@ void ResBase_Impl::init_ren()
 	scale_to(MODEL_MINIGUN_AMMO, hsz_supply);
 	scale_to(MODEL_ROCKET_AMMO, hsz_supply);
 	scale_to(MODEL_ELECTRO_AMMO, hsz_supply);
+	
+	scale_to(MODEL_TERMINAL_KEY, hsz_supply_big);
+	scale_to(MODEL_TERMINAL_FIN, hsz_termfin);
 	
 	
 	
@@ -673,4 +700,75 @@ void ResBase_Impl::init_ren()
 		
 		md_sz[i] = p1 - p0;
 	}
+	
+	
+	
+	// generate images
+	
+	async = std::async(std::launch::async,
+	[this](std::array<ModelInfo, MODEL_TOTAL_COUNT_INTERNAL> mlns)
+	{
+		TimeSpan time0 = TimeSpan::since_start();
+	        
+		struct Info
+		{
+			ModelType type;
+	        int m_size;
+	        FColor clr = FColor(1, 1, 1);
+	        ImageInfo img = {};
+		};
+		Info md_is[] =
+		{
+			{MODEL_WINRAR, 35}
+		};
+
+		ImageGlowGen glow;
+		glow.mode = ImageGlowGen::M_NOISY;
+		glow.maxrad = 5;
+	        
+		AtlasBuilder abd;
+		abd.pk.reset( new AtlasPacker );
+		abd.pk->bpp = 4;
+		abd.pk->min_size = 16;
+		abd.pk->max_size = 4096;
+		abd.pk->space_size = 1;
+		
+		for (size_t i=0; i < std::size(md_is); ++i)
+		{
+	        auto& inf = md_is[i];
+	        
+	        glow.shs.emplace_back().lines = std::move(mlns[inf.type].ls);
+			glow.shs.back().clr = inf.clr;
+	        
+			vec2i sz = vec2i::one(inf.m_size);
+			inf.img = glow.gen(sz);
+			
+			sz = inf.img.get_size();
+			abd.add_static({i, sz.x, sz.y}, inf.img.raw());
+		}
+	    
+		auto as = abd.build();
+		ImageInfo res;
+		
+		if (as.empty()) {
+			VLOGE("Resbase:: no images");
+			return res;
+		}
+		
+		res.reset({ as[0].info.w, as[0].info.h });
+		std::memcpy(res.raw(), as[0].px.data(), as[0].px.size() );
+		
+		for (auto& a : as[0].info.sprs)
+		{
+			auto& inf = md_is[a.id];
+			auto& tc = md_img[inf.type].tc;
+			tc.a = vec2fp(a.x, a.y) / vec2fp(res.get_size());
+			tc.b = vec2fp(a.w, a.h) / vec2fp(res.get_size()) + tc.a;
+		}
+		
+		VLOGI("Resbase:: generated images in {:.3f} seconds, {}x{} atlas",
+		      (TimeSpan::since_start() - time0).seconds(), res.get_size().x, res.get_size().y);
+		return res;
+	}
+	, std::move(mlns));
 }

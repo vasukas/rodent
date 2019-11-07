@@ -126,6 +126,12 @@ PlayerController::PlayerController()
 		b.key = SDL_SCANCODE_G;
 		b.but = Gamepad::B_RC_DOWN;
 	}{
+		Bind& b = binds[A_INTERACT];
+		b.name = "Interact";
+		b.descr = "Use interactive object when prompt appears";
+		b.type = BT_ONESHOT;
+		b.key = SDL_SCANCODE_E;
+	}{
 		Bind& b = binds[A_CAM_FOLLOW];
 		b.name = "Camera track";
 		b.descr = "Enables camera tracking when held";

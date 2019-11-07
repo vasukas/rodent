@@ -54,6 +54,7 @@ public:
 		/// Returns true if pickable should be destroyed
 		std::function<bool(Entity&)> f;
 		ModelType model;
+		FColor clr = FColor(1, 1, 1);
 	};
 	
 	using Value = std::variant<AmmoPack, Func>;
@@ -61,6 +62,7 @@ public:
 	
 	
 	EPickable(vec2fp pos, Value val);
+	std::string ui_descr() const override {return "Pickable";}
 	
 	ECompPhysics& get_phy() override {return  phy;}
 	ECompRender*  get_ren() override {return &ren;}
@@ -170,6 +172,42 @@ class EDoor final : public Entity
 	
 public:
 	EDoor(vec2i TL_origin, vec2i door_ext, vec2i room_dir);
+	
+	ECompPhysics& get_phy() override {return  phy;}
+	ECompRender*  get_ren() override {return &ren;}
+};
+
+
+
+class EInteractive : public Entity
+{
+public:
+	virtual std::pair<bool, std::string> use_string() = 0; ///< Returns if can be used and description
+	virtual void use(Entity* by) = 0;
+	
+protected:
+	void add_sensor(vec2fp offset, vec2fp cell_size);
+};
+
+
+
+class EFinalTerminal final : public EInteractive
+{
+	EC_Physics phy;
+	EC_RenderSimple ren;
+	
+	void step() override;
+	
+public:
+	bool enabled = false;
+	bool is_activated = false;
+	TimeSpan timer_end = {};
+	
+	EFinalTerminal(vec2fp at);
+	std::string ui_descr() const override {return "Control terminal";}
+	
+	std::pair<bool, std::string> use_string() override;
+	void use(Entity* by) override;
 	
 	ECompPhysics& get_phy() override {return  phy;}
 	ECompRender*  get_ren() override {return &ren;}

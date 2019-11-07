@@ -61,13 +61,13 @@ ImageInfo ImageGlowGen::gen(vec2i size_limit, bool reset_shapes)
 	
 	// proc
 	
-	render(size - off*2, k);
+	render(img.get_size() - off*2, k, -m0);
 	glowify(img);
 	
 	if (reset_shapes) shs.clear();
 	return img;
 }
-void ImageGlowGen::render(vec2i size, float k)
+void ImageGlowGen::render(vec2i size, float k, vec2fp off)
 {
 	px.clear();
 	px.resize( size.area() * 4 );
@@ -80,14 +80,17 @@ void ImageGlowGen::render(vec2i size, float k)
 		
 		for (auto& c : s.lines)
 		{
-			auto prev = (c.front() * k).int_round();
+			auto prev = ((c.front() + off) * k).int_round();
 			for (size_t i=1; i < c.size(); ++i)
 			{
-				auto p = (c[i] * k).int_round();
+				auto p = ((c[i] + off) * k).int_round();
 				
 				BresenhamLine g(prev, p);
 				while (auto p = g.step())
 				{
+					if (p->x < 0 || p->y < 0 || p->x >= size.x || p->y >= size.y)
+						continue;
+					
 					uint16_t* dst = px.data() + (p->y * size.x + p->x) * 4;
 					for (int i=0; i<4; ++i)
 						dst[i] += src[i];
@@ -138,6 +141,8 @@ void ImageGlowGen::glowify(ImageInfo& res)
 					dt_r = tr->maxrad * (.9 + rnd_stat().range(-1, 1) * 0.05);
 				}
 				float fact(float dist) {
+					return dist < 0.5 ? 1 : 0;
+// TODO: fix entire algorithm
 					float r = dt_r * (1. + rnd_stat().range(-1, 1) * 0.02);
 					return (1. - dist / (r*r)) / 3.5;
 				}
@@ -189,7 +194,6 @@ void ImageGlowGen::glowify(ImageInfo& res)
 			for (int i=0; i<3; i++)
 			{
 				uint16_t clr = src[i] * f;
-				clr += dst[i];
 				dst[i] = clr < 0xff? clr : 0xff;
 				
 				// overflow makes adjacent colors more bright

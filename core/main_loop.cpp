@@ -13,7 +13,6 @@
 #include "render/camera.hpp"
 #include "render/control.hpp"
 #include "render/postproc.hpp"
-#include "render/ren_aal.hpp"
 #include "render/ren_imm.hpp"
 #include "utils/noise.hpp"
 #include "utils/time_utils.hpp"
@@ -235,6 +234,7 @@ public:
 		GamePresenter::InitParams gp;
 	};
 	std::optional<GP_Init> gp_init;
+	bool game_fin = false;
 	
 	bool use_gamepad = false;
 	
@@ -244,8 +244,45 @@ public:
 	
 	std::unique_ptr<LevelMap> lmap;
 	
-	const float cam_default_mag = 18.f;
+	const float cam_default_mag = 17.f; // 15, 18
 	TimeSpan cam_telep_tmo;
+	
+	struct WinrarAnim
+	{
+		static const int off = 100;
+		vec2fp pos, spd;
+		FColor clr;
+		
+		WinrarAnim() {gen();}
+		void draw()
+		{
+			float t = RenderControl::get().get_passed().seconds();
+
+			TextureReg tx = ResBase::get().get_image(MODEL_WINRAR);
+			Rectfp dst = Rectfp::from_center(pos, tx.px_size());
+			RenImm::get().draw_image(dst, tx, clr.to_px());
+			
+			spd.y += 70 * t;
+			pos += spd * t;
+			
+			if (pos.y > RenderControl::get_size().y + off)
+				gen();
+		}
+		void gen()
+		{
+			pos.x = rnd_stat().range(-off, RenderControl::get_size().x + off);
+			pos.y = RenderControl::get_size().y + off;
+			
+			spd.x = rnd_stat().range_n2() * 70;
+			spd.y = -rnd_stat().range(150, 400);
+			
+			clr.r = rnd_stat().range(0.5, 1);
+			clr.g = rnd_stat().range(0.6, 1);
+			clr.b = rnd_stat().range(0.7, 1);
+			clr.a = 1;
+		}
+	};
+	std::vector<WinrarAnim> winrars;
 	
 	
 	
@@ -374,6 +411,11 @@ public:
 				              FMT_FORMAT("Full init took {:.3f} seconds", TimeSpan::since_start().seconds()).data());
 			}
 		}
+		else if (game_fin)
+		{
+			for (auto& w : winrars) w.draw();
+			RenImm::get().draw_text(RenderControl::get_size() /2, "Game completed.\n\nA WINRAR IS YOU.", -1, true, 3.f);
+		}
 		else {
 			// set camera
 			
@@ -501,6 +543,13 @@ public:
 				std::unique_lock lock(ren_lock);
 				core->step();
 				ai_ctr->step();
+				
+				if (GameCore::get().get_pmg().is_game_finished())
+				{
+					winrars.resize(40);
+					game_fin = true;
+					break;
+				}
 			}
 			auto dt = TimeSpan::since_start() - t0;
 			

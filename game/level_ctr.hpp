@@ -45,6 +45,12 @@ class AsyncPathSearch;
 class LevelControl final
 {
 public:
+	struct Room
+	{
+		std::string name;
+		bool is_final_term = false;
+	};
+	
 	struct Cell
 	{
 		vec2i pos; ///< self
@@ -55,7 +61,8 @@ public:
 	
 	enum SpawnType
 	{
-		SP_PLAYER
+		SP_PLAYER,
+		SP_FINAL_TERMINAL
 	};
 	
 	struct Spawn
@@ -77,6 +84,7 @@ public:
 	Cell* cell(vec2i pos) noexcept;
 	Cell& cref(vec2i pos);
 	
+	vec2fp get_closest(SpawnType type, vec2fp from) const;
 	const std::vector<Spawn>& get_spawns() const {return spps;}
 	AsyncPathSearch& get_aps() {return *aps;}
 	
@@ -84,8 +92,11 @@ public:
 	vec2fp to_center_coord(vec2i  p) const {return vec2fp(p) * cell_size + vec2fp::one(cell_size * 0.5);}
 	bool is_same_coord(vec2fp a, vec2fp b) const {return to_cell_coord(a) == to_cell_coord(b);}
 	
+	Room* get_room(vec2fp pos); ///< May return null
+	
 protected:
 	vec2i size;
+	std::vector<Room> rooms;
 	std::vector<Cell> cells;
 	std::vector<Spawn> spps;
 	std::unique_ptr<AsyncPathSearch> aps;

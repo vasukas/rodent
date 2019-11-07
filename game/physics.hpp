@@ -24,7 +24,8 @@ struct FixtureInfo
 	enum
 	{
 		TYPEFLAG_WALL = 1, ///< Just static wall
-		TYPEFLAG_OPAQUE = 2 ///< Can't be seen through
+		TYPEFLAG_OPAQUE = 2, ///< Can't be seen through
+		TYPEFLAG_INTERACTIVE = 4 ///< Entity is EInteractive
 	};
 	
 	b2Fixture* fix = nullptr;

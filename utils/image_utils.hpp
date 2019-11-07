@@ -27,6 +27,8 @@ void fill_rect(ImageInfo& img, Rect r, ImageBrush& brush);
 
 struct ImageGlowGen
 {
+	// NOTE: glow doesn't work, see TODO in glowify()
+	
 	struct Shape
 	{
 		std::vector<std::vector<vec2fp>> lines; ///< Line segment
@@ -43,13 +45,13 @@ struct ImageGlowGen
 	Mode mode = M_EVEN;
 	std::vector<Shape> shs;
 	
-	/// Generates image fitted to specified size
+	/// Generates RGBA image fitted to specified size
 	ImageInfo gen(vec2i size_limit, bool reset_shapes = true);
 	
 private:
 	std::vector<uint16_t> px;
 	
-	void render(vec2i size, float k);
+	void render(vec2i size, float k, vec2fp off);
 	void glowify(ImageInfo& img);
 };
 

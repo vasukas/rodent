@@ -1,6 +1,7 @@
 #include "game_ai/ai_group.hpp"
 #include "render/ren_aal.hpp"
 #include "utils/noise.hpp"
+#include "vaslib/vas_log.hpp"
 #include "game_core.hpp"
 #include "player_mgr.hpp"
 #include "s_objs.hpp"
@@ -89,10 +90,16 @@ static ModelType get_model(const EPickable::Value& val)
 	else if (auto v = std::get_if<EPickable::Func>    (&val)) return v->model;
 	return MODEL_ERROR;
 }
+static FColor get_color(const EPickable::Value& val)
+{
+	if		(         std::get_if<EPickable::AmmoPack>(&val)) return FColor(1, 1, 1);
+	else if (auto v = std::get_if<EPickable::Func>    (&val)) return v->clr;
+	return FColor(1, 1, 1);
+}
 EPickable::EPickable(vec2fp pos, Value val)
 	:
     phy(this, [&]{b2BodyDef d; d.position = conv(pos); return d;}()),
-    ren(this, get_model(val)),
+    ren(this, get_model(val), get_color(val)),
     val(std::move(val))
 {
 	b2FixtureDef fd;
@@ -372,4 +379,63 @@ EDoor::EDoor(vec2i TL_origin, vec2i door_ext, vec2i room_dir)
 	if (is_x_ext) fix_he.set( door_ext.x * cz /2, width /2 );
 	else          fix_he.set( width /2, door_ext.y * cz /2 );
 	upd_fix();
+}
+
+
+
+void EInteractive::add_sensor(vec2fp offset, vec2fp cell_size)
+{
+	b2FixtureDef fd;
+	fd.isSensor = true;
+	vec2fp size = cell_size * LevelControl::get().cell_size;
+	get_phobj().add_box(fd, size/2, 0, Transform{offset}, new FixtureInfo(FixtureInfo::TYPEFLAG_INTERACTIVE));
+}
+
+
+
+EFinalTerminal::EFinalTerminal(vec2fp at)
+	:
+    phy(this, [&]{b2BodyDef d; d.position = conv(at); return d;}()),
+    ren(this, MODEL_TERMINAL_FIN, FColor(1, 0.8, 0.4))
+{
+	b2FixtureDef fd;
+	fd.restitution = 0;
+	fd.friction = 0.5;
+	phy.add_circle(fd, GameConst::hsz_termfin, 0, new FixtureInfo(FixtureInfo::TYPEFLAG_INTERACTIVE));
+}
+void EFinalTerminal::step()
+{
+	float t = (timer_end - GameCore::get().get_step_time()).seconds();
+	GamePresenter::get()->dbg_text(get_pos(), FMT_FORMAT("Boot-up in process: {:2.1f}", t));
+	
+	if (timer_end < GameCore::get().get_step_time() || is_activated)
+		unreg();
+}
+std::pair<bool, std::string> EFinalTerminal::use_string()
+{
+	if (!enabled)
+		return {0, "Security tokens required"};
+	if (!timer_end.is_positive())
+		return {1, "Activate control terminal"};
+	if (timer_end < GameCore::get().get_step_time()) 
+		return {1, "Gain level control"};
+	else
+		return {0, "Boot-up in process"};
+}
+void EFinalTerminal::use(Entity*)
+{
+	if (!enabled) {
+		GamePresenter::get()->add_float_text({ get_pos(), "Access denied" });
+	}
+	else if (!timer_end.is_positive())
+	{
+		timer_end = GameCore::get().get_step_time() + TimeSpan::seconds(5);
+		GamePresenter::get()->add_float_text({ get_pos(), "Boot sequence initialized" });
+		reg();
+	}
+	else if (timer_end < GameCore::get().get_step_time())
+	{
+		is_activated = true;
+		GamePresenter::get()->add_float_text({ get_pos(), "Terminal active" });
+	}
 }

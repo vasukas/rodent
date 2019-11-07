@@ -84,6 +84,7 @@ public:
 		A_SHOOT,
 		A_SHOOT_ALT,
 		A_SHIELD_SW,
+		A_INTERACT,
 		
 		A_CAM_FOLLOW,
 		A_LASER_DESIG,

@@ -6,15 +6,7 @@ Simple top-down shooter with "neon wireframe" graphics using SDL2, OpenGL and Bo
 
 Game (default)
 
-| Key | Command |
-| --- | --- |
-| W,A,S,D | movement
-| Space   | accelerate
-| LMB     | fire
-| RMB     | alt. fire
-| R       | toggle laser
-| 1-7     | switch weapon
-| Escape  | menu
+	Press ESCAPE to see all key bindings
 
 Special
 

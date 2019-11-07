@@ -1,13 +1,12 @@
-#include "utils/path_search.hpp"
-#include "level_ctr.hpp"
-#include "level_gen.hpp"
-
 #include "game_ai/ai_group.hpp"
 #include "utils/noise.hpp"
-#include "game_core.hpp"
-#include "s_objs.hpp"
-
+#include "utils/path_search.hpp"
 #include "vaslib/vas_log.hpp"
+#include "game_core.hpp"
+#include "level_ctr.hpp"
+#include "level_gen.hpp"
+#include "player_mgr.hpp"
+#include "s_objs.hpp"
 
 
 
@@ -112,6 +111,40 @@ LevelControl::LevelControl(const LevelTerrain& lt)
 		auto& nc = cells[y * size.x + x];
 		nc.is_wall = lc.is_wall;
 		nc.pos = {x, y};
+		
+		if (lc.room)
+			nc.room_i = lc.room - lt.rooms.data();
+	}
+	
+	//
+	
+	std::array<size_t, LevelTerrain::RM_TYPE_TOTAL_COUNT> rm_cou = {};
+	
+	rooms.reserve( lt.rooms.size() );
+	for (auto& lr : lt.rooms)
+	{
+		const char* typenm;
+		switch (lr.type)
+		{
+		case LevelTerrain::RM_CONNECT:  typenm = "Joint"; break;
+		case LevelTerrain::RM_LIVING:   typenm = "Quarters"; break;
+//		case LevelTerrain::RM_WORKER:   typenm = ""; break;
+		case LevelTerrain::RM_REPAIR:   typenm = "Bot dock"; break;
+		case LevelTerrain::RM_FACTORY:  typenm = "Factory"; break;
+		case LevelTerrain::RM_LAB:      typenm = "Lab"; break;
+		case LevelTerrain::RM_STORAGE:  typenm = "Storage"; break;
+		case LevelTerrain::RM_KEY:      typenm = "Security terminal"; break;
+		case LevelTerrain::RM_TERMINAL: typenm = "Level control"; break;
+		case LevelTerrain::RM_TRANSIT:  typenm = "Terminal"; break;
+		default:                        typenm = nullptr; break;
+		}
+		
+		auto& nr = rooms.emplace_back();
+		if (lr.type == LevelTerrain::RM_TERMINAL) nr.is_final_term = true;
+		
+		if (lr.type == LevelTerrain::RM_ABANDON) nr.name = "ERROR";
+		else if (typenm) nr.name = FMT_FORMAT("{}-{}", typenm, ++rm_cou[lr.type]);
+		else nr.name = FMT_FORMAT("Unknown [{}{}]", int('A' + lr.type), ++rm_cou[lr.type]);
 	}
 	
 	//
@@ -125,12 +158,74 @@ LevelControl::LevelControl(const LevelTerrain& lt)
 }
 void LevelControl::fin_init(LevelTerrain& lt)
 {
-	auto& r0a = lt.rooms[0].area;
-	spps.push_back({ SP_PLAYER, cell_size * (vec2fp(r0a.lower()) + vec2fp(r0a.size()) /2) });
-	
 	auto lt_cref = [&](vec2i pos) -> auto& {return lt.cs[pos.y * size.x + pos.x];};
 	
-	// preare enemy types
+	// add spawns
+	
+	auto room_ctr = [&](LevelTerrain::Room& r)
+	{
+		vec2fp pos = cell_size * (vec2fp(r.area.lower()) + vec2fp(r.area.size()) /2);
+		if (lt_cref(to_cell_coord(pos)).is_wall)
+		{
+			size_t n = 0;
+			r.area.map([&](vec2i p){ if (!lt_cref(p).is_wall) ++n; });
+			
+			n = GameCore::get().get_random().range_index(n);
+			r.area.map_check([&](vec2i p)
+			{
+				if (!lt_cref(p).is_wall) {
+					if (!n) {
+						pos = to_center_coord(p);
+						return false;
+					}
+					--n;
+				}
+				return true;
+			});
+		}
+		return pos;
+	};
+	auto add_ctr_spwn = [&](auto type, auto& room)
+	{
+		spps.push_back({ type, room_ctr(room) });
+	};
+	
+	add_ctr_spwn(SP_PLAYER, lt.rooms[0]);
+	
+	// spawn keys & terminals
+	
+	auto spawn_key = [&](auto& room)
+	{
+		EPickable::Func f;
+		f.f = [](Entity& ent)
+		{
+			if (!GameCore::get().get_pmg().is_player(&ent)) return false;
+			GameCore::get().get_pmg().inc_objective();
+			return true;
+		};
+		f.model = MODEL_TERMINAL_KEY;
+		f.clr   = FColor(1, 0.8, 0.4);
+		new EPickable( room_ctr(room), f );
+	};
+	
+	std::vector<LevelTerrain::Room*> key_rooms;
+	size_t key_count = 0;
+	
+	for (auto& r : lt.rooms)
+	{
+		if		(r.type == LevelTerrain::RM_KEY)     {++key_count; spawn_key(r);}
+		else if (r.type == LevelTerrain::RM_TERMINAL) add_ctr_spwn(SP_FINAL_TERMINAL, r);
+		else if (r.type == LevelTerrain::RM_LIVING)   key_rooms.push_back(&r);
+	}
+	
+	for (; key_count < GameConst::total_key_count && !key_rooms.empty(); ++key_count)
+	{
+		size_t i = GameCore::get().get_random().range_index( key_rooms.size() );
+		spawn_key(*key_rooms[i]);
+		key_rooms.erase( key_rooms.begin() + i );
+	}
+	
+	// prepare enemy spawn
 	
 	auto pars_workr = std::make_shared<AI_DroneParams>();
 	pars_workr->speed = {2, 3, 4};
@@ -161,6 +256,7 @@ void LevelControl::fin_init(LevelTerrain& lt)
 		switch (r.type)
 		{
 		case LevelTerrain::RM_WORKER:
+			dl_count = 0.5;
 			dl_work = 2;
 			break;
 			
@@ -295,6 +391,32 @@ LevelControl::Cell& LevelControl::cref(vec2i pos)
 {
 	if (auto c = cell(pos)) return *c;
 	throw std::runtime_error("LevelControl::cref() null");
+}
+vec2fp LevelControl::get_closest(SpawnType type, vec2fp from) const
+{
+	vec2fp pt = from;
+	float dist = std::numeric_limits<float>::max();
+	
+	for (auto& s : spps)
+	{
+		if (s.type == type)
+		{
+			float d = s.pos.dist_squ(from);
+			if (d < dist)
+			{
+				pt = s.pos;
+				dist = d;
+			}
+		}
+	}
+	
+	return pt;
+}
+LevelControl::Room* LevelControl::get_room(vec2fp pos)
+{
+	auto ri = cref(to_cell_coord(pos)).room_i;
+	if (ri) return &rooms[*ri];
+	return nullptr;
 }
 
 

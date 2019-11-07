@@ -22,6 +22,11 @@ public:
 	/// Current AI activation and deactivation rects
 	virtual std::pair<Rect, Rect> get_ai_rects() = 0;
 	
+	/// Increments objective count
+	virtual void inc_objective() = 0;
+	
+	virtual bool is_game_finished() = 0;
+	
 protected:
 	friend class GameCore_Impl;
 	virtual void step() = 0;

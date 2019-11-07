@@ -5,6 +5,7 @@
 #include "vaslib/vas_log.hpp"
 #include "vaslib/vas_time.hpp"
 #include "vaslib/vas_types.hpp"
+#include "common_defs.hpp"
 #include "level_gen.hpp"
 
 struct Gen1
@@ -177,7 +178,8 @@ struct Gen1
 		//
 		
 		{
-			gp.rm_cs.emplace_back();
+			auto& r = gp.rm_cs.emplace_back();
+			r.place_prio = 1000;
 			// default
 		}{
 			auto& r = gp.rm_cs.emplace_back();
@@ -365,7 +367,7 @@ struct Gen1
 			return nullptr;
 		};
 		
-		size_t key_total = 7;
+		size_t key_total = GameConst::total_key_count;
 		size_t key_rooms = int_round(rnd.range( 3, key_total ));
 		
 		get_type(LevelTerrain::RM_KEY)->rm_count_min = key_rooms;
@@ -1391,6 +1393,7 @@ struct Gen1
 				en.pos = cs.back()->pos;
 				en.room_i = nr->index;
 			}
+			if (cs.empty()) return;
 			
 			reserve_more(cor->cells, cs.size());
 			for (auto& c : cs) {
