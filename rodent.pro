@@ -21,6 +21,7 @@ unix {
 
 linux-g++:gcc_sanitize {
 	COMP_FLAGS = -fsanitize=address -fsanitize=undefined
+	DEFINES += _GLIBCXX_DEBUG _GLIBCXX_DEBUG_PEDANTIC _GLIBCXX_SANITIZE_VECTOR
 	QMAKE_CXXFLAGS += $${COMP_FLAGS}
 	QMAKE_LFLAGS += $${COMP_FLAGS}
 }

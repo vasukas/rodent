@@ -321,7 +321,14 @@ Mode options (--game):
 			else if (ev.type == SDL_KEYDOWN)
 			{
 				auto &ks = ev.key.keysym;
-				if (ks.scancode == SDL_SCANCODE_Q && (ks.mod & KMOD_CTRL)) run = false;
+				if		(ks.scancode == SDL_SCANCODE_Q && (ks.mod & KMOD_CTRL)) run = false;
+				else if (ks.scancode == SDL_SCANCODE_R && (ks.mod & KMOD_CTRL)) RenderControl::get().reload_shaders();
+				else if (ks.scancode == SDL_SCANCODE_F && (ks.mod & KMOD_CTRL))
+				{
+					if (RenderControl::get().get_fscreen() == RenderControl::FULLSCREEN_OFF)
+						RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_DESKTOP);
+					else RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_OFF);
+				}
 //				else if (ks.scancode == SDL_SCANCODE_GRAVE) {cons_shown = !cons_shown; dbg_show = false;}
 				else if (ks.scancode == SDL_SCANCODE_GRAVE) input_lock = true;
 				else if (ks.scancode == SDL_SCANCODE_F2) log_shown = !log_shown;

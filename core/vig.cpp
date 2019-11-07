@@ -729,9 +729,10 @@ void vig_lo_pop()
 	// get height and additional width and pop
 	int ht = z.size.y;
 	int xd = z.size.x - z.orig_size.x;
+	bool was_free = z.is_free;
 	lo_stack.pop_back();
 	
-	if (!z.is_free)
+	if (!was_free)
 	{
 		// apply additional width and height
 		Zone& pz = lo_stack.back();
