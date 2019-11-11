@@ -53,6 +53,9 @@ struct ImageInfo
 	/// Changes format
 	void convert( Format new_fmt );
 	
+	/// Flips image vertically
+	void vflip();
+	
 	
 	
 	/// Returns raw pixel pointer

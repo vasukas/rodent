@@ -72,6 +72,9 @@ public:
 	/// This function is slow
 	virtual void update_full( const void *data, std::optional<Format> new_fmt = {} ) = 0;
 	
+	/// Saves contents of texture. Very slow
+	static void debug_save(uint obj, ImageInfo& img, Format fmt, uint target = 0);
+	
 	/// Saves contents of texture. For debugging only
 	static void debug_save(uint obj, const char *filename, Format fmt, uint target = 0);
 };

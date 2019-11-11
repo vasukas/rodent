@@ -151,9 +151,30 @@ void ImageInfo::convert( Format new_fmt )
 			dst[3] = 255;
 		}
 	}
+	else if (fmt == FMT_RGBA && new_fmt == FMT_RGB)
+	{
+		int n = size.area();
+		for (int i=0; i<n; ++i)
+		{
+			uint8_t *src = px.data() + i*4;
+			uint8_t *dst = px.data() + i*3;
+			for (int i=0; i<3; ++i) dst[i] = src[i];
+		}
+		px.resize( n*3 );
+	}
 	else throw std::logic_error("ImageInfo::convert() not implemented");
 	
 	fmt = new_fmt;
+}
+void ImageInfo::vflip()
+{
+	int n = size.x * get_bpp();
+	for (int y=0; y < size.y /2; ++y)
+	{
+		uint8_t *a = px.data() + n * y;
+		uint8_t *b = px.data() + n * (size.y - y - 1);
+		for (int i=0; i<n; ++i) std::swap(a[i], b[i]);
+	}
 }
 ImageInfo ImageInfo::subimg( Rect r ) const
 {

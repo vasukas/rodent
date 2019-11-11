@@ -60,7 +60,7 @@ ECompPhysics& Entity::get_phy()
 }
 std::string Entity::dbg_id() const
 {
-	return FMT_FORMAT("eid {}", index.to_int());
+	return FMT_FORMAT("eid {}, descr \"{}\"", index.to_int(), ui_descr());
 }
 bool Entity::is_ok() const
 {

@@ -49,6 +49,7 @@ public:
 	std::optional<vec2fp> get_aos_next(AI_Drone* d, bool Left_or_right);
 	
 	void set_idle(); ///< Forcefully sets state to idle
+	std::string get_dbg_state() const;
 	
 private:
 	std::vector<AI_Drone*> drones;

@@ -111,12 +111,20 @@ private:
 class PPN_OutputScreen : public PP_Node
 {
 public:
+	GLuint fbo = 0;
 	PPN_OutputScreen() : PP_Node("display", true, false) {}
 	
 private:
-	bool prepare() override {return true;}
+	bool prepare() override {
+		if (fbo) {
+			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+			glClearColor(0, 0, 0, 0);
+			glClear(GL_COLOR_BUFFER_BIT);
+		}
+		return true;
+	}
 	void proc(GLuint) override {}
-	GLuint get_input_fbo() override {return 0;}
+	GLuint get_input_fbo() override {return fbo;}
 };
 
 

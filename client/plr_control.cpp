@@ -3,6 +3,8 @@
 #include "vaslib/vas_log.hpp"
 #include "plr_control.hpp"
 
+bool PlayerController::allow_cheats = true;
+
 
 
 PlayerController::Bind::Bind()
@@ -131,6 +133,16 @@ PlayerController::PlayerController()
 		b.descr = "Use interactive object when prompt appears";
 		b.type = BT_ONESHOT;
 		b.key = SDL_SCANCODE_E;
+	}{
+		Bind& b = binds[A_DEBUG_SELECT];
+		b.name = "<BLANK>";
+		b.descr = "This appears to do nothing";
+		b.type = BT_HELD;
+		b.key = SDL_SCANCODE_LSHIFT;
+	}{
+		Bind& b = binds[A_DEBUG_TELEPORT];
+		b.name = "<BLANK>";
+		b.descr = "Ph'nglui mglw'nafh Cthulhu R'lyeh wgah'nagl fhtagn";
 	}{
 		Bind& b = binds[A_CAM_FOLLOW];
 		b.name = "Camera track";
@@ -348,6 +360,22 @@ void PlayerController::update()
 			auto& s = i->state;
 			if		(s == K_ONCE) s = K_OFF;
 			else if (s == K_JUST) s = K_HELD;
+		}
+	}
+	
+	if (state.is[A_DEBUG_SELECT])
+	{
+		state.is[A_DEBUG_SELECT] = false;
+		if (allow_cheats)
+		{
+			if (state.is[A_SHOOT]) {
+				state.is[A_SHOOT] = false;
+				state.is[A_DEBUG_SELECT] = true;
+			}
+			if (state.is[A_SHOOT_ALT]) {
+				state.is[A_SHOOT_ALT] = false;
+				state.is[A_DEBUG_TELEPORT] = true;
+			}
 		}
 	}
 }

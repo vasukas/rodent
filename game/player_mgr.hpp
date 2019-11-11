@@ -8,7 +8,8 @@ class PlayerController;
 class PlayerManager
 {
 public:
-	bool god_mode = false;
+	bool cheat_ammo    = false;
+	bool cheat_godmode = false;
 	
 	static PlayerManager* create(std::shared_ptr<PlayerController> pc_ctr);
 	virtual ~PlayerManager() = default;
@@ -17,7 +18,7 @@ public:
 	virtual bool is_player(Entity* ent) const = 0;
 	
 	virtual void render(TimeSpan passed) = 0; ///< May be called not at each cycle
-	virtual void update_godmode() = 0; ///< Call if changed 'god_mode'
+	virtual void update_cheats() = 0; ///< Call if changed any of cheat flags
 	
 	/// Current AI activation and deactivation rects
 	virtual std::pair<Rect, Rect> get_ai_rects() = 0;

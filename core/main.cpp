@@ -131,6 +131,7 @@ Modes:
 Mode options (--game):
   --gpad-on   use gamepad by default (if available)
   --gpad-off  don't use gamepad by default [default]
+  --cheats    allows cheats
 )");
 			}
 			else if (arg.is("--log")) log_filename = arg.str();
@@ -168,7 +169,7 @@ Mode options (--game):
 	
 	if (!log_filename.empty())
     {
-		LoggerSettings lsets;
+		LoggerSettings lsets = LoggerSettings::current();
 		lsets.file.reset( File::open( log_filename.c_str(), File::OpenCreate | File::OpenDisableBuffer ) );
 		if (!lsets.file) VLOGW("Log not written to file!");
 		
@@ -265,16 +266,15 @@ Mode options (--game):
 //	static const float loglines_mul = 11.f / RenText::get().line_height( FontIndex::Debug );
 	static const float loglines_mul = 1;
 	
-	auto loglines_upd = []
+	auto loglines_g = RenderControl::get().add_size_cb([]
 	{
 		vec2i sz = RenderControl::get_size() / (RenText::get().mxc_size( FontIndex::Debug ).int_ceil() * loglines_mul);
-		LoggerSettings lsets;
+		LoggerSettings lsets = LoggerSettings::current();
 		lsets.lines = sz.y;
 		lsets.lines_width = sz.x;
 		lsets.apply();
-	};
-	auto loglines_g = RenderControl::get().add_size_cb(loglines_upd);
-	loglines_upd();
+	}
+	, true);
 	
 	
 	

@@ -85,9 +85,9 @@ RAII_Guard log_terminate_reg(void(*f)())
 
 
 
-LoggerSettings::LoggerSettings()
+LoggerSettings LoggerSettings::current()
 {
-	*this = lsets;
+	return lsets;
 }
 void LoggerSettings::apply()
 {

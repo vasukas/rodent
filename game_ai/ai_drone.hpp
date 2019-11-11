@@ -76,6 +76,8 @@ public:
 	AI_DroneParams& get_pars()  {return *pars;}
 	AI_Group&       get_group() {return *grp;}
 	
+	std::string get_dbg_state() const;
+	
 private:
 	std::shared_ptr<AI_DroneParams> pars;
 	std::shared_ptr<AI_Group> grp;

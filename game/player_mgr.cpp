@@ -49,6 +49,9 @@ public:
 	};
 	std::vector<Message> msgs;
 	
+	TimeSpan interact_after;
+	EntityIndex dbg_select;
+	
 	
 	
 	PlayerManager_Impl(std::shared_ptr<PlayerController> pc_ctr_in)
@@ -74,7 +77,7 @@ public:
 	{
 		if (plr_ent)
 		{
-			if (god_mode) vig_label("!!! GOD MODE ENABLED !!!\n");
+			if (cheat_godmode) vig_label("!!! GOD MODE ENABLED !!!\n");
 			
 			auto plr = static_cast<PlayerEntity*>(plr_ent);
 			
@@ -180,9 +183,23 @@ public:
 			auto it = &msgs.back();
 			
 			uint32_t clr = 0xffffff00;
+			vec2fp pos = RenderControl::get_size() /2;
+			float szk = 4.f;
+			
 			if (it->full) clr |= 0xff;
-			else clr |= int_round( it->tmo / it->tmo_dec * 255 );
-			RenImm::get().draw_text(RenderControl::get_size() /2, it->s, clr, true, 4.f);
+			else {
+				const float thr = 0.5;
+				float t = it->tmo / it->tmo_dec;
+				
+				clr |= int_round(std::max(t, thr) * 255);
+				if (t < thr) {
+					t /= thr;
+					pos.x *= t;
+					pos.y *= 2 - t;
+					szk *= t;
+				}
+			}
+			RenImm::get().draw_text(pos, it->s, clr, true, szk);
 			
 			it->tmo -= passed;
 			if (it->tmo.is_negative())
@@ -204,6 +221,9 @@ public:
 				auto s = res->ent->ui_descr();
 				if (s.empty()) s = "UNDEFINED";
 				stat_str += FMT_FORMAT("Looking at: {}\n", s);
+				
+				if (pc_ctr->get_state().is[ PlayerController::A_DEBUG_SELECT ])
+					dbg_select = res->ent->index;
 			}
 			
 			auto room = LevelControl::get().get_room(plr_ent->get_pos());
@@ -245,30 +265,41 @@ public:
 					RenderControl::get().get_world_camera()->direct_cast(e->get_pos()),
 					usage.second, usage.first? 0xffffffff : 0xff6060ff, true);
 				
-				if (pc_ctr->get_state().is[ PlayerController::A_INTERACT ])
+				auto now = GameCore::get().get_step_time();
+				if (pc_ctr->get_state().is[ PlayerController::A_INTERACT ] && now > interact_after)
+				{
 					e->use(plr_ent);
+					interact_after = now + TimeSpan::seconds(0.5);
+				}
 			}
 		}
 		else {
 			RenImm::get().draw_text_hud({0, -1}, FMT_FORMAT("Rematerialization in {:.1f} seconds", plr_resp.seconds()));
 		}
-	}
-	void update_godmode() override
-	{
-		if (god_mode)
+		
+		if (auto ent = GameCore::get().valid_ent(dbg_select))
 		{
-			if (!plr_ent) force_spawn();
+			std::string s;
+			if (AI_Drone* d = ent->get_ai_drone()) s = d->get_dbg_state();
+			else s = "NO DEBUG STATS";
+			RenImm::get().draw_text_hud({0, RenderControl::get_size().y / 2.f}, s);
 			
-			static_cast<PlayerEntity*>(plr_ent)->mov.accel_inf = true;
-			plr_ent->get_eqp()->infinite_ammo = true;
+			auto cam  = RenderControl::get().get_world_camera();
+			auto pos  = cam->direct_cast( ent->get_pos() );
+			auto size = cam->direct_cast( ent->get_pos() + vec2fp::one(ent->get_phy().get_radius()) );
+			RenImm::get().draw_frame( Rectfp::from_center(pos, size - pos), 0x00ff00ff, 3 );
+		}
+	}
+	void update_cheats() override
+	{
+		if (cheat_godmode)
+		{
+			if (!plr_ent) force_spawn();		
 			plr_ent->get_hlc()->add_filter(std::make_shared<DmgIDDQD>());
 		}
 		else
 		{
 			if (!plr_ent) return;
-			
-			static_cast<PlayerEntity*>(plr_ent)->mov.accel_inf = false;
-			plr_ent->get_eqp()->infinite_ammo = false;
 			
 			auto& fs = plr_ent->get_hlc()->raw_fils();
 			for (auto it = fs.begin(); it != fs.end(); ++it)
@@ -282,10 +313,20 @@ public:
 		}
 		
 		if (plr_ent)
-			plr_ent->get_eqp()->infinite_ammo = true;
+		{
+			auto plr = static_cast<PlayerEntity*>(plr_ent);
+			plr->eqp.infinite_ammo = cheat_ammo || cheat_godmode;
+			plr->mov.accel_inf = cheat_godmode;
+		}
 	}
 	void step() override
 	{
+		if (plr_ent && pc_ctr->get_state().is[ PlayerController::A_DEBUG_TELEPORT ])
+		{
+			auto p = pc_ctr->get_state().tar_pos;
+			plr_ent->get_phobj().body->SetTransform( conv(p), 0 );
+		}
+		
 		if (!obj_term)
 		{
 			GameCore::get().get_phy().post_step([this]
@@ -382,7 +423,7 @@ public:
 		
 		plr_ent = new PlayerEntity (plr_pos, pc_ctr);
 		plr_eid = plr_ent->index;
-		update_godmode();
+		update_cheats();
 	}
 	void add_msg(std::string s)
 	{

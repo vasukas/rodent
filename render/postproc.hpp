@@ -4,6 +4,8 @@
 #include "utils/color_manip.hpp"
 #include "vaslib/vas_time.hpp"
 
+class Texture;
+
 class Postproc
 {
 public:
@@ -12,6 +14,9 @@ public:
 	virtual void tint_reset() = 0;
 	virtual void tint_seq(TimeSpan time_to_reach, FColor target_mul, FColor target_add = FColor(0,0,0,0)) = 0;
 	void tint_default(TimeSpan time_to_reach) {tint_seq(time_to_reach, FColor(1,1,1,1), FColor(0,0,0,0));}
+	
+	virtual void capture_begin(Texture* tex) = 0; ///< Texture must have same size as window
+	virtual void capture_end() = 0;
 	
 protected:
 	friend class RenderControl_Impl;

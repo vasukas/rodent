@@ -140,7 +140,7 @@ void AI_Group::no_target(EntityIndex eid)
 	{
 		for (auto& t : st->tars)
 		{
-			if (t->eid == eid)
+			if (t->eid == eid && (GameCore::get().get_step_time() - t->last_seen) > GameCore::step_len)
 				t->is_lost = true;
 		}
 	}
@@ -216,6 +216,29 @@ void AI_Group::set_idle()
 	reset_state();
 	upd_tasks = true;
 	state = Idle{};
+}
+std::string AI_Group::get_dbg_state() const
+{	
+	if (std::holds_alternative<Idle>(state)) return "State: idle";
+	if (auto st = std::get_if<Battle>(&state))
+	{
+		std::string s;
+		s = "State: battle";
+		for (auto& t : st->tars)
+		{
+			auto ent = GameCore::get().get_ent(t->eid);
+			if (!ent) s += "\n  Invalid target";
+			else {
+				s += "\n  (";
+				s += ent->dbg_id();
+				s += "), visible: ";
+				s += std::to_string( t->is_visible() );
+			}
+		}
+		return s;
+	}
+	if (std::holds_alternative<Search>(state)) return "State: search";
+	return "State: UNKNOWN";
 }
 void AI_Group::step()
 {

@@ -1,3 +1,4 @@
+#include <atomic>
 #include <mutex>
 #include <thread>
 #include "client/level_map.hpp"
@@ -15,7 +16,9 @@
 #include "render/postproc.hpp"
 #include "render/ren_imm.hpp"
 #include "utils/noise.hpp"
+#include "utils/res_image.hpp"
 #include "utils/time_utils.hpp"
+#include "vaslib/vas_file.hpp"
 #include "vaslib/vas_log.hpp"
 #include "main_loop.hpp"
 
@@ -32,16 +35,21 @@ struct Watchdog
 	void add(TimeSpan val) {
 		std::unique_lock l(m);
 		t += val;
-		if (t > max) {
+		if (t > max && enabled) {
 			VLOGC("!!!WATCHDOG!!!");
 			log_terminate_h_reset();
 			std::terminate();
 		}
 	}
+	void set_enabled(bool new_enabled) {
+		std::unique_lock l(m);
+		enabled = new_enabled;
+	}
 	
 private:
 	std::mutex m;
 	TimeSpan t;
+	bool enabled = false;
 };
 static Watchdog wdog;
 
@@ -225,7 +233,7 @@ public:
 	std::unique_ptr<GameCore> core;
 	std::shared_ptr<PlayerController> pc_ctr;
 	
-	bool thr_term = false;
+	std::atomic<bool> thr_term = false;
 	std::thread thr_serv;
 	std::mutex ren_lock;
 
@@ -284,6 +292,9 @@ public:
 	};
 	std::vector<WinrarAnim> winrars;
 	
+	std::atomic<bool> pause_logic = false; ///< Control
+	std::atomic<bool> pause_logic_ok = false; ///< Is really paused
+	
 	
 	
 	ML_Game() = default;
@@ -291,6 +302,7 @@ public:
 	{
 		if		(arg.is("--gpad-on"))  use_gamepad = true;
 		else if (arg.is("--gpad-off")) use_gamepad = false;
+		else if (arg.is("--cheats")) PlayerController::allow_cheats = true;
 		else return false;
 		return true;
 	}
@@ -332,17 +344,26 @@ public:
 			vig_label_a("AABB query: {:4}\n", GameCore::get().get_phy().aabb_query_count);
 			vig_lo_next();
 			
-			vig_checkbox(GameCore::get().dbg_ai_attack, "AI attack");
-			vig_lo_next();
+			if (PlayerController::allow_cheats)
+			{
+				vig_checkbox(GameCore::get().dbg_ai_attack, "AI attack");
+				vig_lo_next();
+			}
 			
 			if (auto ent = core->get_pmg().get_ent())
 			{
 				auto pos = ent->get_phy().get_pos();
 				vig_label_a("x:{:5.2f} y:{:5.2f}", pos.x, pos.y);
 				vig_lo_next();
-				vig_checkbox(ent->get_eqp()->infinite_ammo, "Infinite ammo");
-				if (vig_checkbox(core->get_pmg().god_mode, "God mode"))
-					core->get_pmg().update_godmode();
+				
+				if (PlayerController::allow_cheats)
+				{
+					bool upd_cheats = false;
+					upd_cheats |= vig_checkbox(core->get_pmg().cheat_ammo, "Infinite ammo");
+					upd_cheats |= vig_checkbox(core->get_pmg().cheat_godmode, "God mode");
+					if (upd_cheats) core->get_pmg().update_cheats();
+				}
+				else vig_label("Cheats disabled");
 			}
 		});
 		
@@ -362,7 +383,7 @@ public:
 			int k = ev.key.keysym.scancode;
 			
 			if		(k == SDL_SCANCODE_0) ph_debug_draw = !ph_debug_draw;
-			else if (k == SDL_SCANCODE_ESCAPE)
+			else if (k == SDL_SCANCODE_ESCAPE || k == SDL_SCANCODE_F10)
 			{
 				MainLoop::create(INIT_SETTINGS);
 				dynamic_cast<ML_Settings&>(*MainLoop::current).ctr = pc_ctr;
@@ -378,9 +399,11 @@ public:
 			else if (k == SDL_SCANCODE_F4)
 			{
 				auto& pm = core->get_pmg();
-				pm.god_mode = !pm.god_mode;
-				pm.update_godmode();
+				pm.cheat_godmode = !pm.cheat_godmode;
+				pm.update_cheats();
 			}
+			else if (k == SDL_SCANCODE_F5)
+				save_automap("AUTOMAP.png");
 		}
 		
 		auto g = pc_ctr->lock();
@@ -540,9 +563,13 @@ public:
 			auto t0 = TimeSpan::since_start();
 			if (MainLoop::current == this)
 			{
-				std::unique_lock lock(ren_lock);
-				core->step();
-				ai_ctr->step();
+				pause_logic_ok = pause_logic.load();
+				if (!pause_logic)
+				{
+					std::unique_lock lock(ren_lock);
+					core->step();
+					ai_ctr->step();
+				}
 				
 				if (GameCore::get().get_pmg().is_game_finished())
 				{
@@ -563,6 +590,80 @@ public:
 	catch (std::exception& e) {
 		thr_term = true;
 		VLOGE("Game failed: {}", e.what());
+	}
+	
+	
+	
+	void save_automap(const char *filename)
+	{
+		pause_logic = true;
+		while (!pause_logic_ok) sleep(TimeSpan::ms(5));
+		
+		wdog.set_enabled(false);
+		
+		vec2fp size = LevelControl::get().get_size();
+		size *= LevelControl::get().cell_size;
+		
+		auto cam = RenderControl::get().get_world_camera();
+		auto orig_frm = cam->get_state();
+		cam->set_vport_full();
+		
+		Camera::Frame frm;
+		
+		frm.mag = 0.05;
+		cam->set_state(frm);
+		GamePresenter::get()->sync();
+		
+		frm.mag = 8;
+		cam->set_state(frm);
+		
+		vec2i tex_sz = RenderControl::get_size();
+		std::unique_ptr<Texture> tex( Texture::create_empty( tex_sz, Texture::FMT_RGBA ) );
+		Postproc::get().capture_begin( tex.get() );
+		
+		vec2fp cam_sz = cam->coord_size();
+		vec2i count = (size / cam_sz).int_ceil();
+		vec2i ipos;
+		
+		VLOGD("AUTOMAP: map: {}x{}", size.x, size.y);
+		VLOGD("         cam: {}x{}", cam_sz.x, cam_sz.y);
+		VLOGD("         img: {}x{}", count.x, count.y);
+		
+		ImageInfo img, tmp;
+		img.reset( tex_sz * count, ImageInfo::FMT_RGBA );
+		
+		size_t log_total = count.area();
+		size_t log_count = 0;
+		
+		for (frm.pos.y = 0, ipos.y = 0 ; frm.pos.y < size.y && ipos.y < count.y ; frm.pos.y += cam_sz.y, ++ipos.y)
+		for (frm.pos.x = 0, ipos.x = 0 ; frm.pos.x < size.x && ipos.x < count.x ; frm.pos.x += cam_sz.x, ++ipos.x)
+		{
+			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
+			
+			cam->set_state(frm);
+			GamePresenter::get()->render({});
+			RenderControl::get().render({});
+			
+			Texture::debug_save(tex->get_obj(), tmp, Texture::FMT_RGBA);
+			tmp.vflip();
+			img.blit(ipos * tex_sz, tmp, {}, tex_sz);
+			
+			VLOGV("AUTOMAP {}/{}", log_count, log_total);
+			++log_count;
+		}
+		
+		auto png_level = ImageInfo::png_compression_level;
+		ImageInfo::png_compression_level = 0;
+		img.convert(ImageInfo::FMT_RGB);
+		img.save(filename);
+		ImageInfo::png_compression_level = png_level;
+		
+		Postproc::get().capture_end();
+		cam->set_state(orig_frm);
+		pause_logic = false;
+		
+		wdog.reset();
+		wdog.set_enabled(true);
 	}
 };
 

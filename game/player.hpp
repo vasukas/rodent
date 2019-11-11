@@ -148,6 +148,7 @@ public:
 	std::shared_ptr<DmgShield> pers_shld;
 	
 	PlayerEntity(vec2fp pos, std::shared_ptr<PlayerController> ctr);
+	std::string ui_descr() const override {return "Player";}
 	ECompPhysics& get_phy() override {return  phy;}
 	ECompRender*  get_ren() override {return &ren;}
 	EC_Health*    get_hlc() override {return &hlc;}

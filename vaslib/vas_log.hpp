@@ -135,11 +135,10 @@ struct LoggerSettings
 	
 	
 	
-	/// Gets current settings
-	LoggerSettings();
+	/// Returns current settings
+	static LoggerSettings current();
 	
-	/// Sets new settings. 
-	/// Note: this is single-threaded
+	/// Sets new settings
 	void apply();
 };
 

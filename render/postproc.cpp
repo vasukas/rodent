@@ -278,10 +278,39 @@ public:
 	
 	
 	
+	struct CaptureInfo
+	{
+		GLA_Framebuffer fbo;
+		Texture* tex;
+	};
+	
+	std::optional<CaptureInfo> capture;
+	PPN_OutputScreen* display;
+	PPN_InputDraw* draw_ui;
+	
+	void capture_begin(Texture* tex)
+	{
+		capture = CaptureInfo{};
+		capture->tex = tex;
+		capture->fbo.attach_tex(GL_COLOR_ATTACHMENT0, tex->get_obj());
+		display->fbo = capture->fbo.fbo;
+		draw_ui->enabled = false;
+	}
+	void capture_end()
+	{
+		if (capture) {
+			display->fbo = 0;
+			draw_ui->enabled = true;
+			capture.reset();
+		}
+	}
+	
+	
+	
 	Postproc_Impl()
 	{
 		auto g = RenderControl::get().get_ppg();
-		new PPN_OutputScreen;
+		display = new PPN_OutputScreen;
 		
 		new PPN_InputDraw("grid", [](auto fbo)
 		{
@@ -315,7 +344,7 @@ public:
 			RenImm::get().render(RenImm::DEFCTX_WORLD);
 		});
 		
-		new PPN_InputDraw("ui", [](auto fbo)
+		draw_ui = new PPN_InputDraw("ui", [](auto fbo)
 		{
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glBlendEquation(GL_FUNC_ADD);

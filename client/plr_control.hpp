@@ -12,6 +12,8 @@
 class PlayerController
 {
 public:
+	static bool allow_cheats;
+	
 	enum KeyState
 	{
 		K_OFF,
@@ -85,6 +87,9 @@ public:
 		A_SHOOT_ALT,
 		A_SHIELD_SW,
 		A_INTERACT,
+		
+		A_DEBUG_SELECT,
+		A_DEBUG_TELEPORT,
 		
 		A_CAM_FOLLOW,
 		A_LASER_DESIG,

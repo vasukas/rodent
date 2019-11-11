@@ -182,7 +182,7 @@ Texture* Texture::create_from( vec2i size, Format fmt, const void *data, Filter 
 	tx->set_filter( fil );
 	return tx;
 }
-void Texture::debug_save(uint obj, const char *filename, Format fmt, uint target)
+void Texture::debug_save(uint obj, ImageInfo& img, Format fmt, uint target)
 {
 	auto i_fmt = assoc_fmt(fmt);
 	if (!i_fmt) {
@@ -197,12 +197,15 @@ void Texture::debug_save(uint obj, const char *filename, Format fmt, uint target
 	glGetTexLevelParameteriv(target, 0, GL_TEXTURE_WIDTH, &w);
 	glGetTexLevelParameteriv(target, 0, GL_TEXTURE_HEIGHT, &h);
 	
-	ImageInfo img;
 	img.reset({w, h}, *i_fmt);
 	
 	auto f = get_fmt(fmt);
 	glGetTexImage(target, 0, f->in_format, GL_UNSIGNED_BYTE, img.raw());
-	
+}
+void Texture::debug_save(uint obj, const char *filename, Format fmt, uint target)
+{
+	ImageInfo img;
+	debug_save(obj, img, fmt, target);
 	bool ok = img.save(filename);
 	VLOGD("Texture::debug_save() {} of {}", ok, filename);
 }

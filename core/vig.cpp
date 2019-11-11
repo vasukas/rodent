@@ -210,6 +210,7 @@ void vig_on_event(const SDL_Event* ev) {
 			// set modifiers
 			int st = ev->key.keysym.mod;
 			auto& mod = it->mod;
+			mod = 0;
 			if (st & KMOD_CTRL)  mod |= vig_Keymod_Ctrl;
 			if (st & KMOD_ALT)   mod |= vig_Keymod_Alt;
 			if (st & KMOD_SHIFT) mod |= vig_Keymod_Shift;

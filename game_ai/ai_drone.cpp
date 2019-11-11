@@ -73,8 +73,44 @@ void AI_Drone::update_enabled(bool now_enabled)
 	{
 		unreg(ECompType::StepLogic);
 		prov->unreg(ECompType::StepPreUtil);
-		if (mov) mov->unreg(ECompType::StepPostUtil);
+		if (mov) {
+			mov->unreg(ECompType::StepPostUtil);
+			ent->get_phobj().body->SetLinearVelocity({0, 0});
+			ent->get_phobj().body->SetAngularVelocity(0);
+		}
 	}
+}
+std::string AI_Drone::get_dbg_state() const
+{
+	std::string s = "GROUP\n";
+	s += grp->get_dbg_state();
+	s += "\nDRONE\n";
+	
+	if		(std::holds_alternative<TaskIdle>   (task)) s += "Task: idle\n";
+	else if (std::holds_alternative<TaskSuspect>(task)) s += "Task: suspect\n";
+	else if (std::holds_alternative<TaskSearch> (task)) s += "Task: search...\n";
+	else if (auto st =  std::get_if<TaskEngage>(&task))
+	{
+		s += "Task: engage (";
+		auto ent = GameCore::get().get_ent(st->eid);
+		s += ent? ent->dbg_id() : "INVALID";
+		s += ")\n";
+	}
+	else s += "Task: UNKNOWN\n";
+	
+	if		(std::holds_alternative<IdleNoop> (state)) s += "State: idle (noop)";
+	else if (std::holds_alternative<IdlePoint>(state)) s += "State: idle (point)";
+	else if (std::holds_alternative<Suspect>  (state)) s += "State: suspect";
+	else if (std::holds_alternative<Search>   (state)) s += "State: search...";
+	else if (auto st =  std::get_if<Engage>  (&state))
+	{
+		s += "State: engage (";
+		if (st->circ_left) s += "circ";
+		s += ")\n";
+	}
+	else s += "State: UNKNOWN";
+	
+	return s;
 }
 void AI_Drone::step()
 {
@@ -171,7 +207,12 @@ void AI_Drone::step()
 	
 	if (auto st = std::get_if<Engage>(&state))
 	{
-		if (tar_dist) // target is visible
+		if (!grp->area.contains( std::get<TaskEngage>(task).last_pos )) // out of range, can't move
+		{
+			if (mov) mov->set_target({}, AI_Speed::Accel);
+			if (!tar_dist) grp->no_target( std::get<TaskEngage>(task).eid );
+		}
+		else if (tar_dist) // target is visible
 		{
 			auto& tk = std::get<TaskEngage>(task);
 			const auto t_ent = GameCore::get().get_ent( tk.eid );
@@ -200,7 +241,7 @@ void AI_Drone::step()
 					tar -= vec2fp( ent->get_phy().get_radius(), 0 ).get_rotated( da );
 					mov->set_target( tar, AI_Speed::Slow );
 				}
-				else if (*tar_dist > pars->dist_optimal && grp->area.contains(t_pos))
+				else if (*tar_dist > pars->dist_optimal)
 				{
 					const vec2fp delta = t_pos - ent->get_pos();
 					const float da = delta.angle();

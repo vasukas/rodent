@@ -88,7 +88,9 @@ public:
 	}
 	~APS_Astar()
 	{
-		thr_term = true;
+		{	std::unique_lock lock(mux);
+			thr_term = true;
+		}
 		work_cv.notify_all();
 		if (thr.joinable())
 			thr.join();
@@ -149,7 +151,7 @@ public:
 		s.info = info;
 		s.state = Slot::ST_WAITING;
 		
-		work_cv.notify_all();
+		work_cv.notify_one();
 		return i;
 	}
 	void rem_task(size_t index) override
