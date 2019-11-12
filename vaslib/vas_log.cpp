@@ -228,6 +228,7 @@ size_t log_get_lines(std::vector <std::pair <LogLevel, std::string>> &lines)
 }
 void log_assert_throw( const std::string& s )
 {
+	debugbreak();
 	log_write_str( LogLevel::Critical, s.data(), s.size() );
 	throw std::logic_error( s );
 }

@@ -17,6 +17,10 @@ const float hsz_proj_big = 0.45; ///< Big projectile
 const float hsz_rat = 0.7; ///< PC
 const float hsz_box_small = 0.85;
 const float hsz_drone = 0.6;
+const float hsz_drone_big = 0.8;
+
+const float hsz_cell_tmp = 1.5; ///< temporary
+const float hsz_interact = 1.3;
 const float hsz_termfin = 2;
 
 const vec2fp hsz_pshl = {0.7, 1.2}; ///< Projected shield

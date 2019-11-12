@@ -330,6 +330,21 @@ void Rect::map_outer(std::function<void(vec2i p)> f) const
 	f({ lower().x - 1, upper().y });
 	f({ upper().x,     upper().y });
 }
+void Rect::map_inner(std::function<void(vec2i p)> f) const
+{
+	for (int y = lower().y + 1; y < upper().y - 1; ++y) {
+		f({ lower().x,     y });
+		f({ upper().x - 1, y });
+	}
+	for (int x = lower().x + 1; x < upper().x - 1; ++x) {
+		f({ x, lower().y    });
+		f({ x, upper().y - 1, });
+	}
+	f({ lower().x,     lower().y     });
+	f({ upper().x - 1, lower().y     });
+	f({ lower().x,     upper().y - 1 });
+	f({ upper().x - 1, upper().y - 1 });
+}
 Rect calc_intersection(const Rect& A, const Rect& B)
 {
 	// taken from SDL2

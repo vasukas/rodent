@@ -183,7 +183,7 @@ void AI_AOS::generate(vec2fp origin, const std::vector<float>& ring_dist)
 	for (auto& ring : rings)
 	{
 		auto& fs = ring.fronts;
-		if (fs.size() == 1 && fs[0].rays.size() == 1) continue;
+		if (fs.size() == 1) continue;
 		
 		auto& rs0 = fs.front().rays;
 		auto& rs1 = fs.back().rays;

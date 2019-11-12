@@ -10,7 +10,7 @@
 #include "presenter.hpp"
 
 // just looks better
-#define PLAYER_MODEL_RADIUS_INCREASE 0.1
+#define PLAYER_MODEL_RADIUS_INCREASE -0.05
 
 // 
 #define WEAPON_LINE_RADIUS 0.03
@@ -432,6 +432,7 @@ void ResBase_Impl::init_ren()
 	{
 		std::vector<std::vector<vec2fp>> ls;
 		bool fix_rotation = true;
+		std::optional<size_t> ls_scalebox;
 	};
 	std::array<ModelInfo, MODEL_TOTAL_COUNT_INTERNAL> mlns;
 	
@@ -447,12 +448,29 @@ void ResBase_Impl::init_ren()
 	    
 	    {MODEL_BOX_SMALL, "box_small"},
 	    {MODEL_DRONE, "drone"},
+	    {MODEL_WORKER, "worker"},
+	    {MODEL_CAMPER, "camper"},
+	    {MODEL_HUNTER, "hunter"},
 	    
-	    {MODEL_MEDKIT, "medkit"},
 	    {MODEL_ARMOR, "armor"},
-	    
 	    {MODEL_TERMINAL_KEY, "term_key"},
+	    
+	    {MODEL_DISPENSER, "dispenser"},
+	    {MODEL_TERMINAL, "terminal"},
+	    {MODEL_MINIDOCK, "minidock"},
 	    {MODEL_TERMINAL_FIN, "term_final"},
+	    
+	    {MODEL_DOCKPAD, "dockpad"},
+	    {MODEL_TELEPAD, "telepad"},
+	    {MODEL_ASSEMBLER, "assembler"},
+	    
+	    {MODEL_MINEDRILL, "minedrill"},
+	    {MODEL_STORAGE, "storage"},
+	    {MODEL_CONVEYOR, "conveyor"},
+	    {MODEL_STORAGE_BOX, "ministor"},
+	    {MODEL_STORAGE_BOX_OPEN, "ministor_alt"},
+	    {MODEL_HUMANPOD, "humanpod"},
+	    {MODEL_SCIENCE_BOX, "scibox"},
 	    
 	    {MODEL_BAT, "bat"},
 	    {MODEL_HANDGUN, "claw"},
@@ -488,12 +506,18 @@ void ResBase_Impl::init_ren()
 		
 		for (auto& md : md_ns)
 		{
+			std::string sbox = md.second + ":_s";
 			bool any = false;
 			for (auto& p : svg.paths)
 			{
 				if (p.id == md.second) {
 					mlns[md.first].ls.emplace_back( std::move(p.ps) );
 					any = true;
+				}
+				else if (p.id == sbox) {
+					auto& m = mlns[md.first];
+					m.ls_scalebox = m.ls.size();
+					m.ls.emplace_back( std::move(p.ps) );
 				}
 			}
 			if (!any)
@@ -509,15 +533,16 @@ void ResBase_Impl::init_ren()
 	
 	for (auto& m : mlns)
 	{
-		vec2fp ctr = {};
-		size_t ctr_n = 0;
+		auto m0 = vec2fp::one( std::numeric_limits<float>::max() );
+		auto m1 = vec2fp::one( std::numeric_limits<float>::lowest() );
 		for (auto& s : m.ls) {
-			size_t n = s.size();
-			if (n && s.front().equals( s.back(), 1e-10 )) --n;
-			for (size_t i=0; i<n; ++i) ctr += s[i];
-			ctr_n += n;
+			for (auto& p : s) {
+				m0 = min(m0, p);
+				m1 = max(m1, p);
+			}
 		}
-		ctr /= ctr_n;
+		vec2fp ctr = (m0 + m1) /2;
+
 		for (auto& s : m.ls)
 			for (auto& p : s) p -= ctr;
 	}
@@ -529,8 +554,8 @@ void ResBase_Impl::init_ren()
 	    MODEL_ERROR,
 	    MODEL_WINRAR,
 	    
-	    MODEL_MEDKIT,
 		MODEL_ARMOR,
+	    MODEL_TERMINAL_KEY,
 	    
 	    MODEL_HANDGUN_AMMO,
 		MODEL_BOLTER_AMMO,
@@ -579,9 +604,29 @@ void ResBase_Impl::init_ren()
 	
 	scale_to(MODEL_BOX_SMALL, hsz_box_small);
 	scale_to(MODEL_DRONE, hsz_drone);
+	scale_to(MODEL_WORKER, hsz_drone_big);
+	scale_to(MODEL_CAMPER, hsz_drone);
+	scale_to(MODEL_HUNTER, hsz_drone_big);
 	
-	scale_to(MODEL_MEDKIT, hsz_supply);
 	scale_to(MODEL_ARMOR, hsz_supply);
+	scale_to(MODEL_TERMINAL_KEY, hsz_supply_big);
+	
+	scale_to(MODEL_DISPENSER, hsz_interact);
+	scale_to(MODEL_TERMINAL, hsz_interact);
+	scale_to(MODEL_MINIDOCK, hsz_interact);
+	scale_to(MODEL_TERMINAL_FIN, hsz_termfin);
+	
+	scale_to(MODEL_DOCKPAD, hsz_cell_tmp);
+	scale_to(MODEL_TELEPAD, hsz_cell_tmp);
+	scale_to(MODEL_ASSEMBLER, hsz_cell_tmp);
+	
+	scale_d2(MODEL_MINEDRILL, {hsz_cell_tmp*2, hsz_cell_tmp});
+	scale_to(MODEL_STORAGE, hsz_cell_tmp);
+	scale_to(MODEL_CONVEYOR, hsz_cell_tmp);
+	scale_to(MODEL_STORAGE_BOX, hsz_interact);
+	scale_to(MODEL_STORAGE_BOX_OPEN, hsz_interact);
+	scale_to(MODEL_HUMANPOD, hsz_cell_tmp);
+	scale_to(MODEL_SCIENCE_BOX, hsz_interact);
 	
 	scale_to(MODEL_HANDGUN_AMMO, hsz_supply);
 	scale_to(MODEL_BOLTER_AMMO, hsz_supply);
@@ -589,9 +634,6 @@ void ResBase_Impl::init_ren()
 	scale_to(MODEL_MINIGUN_AMMO, hsz_supply);
 	scale_to(MODEL_ROCKET_AMMO, hsz_supply);
 	scale_to(MODEL_ELECTRO_AMMO, hsz_supply);
-	
-	scale_to(MODEL_TERMINAL_KEY, hsz_supply_big);
-	scale_to(MODEL_TERMINAL_FIN, hsz_termfin);
 	
 	
 	
@@ -648,6 +690,16 @@ void ResBase_Impl::init_ren()
 	
 	
 	
+	// remove scaleboxes
+	
+	for (auto& m : mlns)
+	{
+		if (m.ls_scalebox)
+			m.ls.erase( m.ls.begin() + *m.ls_scalebox );
+	}
+	
+	
+	
 	// generate parts
 	
 	{
@@ -689,7 +741,7 @@ void ResBase_Impl::init_ren()
 		if (i == MODEL_NONE) continue;
 		
 		vec2fp p0 = vec2fp::one( std::numeric_limits<float>::max() );
-		vec2fp p1 = vec2fp::one( std::numeric_limits<float>::min() );
+		vec2fp p1 = vec2fp::one( std::numeric_limits<float>::lowest() );
 		
 		for (auto& l : mlns[i].ls)
 		for (auto& p : l)

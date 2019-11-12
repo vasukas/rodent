@@ -87,6 +87,7 @@ struct EC_Health : EComp
 	void rem_prot(size_t i); ///< Removes protected area
 	
 	std::vector<std::shared_ptr<DamageFilter>>& raw_fils() {return fils;}
+	std::vector<std::shared_ptr<DamageFilter>>& raw_prot() {return pr_area;}
 	
 private:
 	HealthPool hp;

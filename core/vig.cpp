@@ -1156,7 +1156,7 @@ void vigAverage::draw()
 	
 	float avg = 0,
 	      min = std::numeric_limits<float>::max(),
-	      max = std::numeric_limits<float>::min();
+	      max = std::numeric_limits<float>::lowest();
 	for (auto& v : vals) {
 		avg += v.first;
 		min = std::min(min, v.first);
@@ -1191,6 +1191,7 @@ void vigAverage::draw()
 		int pitch = tex->get_size().x * 3;
 		for (size_t i=0; i<vals.size(); ++i) {
 			int n = tex->get_size().y * vals[i].first / tex_range;
+			n = clamp(n, 0, tex->get_size().y);
 			int clr = (i == vptr) ? 2 : vals[i].second;
 			
 			for (int k=0; k<n; ++k)

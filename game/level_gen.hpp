@@ -28,6 +28,13 @@ struct LevelTerrain
 		
 		RM_TYPE_TOTAL_COUNT
 	};
+	enum StructureIndex
+	{
+		STR_NONE,
+		STR_RIB_IN,
+		STR_RIB_OUT,
+		STR_COLUMN
+	};
 	struct Room
 	{
 		Rect area; ///< Boundaries
@@ -41,7 +48,9 @@ struct LevelTerrain
 		bool is_wall = true;
 		bool is_door = false; ///< Set only for outer cell(s). Can be either horizontal or vertical, up to 3 cells
 		bool isolated = false; ///< For debug only
-		Room* room = nullptr; ///< To which room belongs
+		bool decor_used = false; ///< Not used here
+		StructureIndex structure = STR_NONE; ///< Index for room-specific objects
+		Room* room = nullptr; ///< To which room belongs (if any)
 	};
 	
 	vec2i grid_size;

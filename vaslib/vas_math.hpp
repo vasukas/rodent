@@ -248,6 +248,7 @@ struct Rect {
 	      vec2i  upper() const {return off + sz;}
 	const vec2i&  size() const {return sz;}
 	      vec2i center() const {return off + sz /2;}
+		  vec2fp fp_center() const {return vec2fp(off) + vec2fp(sz) /2;}
 	
 	void lower(vec2i v) {off = v;}
 	void upper(vec2i v) {sz = v - off;}
@@ -276,8 +277,11 @@ struct Rect {
 	/// Same as map, but returns false as soon as 'f' does
 	bool map_check(std::function<bool(vec2i p)> f) const;
 	
-	/// Maps function over outer border (-1 from lower and on upper)
+	/// Maps function over outer border (-1 from lower and ON upper)
 	void map_outer(std::function<void(vec2i p)> f) const;
+	
+	/// Maps function over inner border (on lower and -1 from upper)
+	void map_inner(std::function<void(vec2i p)> f) const;
 };
 
 Rect calc_intersection(const Rect& a, const Rect& b); ///< Returns rectangle representing overlap

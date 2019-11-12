@@ -14,7 +14,7 @@ public:
 	static PlayerManager* create(std::shared_ptr<PlayerController> pc_ctr);
 	virtual ~PlayerManager() = default;
 	
-	virtual Entity* get_ent() const = 0; ///< May return null
+	virtual Entity* get_ent() = 0; ///< May return null
 	virtual bool is_player(Entity* ent) const = 0;
 	
 	virtual void render(TimeSpan passed) = 0; ///< May be called not at each cycle

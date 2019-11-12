@@ -1,4 +1,5 @@
 #include <sstream>
+#include "vaslib/vas_log.hpp"
 #include "noise.hpp"
 
 
@@ -22,6 +23,7 @@ double RandomGen::range(double v0, double v1)
 }
 size_t RandomGen::range_index(size_t num, size_t off)
 {
+	ASSERT(num > off, "RandomGen::range_index() on empty or negative range");
 	return round (range (off, num - 1));
 }
 double RandomGen::normal()

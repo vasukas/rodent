@@ -29,6 +29,13 @@ struct RandomGen
 	
 	template <typename T>
 	T& random_el(std::vector<T> &els) {return els[range_index(els.size())];}
+	
+	template <typename T>
+	void shuffle(std::vector<T>& els) {
+		if (els.empty()) return;
+		for (size_t i = els.size() - 1; i > 0; --i)
+			std::swap(els[i], els[range_index(i)]);
+	}
 };
 
 /// Returns static rndgen

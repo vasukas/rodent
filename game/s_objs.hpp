@@ -31,6 +31,7 @@ class EPhyBox final : public Entity
 	
 public:
 	EPhyBox(vec2fp at);
+	std::string ui_descr() const override {return "Box";}
 	
 	ECompPhysics& get_phy() override {return  phy;}
 	ECompRender*  get_ren() override {return &ren;}
@@ -61,6 +62,8 @@ public:
 	
 	
 	
+	static AmmoPack std_ammo(AmmoType type);
+	
 	EPickable(vec2fp pos, Value val);
 	std::string ui_descr() const override {return "Pickable";}
 	
@@ -90,6 +93,7 @@ class ETurret final : public Entity
 	
 public:
 	ETurret(vec2fp at, std::shared_ptr<AI_Group> grp, size_t team);
+	std::string ui_descr() const override {return "Turret";}
 	
 	ECompPhysics& get_phy() override {return  phy;}
 	ECompRender*  get_ren() override {return &ren;}
@@ -119,6 +123,7 @@ public:
 	};
 	
 	EEnemyDrone(vec2fp at, const Init& init);
+	std::string ui_descr() const override {return "Drone";}
 	
 	ECompPhysics& get_phy() override {return  phy;}
 	ECompRender*  get_ren() override {return &ren;}
@@ -158,6 +163,7 @@ class EDoor final : public Entity
 	
 	TimeSpan tm_left;
 	State state = ST_CLOSED;
+	bool plr_only;
 	
 	bool is_x_ext;
 	vec2fp fix_he;
@@ -171,7 +177,8 @@ class EDoor final : public Entity
 	void upd_fix();
 	
 public:
-	EDoor(vec2i TL_origin, vec2i door_ext, vec2i room_dir);
+	EDoor(vec2i TL_origin, vec2i door_ext, vec2i room_dir, bool plr_only = false);
+	std::string ui_descr() const override {return "Door";}
 	
 	ECompPhysics& get_phy() override {return  phy;}
 	ECompRender*  get_ren() override {return &ren;}
@@ -183,10 +190,7 @@ class EInteractive : public Entity
 {
 public:
 	virtual std::pair<bool, std::string> use_string() = 0; ///< Returns if can be used and description
-	virtual void use(Entity* by) = 0;
-	
-protected:
-	void add_sensor(vec2fp offset, vec2fp cell_size);
+	virtual void use(Entity* by) = 0; ///< Currently assumed it's always player. Called outside of physics step
 };
 
 
@@ -208,6 +212,86 @@ public:
 	
 	std::pair<bool, std::string> use_string() override;
 	void use(Entity* by) override;
+	
+	ECompPhysics& get_phy() override {return  phy;}
+	ECompRender*  get_ren() override {return &ren;}
+};
+
+
+
+class EDispenser final : public EInteractive
+{
+	EC_Physics phy;
+	EC_RenderSimple ren;
+	
+	TimeSpan usable_after;
+	vec2fp gen_at;
+	bool increased;
+	
+public:
+	EDispenser(vec2fp at, float rot, bool increased_amount);
+	std::string ui_descr() const override {return "Dispenser";}
+	
+	std::pair<bool, std::string> use_string() override;
+	void use(Entity* by) override;
+	
+	ECompPhysics& get_phy() override {return  phy;}
+	ECompRender*  get_ren() override {return &ren;}
+};
+
+
+
+class EMinidock final : public Entity
+{
+	EC_Physics phy;
+	EC_RenderSimple ren;
+	
+	TimeSpan usable_after;
+	Entity* plr = nullptr;
+	
+	TimeSpan last_use;
+	float charge = 1;
+	
+	EVS_SUBSCR;
+	void on_cnt(const CollisionEvent& ev);
+	void step() override;
+	
+public:
+	EMinidock(vec2fp at, float rot);
+	std::string ui_descr() const override {return "Minidoc";}
+	
+	ECompPhysics& get_phy() override {return  phy;}
+	ECompRender*  get_ren() override {return &ren;}
+	
+	Entity* get_target() {return plr;}
+};
+
+
+
+class EDecor final : public Entity
+{
+	EC_Physics phy;
+	EC_RenderSimple ren;
+	
+public:
+	const char *ui_name; ///< Must remain valid
+	
+	EDecor(const char *ui_name, Rect at, float rot, ModelType model, FColor clr = FColor(0.7, 0.7, 0.7));
+	std::string ui_descr() const override {return ui_name;}
+	
+	ECompPhysics& get_phy() override {return  phy;}
+	ECompRender*  get_ren() override {return &ren;}
+};
+
+
+
+class EDecorGhost final : public Entity
+{
+	EC_VirtualBody phy;
+	EC_RenderSimple ren;
+	
+public:
+	EDecorGhost(Transform at, ModelType model, FColor clr = FColor(0.3, 0.3, 0.3));
 	
 	ECompPhysics& get_phy() override {return  phy;}
 	ECompRender*  get_ren() override {return &ren;}

@@ -79,10 +79,10 @@ struct AI_TargetProvider : EComp
 	AI_TargetProvider(AI_Drone* drone); ///< Adds self!
 	
 	/// Returns visible primary or suspect target (also returns distance)
-	std::optional<Target> get_target() const {return tar_sel;}
+	std::optional<Target> get_target() const;
 	
 	/// Returns "dangerous projectile" target
-	std::optional<ProjTarget> get_projectile() const {return tar_proj;}
+	std::optional<ProjTarget> get_projectile() const;
 	
 protected:
 	EVS_SUBSCR;

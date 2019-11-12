@@ -189,6 +189,16 @@ AI_TargetProvider::AI_TargetProvider(AI_Drone* drone)
 	if (auto hc = ent->get_hlc())
 		EVS_CONNECT1(hc->on_damage, on_dmg);
 }
+std::optional<AI_TargetProvider::Target> AI_TargetProvider::get_target() const
+{
+	if (tar_sel && !GameCore::get().get_ent(tar_sel->eid)) return {};
+	return tar_sel;
+}
+std::optional<AI_TargetProvider::ProjTarget> AI_TargetProvider::get_projectile() const
+{
+	if (tar_proj && !GameCore::get().get_ent(tar_proj->eid)) return {};
+	return tar_proj;
+}
 void AI_TargetProvider::step()
 {
 	step_internal();

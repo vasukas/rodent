@@ -49,10 +49,11 @@ struct Gen1
 		
 		bool is_border = false; // room border
 		bool protect = false; // chance of NOT changing after initial gen
+		LevelTerrain::StructureIndex structure = LevelTerrain::STR_NONE; // same as output
 		
+		bool isolated = true;
 		int depth; // tmp
 		int cry_gen;
-		bool isolated = true;
 	};
 	
 	
@@ -165,14 +166,14 @@ struct Gen1
 			auto& r = gp.rm_szs[RSZ_BIG];
 			r.type = RSZ_BIG;
 			r.kch = 1;
-			r.sz_min = {10,8};
-			r.sz_max = {18,14};
+			r.sz_min = {15,13};
+			r.sz_max = {20,18};
 		}{
 			auto& r = gp.rm_szs[RSZ_HUGE];
 			r.type = RSZ_HUGE;
-			r.kch = 0.3;
-			r.sz_min = {16,16};
-			r.sz_max = {28,20};
+			r.kch = 0.5;
+			r.sz_min = {23,19};
+			r.sz_max = {28,24};
 		}
 		
 		//
@@ -230,8 +231,8 @@ struct Gen1
 			r.dbg_color = 0xa0a000;
 			
 			r.kch = 0.5;
-			r.obs_t = OBS_RIBS;
-			r.rsz_types = {{RSZ_BIG, 0.4}, {RSZ_HUGE, 0.6}};
+			r.obs_t = OBS_COLUMN;
+			r.rsz_types = {{RSZ_BIG, 0.2}, {RSZ_HUGE, 0.8}};
 			
 			r.k_wall_protect = 1;
 			r.k_has_doors = 1;
@@ -303,6 +304,7 @@ struct Gen1
 			r.rsz_types = {{RSZ_SMALL, 0.7}, {RSZ_MIDDLE, 0.3}};
 			
 			r.k_wall_protect = 1;
+			r.k_has_doors = 2;
 			
 			r.place_prio = 0.8;
 		}{
@@ -374,14 +376,16 @@ struct Gen1
 		get_type(LevelTerrain::RM_KEY)->rm_count_max = key_rooms;
 		get_type(LevelTerrain::RM_LIVING)->rm_count_min = key_total - key_rooms;
 		
+		VLOGI("LevelTerrain:: size_in {}x{}", size_in.x, size_in.y);
+		
 		// try loop
 		
 		size_t n = 0;
 		while (!full_generate(size_in)) {
 			++n;
-			if (n == 20) throw std::runtime_error("LevelControl:: Too many retries (safeguard)");
+			if (n == 20) throw std::runtime_error("LevelTerrain:: Too many retries (safeguard)");
 		}
-		VLOGI("LevelControl::      retries: {}", n);
+		VLOGI("LevelTerrain:: retries: {}", n);
 	}
 	bool full_generate(vec2i size_in)
 	{
@@ -412,7 +416,15 @@ struct Gen1
 		nr->area.off = l_size/2 - nr->area.sz/2;
 		nr->r_szt = &gp.rm_szs[0];
 		nr->r_class = &gp.rm_cs[0];
-		nr->area.map([this](vec2i p){ cref(p).protect = true; });
+		
+		for (auto& r : gp.rm_cs) {
+			if (r.lc_type == LevelTerrain::RM_TRANSIT) {
+				nr->r_class = &r;
+				break;
+			}
+		}
+		
+		nr->area.map_outer([this](vec2i p){ cref(p).protect = true; });
 		mark_room(*nr);
 		place_q.push_back(nr->index);
 		
@@ -425,7 +437,7 @@ struct Gen1
 			for (auto& r : q) place_room( &g_rooms[r] );
 		}
 		
-		VLOGI("LevelControl::      {} rooms, {} corridors", g_rooms.size(), g_cors.size());
+		VLOGI("LevelTerrain:: {} rooms, {} corridors", g_rooms.size(), g_cors.size());
 		
 		// get shuffled rooms (except first)
 		
@@ -435,8 +447,7 @@ struct Gen1
 		for (size_t i = 0; i < g_rooms.size() - 1; ++i)
 			rnd_rooms.push_back(&g_rooms[i + 1]);
 		
-		for (size_t i = rnd_rooms.size() - 1; i > 0; --i)
-			std::swap(rnd_rooms[i], rnd_rooms[rnd.range_index(i)]);
+		rnd.shuffle(rnd_rooms);
 		
 		// assign room type - helpers
 		
@@ -615,6 +626,20 @@ struct Gen1
 		for (auto& r : g_rooms)
 			r.area.map([&](auto p){ cref(p).room_was = r.index; });
 		
+		// protect room entries
+		
+		for (auto& r : g_rooms)
+		{
+			r.area.map_outer([&](vec2i p)
+			{
+				for (auto& d : sg_dirs)
+				{
+					auto& c = cref(p + d);
+					if (c.room_i) c.protect = true;
+				}
+			});
+		}
+		
 		// init path search
 		
 		std::unique_ptr<AsyncPathSearch> aps;
@@ -704,7 +729,7 @@ struct Gen1
 			}
 			
 			orig_num = std::min(orig_num, r.area.sz.area() - area_prot);
-			if (!orig_num) continue;
+			if (orig_num <= 0) continue;
 			
 			//
 			
@@ -715,9 +740,7 @@ struct Gen1
 				if (!c.protect && !c.cry_gen)
 					cry_add_next.push_back(p);
 			});
-			
-			for (size_t i = cry_add_next.size() - 1; i > 0; --i)
-				std::swap(cry_add_next[i], cry_add_next[rnd.range_index(i)]);
+			rnd.shuffle(cry_add_next);
 			
 			cry_add_next.resize( orig_num );
 			
@@ -1029,15 +1052,19 @@ struct Gen1
 					c.protect = true;
 				}
 			};
-			auto mirror = [&](vec2i off)
+			auto mirror = [&](vec2i off, auto f)
 			{
 				int x0 = off.x; int x1 = r.area.sz.x - 1 - off.x;
 				int y0 = off.y; int y1 = r.area.sz.y - 1 - off.y;
 				
-				set({ x0, y0 });
-				set({ x1, y0 });
-				set({ x0, y1 });
-				set({ x1, y1 });
+				f({ x0, y0 });
+				f({ x1, y0 });
+				f({ x0, y1 });
+				f({ x1, y1 });
+			};
+			auto mirror_set = [&](vec2i off)
+			{
+				mirror(off, set);
 			};
 			auto claw = [&](vec2i off, vec2i size, bool draw_rib)
 			{
@@ -1046,16 +1073,20 @@ struct Gen1
 				
 				for (int x=0; x < size.x; ++x)
 				{
-					mirror(off + vec2i(x, 0));
-					mirror(off + vec2i(x, size.y - 1));
+					mirror_set(off + vec2i(x, 0));
+					mirror_set(off + vec2i(x, size.y - 1));
 				}
 				for (int y=1; y < size.y - 1; ++y)
-					mirror(off + vec2i(1, y));
+				{
+					mirror(off + vec2i(0, y), [&](vec2i p){ cref( r.area.off + p ).structure = LevelTerrain::STR_RIB_OUT; });
+					mirror_set(off + vec2i(1, y));
+					mirror(off + vec2i(2, y), [&](vec2i p){ cref( r.area.off + p ).structure = LevelTerrain::STR_RIB_IN; });
+				}
 				
 				if (draw_rib)
 				{
 					for (int y=0; y < size.y; ++y)
-						mirror(off + vec2i(size.x + w_off, y));
+						mirror_set(off + vec2i(size.x + w_off, y));
 				}
 			};
 			
@@ -1122,6 +1153,9 @@ struct Gen1
 				y_ctr -= y_spc/2;
 			}
 			
+			if (!(xn & 1)) x_ctr -= x_spc/2;
+			if (!(yn & 1)) y_ctr -= y_spc/2;
+			
 			//
 			
 			auto set = [&](vec2i p)
@@ -1130,6 +1164,7 @@ struct Gen1
 				if (!c.protect) {
 					c.room_i.reset();
 					c.protect = true;
+					c.structure = LevelTerrain::STR_COLUMN;
 				}
 			};
 			
@@ -1144,6 +1179,7 @@ struct Gen1
 				set({ x0, y1 });
 				set({ x1, y1 });
 			}
+			
 			return true;
 		};
 		
@@ -1215,7 +1251,7 @@ struct Gen1
 //		g_rooms.shrink_to_fit();
 //		g_cors.shrink_to_fit();
 	
-		VLOGI("Remains: {} rooms, {} corridors", g_rooms.size(), g_cors.size());
+		VLOGI("LevelTerrain:: remains {} rooms, {} corridors", g_rooms.size(), g_cors.size());
 		return true;
 	}
 	void mark_room(Room& r)
@@ -1237,11 +1273,11 @@ struct Gen1
 			if (!c.cor_i)
 				bord.emplace_back(&c, dir);
 		};
-		for (int y=0; y<r->area.sz.y; ++y) {
+		for (int y=1; y<r->area.sz.y -1; ++y) { // 1 offset to remove corner corridors
 			mark_border({-1,y}, {-1,0});
 			mark_border({r->area.sz.x, y}, {1,0});
 		}
-		for (int x=0; x<r->area.sz.x; ++x) {
+		for (int x=1; x<r->area.sz.x -1; ++x) {
 			mark_border({x,-1}, {0,-1});
 			mark_border({x, r->area.sz.y}, {0,1});
 		}
@@ -1263,7 +1299,7 @@ struct Gen1
 			
 			vec2i dir = c0.second;
 			
-			int len = rnd.range_index (gp.cor_len_min, gp.cor_len_max);
+			int len = rnd.range_index (gp.cor_len_max, gp.cor_len_min);
 			for (int i=1; i<len; ++i)
 			{
 				if (rnd.range_n() < gp.cor_rot_f)
@@ -1420,7 +1456,7 @@ struct Gen1
 	Cell& cref(vec2i pos)
 	{
 		if (auto c = getc(pos)) return *c;
-		LOG_THROW("LevelControl::cref() failed");
+		LOG_THROW("LevelTerrain::cref() failed");
 	}
 	void remove_border()
 	{
@@ -1514,7 +1550,7 @@ struct Gen1
 		}
 		size.x = x_rem;
 		
-		VLOGI("Size reduced {}x{} -> {}x{}", orig_size.x, orig_size.y, size.x, size.y);
+		VLOGI("LevelTerrain:: size reduced {}x{} -> {}x{}", orig_size.x, orig_size.y, size.x, size.y);
 	}
 	void convert(LevelTerrain& t)
 	{
@@ -1538,6 +1574,7 @@ struct Gen1
 			auto& nc = t.cs.emplace_back();
 			nc.is_wall = (!c.cor_i && !c.room_i);
 			nc.is_door = !nc.is_wall && c.is_door;
+			nc.structure = c.structure;
 			
 			nc.isolated = !nc.is_wall && c.isolated;
 			if (nc.isolated) nc.is_wall = true;
@@ -1575,11 +1612,11 @@ LevelTerrain* LevelTerrain::generate(const GenParams& pars)
 			if (c.front().equals(c.back(), 1e-10)) ++lps;
 		}
 		
-		VLOGD("LevelTerrain::() generation: {:.3f} seconds", (t1 - t0).seconds());
-		VLOGD("                 vectorize:  {:.3f} seconds, {} chains, {} loops, {} points",
+		VLOGD("LevelTerrain:: total:      {:.3f} seconds", (t3 - t0).seconds());
+		VLOGD("               generation: {:.3f} seconds", (t1 - t0).seconds());
+		VLOGD("               vectorize:  {:.3f} seconds, {} chains, {} loops, {} points",
 		      (t2 - t1).seconds(), lt.ls_wall.size(), lps, pts);
-		VLOGD("                 gen_grid:   {:.3f} seconds, {} lines", (t3 - t2).seconds(), lt.ls_grid.size());
-		VLOGD("                 total:      {:.3f} seconds", (t3 - t0).seconds());
+		VLOGD("               gen_grid:   {:.3f} seconds, {} lines", (t3 - t2).seconds(), lt.ls_grid.size());
 	}
 	
 	return lt_ptr;

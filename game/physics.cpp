@@ -75,9 +75,9 @@ b2Fixture* EC_Physics::add_box(b2FixtureDef& fd, vec2fp half_extents, float mass
 	
 	b2Vec2 ps[4];
 	ps[0] = app({-1, -1});
-	ps[1] = app({ 1, -1});
+	ps[1] = app({-1,  1});
 	ps[2] = app({ 1,  1});
-	ps[3] = app({-1,  1});
+	ps[3] = app({ 1, -1});
 	
 	b2PolygonShape shp;
 	shp.Set(ps, 4);

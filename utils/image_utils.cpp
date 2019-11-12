@@ -31,7 +31,7 @@ ImageInfo ImageGlowGen::gen(vec2i size_limit, bool reset_shapes)
 	// get min&max coords
 	
 	vec2fp m0 = vec2fp::one(std::numeric_limits<float>::max());
-	vec2fp m1 = vec2fp::one(std::numeric_limits<float>::min());
+	vec2fp m1 = vec2fp::one(std::numeric_limits<float>::lowest());
 	
 	for (auto& s : shs)
 	{

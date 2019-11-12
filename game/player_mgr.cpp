@@ -62,8 +62,12 @@ public:
 		if (pc_ctr->get_gpad()) {st *= 2; s += "\nPress START to enable gamepad";}
 		msgs.emplace_back(std::move(s), st, TimeSpan::seconds(1.5));
 	}
-	Entity* get_ent() const override
+	Entity* get_ent() override
 	{
+		if (!GameCore::get().get_ent(plr_eid)) {
+			plr_ent = nullptr;
+			return nullptr;
+		}
 		return plr_ent;
 	}
 	bool is_player(Entity* ent) const override
@@ -324,7 +328,9 @@ public:
 		if (plr_ent && pc_ctr->get_state().is[ PlayerController::A_DEBUG_TELEPORT ])
 		{
 			auto p = pc_ctr->get_state().tar_pos;
-			plr_ent->get_phobj().body->SetTransform( conv(p), 0 );
+			vec2i gp = LevelControl::get().to_cell_coord(p);
+			if (Rect({1,1}, LevelControl::get().get_size() - vec2i::one(1), false).contains_le( gp ))
+				plr_ent->get_phobj().body->SetTransform( conv(p), 0 );
 		}
 		
 		if (!obj_term)
