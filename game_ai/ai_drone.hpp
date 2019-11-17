@@ -65,6 +65,8 @@ public:
 	Task task = TaskIdle{};
 	State state = IdleNoop{};
 	
+	float face_rot = 0;
+	
 	
 	
 	AI_Drone(Entity* ent, std::shared_ptr<AI_DroneParams> pars, std::shared_ptr<AI_Group> grp, std::shared_ptr<State> def_idle);

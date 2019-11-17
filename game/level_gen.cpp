@@ -296,8 +296,8 @@ struct Gen1
 		}{
 			auto& r = gp.rm_cs.emplace_back();
 			r.lc_type = LevelTerrain::RM_TRANSIT;
-			r.rm_count_min = 3;
-			r.rm_count_max = 6;
+			r.rm_count_min = 2; // +1 for room zero
+			r.rm_count_max = 5;
 			r.dbg_color = 0xc000c0;
 			
 			r.kch = 0.2;
@@ -370,7 +370,7 @@ struct Gen1
 		};
 		
 		size_t key_total = GameConst::total_key_count;
-		size_t key_rooms = int_round(rnd.range( 3, key_total ));
+		size_t key_rooms = rnd.int_range( 3, key_total );
 		
 		get_type(LevelTerrain::RM_KEY)->rm_count_min = key_rooms;
 		get_type(LevelTerrain::RM_KEY)->rm_count_max = key_rooms;

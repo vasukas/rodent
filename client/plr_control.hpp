@@ -92,6 +92,8 @@ public:
 		A_DEBUG_TELEPORT,
 		
 		A_CAM_FOLLOW,
+		A_CAM_CLOSE_SW,
+		
 		A_LASER_DESIG,
 		A_SHOW_MAP,
 		A_SHOW_WPNS,

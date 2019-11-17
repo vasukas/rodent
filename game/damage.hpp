@@ -23,7 +23,7 @@ enum class DamageType
 struct DamageQuant
 {
 	DamageType type;
-	int amount;
+	int amount; ///< Negative is treated like zero
 	std::optional<size_t> armor = {}; ///< Armored area index
 	std::optional<vec2fp> wpos = {}; ///< World position (to display particles)
 	EntityIndex src_eid = {}; ///< Who caused damage, MUST exist and be valid!
@@ -64,10 +64,12 @@ private:
 struct EC_Health : EComp
 {
 	EVS_SUBSCR;
-	ev_signal<DamageQuant> on_damage; ///< Contains original type and final damage
+	ev_signal<DamageQuant> on_damage; ///< Contains original type and calculated damage (sent on damage >= 0)
 	
 	float ph_k = 0.5; ///< Impulse to damage coeff (collision damage)
 	float ph_thr = 40.f; ///< Minimal physical impulse
+	
+	TimeSpan last_damaged; ///< GameCore time (set on damage >= 0)
 	
 	
 	

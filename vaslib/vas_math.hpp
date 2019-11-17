@@ -124,6 +124,7 @@ struct vec2i {
 
 	int area() const {return std::abs(x * y);}
 	int perimeter() const {return (x+y)*2;}
+	vec2i minmax() const; ///< (min, max)
 	
 	template <typename T> int& operator() (T) = delete;
 	int& operator() (bool is_x) {return is_x? x : y;}
@@ -202,6 +203,7 @@ struct vec2fp {
 	void limit_to(float n); ///< Brings vector to specified length if it exceeds it
 	
 	float area() const {return std::fabs(x * y);}
+	vec2fp minmax() const; ///< (min, max)
 	
 	vec2i int_floor() const {return vec2i(std::floor(x), std::floor(y));}
 	vec2i int_round() const {return vec2i(std::round(x), std::round(y));}

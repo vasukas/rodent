@@ -41,6 +41,7 @@ enum ModelType
 	MODEL_ASSEMBLER,
 	
 	MODEL_MINEDRILL,
+	MODEL_MINEDRILL_MINI,
 	MODEL_STORAGE,
 	MODEL_CONVEYOR,
 	MODEL_STORAGE_BOX,
@@ -97,6 +98,7 @@ enum FreeEffect
 	FE_SPAWN,
 	FE_WPN_CHARGE,
 	FE_CIRCLE_AURA,
+	FE_EXPLOSION_FRAG,
 	
 	FE_TOTAL_COUNT_INTERNAL ///< Do not use
 };
@@ -112,7 +114,8 @@ public:
 	virtual ParticleGroupGenerator* get_eff(ModelType type, ModelEffect eff) = 0;	
 	virtual ParticleGroupGenerator* get_eff(FreeEffect eff) = 0;
 	
-	virtual vec2fp get_size(ModelType type) = 0;
+	virtual vec2fp get_cpt(ModelType type) = 0; ///< Some special control/center point. Default is (0,0)
+	virtual Rectfp get_size(ModelType type) = 0; ///< Without scalebox transform
 	virtual TextureReg get_image(ModelType type) = 0; ///< May change
 	
 protected:

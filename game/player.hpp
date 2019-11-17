@@ -61,8 +61,6 @@ private:
 	const float spd_accel = 20;
 	const float max_mov_speed = spd_accel;
 	
-	const float dust_vel = spd_accel - 1;
-	
 	vec2fp prev_dir = {}; // last used move direction
 	SmoothSwitch accel_ss;
 	

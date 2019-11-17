@@ -12,11 +12,12 @@ Special
 
 | Key | Command |
 | --- | --- |
-| Ctrl + Q | exit immediatly
-| Ctrl + R | reload shaders
-| Ctrl + F | toggle fullscreen
-| ~ + 1-3  | debug menues
-| F2       | toggle log display
+| ~ + Q   | exit immediatly
+| ~ + R   | reload shaders
+| ~ + F   | toggle fullscreen
+| ~ + S   | reset window size
+| ~ + 1-3 | debug menues
+| F2      | toggle log display
 
 ## Build
 

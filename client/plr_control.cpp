@@ -150,6 +150,12 @@ PlayerController::PlayerController()
 		b.type = BT_HELD;
 		b.key = SDL_SCANCODE_LCTRL;
 	}{
+		Bind& b = binds[A_CAM_CLOSE_SW];
+		b.name = "Camera distance";
+		b.descr = "Switches between close and far";
+		b.type = BT_SWITCH;
+		b.key = SDL_SCANCODE_Z;
+	}{
 		Bind& b = binds[A_LASER_DESIG];
 		b.name = "Laser";
 		b.descr = "Toggles laser designator";

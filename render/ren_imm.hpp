@@ -104,10 +104,6 @@ public:
 	/// Draw ASCII string, with separately colored characters (count, color)
 	virtual void draw_text (vec2fp at, std::vector<std::pair<std::string, FColor>> strs) = 0;
 	
-	/// Draw ASCII string at specified coordinates with filled semi-transparent background. 
-	/// Negative coordinates are treated as if offset from screen size - text size
-	virtual void draw_text_hud (vec2fp at, std::string_view str, uint32_t clr = White, bool centered = false, float size_k = 1.f) = 0;
-	
 	/// Returns size of non-null ASCII string
 	static vec2i text_size (std::string_view str);
 	
@@ -132,6 +128,11 @@ public:
 // Note: blending is set in main render loop
 	
 	
+	
+	virtual void raw_vertices(size_t vert_num, const vec2fp *vert_pos, const vec2fp *uv) = 0;
+	virtual void raw_vertices(size_t vert_num, const vec2fp *vert_pos) = 0; ///< UVs are for color only
+	virtual void raw_object(uint tex, uint32_t clr) = 0; ///< tex 0 is 'color only'
+	
 protected:
 	friend class RenderControl_Impl;
 	static RenImm* init();
@@ -142,5 +143,17 @@ protected:
 	virtual void render(CtxIndex id) = 0;
 	virtual void render_post() = 0;
 };
+
+
+
+/// Draw ASCII string at specified coordinates with filled semi-transparent background. 
+/// Negative coordinates are treated as if offset from screen size - text size
+void draw_text_hud (vec2fp at, std::string_view str, uint32_t clr = RenImm::White, bool centered = false, float size_k = 1.f);
+
+/// Draw ASCII string at the center of screen, maximum size possible
+void draw_text_message (std::string_view str, float k_max = 4, uint32_t clr = RenImm::White, vec2fp direct_offset = {});
+
+/// Draws ring indicating some progress using value in [0-1] range and outer radius
+void draw_progress_ring (vec2fp center, float t_value, uint32_t clr, float radius = 50, float width = 10);
 
 #endif // REN_IMM_HPP

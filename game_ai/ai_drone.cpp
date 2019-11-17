@@ -431,7 +431,9 @@ void AI_Drone::step()
 		target_pos = tar->get_pos();
 	}
 	
-	ren_rot.update(ent, target_pos, mov? mov->get_next_point() : std::optional<vec2fp>());
+	//
+	
+	ren_rot.update(this, target_pos, mov? mov->get_next_point() : std::optional<vec2fp>());
 }
 void AI_Drone::text_alert(std::string s)
 {

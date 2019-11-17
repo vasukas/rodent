@@ -147,6 +147,12 @@ void vec2i::fastrotate (float angle)
 	x = cs.x * t - cs.y * y;
 	y = cs.y * t + cs.x * y;
 }
+vec2i vec2i::minmax() const
+{
+	return std::abs(x) < std::abs(y)
+		? vec2i{std::abs(x), std::abs(y)}
+		: vec2i{std::abs(y), std::abs(x)};
+}
 vec2fp vec2i::get_norm() const
 {
 	float t = len();
@@ -197,6 +203,12 @@ void vec2fp::fastrotate (float angle)
 	float t = x;
 	x = cs.x * t - cs.y * y;
 	y = cs.y * t + cs.x * y;
+}
+vec2fp vec2fp::minmax() const
+{
+	return std::abs(x) < std::abs(y)
+		? vec2fp{std::abs(x), std::abs(y)}
+		: vec2fp{std::abs(y), std::abs(x)};
 }
 vec2fp vec2fp::get_norm() const
 {

@@ -381,12 +381,12 @@ AI_RenRotation::AI_RenRotation()
 {
 	rot = rnd_stat().range_n2() * M_PI;
 }
-void AI_RenRotation::update(Entity* ent, std::optional<vec2fp> target_pos, std::optional<vec2fp> move_pos)
+void AI_RenRotation::update(AI_Drone* dr, std::optional<vec2fp> target_pos, std::optional<vec2fp> move_pos)
 {
 	if (target_pos)
 	{
-		rot = (*target_pos - ent->get_pos()).fastangle();
-		ent->get_ren()->set_face(rot);
+		rot = (*target_pos - dr->ent->get_pos()).fastangle();
+		dr->face_rot = rot;
 		st = RR_NONE;
 		left = 2;
 	}
@@ -394,8 +394,8 @@ void AI_RenRotation::update(Entity* ent, std::optional<vec2fp> target_pos, std::
 	{
 		if (st != RR_NONE && left > 0) left -= GameCore::time_mul;
 		else {
-			rot = (*move_pos - ent->get_pos()).fastangle();
-			ent->get_ren()->set_face(rot);
+			rot = (*move_pos - dr->ent->get_pos()).fastangle();
+			dr->face_rot = rot;
 			st = RR_NONE;
 			left = 0;
 		}
@@ -408,7 +408,7 @@ void AI_RenRotation::update(Entity* ent, std::optional<vec2fp> target_pos, std::
 	}
 	else
 	{
-		ent->get_ren()->set_face(rot += add);
+		dr->face_rot = (rot += add);
 		
 		if (left > 0) left -= GameCore::time_mul;
 		else {

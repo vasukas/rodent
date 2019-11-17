@@ -11,6 +11,7 @@ struct AppSettings
 	std::string path_settings; ///< Config filename
 	
 	vec2i wnd_size = {1024, 600};
+	bool wnd_size_max = false;
 	int fscreen = 0;
 	
 	int target_fps = 30;
@@ -24,8 +25,8 @@ struct AppSettings
 
 	int font_supersample = 2;
 	
-	bool use_particles_pp = true;
-	bool use_particles_bloom = true;
+	float hole_min_alpha = 0.5;
+	float cam_mag_mul = 1;
 	
 	
 	

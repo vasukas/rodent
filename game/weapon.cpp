@@ -20,12 +20,29 @@ ModelType ammo_model(AmmoType type)
 	}
 	return MODEL_ERROR;
 }
+void Weapon::Info::set_origin_from_model()
+{
+	bullet_offset = ResBase::get().get_cpt(model);
+}
 
 
 
 bool Weapon::is_ready()
 {
 	return equip->has_ammo(*this);
+}
+Weapon::DirectionResult Weapon::get_direction(const ShootParams& pars)
+{
+	auto ent = equip->ent;
+	float rot = ent->get_face_rot();
+	
+	vec2fp p = ent->get_pos() + info->bullet_offset.get_rotated( rot );
+	vec2fp v = pars.target - p;
+	
+	v.norm();
+	p += v * ent->get_phy().get_radius();
+	
+	return {p, v};
 }
 void Weapon::Overheat::shoot(float amount)
 {
@@ -56,9 +73,24 @@ EC_Equipment::EC_Equipment(Entity* ent)
 	ammos[static_cast<size_t>(AmmoType::Rocket)].max = 40;
 	ammos[static_cast<size_t>(AmmoType::Energy)].max = 60;
 }
-void EC_Equipment::try_shoot(vec2fp target, bool main, bool alt)
+void EC_Equipment::try_shoot(vec2fp target, bool main, bool alt, bool is_player)
 {
 	if (!main && !prev_main && !alt && !prev_alt) return;
+	
+	if (is_player)
+	{
+		auto wpn = wpn_ptr();
+		if (!wpn) return;
+		
+		float rot = ent->get_face_rot();
+		vec2fp p = ent->get_pos();
+		p += vec2fp(ent->get_phy().get_radius() + 0.1, 0).get_rotated( rot );
+		p += wpn->info->bullet_offset.get_rotated( rot );
+		
+		if (GameCore::get().get_phy().raycast_nearest( conv(ent->get_pos()), conv(p) ))
+			return;
+	}
+	
 	Weapon::ShootParams pars = {target, main, prev_main, alt, prev_alt};
 	prev_main = main;
 	prev_alt = alt;
@@ -86,9 +118,9 @@ bool EC_Equipment::shoot(Weapon::ShootParams pars)
 	if (!res->delay || *res->delay < GameCore::step_len)
 		res->delay = GameCore::step_len;
 	
-	if (wpn->overheat) wpn->overheat->shoot(*res->heat * res->delay->seconds());
+	if (wpn->overheat && res->heat) wpn->overheat->shoot(*res->heat * res->delay->seconds());
 	wpn->rof_left = *res->delay;
-	if (!infinite_ammo) get_ammo(wpn->info->ammo).add(-*res->ammo);
+	if (!infinite_ammo && res->ammo) get_ammo(wpn->info->ammo).add(-*res->ammo);
 	
 	return true;
 }

@@ -17,7 +17,7 @@ public:
 	virtual Entity* get_ent() = 0; ///< May return null
 	virtual bool is_player(Entity* ent) const = 0;
 	
-	virtual void render(TimeSpan passed) = 0; ///< May be called not at each cycle
+	virtual void render(TimeSpan passed, vec2i mou_pos) = 0; ///< May be called not at each cycle
 	virtual void update_cheats() = 0; ///< Call if changed any of cheat flags
 	
 	/// Current AI activation and deactivation rects

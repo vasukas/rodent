@@ -28,7 +28,8 @@ class ResBase_Impl : public ResBase
 public:
 	std::array <std::array<std::unique_ptr<ParticleGroupGenerator>, ME_TOTAL_COUNT_INTERNAL>, MODEL_TOTAL_COUNT_INTERNAL> ld_me;
 	std::array <std::unique_ptr<ParticleGroupGenerator>, FE_TOTAL_COUNT_INTERNAL> ld_es;
-	std::array <vec2fp, MODEL_TOTAL_COUNT_INTERNAL> md_sz = {};
+	std::array <vec2fp, MODEL_TOTAL_COUNT_INTERNAL> md_cpt = {};
+	std::array <Rectfp, MODEL_TOTAL_COUNT_INTERNAL> md_sz = {};
 	std::array <TextureReg, MODEL_TOTAL_COUNT_INTERNAL> md_img = {};
 	
 	std::unique_ptr<Texture> tex;
@@ -42,7 +43,11 @@ public:
 	{
 		return ld_es[eff].get();
 	}
-	vec2fp get_size(ModelType type)
+	vec2fp get_cpt(ModelType type)
+	{
+		return md_cpt[type];
+	}
+	Rectfp get_size(ModelType type)
 	{
 		return md_sz[type];
 	}
@@ -121,10 +126,11 @@ void ResBase_Impl::init_ren()
 		vec2fp ctr;
 		float rad;
 		float t, dt;
+		float len_offset = -0.5; // effect length offset
 		
 		size_t begin(const ParticleBatchPars& pars, ParticleParams& p)
 		{
-			p.size = 1; //0.1;
+			p.size = 1;
 			
 			ctr = pars.tr.pos;
 			rad = pars.power;
@@ -137,7 +143,7 @@ void ResBase_Impl::init_ren()
 		}
 		void gen(ParticleParams& p)
 		{
-			float total_len = rnd_stat().range(1, 2);
+			float total_len = rnd_stat().range(1, 2) + len_offset;
 			p.lt = total_len * 0.2;
 			p.ft = total_len * 0.8;
 			p.clr = clr;
@@ -359,6 +365,36 @@ void ResBase_Impl::init_ren()
 			p.size = rnd_stat().range(0.1, 0.3);
 		}
 	};
+	struct ExploFrag : ParticleGroupGenerator
+	{
+		vec2fp ctr;
+		float pwr;
+		
+		size_t begin(const ParticleBatchPars& pars, ParticleParams& p)
+		{
+			p.size = 0.5;
+			ctr = pars.tr.pos;
+			pwr = clampf(pars.power, 0.2, 3);
+			
+			return int_round( rnd_stat().range(6, 9) ); 
+		}
+		void gen(ParticleParams& p)
+		{
+			p.lt = rnd_stat().range(0.2, 0.4);
+			p.ft = rnd_stat().range(0.2, 1);
+			
+			p.clr = FColor(
+				rnd_stat().flag() ? rnd_stat().range(0, 0.17) : rnd_stat().range(0.55, 1),
+				0.5, 1, 0.7
+			).hsv_to_rgb();
+			
+			vec2fp dt = {1, 0};
+			dt.fastrotate( rnd_stat().range_n2() * M_PI );
+			
+			p.pos = ctr + dt * 0.5;
+			p.vel = dt * 4 * pwr;
+		}
+	};
 
 
 
@@ -416,14 +452,17 @@ void ResBase_Impl::init_ren()
 	}{
 		auto g = new WpnExplosion;
 		ld_es[FE_SPAWN].reset(g);
-		
 		g->implode = true;
+		g->len_offset = 0;
 	}{
 		auto g = new WpnCharge;
 		ld_es[FE_WPN_CHARGE].reset(g);
 	}{
 		auto g = new CircAura;
 		ld_es[FE_CIRCLE_AURA].reset(g);
+	}{
+		auto g = new ExploFrag;
+		ld_es[FE_EXPLOSION_FRAG].reset(g);
 	}
 	
 	
@@ -433,6 +472,9 @@ void ResBase_Impl::init_ren()
 		std::vector<std::vector<vec2fp>> ls;
 		bool fix_rotation = true;
 		std::optional<size_t> ls_scalebox;
+		
+		vec2fp p_cpt = {};
+		bool has_p_cpt = false; // set if defined
 	};
 	std::array<ModelInfo, MODEL_TOTAL_COUNT_INTERNAL> mlns;
 	
@@ -465,6 +507,7 @@ void ResBase_Impl::init_ren()
 	    {MODEL_ASSEMBLER, "assembler"},
 	    
 	    {MODEL_MINEDRILL, "minedrill"},
+	    {MODEL_MINEDRILL_MINI, "drill_mini"},
 	    {MODEL_STORAGE, "storage"},
 	    {MODEL_CONVEYOR, "conveyor"},
 	    {MODEL_STORAGE_BOX, "ministor"},
@@ -522,6 +565,17 @@ void ResBase_Impl::init_ren()
 			}
 			if (!any)
 				throw std::runtime_error(md.second + " - model not found");
+			
+			std::string cpname = md.second + ":_p";
+			for (auto& p : svg.points)
+			{
+				if (p.id == cpname) {
+					auto& m = mlns[md.first];
+					m.p_cpt = p.pos;
+					m.has_p_cpt = true;
+					break;
+				}
+			}
 		}
 	}
 	
@@ -531,7 +585,7 @@ void ResBase_Impl::init_ren()
 	
 	// center models
 	
-	for (auto& m : mlns)
+	auto model_minmax = [](auto& m)
 	{
 		auto m0 = vec2fp::one( std::numeric_limits<float>::max() );
 		auto m1 = vec2fp::one( std::numeric_limits<float>::lowest() );
@@ -541,10 +595,16 @@ void ResBase_Impl::init_ren()
 				m1 = max(m1, p);
 			}
 		}
-		vec2fp ctr = (m0 + m1) /2;
-
+		return Rectfp{m0, m1, false};
+	};
+	
+	for (auto& m : mlns)
+	{
+		vec2fp ctr = model_minmax(m).center();
 		for (auto& s : m.ls)
 			for (auto& p : s) p -= ctr;
+		
+		if (m.has_p_cpt) m.p_cpt -= ctr;
 	}
 	
 	// rotate models (0 angle: top -> right)
@@ -572,6 +632,7 @@ void ResBase_Impl::init_ren()
 		for (auto& s : m.ls)
 			for (auto& p : s)
 				p.rot90ccw();
+		m.p_cpt.rot90ccw();
 	}
 	
 	
@@ -587,6 +648,7 @@ void ResBase_Impl::init_ren()
 		for (auto& s : m.ls)
 			for (auto& p : s)
 				p *= radius / mr;
+		m.p_cpt *= radius / mr;
 	};
 	auto scale_d2 = [&](ModelType t, vec2fp radius) {
 		auto& m = mlns[t];
@@ -597,6 +659,7 @@ void ResBase_Impl::init_ren()
 		for (auto& s : m.ls)
 			for (auto& p : s)
 				p *= radius / mr;
+		m.p_cpt *= radius / mr;
 	};
 	
 	scale_to(MODEL_PC_RAT, hsz_rat + PLAYER_MODEL_RADIUS_INCREASE);
@@ -621,6 +684,7 @@ void ResBase_Impl::init_ren()
 	scale_to(MODEL_ASSEMBLER, hsz_cell_tmp);
 	
 	scale_d2(MODEL_MINEDRILL, {hsz_cell_tmp*2, hsz_cell_tmp});
+	scale_to(MODEL_MINEDRILL_MINI, hsz_cell_tmp);
 	scale_to(MODEL_STORAGE, hsz_cell_tmp);
 	scale_to(MODEL_CONVEYOR, hsz_cell_tmp);
 	scale_to(MODEL_STORAGE_BOX, hsz_interact);
@@ -686,6 +750,7 @@ void ResBase_Impl::init_ren()
 		float xmin = std::numeric_limits<float>::max();
 		for (auto& s : mlns[i].ls) for (auto& p : s) xmin = std::min(xmin, p.x);
 		for (auto& s : mlns[i].ls) for (auto& p : s) p.x -= xmin;
+		mlns[i].p_cpt.x -= xmin;
 	}
 	
 	
@@ -722,6 +787,7 @@ void ResBase_Impl::init_ren()
 			throw std::logic_error(std::to_string(i) + " - no model data (internal error)");
 		
 		ld_me[i][ME_DEATH].reset( new Death(mlns[i].ls) );
+		md_cpt[i] = mlns[i].p_cpt;
 		
 		float width = 0.1f;
 		if (std::find( std::begin(wpn_ixs), std::end(wpn_ixs), i ) != std::end(wpn_ixs))
@@ -738,19 +804,8 @@ void ResBase_Impl::init_ren()
 	
 	for (size_t i = MODEL_LEVEL_STATIC + 1; i < MODEL_TOTAL_COUNT_INTERNAL; ++i)
 	{
-		if (i == MODEL_NONE) continue;
-		
-		vec2fp p0 = vec2fp::one( std::numeric_limits<float>::max() );
-		vec2fp p1 = vec2fp::one( std::numeric_limits<float>::lowest() );
-		
-		for (auto& l : mlns[i].ls)
-		for (auto& p : l)
-		{
-			p0 = min(p0, p);
-			p1 = max(p1, p);
-		}
-		
-		md_sz[i] = p1 - p0;
+		if (i != MODEL_NONE)
+			md_sz[i] = model_minmax(mlns[i]);
 	}
 	
 	

@@ -62,6 +62,7 @@ public:
 	
 	
 	
+	static AmmoPack rnd_ammo();
 	static AmmoPack std_ammo(AmmoType type);
 	
 	EPickable(vec2fp pos, Value val);
@@ -94,6 +95,7 @@ class ETurret final : public Entity
 public:
 	ETurret(vec2fp at, std::shared_ptr<AI_Group> grp, size_t team);
 	std::string ui_descr() const override {return "Turret";}
+	float get_face_rot() override {return logic.face_rot;}
 	
 	ECompPhysics& get_phy() override {return  phy;}
 	ECompRender*  get_ren() override {return &ren;}
@@ -124,6 +126,7 @@ public:
 	
 	EEnemyDrone(vec2fp at, const Init& init);
 	std::string ui_descr() const override {return "Drone";}
+	float get_face_rot() override {return logic.face_rot;}
 	
 	ECompPhysics& get_phy() override {return  phy;}
 	ECompRender*  get_ren() override {return &ren;}
@@ -160,10 +163,11 @@ class EDoor final : public Entity
 	
 	EC_Physics phy;
 	RenDoor ren;
+	bool plr_only;
 	
 	TimeSpan tm_left;
 	State state = ST_CLOSED;
-	bool plr_only;
+	size_t num_cnt = 0;
 	
 	bool is_x_ext;
 	vec2fp fix_he;
@@ -173,7 +177,7 @@ class EDoor final : public Entity
 	void on_cnt(const CollisionEvent& ce);
 	void open();
 	
-	void step() override;
+	void step() override; // only while open
 	void upd_fix();
 	
 public:
@@ -228,6 +232,8 @@ class EDispenser final : public EInteractive
 	vec2fp gen_at;
 	bool increased;
 	
+	size_t left;
+	
 public:
 	EDispenser(vec2fp at, float rot, bool increased_amount);
 	std::string ui_descr() const override {return "Dispenser";}
@@ -246,10 +252,8 @@ class EMinidock final : public Entity
 	EC_Physics phy;
 	EC_RenderSimple ren;
 	
-	TimeSpan usable_after;
 	Entity* plr = nullptr;
-	
-	TimeSpan last_use;
+	TimeSpan usable_after;
 	float charge = 1;
 	
 	EVS_SUBSCR;
@@ -263,7 +267,7 @@ public:
 	ECompPhysics& get_phy() override {return  phy;}
 	ECompRender*  get_ren() override {return &ren;}
 	
-	Entity* get_target() {return plr;}
+	Entity* get_target() const {return plr;}
 };
 
 

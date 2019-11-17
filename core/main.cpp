@@ -304,9 +304,8 @@ Mode options (--game):
 	
 	
 	
-//	bool cons_shown = false;
 	bool log_shown = false;
-	bool input_lock = false;
+	bool debug_key_combo = false;
 	
 	bool run = true;
 	while (run)
@@ -321,34 +320,36 @@ Mode options (--game):
 			else if (ev.type == SDL_KEYDOWN)
 			{
 				auto &ks = ev.key.keysym;
-				if		(ks.scancode == SDL_SCANCODE_Q && (ks.mod & KMOD_CTRL)) run = false;
-				else if (ks.scancode == SDL_SCANCODE_R && (ks.mod & KMOD_CTRL)) RenderControl::get().reload_shaders();
-				else if (ks.scancode == SDL_SCANCODE_F && (ks.mod & KMOD_CTRL))
+				if		(ks.scancode == SDL_SCANCODE_Q && debug_key_combo) run = false;
+				else if (ks.scancode == SDL_SCANCODE_R && debug_key_combo) RenderControl::get().reload_shaders();
+				else if (ks.scancode == SDL_SCANCODE_F && debug_key_combo)
 				{
 					if (RenderControl::get().get_fscreen() == RenderControl::FULLSCREEN_OFF)
 						RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_DESKTOP);
 					else RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_OFF);
 				}
-//				else if (ks.scancode == SDL_SCANCODE_GRAVE) {cons_shown = !cons_shown; dbg_show = false;}
-				else if (ks.scancode == SDL_SCANCODE_GRAVE) input_lock = true;
+				else if (ks.scancode == SDL_SCANCODE_S && debug_key_combo)
+				{
+					auto wnd = RenderControl::get().get_wnd();
+					RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_OFF);
+					SDL_RestoreWindow(wnd);
+					SDL_SetWindowSize(wnd, 320, 240);
+					SDL_SetWindowPosition(wnd, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+				}
+				else if (ks.scancode == SDL_SCANCODE_GRAVE) debug_key_combo = true;
 				else if (ks.scancode == SDL_SCANCODE_F2) log_shown = !log_shown;
 			}
 			else if (ev.type == SDL_KEYUP)
 			{
 				auto &ks = ev.key.keysym;
-				if (ks.scancode == SDL_SCANCODE_GRAVE) input_lock = false;
+				if (ks.scancode == SDL_SCANCODE_GRAVE) debug_key_combo = false;
 			}
 			
 			Gamepad::on_event(ev);
 			RenderControl::get().on_event( ev );
 			
-//			if (cons_shown) {
-//				Console::get().on_event( ev );
-//				continue;
-//			}
-			
 			vig_on_event(&ev);
-			if (vig_current_menu() != VigMenu::Default || input_lock) continue;
+			if (vig_current_menu() != VigMenu::Default || debug_key_combo) continue;
 			
 			try {MainLoop::current->on_event(ev);}
 			catch (std::exception& e) {
@@ -381,10 +382,9 @@ Mode options (--game):
 		RenImm::get().set_context( RenImm::DEFCTX_UI );
 		
 		auto dbg_str = FMT_FORMAT( "{:6.3f}\n{:6.3f}", passed.micro() / 1000.f, last_time.micro() / 1000.f );
-		RenImm::get(). draw_text_hud( {-1,0}, dbg_str, 0x00ff00ff );
+		draw_text_hud( {-1,0}, dbg_str, 0x00ff00ff );
 		avg_passed->add( last_time.micro() / 1000.f, passed.seconds() );
 		
-//		if (cons_shown) Console::get().render();
 		if (log_shown)
 		{
 			vec2fp cz = RenText::get().mxc_size(FontIndex::Debug);
@@ -434,7 +434,6 @@ Mode options (--game):
 	avg_passed.reset();
 	
 	delete MainLoop::current;
-//	delete &Console::get();
 	delete &RenderControl::get();
 	SDL_Quit();
 	

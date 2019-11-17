@@ -62,10 +62,14 @@ bool AppSettings::load()
 	int i, i2;
 	std::string s;
 	BC_Cmd* c;
+	float f;
 	
 	c = &cs.emplace_back( true, true, "wnd_size", [&](){ wnd_size = {i, i2}; return i > 0 && i2 > 0; });
 	c->val(i);
 	c->val(i2);
+	
+	c = &cs.emplace_back( true, true, "wnd_size_max", [&](){ wnd_size_max = i; return i == 0 || i == 1; });
+	c->val(i);
 	
 	c = &cs.emplace_back( true, true, "fscreen", [&](){ fscreen = i; return i > -2 && i < 2; });
 	c->val(i);
@@ -88,11 +92,11 @@ bool AppSettings::load()
 	c = &cs.emplace_back( true, true, "font_supersample", [&](){ font_supersample = i; return i > 1; });
 	c->val(i);
 	
-	c = &cs.emplace_back( true, true, "use_particles_pp", [&](){ use_particles_pp = i; return true; } );
-	c->val(i);
+	c = &cs.emplace_back( true, true, "hole_min_alpha", [&](){ hole_min_alpha = f; return true; });
+	c->val(f);
 	
-	c = &cs.emplace_back( true, true, "use_particles_bloom", [&](){ use_particles_bloom = i; return true; } );
-	c->val(i);
+	c = &cs.emplace_back( true, true, "cam_mag_mul", [&](){ cam_mag_mul = f; return true; });
+	c->val(f);
 	
 	return bc_parsefile( path_settings.c_str(), std::move(cs), 2, BC_Block::F_IGNORE_UNKNOWN );
 }

@@ -1,3 +1,4 @@
+#include "client/effects.hpp"
 #include "game_ai/ai_group.hpp"
 #include "render/ren_aal.hpp"
 #include "utils/noise.hpp"
@@ -50,7 +51,7 @@ EWall::EWall(const std::vector<std::vector<vec2fp>>& walls)
 	p0 = {};
 	p1 = lc.get_size() * lc.cell_size;
 	p0 += vec2fp::one( lc.cell_size/2 );
-	p1 += vec2fp::one( lc.cell_size/2 );
+	p1 -= vec2fp::one( lc.cell_size/2 );
 	
 	std::vector<vec2fp> enc = {
 	    {p0.x, p0.y},
@@ -99,14 +100,25 @@ static FColor get_color(const EPickable::Value& val)
 	else if (auto v = std::get_if<EPickable::Func>    (&val)) return v->clr;
 	return FColor(1, 1, 1);
 }
+EPickable::AmmoPack EPickable::rnd_ammo()
+{
+	auto type = GameCore::get().get_random().random_el(
+		normalize_chances<AmmoType, 3>({{
+			{AmmoType::Bullet, 1.3},
+			{AmmoType::Rocket, 0.8},
+			{AmmoType::Energy, 1},
+		}})
+	);
+	return std_ammo(type);
+}
 EPickable::AmmoPack EPickable::std_ammo(AmmoType type)
 {
 	AmmoPack ap = {type, 0};
 	switch (type)
 	{
 	case AmmoType::Bullet: ap.amount = 50; break;
-	case AmmoType::Rocket: ap.amount = 10; break;
-	case AmmoType::Energy: ap.amount = 20; break;
+	case AmmoType::Rocket: ap.amount = 6;  break;
+	case AmmoType::Energy: ap.amount = 18;  break;
 
 	case AmmoType::None:
 	case AmmoType::TOTAL_COUNT:
@@ -213,9 +225,9 @@ EEnemyDrone::EEnemyDrone(vec2fp at, const Init& init)
 	phy.add_circle(fd, GameConst::hsz_drone * 1.4, 25); // sqrt2 - diagonal
 	
 	hlc.add_filter(std::make_shared<DmgShield>(100, 20));
-	hlc.ph_thr = 100;
-	hlc.ph_k = 0.2;
-	hlc.hook(phy);
+//	hlc.ph_thr = 100;
+//	hlc.ph_k = 0.2;
+//	hlc.hook(phy);
 	
 	eqp.add_wpn(new WpnRocket);
 	eqp.set_wpn(0);
@@ -287,7 +299,11 @@ void EDoor::on_cnt(const CollisionEvent& ce)
 	if (!plr_only)
 	{
 		if (!ce.other->get_eqp()) return;
-		if (ce.type == CollisionEvent::T_BEGIN) open();
+		if (ce.type == CollisionEvent::T_BEGIN) {
+			++num_cnt;
+			open();
+		}
+		else if (ce.type == CollisionEvent::T_END) --num_cnt;
 	}
 	else if (GameCore::get().get_pmg().is_player( ce.other ))
 	{
@@ -307,6 +323,7 @@ void EDoor::open()
 {
 	if      (state == ST_OPEN)   tm_left = keep_time;
 	else if (state == ST_CLOSED) tm_left = wait_time;
+	reg_this();
 }
 void EDoor::step()
 {
@@ -336,6 +353,9 @@ void EDoor::step()
 		{
 			state = ST_CLOSED;
 			upd_fix();
+			
+			if (num_cnt) tm_left = wait_time;
+			else unreg_this();
 		}
 	}
 	else if (state == ST_CLOSED)
@@ -401,7 +421,6 @@ EDoor::EDoor(vec2i TL_origin, vec2i door_ext, vec2i room_dir, bool plr_only)
     ren(this),
     plr_only(plr_only)
 {
-	reg();
 	EVS_CONNECT1(phy.ev_contact, on_cnt);
 	
 	float cz = LevelControl::get().cell_size;
@@ -438,7 +457,7 @@ void EFinalTerminal::step()
 	GamePresenter::get()->dbg_text(get_pos(), FMT_FORMAT("Boot-up in process: {:2.1f}", t));
 	
 	if (timer_end < GameCore::get().get_step_time() || is_activated)
-		unreg();
+		unreg_this();
 }
 std::pair<bool, std::string> EFinalTerminal::use_string()
 {
@@ -460,7 +479,7 @@ void EFinalTerminal::use(Entity*)
 	{
 		timer_end = GameCore::get().get_step_time() + TimeSpan::seconds(5);
 		GamePresenter::get()->add_float_text({ get_pos(), "Boot sequence initialized" });
-		reg();
+		reg_this();
 	}
 	else if (timer_end < GameCore::get().get_step_time())
 	{
@@ -474,9 +493,13 @@ void EFinalTerminal::use(Entity*)
 EDispenser::EDispenser(vec2fp at, float rot, bool increased_amount)
 	:
     phy(this, [&]{b2BodyDef d; d.position = conv(at); d.angle = rot; return d;}()),
-    ren(this, MODEL_DISPENSER, FColor(0.7, 0.8, 0.8)),
+    ren(this, MODEL_DISPENSER, FColor(0.7, 0.9, 0.7)),
     increased(increased_amount)
 {
+	left = GameCore::get().get_random().int_range(
+		!increased ? 0 : 3,
+		!increased ? 4 : 8 );
+	
 	b2FixtureDef fd;
 	fd.isSensor = true;
 	phy.add_circle(fd, 0.5, 0, new FixtureInfo(FixtureInfo::TYPEFLAG_INTERACTIVE));
@@ -487,21 +510,23 @@ EDispenser::EDispenser(vec2fp at, float rot, bool increased_amount)
 }
 std::pair<bool, std::string> EDispenser::use_string()
 {
+	if (!left) return {0, "Empty"};
 	TimeSpan left = usable_after - GameCore::get().get_step_time();
 	if (left.is_negative()) return {1, "Get supplies"};
 	return {0, FMT_FORMAT("Not ready ({:.1f} seconds)", left.seconds())};
 }
 void EDispenser::use(Entity*)
 {
+	if (!left) return;
 	TimeSpan now = GameCore::get().get_step_time();
 	if (usable_after >= now) return;
 	
-	size_t i = GameCore::get().get_random().range_index( size_t(AmmoType::TOTAL_COUNT), size_t(AmmoType::None) + 1 );
-	auto ap = EPickable::std_ammo( AmmoType(i) );
+	auto ap = EPickable::rnd_ammo();
 	if (increased) ap.amount *= GameCore::get().get_random().range(1.5, 3);
 	new EPickable(gen_at, ap);
 	
 	usable_after = now + TimeSpan::seconds(10);
+	--left;
 }
 
 
@@ -511,32 +536,15 @@ void EMinidock::on_cnt(const CollisionEvent& ev)
 	if (GameCore::get().get_pmg().is_player( ev.other ))
 	{
 		plr = ev.other; // contact will end before it's invalidated
-		if (ev.type == CollisionEvent::T_BEGIN) reg();
+		if (ev.type == CollisionEvent::T_BEGIN) reg_this();
 		else {
 			plr = nullptr;
-			unreg();
+			unreg_this();
 		}
 	}
 }
 void EMinidock::step()
 {
-	auto now = GameCore::get().get_step_time();
-	if (usable_after > now) return;
-	
-	if (GameCore::get().get_phy().point_cast( conv(get_pos()), LevelControl::get().cell_size, {
-		[&](auto ent, auto) {
-			auto p = dynamic_cast<EMinidock*>(ent);
-			return p && p != this && p->get_target() == get_target();
-		}
-		, {}, false
-	}))
-	{
-		usable_after = now + TimeSpan::seconds(0.2);
-		return;
-	}
-	
-	//
-	
 	TimeSpan wait = TimeSpan::seconds(0.5);
 	float hps = 0.15 * wait.seconds(); // health
 	float sps = 0.2 * wait.seconds(); // shields
@@ -544,7 +552,20 @@ void EMinidock::step()
 	
 	TimeSpan recharge = TimeSpan::seconds(20);
 	float charge_inc = wait / recharge;
-	float charge_dec = wait / TimeSpan::seconds(10);
+	float charge_dec = wait / TimeSpan::seconds(8);
+	
+	TimeSpan dmg_tmo = TimeSpan::seconds(2);
+	
+	//
+	
+	auto now = GameCore::get().get_step_time();
+	if (usable_after > now) return;
+	
+	if (now - plr->get_hlc()->last_damaged < dmg_tmo)
+	{
+		usable_after = now + TimeSpan::seconds(0.2);
+		return;
+	}
 	
 	//
 	
@@ -577,27 +598,19 @@ void EMinidock::step()
 	//
 	
 	if (!heal_any) return;
+	TimeSpan last_use = usable_after - wait;
 	usable_after = now + wait;
 	
 	charge = std::min(1., charge + charge_inc * ((now - last_use) / wait));
 	charge -= charge_dec + charge_inc;
-	if (charge < 0) usable_after = now + recharge;
+	if (charge < 0) {
+		charge = 1;
+		usable_after = now + recharge;
+	}
 	
 	//
 	
-	struct Ren // lightning from bolter with another color
-	{
-		vec2fp a, b;
-		float t, tps;
-		
-		Ren(vec2fp a, vec2fp b, TimeSpan lt) : a(a), b(b), t(1), tps(1.f / lt.seconds()) {}
-		bool operator()(TimeSpan passed) {
-			RenAAL::get().draw_line(a, b, FColor(0.5, 0.9, 0.6).to_px(), 0.1f, 5.f, t * 2.5);
-			t -= tps * passed.seconds();
-			return t > 0;
-		}
-	};
-	GamePresenter::get()->add_effect(Ren( get_pos(), plr->get_pos(), wait ));
+	effect_lightning( get_pos(), plr->get_pos(), EffectLightning::Regular, wait, FColor(0.5, 0.9, 0.6));
 }
 EMinidock::EMinidock(vec2fp at, float rot)
     :
@@ -617,7 +630,9 @@ EDecor::EDecor(const char *ui_name, Rect at, float rot, ModelType model, FColor 
 	:
 	phy(this, [&]{
 		b2BodyDef d;
-		d.position = conv( at.fp_center() * LevelControl::get().cell_size );
+		vec2fp ctr = ResBase::get().get_size(model).center();
+		ctr.rotate(rot);
+		d.position = conv( ctr + at.fp_center() * LevelControl::get().cell_size );
 		d.angle = rot;
 		return d;
 	}()),
@@ -627,7 +642,7 @@ EDecor::EDecor(const char *ui_name, Rect at, float rot, ModelType model, FColor 
 	b2FixtureDef fd;
 	fd.friction = 0.15;
 	fd.restitution = 0.1;
-	phy.add_box(fd, vec2fp(at.size()) * LevelControl::get().cell_size /2, 0, new FixtureInfo(FixtureInfo::TYPEFLAG_OPAQUE));
+	phy.add_box(fd, ResBase::get().get_size(model).size() /2, 0, new FixtureInfo(FixtureInfo::TYPEFLAG_OPAQUE | FixtureInfo::TYPEFLAG_WALL));
 }
 EDecorGhost::EDecorGhost(Transform at, ModelType model, FColor clr)
     :

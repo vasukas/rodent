@@ -4,6 +4,7 @@
 #include "client/level_map.hpp"
 #include "client/plr_control.hpp"
 #include "client/presenter.hpp"
+#include "core/settings.hpp"
 #include "core/vig.hpp"
 #include "game/game_core.hpp"
 #include "game/level_ctr.hpp"
@@ -252,7 +253,7 @@ public:
 	
 	std::unique_ptr<LevelMap> lmap;
 	
-	const float cam_default_mag = 17.f; // 15, 18
+	bool is_far_cam = false;
 	TimeSpan cam_telep_tmo;
 	
 	struct WinrarAnim
@@ -294,6 +295,7 @@ public:
 	
 	std::atomic<bool> pause_logic = false; ///< Control
 	std::atomic<bool> pause_logic_ok = false; ///< Is really paused
+	bool is_ren_paused = false; ///< Is paused be window becoming non-visible
 	
 	
 	
@@ -308,13 +310,6 @@ public:
 	}
 	void init()
 	{
-		// camera
-		
-		Camera* cam = RenderControl::get().get_world_camera();
-		Camera::Frame cf = cam->get_state();
-		cf.mag = cam_default_mag;
-		cam->set_state(cf);
-		
 		// controls
 		
 		std::unique_ptr<Gamepad> gpad;
@@ -356,6 +351,9 @@ public:
 				vig_label_a("x:{:5.2f} y:{:5.2f}", pos.x, pos.y);
 				vig_lo_next();
 				
+				if (vig_button("Damage self"))
+					ent->get_hlc()->apply({ DamageType::Direct, 30 });
+				
 				if (PlayerController::allow_cheats)
 				{
 					bool upd_cheats = false;
@@ -382,6 +380,12 @@ public:
 		if (ev.type == SDL_KEYUP) {
 			int k = ev.key.keysym.scancode;
 			
+			if (is_ren_paused) {
+				pause_logic = false;
+				is_ren_paused = false;
+				return;
+			}
+			
 			if		(k == SDL_SCANCODE_0) ph_debug_draw = !ph_debug_draw;
 			else if (k == SDL_SCANCODE_ESCAPE || k == SDL_SCANCODE_F10)
 			{
@@ -389,25 +393,20 @@ public:
 				dynamic_cast<ML_Settings&>(*MainLoop::current).ctr = pc_ctr;
 				MainLoop::current->init();
 			}
-			else if (k == SDL_SCANCODE_B)
-			{
-				Camera* cam = RenderControl::get().get_world_camera();
-				Camera::Frame cf = cam->get_state();
-				cf.mag = aequ(cf.mag, cam_default_mag, 0.1) ? 10.f : cam_default_mag;
-				cam->set_state(cf);
-			}
+			else if (k == SDL_SCANCODE_B) is_far_cam = !is_far_cam;
 			else if (k == SDL_SCANCODE_F4)
 			{
 				auto& pm = core->get_pmg();
 				pm.cheat_godmode = !pm.cheat_godmode;
 				pm.update_cheats();
 			}
-			else if (k == SDL_SCANCODE_F5)
-				save_automap("AUTOMAP.png");
+			else if (k == SDL_SCANCODE_F5) save_automap("AUTOMAP.png");
 		}
 		
-		auto g = pc_ctr->lock();
-		pc_ctr->on_event(ev);
+		if (!pause_logic) {
+			auto g = pc_ctr->lock();
+			pc_ctr->on_event(ev);
+		}
 	}
 	void render(TimeSpan passed)
 	{
@@ -417,7 +416,7 @@ public:
 		if (thr_term) throw std::runtime_error("Game failed");
 		if (!pres)
 		{
-			RenImm::get().draw_text(RenderControl::get_size() /2, "Generating...", -1, true, 4.f);
+			draw_text_message("Generating...");
 			
 			if (gp_init)
 			{
@@ -437,17 +436,30 @@ public:
 		else if (game_fin)
 		{
 			for (auto& w : winrars) w.draw();
-			RenImm::get().draw_text(RenderControl::get_size() /2, "Game completed.\n\nA WINRAR IS YOU.", -1, true, 3.f);
+			draw_text_message("Game completed.\n\nA WINRAR IS YOU.");
+		}
+		else if (!RenderControl::get().is_visible())
+		{
+			pause_logic = true;
+			is_ren_paused = true;
 		}
 		else {
+//#warning Debug exit
+//			save_automap("AUTOMAP.png"); throw std::logic_error("Debug exit");
+			
 			// set camera
 			
 			if (auto ent = core->get_pmg().get_ent())
 			{
 				auto cam = RenderControl::get().get_world_camera();
 				
+				vec2fp cam_size_m;
+				if (pc_ctr->get_state().is[ PlayerController::A_CAM_CLOSE_SW ]) cam_size_m = {60, 35};
+				else cam_size_m = {60, 50};
+				float calc_mag = (vec2fp(RenderControl::get().get_size()) / cam_size_m).minmax().x;
+				
 				const float tar_min = GameConst::hsz_rat * 2;
-				const float tar_max = 15.f * (cam_default_mag / cam->get_state().mag);
+				const float tar_max = 15.f * (calc_mag / cam->get_state().mag);
 				const float per_second = 0.08 / TimeSpan::fps(60).seconds();
 				
 				const vec2fp pos = ent->get_phy().get_pos();
@@ -464,6 +476,9 @@ public:
 				}
 				
 				auto frm = cam->get_state();
+				if (is_far_cam) calc_mag /= 1.5;
+				else calc_mag *= AppSettings::get().cam_mag_mul;
+				frm.mag = calc_mag;
 				
 				const vec2fp scr = cam->coord_size();
 				const vec2fp tar_d = (tar - frm.pos);
@@ -485,6 +500,7 @@ public:
 						frm.pos = tar;
 						cam->set_state(frm);
 					}
+					else cam->set_state(frm);
 				}
 				else
 				{
@@ -504,12 +520,25 @@ public:
 			if (ph_debug_draw)
 				core->get_phy().world.DrawDebugData();
 			
+			// draw pause stub
+			
+			if (pause_logic || pause_logic_ok)
+			{
+				RenImm::get().set_context(RenImm::DEFCTX_UI);
+				draw_text_message("PAUSED\nPress any key to continue");
+				return;
+			}
+			
 			// draw UI
+			
+			vec2i mpos;
+			SDL_GetMouseState(&mpos.x, &mpos.y);
+			Postproc::get().set_particle_shadow(mpos);
 			
 			RenImm::get().set_context(RenImm::DEFCTX_UI);
 			
 			if (vig_current_menu() == VigMenu::Default)
-				core->get_pmg().render(passed);
+				core->get_pmg().render(passed, mpos);
 			
 			std::optional<vec2fp> plr_p;
 			if (auto ent = core->get_pmg().get_ent()) plr_p = ent->get_phy().get_pos();
@@ -523,10 +552,10 @@ public:
 	{	
 		TimeSpan t0 = TimeSpan::since_start();
 		
-		RandomGen lt_rnd; // 260,120
-		std::shared_ptr<LevelTerrain> lt( LevelTerrain::generate({ &lt_rnd, {180,100}, 3 }) );
-//		lt->test_save();
-//		std::abort();
+		RandomGen lt_rnd; // 260,120 180,100
+		std::shared_ptr<LevelTerrain> lt( LevelTerrain::generate({ &lt_rnd, {220,140}, 3 }) );
+//#warning Debug exit
+//		lt->test_save(); throw std::logic_error("Debug exit");
 		
 		GameCore::InitParams gci;
 		gci.pmg.reset( PlayerManager::create(pc_ctr) );
@@ -635,8 +664,8 @@ public:
 		size_t log_total = count.area();
 		size_t log_count = 0;
 		
-		for (frm.pos.y = 0, ipos.y = 0 ; frm.pos.y < size.y && ipos.y < count.y ; frm.pos.y += cam_sz.y, ++ipos.y)
-		for (frm.pos.x = 0, ipos.x = 0 ; frm.pos.x < size.x && ipos.x < count.x ; frm.pos.x += cam_sz.x, ++ipos.x)
+		for (frm.pos.y = cam_sz.y /2, ipos.y = 0 ; frm.pos.y < size.y + cam_sz.y /2 && ipos.y < count.y ; frm.pos.y += cam_sz.y, ++ipos.y)
+		for (frm.pos.x = cam_sz.x /2, ipos.x = 0 ; frm.pos.x < size.x + cam_sz.x /2 && ipos.x < count.x ; frm.pos.x += cam_sz.x, ++ipos.x)
 		{
 			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
 			
@@ -648,7 +677,7 @@ public:
 			tmp.vflip();
 			img.blit(ipos * tex_sz, tmp, {}, tex_sz);
 			
-			VLOGV("AUTOMAP {}/{}", log_count, log_total);
+			VLOGV("AUTOMAP {}/{} {}x{}", log_count, log_total, ipos.x, ipos.y);
 			++log_count;
 		}
 		

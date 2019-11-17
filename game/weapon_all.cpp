@@ -1,3 +1,4 @@
+#include "client/effects.hpp"
 #include "client/presenter.hpp"
 #include "render/ren_aal.hpp"
 #include "utils/noise.hpp"
@@ -144,7 +145,7 @@ void StdProjectile::step()
 {
 	auto& self = dynamic_cast<EC_VirtualBody&>(ent->get_phy());
 	if (pars.trail)
-		ent->get_ren()->parts(FE_SPEED_DUST, {Transform({-self.radius, 0})});
+		ent->get_ren()->parts(FE_SPEED_DUST, {Transform({-self.radius, 0}), 0.6});
 	
 	GameCore::get().valid_ent(src);
 	
@@ -200,6 +201,7 @@ WpnMinigun::WpnMinigun()
 			info->def_ammo = 1;
 			info->def_heat = 0.3;
 			info->bullet_speed = 18;
+			info->set_origin_from_model();
 		}
 		return &*info;
 	}())
@@ -217,12 +219,7 @@ std::optional<Weapon::ShootResult> WpnMinigun::shoot(ShootParams pars)
 	bool is_alt = pars.alt;
 	
 	auto ent = equip->ent;
-	
-	vec2fp p = ent->get_phy().get_pos();
-	vec2fp v = pars.target - p;
-	
-	v.norm();
-	p += v * ent->get_phy().get_radius();
+	auto [p, v] = get_direction(pars);
 	
 	v *= info->bullet_speed;
 	v.rotate( GameCore::get().get_random().range(-1, 1) * deg_to_rad(is_alt? 2 : 10) );
@@ -244,6 +241,7 @@ WpnRocket::WpnRocket()
 			info->def_ammo = 1;
 			info->def_delay = TimeSpan::seconds(1);
 			info->bullet_speed = 15;
+			info->set_origin_from_model();
 		}
 		return &*info;
 	}())
@@ -259,12 +257,7 @@ std::optional<Weapon::ShootResult> WpnRocket::shoot(ShootParams pars)
 {
 	if (!pars.main && !pars.alt) return {};
 	auto ent = equip->ent;
-	
-	vec2fp p = ent->get_phy().get_pos();
-	vec2fp v = pars.target - p;
-	
-	v.norm();
-	p += v * ent->get_phy().get_radius();
+	auto [p, v] = get_direction(pars);
 	
 	v *= info->bullet_speed;
 	
@@ -283,58 +276,6 @@ bool ElectroCharge::SrcParams::ignore(Entity* ent)
 	bool ign = it != prev.end() || ent->get_team() == team;
 	if (!ign) prev.push_back(ent);
 	return ign;
-}
-ElectroCharge::RenComp::RenComp(Entity* ent, std::vector<Line> ls, TimeSpan lt)
-    : ECompRender(ent), ls(std::move(ls)), tps(1.f / lt.seconds())
-{}
-void ElectroCharge::RenComp::step()
-{
-	for (auto& l : ls)
-		RenAAL::get().draw_line(l.a, l.b, FColor(0.6, 0.85, 1).to_px(), 0.1f, l.r * 5.f, l.r * t * 2.5);
-	t -= tps * GamePresenter::get()->get_passed().seconds();
-}
-
-
-
-std::vector<ElectroCharge::RenComp::Line> ElectroCharge::gen_ls(vec2fp a, vec2fp b, bool add)
-{
-	const float min_len = 0.7;
-	const float min_squ = min_len * min_len;
-	
-	std::vector<RenComp::Line> ls;
-	ls.reserve(64);
-	
-	if (add) {
-		auto rvec = [] {
-			vec2fp p(rnd_stat().range(0.2, 1), 0);
-			p.fastrotate( rnd_stat().range(-M_PI, M_PI) );
-			return p;
-		};
-		ls.push_back({a, b + rvec(), 0.5});
-		ls.push_back({a, b + rvec(), 0.1});
-	}
-	ls.push_back({a, b, 1});
-	
-	for (size_t i=0; i<ls.size(); ++i)
-	{
-		auto& ln = ls[i];
-		float sl = ln.a.dist_squ(ln.b);
-		if (sl > min_squ)
-		{
-			float d = rnd_stat().range(0.2, 0.8);
-			float rot_k = std::max(min_len / std::sqrt(sl), 0.4f);
-			
-			vec2fp c = (ln.b - ln.a) * d;
-			c.fastrotate( rnd_stat().range(-M_PI_2, M_PI_2) * rot_k );
-			c += ln.a;
-			
-			vec2fp nb = ln.b;
-			ln.b = c;
-			ls.push_back({c, nb, ln.r});
-		}
-	}
-	
-	return ls;
 }
 bool ElectroCharge::generate(vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim, bool is_first)
 {
@@ -356,10 +297,10 @@ bool ElectroCharge::generate(vec2fp pos, SrcParams src, std::optional<vec2fp> di
 		}(),
 		false
 	);
-	std::vector<PhysicsWorld::CastResult> rs;
-	GameCore::get().get_phy().circle_cast_all(rs, conv(pos), radius, check);
+	std::vector<PhysicsWorld::RaycastResult> rs;
+	GameCore::get().get_phy().circle_cast_nearest(rs, conv(pos), radius, check);
 	
-	std::vector<std::pair<vec2fp, std::vector<RenComp::Line>>> n_cs;
+	std::vector<vec2fp> n_cs;
 	
 	struct Res
 	{
@@ -408,14 +349,15 @@ bool ElectroCharge::generate(vec2fp pos, SrcParams src, std::optional<vec2fp> di
 		r.hc->apply(q);
 		
 		auto& n = n_cs.emplace_back();
-		n.first = r.poi;
-		n.second = gen_ls(pos, n.first, is_first);
+		n = r.poi;
 		
 		GamePresenter::get()->effect(FE_HIT_SHIELD, {Transform{r.poi}, 6});
 	}
 	
-	for (auto& n : n_cs)
-		new ElectroCharge(n.first, src, std::move(n.second), (n.first - pos).get_norm());
+	for (auto& n : n_cs) {
+		effect_lightning(pos, n, is_first? EffectLightning::First : EffectLightning::Regular, left_init);
+		new ElectroCharge(n, src, (n - pos).get_norm());
+	}
 	
 	return !n_cs.empty();
 }
@@ -442,6 +384,7 @@ WpnElectro::WpnElectro()
 			info->ammo = AmmoType::Energy;
 			info->def_ammo = 1;
 			info->def_delay = TimeSpan::seconds(0.3);
+			info->set_origin_from_model();
 		}
 		return &*info;
 	}())
@@ -449,12 +392,7 @@ WpnElectro::WpnElectro()
 std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 {
 	auto ent = equip->ent;
-	
-	vec2fp p = ent->get_phy().get_pos();
-	vec2fp v = pars.target - p;
-	
-	v.norm();
-	p += v * ent->get_phy().get_radius();
+	auto [p, v] = get_direction(pars);
 	
 	if (pars.main || pars.main_was)
 	{
@@ -482,19 +420,7 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 		auto hit = GameCore::get().get_phy().raycast_nearest(conv(p), conv(p + 1000 * v), StdProjectile::make_cf(ent->index));
 		if (!hit) return {};
 		
-		struct Ren
-		{
-			vec2fp a, b;
-			float t, tps;
-			
-			Ren(vec2fp a, vec2fp b, TimeSpan lt) : a(a), b(b), t(1), tps(1.f / lt.seconds()) {}
-			bool operator()(TimeSpan passed) {
-				RenAAL::get().draw_line(a, b, FColor(0.6, 0.85, 1).to_px(), 0.1f, 5.f, t * 2.5);
-				t -= tps * passed.seconds();
-				return t > 0;
-			}
-		};
-		GamePresenter::get()->add_effect(Ren( p, conv(hit->poi), TimeSpan::seconds(0.3) ));
+		effect_lightning( p, conv(hit->poi), EffectLightning::Straight, TimeSpan::seconds(0.3) );
 		GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform(conv(hit->poi), v.angle() + M_PI),
 		                                             charge_lvl * 20, FColor(0.6, 0.85, 1, 1.2)});
 		
@@ -566,7 +492,7 @@ FoamProjectile::FoamProjectile(vec2fp pos, vec2fp vel, size_t team, EntityIndex 
 	phy.add_circle(fd, GameConst::hsz_proj_big, 1);
 	
 	EVS_CONNECT1(phy.ev_contact, on_event);
-	reg();
+	reg_this();
 }
 void FoamProjectile::step()
 {
@@ -636,6 +562,7 @@ WpnFoam::WpnFoam()
 			info->model = MODEL_GRENADE;
 			info->ammo = AmmoType::None;
 			info->def_delay = TimeSpan::seconds(0.2);
+			info->set_origin_from_model();
 		}
 		return &*info;
 	}())
@@ -645,12 +572,7 @@ std::optional<Weapon::ShootResult> WpnFoam::shoot(ShootParams pars)
 	if (pars.main)
 	{
 		auto ent = equip->ent;
-		
-		vec2fp p = ent->get_phy().get_pos();
-		vec2fp v = pars.target - p;
-		
-		v.norm();
-		p += v * ent->get_phy().get_radius();
+		auto [p, v] = get_direction(pars);
 		
 		new FoamProjectile(p, v * 10, ent->get_team(), ent->index, true);
 		return ShootResult{};
@@ -658,12 +580,7 @@ std::optional<Weapon::ShootResult> WpnFoam::shoot(ShootParams pars)
 	if (pars.alt)
 	{
 		auto ent = equip->ent;
-		
-		vec2fp p = ent->get_phy().get_pos();
-		vec2fp v = pars.target - p;
-		
-		v.norm();
-		p += v * ent->get_phy().get_radius();
+		auto [p, v] = get_direction(pars);
 		
 		const size_t tars = 2;
 		const int num = 6;
@@ -678,10 +595,22 @@ std::optional<Weapon::ShootResult> WpnFoam::shoot(ShootParams pars)
 			std::vector<PhysicsWorld::RaycastResult> es;
 			GameCore::get().get_phy().raycast_all(es, conv(p), conv(p + d * 8), StdProjectile::make_cf(ent->index));
 			
-			if (es.size() > tars) {
+			if (es.size() > 1)
+			{
 				std::sort(es.begin(), es.end(), [](auto& a, auto& b){return a.distance < b.distance;});
-				es.resize(tars);
+				if (es.size() > tars) es.resize(tars);
+				
+				for (auto it = es.begin(); it != es.end(); ++it)
+				{
+					if (it->fix && (it->fix->typeflags & FixtureInfo::TYPEFLAG_WALL))
+					{
+						es.erase( it, es.end() );
+						break;
+					}
+				}
 			}
+			
+			const float full_dmg = 60 * info->def_delay->seconds();
 			
 			float k = 1;
 			for (auto& e : es)
@@ -691,18 +620,18 @@ std::optional<Weapon::ShootResult> WpnFoam::shoot(ShootParams pars)
 					DamageQuant q;
 					q.type = DamageType::Kinetic;
 					q.wpos = conv(e.poi);
-					q.amount = dynamic_cast<FoamProjectile*>(e.ent) ? 35 : 5;
+					q.amount = full_dmg;
 					if (e.fix) q.armor = e.fix->get_armor_index();
 					
-					GamePresenter::get()->effect(FE_EXPLOSION, {Transform(*q.wpos), 0.4f * k});
-				
+					GamePresenter::get()->effect(FE_EXPLOSION, {Transform(*q.wpos), 0.2f * k});
+
 					q.amount *= k;
 					hc->apply(q);
 				}
 				k /= 2;
 			}
 			
-			GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform(p, v.angle()), 5, FColor(1, 0.4, 0.2, 1)});
+			GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform(p, v.angle()), 3, FColor(1, 0.4, 0.2, 1)});
 		}
 		
 		return ShootResult{};
@@ -733,7 +662,7 @@ GrenadeProjectile::GrenadeProjectile(vec2fp pos, vec2fp dir, size_t team)
 	phy.add_circle(fd, GameConst::hsz_proj, 1);
 	
 	EVS_CONNECT1(phy.ev_contact, on_event);
-	reg();
+	reg_this();
 }
 void GrenadeProjectile::step()
 {
@@ -786,6 +715,7 @@ WpnRifle::WpnRifle()
 			info->def_ammo = 1;
 			info->def_delay = TimeSpan::seconds(0.15);
 			info->bullet_speed = 20;
+			info->set_origin_from_model();
 		}
 		return &*info;
 	}())
@@ -796,12 +726,7 @@ WpnRifle::WpnRifle()
 std::optional<Weapon::ShootResult> WpnRifle::shoot(ShootParams pars)
 {
 	auto ent = equip->ent;
-	
-	vec2fp p = ent->get_phy().get_pos();
-	vec2fp v = pars.target - p;
-	
-	v.norm();
-	p += v * ent->get_phy().get_radius();
+	auto [p, v] = get_direction(pars);
 	
 	if (pars.main)
 	{

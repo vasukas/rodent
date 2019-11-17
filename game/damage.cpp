@@ -48,46 +48,53 @@ EC_Health::EC_Health(Entity* ent, int hp)
 void EC_Health::apply(DamageQuant q)
 {
 	DamageType orig_type = q.type;
+	last_damaged = GameCore::step_len;
 	
-	// convert
-	
-	if (q.type == DamageType::Physical)
-		q.amount = (q.amount - ph_thr) * ph_k;
-	
-	if (q.amount <= 0) return;
-	
-	// armor
-	
-	if (q.armor && pr_area[*q.armor])
+	if (q.amount < 0) hp.apply(-q.amount); // heal
+	else
 	{
-		pr_area[*q.armor]->proc(*this, q);
-		if (q.amount <= 0) return;
+		// convert
+		
+		if (q.type == DamageType::Physical)
+			q.amount = (q.amount - ph_thr) * ph_k;
+		
+		if (q.amount <= 0) goto zero_damage;
+		
+		// armor
+		
+		if (q.armor && pr_area[*q.armor])
+		{
+			pr_area[*q.armor]->proc(*this, q);
+			if (q.amount <= 0) goto zero_damage;
+		}
+		
+		// filter
+		
+		for (auto& f : fils)
+		{
+			if (!f) continue;
+			f->proc(*this, q);
+			if (q.amount <= 0) goto zero_damage;
+		}
+		
+		// apply damage
+		
+		if (q.wpos)
+			GamePresenter::get()->effect(FE_HIT, {Transform{*q.wpos}, q.amount * 0.1f});
+		
+		hp.apply(-q.amount);
+		if (!hp.is_alive())
+		{
+			ent->destroy();
+			return;
+		}
+zero_damage:
+		
+		DamageQuant ev = q;
+		ev.type = orig_type;
+		if (ev.amount < 0) ev.amount = 0;
+		on_damage.signal(ev);
 	}
-	
-	// filter
-	
-	for (auto& f : fils)
-	{
-		if (!f) continue;
-		f->proc(*this, q);
-		if (q.amount <= 0) return;
-	}
-	
-	// apply damage
-	
-	if (q.wpos)
-		GamePresenter::get()->effect(FE_HIT, {Transform{*q.wpos}, q.amount * 0.1f});
-	
-	hp.apply(-q.amount);
-	if (!hp.is_alive())
-	{
-		ent->destroy();
-		return;
-	}
-	
-	DamageQuant ev = q;
-	ev.type = orig_type;
-	on_damage.signal(ev);
 }
 void EC_Health::upd_hp()
 {

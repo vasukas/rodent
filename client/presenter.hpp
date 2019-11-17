@@ -70,7 +70,6 @@ struct ECompRender : EComp
 	void detach(AttachType type) {attach(type, {}, MODEL_NONE, {});}
 	
 	const Transform& get_pos() const {return _pos;} ///< Current rendering position
-	virtual void set_face(float angle) {(void) angle;} ///< Sets facing direction
 	
 protected:
 	void send(PresCommand c);
@@ -114,7 +113,6 @@ struct EC_RenderBot : ECompRender
 	float rot_tar = 0; ///< override target
 	
 	EC_RenderBot(Entity* ent, ModelType model, FColor clr);
-	void set_face(float angle) override {rot_tar = angle;}
 	
 private:
 	struct Attach
@@ -128,6 +126,7 @@ private:
 	void on_destroy() override;
 	void step() override;
 	void proc(PresCommand c) override;
+	void sync() override {rot_tar = ent->get_face_rot();}
 };
 
 

@@ -110,6 +110,7 @@ public:
 	virtual AI_Drone* get_ai_drone() {return nullptr;}
 	
 	virtual std::string ui_descr() const {return {};}
+	virtual float get_face_rot() {return get_phy().get_trans().rot;}
 	vec2fp get_pos() {return get_phy().get_pos();}
 
 	
@@ -126,8 +127,8 @@ public:
 	/// Called only if in step list
 	virtual void step() {}
 	
-	void   reg() noexcept; ///< Adds entity to step list (safe)
-	void unreg() noexcept; ///< Removes entity from step list (safe)
+	void   reg_this() noexcept; ///< Adds entity to step list (safe)
+	void unreg_this() noexcept; ///< Removes entity from step list (safe)
 	
 protected:
 	Entity();

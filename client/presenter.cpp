@@ -4,12 +4,15 @@
 #include "render/ren_imm.hpp"
 #include "vaslib/vas_containers.hpp"
 #include "vaslib/vas_log.hpp"
+#include "effects.hpp"
 #include "presenter.hpp"
 
 #include "render/camera.hpp"
 #include "render/control.hpp"
 #include "render/ren_text.hpp"
 #include "utils/noise.hpp"
+
+void effects_init(); // defined in effects.cpp
 
 
 
@@ -67,6 +70,8 @@ EC_RenderBot::EC_RenderBot(Entity* ent, ModelType model, FColor clr)
 void EC_RenderBot::on_destroy()
 {
 	parts(model, ME_DEATH, {{}, 1, clr});
+	GamePresenter::get()->effect( FE_EXPLOSION_FRAG, { Transform{get_pos()} } );
+	effect_explosion_wave( get_pos().pos );
 }
 void EC_RenderBot::step()
 {
@@ -165,6 +170,8 @@ public:
 		
 		RenAAL::get().inst_end();
 		RenAAL::get().draw_grid = true;
+		
+		effects_init();
 	}
 	~GamePresenter_Impl()
 	{

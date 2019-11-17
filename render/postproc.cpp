@@ -187,18 +187,19 @@ public:
 		sh_blur = Shader::load("pp/gauss", false, false);
 		sh_blur->pre_reb = [this](Shader& sh)
 		{
-			sh.get_def("KERN_SIZE")->value = std::to_string(n*2+1);
+			sh.get_def("KERN_SIZE")->value = std::to_string(n_cut*2+1);
 		};
 		sh_blur->on_reb = [this](Shader& sh)
 		{
-			int size = n*2+1;
+			int size = n_cut*2+1;
+			int off = n_cut - n;
 			std::vector<float> ker(size);
 			for (int i=0; i<size; i++) {
-				int d = i - n;
+				int d = i + off - n;
 				ker[i] = d? 1.f / (d * rad / n) : 1;
 			}
 			
-			sh.set1i("size", n);
+			sh.set1i("size", n_cut);
 			sh.setfv("mul", ker.data(), size);
 		};
 		sh_blur->rebuild();
@@ -207,8 +208,9 @@ public:
 	}
 	
 private:
-	const int n = 12; // 8
-	const float rad = 3;
+	const int n = 8;
+	const int n_cut = 5;
+	const float rad = 2.5;
 	
 	GLA_Framebuffer fbo_s[2];
 	GLA_Texture tex_s[2];
@@ -262,9 +264,35 @@ private:
 
 
 
+struct PPF_Hole : PP_Filter
+{
+	std::optional<vec2fp> pos;
+	
+	PPF_Hole() {
+		sh = Shader::load("pp/hole");
+	}
+	bool is_ok_int() override {
+		return !!pos && AppSettings::get().hole_min_alpha < 0.99;
+	}
+	void proc() override
+	{
+		vec2fp sz = RenderControl::get().get_size();
+		vec2fp p = *pos / sz;
+		p.y = 1 - p.y;
+		vec2fp r(0.15, sz.y / sz.x);
+		
+		sh->bind();
+		sh->set4f("pars", p.x, p.y, r.x * r.x, r.y);
+		sh->set1f("min_alpha", AppSettings::get().hole_min_alpha);
+		draw(true);
+	}
+};
+
+
+
 class Postproc_Impl : public Postproc
 {
-public:
+public:	
 	PPF_Tint* tint = nullptr;
 	
 	void tint_reset()
@@ -274,6 +302,15 @@ public:
 	void tint_seq(TimeSpan time_to_reach, FColor target_mul, FColor target_add)
 	{
 		if (tint) tint->add_step(time_to_reach, target_mul, target_add);
+	}
+	
+	
+	
+	PPF_Hole* hole = nullptr;
+	
+	void set_particle_shadow(std::optional<vec2i> p)
+	{
+		if (hole) hole->pos = p;
 	}
 	
 	
@@ -363,22 +400,17 @@ public:
 			});
 		}{
 			fts.emplace_back(new PPF_Glowblur);
-			auto ch = new PPN_Chain("E2", std::move(fts), []
+			fts.emplace_back(hole = new PPF_Hole);
+			new PPN_Chain("E2", std::move(fts), []
 			{
 				glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
 				glBlendEquation(GL_FUNC_ADD);
 			});
-			ch->is_enabled = []{
-				return AppSettings::get().use_particles_pp;
-			};
 		}{
 			fts.emplace_back(tint = new PPF_Tint);
 			new PPN_Chain("post", std::move(fts), {});
 		}{
-			auto ch = new PP_Bloom("bloom");
-			ch->is_enabled = []{
-				return AppSettings::get().use_particles_bloom;
-			};
+			new PP_Bloom("bloom");
 		}
 		
 		g->connect("grid", "post", 1);

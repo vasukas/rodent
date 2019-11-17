@@ -146,15 +146,6 @@ LevelControl::LevelControl(const LevelTerrain& lt)
 		else if (typenm) nr.name = FMT_FORMAT("{}-{}", typenm, ++rm_cou[lr.type]);
 		else nr.name = FMT_FORMAT("Unknown [{}{}]", int('A' + lr.type), ++rm_cou[lr.type]);
 	}
-	
-	//
-	
-	std::vector<uint8_t> aps_ps;
-	aps_ps.resize( cells.size() );
-	for (size_t i=0; i < cells.size(); ++i) aps_ps[i] = cells[i].is_wall ? 0 : 1;
-	
-	aps.reset( AsyncPathSearch::create_default() );
-	aps->update(size, std::move(aps_ps));
 }
 void LevelControl::fin_init(LevelTerrain& lt)
 {
@@ -207,6 +198,8 @@ void LevelControl::fin_init(LevelTerrain& lt)
 	room_check_list.reserve(1000);
 	room_check_list2.reserve(1000);
 	
+	const float res_fail_chance = 0.3; // chance to fail spawning resource
+	
 	for (auto& r : lt.rooms)
 	{
 		bool isolation_check_init = false;
@@ -222,12 +215,12 @@ void LevelControl::fin_init(LevelTerrain& lt)
 				c_depth.resize( vec2i(r.area.size() + vec2i::one(2)).area() );
 				
 				for (int y=0; y<r.area.size().y; ++y) {
-					cd({0, y}) = -1;
-					cd({r.area.size().x + 1, y}) = -1;
+					cd({0, y + 1}) = -1;
+					cd({r.area.size().x + 1, y + 1}) = -1;
 				}
 				for (int x=0; x<r.area.size().x; ++x) {
-					cd({x, 0}) = -1;
-					cd({x, r.area.size().y + 1}) = -1;
+					cd({x + 1, 0}) = -1;
+					cd({x + 1, r.area.size().y + 1}) = -1;
 				}
 			}
 			
@@ -289,9 +282,10 @@ void LevelControl::fin_init(LevelTerrain& lt)
 		};
 		auto add_rnd_res = [&](vec2i at)
 		{
+			if (rnd.range_n() < res_fail_chance) return; // BALANCE HACK
+			
 			if (!is_ok(at, false)) return;
-			size_t t = rnd.range_index( size_t(AmmoType::TOTAL_COUNT), size_t(AmmoType::None) + 1 );
-			auto ap = EPickable::std_ammo( AmmoType(t) );
+			auto ap = EPickable::rnd_ammo();
 			ap.amount *= rnd.range(0.1, 0.7);
 			new EPickable( to_center_coord(at), ap );
 			lt_cref(at).decor_used = true;
@@ -342,6 +336,8 @@ void LevelControl::fin_init(LevelTerrain& lt)
 		};
 		auto add_disp = [&](vec2i at, std::optional<bool> horiz = {}, bool increased = false)
 		{
+			if (rnd.range_n() < res_fail_chance) return; // BALANCE HACK
+			
 			if (auto rot = get_rot(at, horiz)) {
 				new EDispenser( to_center_coord(at), *rot, increased );
 				lt_cref(at).decor_used = true;
@@ -354,7 +350,7 @@ void LevelControl::fin_init(LevelTerrain& lt)
 				lt_cref(at).decor_used = true;
 			}
 		};
-		auto add_decor = [&](vec2i at, const char *name, ModelType model, bool directional, bool is_ghost)
+		auto add_decor = [&](vec2i at, auto mk, bool directional)
 		{
 			float r;
 			if (directional) {
@@ -366,9 +362,21 @@ void LevelControl::fin_init(LevelTerrain& lt)
 				r = M_PI/2 * rnd.range_index(4);
 			}
 			
-			if (is_ghost) new EDecorGhost( Transform(to_center_coord(at), r), model );
-			else new EDecor( name, {at, {1,1}, true}, r, model );
+			mk(at, r);
 			lt_cref(at).decor_used = true;
+		};
+		
+		auto mk_cont = [](vec2i at, float r) {
+			new EDecor( "Box", {at, {1,1}, true}, r, rnd_stat().range_n() < 0.3 ? MODEL_STORAGE_BOX_OPEN : MODEL_STORAGE_BOX );
+		};
+		auto mk_abox = [](vec2i at, float r) {
+			new EDecor( "Autobox", {at, {1,1}, true}, r, MODEL_STORAGE, FColor(0.7, 0.9, 0.7) );
+		};
+		auto mk_mk = [](const char *name, ModelType model, bool is_ghost) {
+			return [=](vec2i at, float r) {
+				if (is_ghost) new EDecorGhost( Transform(LevelControl::get().to_center_coord(at), r), model );
+				else new EDecor( name, {at, {1,1}, true}, r, model );
+			};
 		};
 		
 		//
@@ -402,12 +410,23 @@ void LevelControl::fin_init(LevelTerrain& lt)
 			                
 				return at;
 			};
+			
 			int n_max = std::min(1 + r.area.size().area() / 100, 3);
 			for (int i=0, n=0; i<n_max*1.5; ++i)
 			{
 				if (auto p = next_pos())
 				{
-					add_decor(*p, "Autobox", MODEL_STORAGE, false, false);
+					add_decor(*p, mk_abox, false);
+					if (++n == n_max) break;
+				}
+			}
+			
+			n_max = std::min(1 + r.area.size().area() / 100, 3);
+			for (int i=0, n=0; i<n_max*1.5; ++i)
+			{
+				if (auto p = next_pos())
+				{
+					add_decor(*p, mk_mk("Drilling rig", MODEL_MINEDRILL_MINI, false), false);
 					if (++n == n_max) break;
 				}
 			}
@@ -429,9 +448,9 @@ void LevelControl::fin_init(LevelTerrain& lt)
 				if (rnd.range_n() > 0.5) return;
 				
 				float t = rnd.range_n();
-				if		(t < 0.6) add_decor( p, "Container", rnd.flag()? MODEL_STORAGE_BOX_OPEN : MODEL_STORAGE_BOX, true, false );
+				if		(t < 0.6) add_decor( p, mk_cont, true );
 				else if (t < 0.7) add_mdock( p );
-				else              add_decor( p, {}, MODEL_DOCKPAD, false, true );
+				else              add_decor( p, mk_mk({}, MODEL_DOCKPAD, true), false );
 			});
 		}
 		else if (r.type == LevelTerrain::RM_FACTORY)
@@ -555,7 +574,7 @@ void LevelControl::fin_init(LevelTerrain& lt)
 						float t = rnd.range_n();
 						if		(t < 0.4) new EDecor( "Conveyor",  {p, {1,1}, true}, rot, MODEL_CONVEYOR );
 						else if (t < 0.7) new EDecor( "Assembler", {p, {1,1}, true}, rot, MODEL_ASSEMBLER );
-						else              new EDecor( "Autobox",   {p, {1,1}, true}, rot, MODEL_STORAGE );
+						else              mk_abox(p, rot);
 						lt_cref(p).decor_used = true;
 					}
 				}
@@ -573,7 +592,7 @@ void LevelControl::fin_init(LevelTerrain& lt)
 			r.area.map_inner([&](vec2i p) {
 				lt_cref(p).structure = {};
 				if (rnd.range_n() < 0.2)
-					add_decor( p, "Container", rnd.range_n() < 0.3 ? MODEL_STORAGE_BOX_OPEN : MODEL_STORAGE_BOX, true, false );
+					add_decor( p, mk_cont, true );
 			});
 			r.area.map([&](vec2i p) {
 				if (!lt_cref(p).structure) return;
@@ -581,8 +600,8 @@ void LevelControl::fin_init(LevelTerrain& lt)
 				{
 					if (rnd.range_n() > 0.8) continue;
 					float t = rnd.range_n();
-					if		(t < 0.1) add_decor( p+d, "Cryopod", MODEL_HUMANPOD, true, false );
-					else if (t < 0.6) add_decor( p+d, "Lab device", MODEL_SCIENCE_BOX, true, false );
+					if		(t < 0.1) add_decor( p+d, mk_mk("Cryopod", MODEL_HUMANPOD, false), true );
+					else if (t < 0.6) add_decor( p+d, mk_mk("Lab device", MODEL_SCIENCE_BOX, false), true );
 					else if (t < 0.9) add_disp ( p+d );
 					else              add_mdock( p+d );
 				}
@@ -594,8 +613,8 @@ void LevelControl::fin_init(LevelTerrain& lt)
 			{
 				if (rnd.range_n() > 0.45) return;
 				float t = rnd.range_n();
-				if		(t < 0.6) add_decor( p, "Container", rnd.flag()? MODEL_STORAGE_BOX_OPEN : MODEL_STORAGE_BOX, true, false );
-				else if (t < 0.7) add_decor( p, "Autobox", MODEL_STORAGE, false, false );
+				if		(t < 0.6) add_decor( p, mk_cont, true );
+				else if (t < 0.7) add_decor( p, mk_abox, false );
 				else if (t < 0.9) add_disp ( p, {}, true );
 				else              add_rnd_res( p );
 			};
@@ -613,7 +632,10 @@ void LevelControl::fin_init(LevelTerrain& lt)
 		{
 			r.area.map([&](vec2i p) {
 				auto& c = lt_cref(p);
-				if		(c.structure == LevelTerrain::STR_RIB_IN)  add_disp (p, true);
+				if (c.structure && rnd.range_n() < 0.6 && get_rot(p)) {
+					add_decor( p, mk_cont, true );
+				}
+				else if (c.structure == LevelTerrain::STR_RIB_IN)  add_disp (p, true);
 				else if (c.structure == LevelTerrain::STR_RIB_OUT) add_mdock(p, true);
 			});
 		}
@@ -892,6 +914,11 @@ void LevelControl::fin_init(LevelTerrain& lt)
 			
 			lt_cref({x, y}).is_door = false;
 			new EDoor({x, y}, ext, room, plr_only);
+			
+			if (plr_only) {
+				if (ext.x) {for (int i=0; i<ext.x; ++i) lt_cref({x + i, y}).decor_used = true;}
+				else       {for (int i=0; i<ext.y; ++i) lt_cref({x, y + i}).decor_used = true;}
+			}
 		}
 	}
 	
@@ -904,6 +931,24 @@ void LevelControl::fin_init(LevelTerrain& lt)
 	VLOGD("                 spawns:  {:.3f} seconds", (time_enemies - time_spawns ).seconds());
 	VLOGD("                 enemies: {:.3f} seconds", (time_doors   - time_enemies).seconds());
 	VLOGD("                 doors:   {:.3f} seconds", (time_end     - time_doors  ).seconds());
+	
+	//
+	
+	for (int y=0; y<size.y; ++y)
+	for (int x=0; x<size.x; ++x)
+	{
+		auto& lc = lt.cs[y * size.x + x];
+		auto& nc = cells[y * size.x + x];
+		nc.is_wall |= lc.decor_used;
+	}
+	
+	std::vector<uint8_t> aps_ps;
+	aps_ps.resize( cells.size() );
+	for (size_t i=0; i < cells.size(); ++i)
+		aps_ps[i] = cells[i].is_wall ? 0 : 1;
+	
+	aps.reset( AsyncPathSearch::create_default() );
+	aps->update(size, std::move(aps_ps));
 }
 LevelControl::Cell* LevelControl::cell(vec2i pos) noexcept
 {

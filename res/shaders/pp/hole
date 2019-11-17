@@ -1,0 +1,18 @@
+//@vert vert_pass
+//@frag
+#version 330
+
+uniform sampler2D tex;
+uniform vec4 pars;
+uniform float min_alpha;
+
+in vec2 tc;
+out vec4 res;
+
+void main() {
+	vec2 dt = tc - pars.xy;
+	dt.y *= pars.w;
+	float k = clamp(dot(dt, dt) / pars.z, min_alpha, 1);
+	res = texture(tex, tc) * k;
+}
+

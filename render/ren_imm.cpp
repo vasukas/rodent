@@ -539,31 +539,6 @@ public:
 		}
 		add_obj( prev->get_obj(), strs[clr_i].second.to_px(), true );
 	}
-	void draw_text_hud (vec2fp at, std::string_view str, uint32_t clr, bool centered, float size_k)
-	{
-		const int alpha = 0x80;
-		const int border = 4;
-		
-		if (!can_add(true)) return;
-		
-		TextRenderInfo tri;
-		tri.str_a = str.data();
-		tri.length = str.length();
-		tri.build();
-		if (tri.cs.empty()) return;
-		
-		tri.size += vec2i::one(border * 2);
-		auto sz = RenderControl::get_size();
-		if (at.x < 0) at.x += sz.x - tri.size.x;
-		if (at.y < 0) at.y += sz.y - tri.size.y;
-		
-		if (centered) draw_rect({at - tri.size/2, tri.size, true}, alpha);
-		else {
-			draw_rect({at, tri.size, true}, alpha);
-			at += vec2fp::one(border);
-		}
-		draw_text(at, tri, clr, centered, size_k);
-	}
 	void draw_vertices(const std::vector<vec2fp>& vs)
 	{
 		reserve(vs.size() / 6);
@@ -606,6 +581,33 @@ public:
 		reserve_more_block( cx.cmds, 256 );
 		if (cx.clip_stack.empty()) cx.cmds.push_back({ Cmd::T_CLIP, size_t_inval });
 		else                       cx.cmds.push_back({ Cmd::T_CLIP, cx.clip_stack.back().second });
+	}
+	void raw_vertices(size_t vert_num, const vec2fp *vert_pos, const vec2fp *uv)
+	{
+		data.reserve(4 * vert_num);
+		for (size_t i=0; i < vert_num; ++i)
+		{
+			data.push_back( vert_pos[i].x );
+			data.push_back( vert_pos[i].y );
+			data.push_back( uv[i].x );
+			data.push_back( uv[i].y );
+		}
+	}
+	void raw_vertices(size_t vert_num, const vec2fp *vert_pos)
+	{
+		data.reserve(4 * vert_num);
+		vec2fp uv = white_tc.center();
+		for (size_t i=0; i < vert_num; ++i)
+		{
+			data.push_back( vert_pos[i].x );
+			data.push_back( vert_pos[i].y );
+			data.push_back( uv.x );
+			data.push_back( uv.y );
+		}
+	}
+	void raw_object(uint tex, uint32_t clr)
+	{
+		add_obj(tex ? tex : white_tex, clr, tex ? false : true);
 	}
 	void render_pre()
 	{
@@ -696,3 +698,120 @@ RenImm& RenImm::get() {
 }
 RenImm* RenImm::init() {return rni = new RenImm_Impl;}
 RenImm::~RenImm() {rni = nullptr;}
+
+
+
+void draw_text_hud (vec2fp at, std::string_view str, uint32_t clr, bool centered, float size_k)
+{
+	const int alpha = 0x80;
+	const int border = 4;
+	
+	TextRenderInfo tri;
+	tri.str_a = str.data();
+	tri.length = str.length();
+	tri.build();
+	if (tri.cs.empty()) return;
+	
+	tri.size += vec2i::one(border * 2);
+	auto sz = RenderControl::get_size();
+	if (at.x < 0) at.x += sz.x - tri.size.x;
+	if (at.y < 0) at.y += sz.y - tri.size.y;
+	
+	auto& ren = RenImm::get();
+	if (centered) ren.draw_rect({at - tri.size/2, tri.size, true}, alpha);
+	else {
+		ren.draw_rect({at, tri.size, true}, alpha);
+		at += vec2fp::one(border);
+	}
+	ren.draw_text(at, tri, clr, centered, size_k);
+}
+void draw_text_message (std::string_view str, float k_max, uint32_t clr, vec2fp direct_offset)
+{
+	std::vector<TextRenderInfo> tris;
+	tris.reserve(16);
+	
+	vec2fp max_sz = {};
+	for (size_t i_str = 0, end; i_str < str.size(); i_str = end + 1)
+	{
+		end = str.find('\n', i_str);
+		if (end == std::string::npos) end = str.size();
+		
+		if (end == i_str) {
+			auto& tri = tris.emplace_back();
+			tri.size.y = RenText::get().line_height(static_cast<FontIndex>(0));
+			max_sz.y += tri.size.y;
+			continue;
+		}
+		
+		auto& tri = tris.emplace_back();
+		tri.str_a = str.data() + i_str;
+		tri.length = end - i_str;
+		tri.build();
+		
+		if (tri.cs.empty()) {
+			tris.pop_back();
+			continue;
+		}
+		
+		max_sz.x = std::max(max_sz.x, tri.size.x);
+		max_sz.y += tri.size.y;
+	}
+	if (tris.empty()) return;
+	
+	vec2fp scr_sz = RenderControl::get_size();
+	float size_k = std::min(k_max, (scr_sz / max_sz).minmax().x);
+	
+	vec2fp off;
+	off.x = scr_sz.x /2;
+	off.y = (scr_sz.y - max_sz.y * size_k) /2;
+	
+	for (auto& tri : tris)
+	{
+		float hy = tri.size.y * size_k /2;
+		off.y += hy;
+		RenImm::get().draw_text(off + direct_offset, tri, clr, true, size_k);
+		off.y += hy;
+	}
+}
+void draw_progress_ring (vec2fp at, float t_value, uint32_t clr, float radius, float width)
+{
+	const int seg_num = 24;
+	vec2fp verts[seg_num*6];
+	
+	float da = M_PI*2 / seg_num;
+	float k01 = radius / (radius - width);
+	
+	vec2fp p0 = at + vec2fp{radius - width, 0};
+	vec2fp p1 = at + vec2fp{radius, 0};
+	
+	t_value = clampf_n(t_value);
+	int num = seg_num * t_value;
+	if (num == seg_num) --num;
+	
+	for (int i=0; i <= num; ++i)
+	{
+		float angle;
+		if (i != num) angle = da*(i + 1);
+		else angle = M_PI*2 * t_value;
+		
+		vec2fp n0 = {radius - width, 0};
+		n0.fastrotate(angle);
+		vec2fp n1 = at + n0 * k01;
+		n0 += at;
+		
+		verts[i*6 + 0] = p0;
+		verts[i*6 + 1] = p1;
+		verts[i*6 + 2] = n1;
+		
+		verts[i*6 + 3] = p0;
+		verts[i*6 + 4] = n0;
+		verts[i*6 + 5] = n1;
+		
+		p0 = n0;
+		p1 = n1;
+	}
+	
+	auto& ren = RenImm::get();
+	ren.raw_vertices((num+1) * 6, verts);
+	ren.raw_object(0, clr);
+}

@@ -196,9 +196,9 @@ void PlayerMovement::step()
 	body->ApplyForceToCenter(f, true);
 	
 	float amp = vel.Length();
-	if (amp > dust_vel)
+	if (amp > spd_norm + 1)
 	{
-		float p = amp / dust_vel;
+		float p = clampf((amp - spd_norm) / (spd_accel - spd_norm), 0.3, 1);
 		Transform tr;
 		tr.rot = std::atan2(vel.y, vel.x) - body->GetAngle();
 		tr.pos = {-ent->get_phy().get_radius(), 0};
@@ -353,7 +353,7 @@ void PlayerLogic::step()
 	prev_tar = tar;
 	
 	self->mov.upd_vel(cst.mov, accel, prev_tar);
-	eqp.try_shoot(tar, cst.is[PlayerController::A_SHOOT], cst.is[PlayerController::A_SHOOT_ALT]);
+	eqp.try_shoot(tar, cst.is[PlayerController::A_SHOOT], cst.is[PlayerController::A_SHOOT_ALT], true );
 	
 	// set rotation
 	
@@ -416,7 +416,7 @@ PlayerEntity::PlayerEntity(vec2fp pos, std::shared_ptr<PlayerController> ctr)
 	hlc.add_filter(pers_shld, ARMI_PERSONAL_SHLD);
 	
 	eqp.infinite_ammo = false;
-	eqp.hand = 1;
+//	eqp.hand = 1;
 	
 	eqp.get_ammo(AmmoType::Bullet).add(200);
 	eqp.get_ammo(AmmoType::Rocket).add(12);

@@ -34,6 +34,9 @@ public:
 		std::optional<float> def_heat; ///< Default heat increase PER SECOND
 		
 		float bullet_speed = 1.f; ///< Average, meters per second. For AI prediction only
+		vec2fp bullet_offset = {}; ///< For projectile generation, from weapon origin
+		
+		void set_origin_from_model(); ///< Sets bullet_offset
 	};
 	
 	struct Overheat
@@ -92,6 +95,13 @@ public:
 	virtual std::optional<UI_Info> get_ui_info() {return {};}
 	std::optional<TimeSpan> get_reload_timeout() const {if (rof_left.is_positive()) return rof_left; return {};}
 	
+	struct DirectionResult
+	{
+		vec2fp origin; ///< Calculated bullet origin
+		vec2fp dir; ///< Normalized
+	};
+	DirectionResult get_direction(const ShootParams& pars);
+	
 private:
 	friend EC_Equipment;
 	TimeSpan rof_left;
@@ -120,7 +130,7 @@ struct EC_Equipment : EComp
 	EC_Equipment(Entity* ent);
 	
 	/// Uses previous button states, obtained by this functions
-	void try_shoot(vec2fp target, bool main, bool alt);
+	void try_shoot(vec2fp target, bool main, bool alt, bool is_player = false);
 	
 	/// Returns false if not possible atm
 	bool shoot(Weapon::ShootParams pars);

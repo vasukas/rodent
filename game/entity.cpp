@@ -77,14 +77,14 @@ Entity::Entity()
 {}
 Entity::~Entity()
 {
-	unreg();
+	unreg_this();
 }
-void Entity::reg() noexcept
+void Entity::reg_this() noexcept
 {
 	if (!reglist_index)
 		reglist_index = GameCore::get().reg_ent(this);
 }
-void Entity::unreg() noexcept
+void Entity::unreg_this() noexcept
 {
 	if (reglist_index) {
 		GameCore::get().unreg_ent(*reglist_index);

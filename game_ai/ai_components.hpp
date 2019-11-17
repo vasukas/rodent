@@ -135,7 +135,7 @@ private:
 struct AI_RenRotation
 {
 	AI_RenRotation();
-	void update(Entity* ent, std::optional<vec2fp> target_pos, std::optional<vec2fp> move_pos);
+	void update(AI_Drone* ent, std::optional<vec2fp> target_pos, std::optional<vec2fp> move_pos);
 	
 private:
 	enum State {RR_NONE, RR_STOP, RR_ADD};

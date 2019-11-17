@@ -18,6 +18,7 @@ public:
 	// Must be called from render thread
 	virtual void ren_init() = 0;
 	virtual void draw(TimeSpan passed, std::optional<vec2fp> plr_pos, bool enabled) = 0; 
+	virtual void mark_final_term() = 0;
 };
 
 #endif // LEVEL_MAP_HPP

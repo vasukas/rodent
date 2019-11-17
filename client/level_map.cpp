@@ -17,6 +17,9 @@ public:
 	
 	SmoothSwitch e_sw;
 	
+	Rectfp final_term;
+	bool final_term_marked = false;
+	
 	
 	
 	LevelMap_Impl(const LevelTerrain& lt)
@@ -40,6 +43,15 @@ public:
 				px[3] = 192;
 			}
 		});
+		
+		for (auto& r : lt.rooms) {
+			if (r.type == LevelTerrain::RM_TERMINAL) {
+				final_term = r.area;
+				final_term.a *= vec2fp::one(2 * lt.cell_size);
+				final_term.b *= vec2fp::one(2 * lt.cell_size);
+				break;
+			}
+		}
 	}
 	void ren_init()
 	{
@@ -49,7 +61,8 @@ public:
 	void draw(TimeSpan passed, std::optional<vec2fp> plr_p, bool enabled)
 	{
 		e_sw.step(passed, enabled);
-		const int a = 255 * e_sw.value();
+		float t_alpha = e_sw.value();
+		const int a = 255 * t_alpha;
 		if (!a) return;
 		
 		vec2i scr = RenderControl::get_size() /2;
@@ -64,12 +77,24 @@ public:
 		Rectfp dst = Rectfp::from_center(sp, sz);
 		RenImm::get().draw_image(dst, tex.get(), 0xffffff00 | a);
 		
+		if (final_term_marked)
+		{
+			Rectfp r = final_term;
+			r.a += dst.lower();
+			r.b += dst.lower();
+			RenImm::get().draw_rect(r, 0x00ff4000 | int(64 * t_alpha));
+		}
+		
 		if (plr_p)
 		{
 			vec2fp p = dst.size() * (*plr_p) + dst.lower();
 			RenImm::get().draw_circle(p, 9.f, 0x40c0ff00 | a, 32);
 			RenImm::get().draw_circle(p, 6.f, 0xc0f0ff00 | a, 32);
 		}
+	}
+	void mark_final_term()
+	{
+		final_term_marked = true;
 	}
 	
 	vec2fp map_coord(vec2fp world) const {return world * coord_k;}

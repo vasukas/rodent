@@ -85,35 +85,20 @@ public:
 		
 		bool ignore(Entity* ent);
 	};
-	struct RenComp : ECompRender
-	{
-		struct Line {
-			vec2fp a, b;
-			float r;
-		};
-		std::vector<Line> ls;
-		float t = 1, tps;
-		
-		RenComp(Entity* ent, std::vector<Line> ls, TimeSpan lt);
-		void step() override;
-	};
 	
 	static bool generate(vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim, bool is_first);
 	
 private:
-	TimeSpan left = TimeSpan::seconds(0.3);
+	static constexpr TimeSpan left_init = TimeSpan::seconds(0.3);
+	TimeSpan left = left_init;
 	EC_VirtualBody phy;
-	RenComp ren;
 	SrcParams src;
 	std::optional<vec2fp> dir_lim;
 	
-	static std::vector<RenComp::Line> gen_ls(vec2fp a, vec2fp b, bool add);
-	
-	ElectroCharge(vec2fp pos, SrcParams src, std::vector<RenComp::Line> ls, std::optional<vec2fp> dir_lim)
-	    : phy(this, Transform{pos}), ren(this, std::move(ls), left), src(src), dir_lim(dir_lim)
-	{reg();}
+	ElectroCharge(vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim)
+	    : phy(this, Transform{pos}), src(src), dir_lim(dir_lim)
+	{reg_this();}
 	ECompPhysics& get_phy() override {return phy;}
-	ECompRender* get_ren() override {return &ren;}
 	void step() override;
 };
 

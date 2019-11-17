@@ -1,3 +1,4 @@
+#include "client/level_map.hpp"
 #include "client/plr_control.hpp"
 #include "core/vig.hpp"
 #include "render/camera.hpp"
@@ -52,6 +53,9 @@ public:
 	TimeSpan interact_after;
 	EntityIndex dbg_select;
 	
+	TimeSpan wpn_ring_reload;
+	TimeSpan wpn_ring_charge;
+	
 	
 	
 	PlayerManager_Impl(std::shared_ptr<PlayerController> pc_ctr_in)
@@ -77,7 +81,7 @@ public:
 	
 	
 	
-	void render(TimeSpan passed) override
+	void render(TimeSpan passed, vec2i mou_pos) override
 	{
 		if (plr_ent)
 		{
@@ -180,6 +184,58 @@ public:
 				vig_label(s);
 				vig_lo_next();
 			}
+			
+			if (auto wpn = plr_ent->eqp.wpn_ptr())
+			{
+//				RenImm::get().draw_rect( Rectfp::from_center(mpos, vec2i::one(20)), 0x00ff0040 );
+				
+				float radius = 20;
+				const float width = 6;
+				const int alpha = 0xc0;
+				
+				const TimeSpan hide = TimeSpan::seconds(2);
+				const TimeSpan fade = TimeSpan::seconds(0.5);
+				TimeSpan now = GameCore::get().get_step_time();
+				
+				if (auto m = wpn->info->def_delay; m && *m > TimeSpan::seconds(0.5))
+				{
+					uint32_t clr = alpha; float t;
+					if (auto tmo = wpn->get_reload_timeout()) {
+						clr |= 0xc0ff4000;
+						t = 1 - *tmo / *m;
+						wpn_ring_reload = now;
+					}
+					else {
+						auto diff = now - wpn_ring_reload;
+						if (diff > hide) clr = alpha * clampf_n(1. - (diff - hide) / fade);
+						clr |= 0x40ff4000;
+						t = 1;
+					}
+					draw_progress_ring(mou_pos, t, clr, radius, width);
+					radius += width;
+				}
+				if (auto& m = wpn->overheat)
+				{
+					uint32_t clr = m->flag ? 0xff606000 : 0xffff0000;
+					draw_progress_ring(mou_pos, m->value, clr | alpha, radius, width);
+					radius += width;
+				}
+				if (auto m = wpn->get_ui_info(); m && m->charge_t)
+				{
+					uint32_t clr = alpha;
+					if (*m->charge_t > 0.99) {
+						auto diff = now - wpn_ring_charge;
+						if (diff > hide) clr = alpha * clampf_n(1. - (diff - hide) / fade);
+						clr |= 0xe0ffff00;
+					}
+					else {
+						clr |= 0x40c0ff00;
+						wpn_ring_charge = now;
+					}
+					draw_progress_ring(mou_pos, *m->charge_t, clr, radius, width);
+					radius += width;
+				}
+			}
 		}
 		
 		if (!msgs.empty())
@@ -187,7 +243,7 @@ public:
 			auto it = &msgs.back();
 			
 			uint32_t clr = 0xffffff00;
-			vec2fp pos = RenderControl::get_size() /2;
+			vec2fp off = {};
 			float szk = 4.f;
 			
 			if (it->full) clr |= 0xff;
@@ -198,12 +254,12 @@ public:
 				clr |= int_round(std::max(t, thr) * 255);
 				if (t < thr) {
 					t /= thr;
-					pos.x *= t;
-					pos.y *= 2 - t;
+					off.x = -(1 - t);
+					off.y = (1 - t);
 					szk *= t;
 				}
 			}
-			RenImm::get().draw_text(pos, it->s, clr, true, szk);
+			draw_text_message(it->s, szk, clr, off * RenderControl::get_size() /2);
 			
 			it->tmo -= passed;
 			if (it->tmo.is_negative())
@@ -236,6 +292,7 @@ public:
 			{
 				lct_found = true;
 				add_msg("You have found\nlevel control room");
+				LevelMap::get()->mark_final_term();
 			}
 			
 			if (obj_count < obj_need)
@@ -251,7 +308,7 @@ public:
 				else if (!lct_found) stat_str += "Objective: find level control terminal";
 				else stat_str += "Objective: activate level control terminal";
 			}
-			RenImm::get().draw_text_hud({0, -1}, stat_str);
+			draw_text_hud({0, -1}, stat_str);
 			
 			//
 			
@@ -278,7 +335,7 @@ public:
 			}
 		}
 		else {
-			RenImm::get().draw_text_hud({0, -1}, FMT_FORMAT("Rematerialization in {:.1f} seconds", plr_resp.seconds()));
+			draw_text_hud({0, -1}, FMT_FORMAT("Rematerialization in {:.1f} seconds", plr_resp.seconds()));
 		}
 		
 		if (auto ent = GameCore::get().valid_ent(dbg_select))
@@ -286,7 +343,7 @@ public:
 			std::string s;
 			if (AI_Drone* d = ent->get_ai_drone()) s = d->get_dbg_state();
 			else s = "NO DEBUG STATS";
-			RenImm::get().draw_text_hud({0, RenderControl::get_size().y / 2.f}, s);
+			draw_text_hud({0, RenderControl::get_size().y / 2.f}, s);
 			
 			auto cam  = RenderControl::get().get_world_camera();
 			auto pos  = cam->direct_cast( ent->get_pos() );
@@ -329,7 +386,7 @@ public:
 		{
 			auto p = pc_ctr->get_state().tar_pos;
 			vec2i gp = LevelControl::get().to_cell_coord(p);
-			if (Rect({1,1}, LevelControl::get().get_size() - vec2i::one(1), false).contains_le( gp ))
+			if (Rect({1,1}, LevelControl::get().get_size() - vec2i::one(2), false).contains_le( gp ))
 				plr_ent->get_phobj().body->SetTransform( conv(p), 0 );
 		}
 		

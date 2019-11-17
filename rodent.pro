@@ -35,6 +35,7 @@ linux-g++:gcc_flto {
 QMAKE_CXXFLAGS += -Wno-unused-local-typedefs
 
 SOURCES += \
+	client/effects.cpp \
 	client/gamepad.cpp \
 	client/level_map.cpp \
 	client/plr_control.cpp \
@@ -137,6 +138,7 @@ SOURCES += \
 	vaslib/wincompat.cpp
 
 HEADERS += \
+	client/effects.hpp \
 	client/gamepad.hpp \
 	client/level_map.hpp \
 	client/plr_control.hpp \

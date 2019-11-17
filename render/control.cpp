@@ -109,7 +109,6 @@ public:
 			VLOGW("Using debug OpenGL context");
 		}
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, ctx_flags);
-		
 		SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
 		
 		auto wnd_sz = AppSettings::get().wnd_size;
@@ -124,8 +123,9 @@ public:
 		}
 		old_size = wnd_sz;
 		
-		int wnd_flags = SDL_WINDOW_OPENGL;
+		int wnd_flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
 		if (opt_fullscreen) wnd_flags |= SDL_WINDOW_FULLSCREEN;
+		else if (AppSettings::get().wnd_size_max) wnd_flags |= SDL_WINDOW_MAXIMIZED;
 		
 		wnd = SDL_CreateWindow( "Loading...", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, wnd_sz.x, wnd_sz.y, wnd_flags );
 		if (!wnd)
@@ -321,10 +321,10 @@ public:
 		{
 //			if (ev.window.windowID != SDL_GetWindowID(wnd)) return;
 			
-			if		(ev.window.type == SDL_WINDOWEVENT_HIDDEN ||
-			         ev.window.type == SDL_WINDOWEVENT_MINIMIZED ) visib = false;
-			else if (ev.window.type == SDL_WINDOWEVENT_SHOWN ||
-			         ev.window.type == SDL_WINDOWEVENT_EXPOSED ) visib = true;
+			if		(ev.window.event == SDL_WINDOWEVENT_HIDDEN ||
+			         ev.window.event == SDL_WINDOWEVENT_MINIMIZED ) visib = false;
+			else if (ev.window.event == SDL_WINDOWEVENT_SHOWN ||
+			         ev.window.event == SDL_WINDOWEVENT_EXPOSED ) visib = true;
 		}
 		else if (ev.type == SDL_RENDER_DEVICE_RESET)
 		{
