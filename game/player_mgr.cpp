@@ -159,7 +159,7 @@ public:
 				if (ammo)
 				{
 					if (eqp->infinite_ammo) s += "\nAMMO CHEAT ENABLED";
-					else s += FMT_FORMAT("\nAmmo: {} / {}", int_round(ammo->value), int_round(ammo->max));
+					else s += FMT_FORMAT("\nAmmo: {} / {}", ammo->value, ammo->max);
 				}
 				if (is_cur)
 				{

@@ -7,10 +7,12 @@
 #include "effects.hpp"
 #include "presenter.hpp"
 
+#include <thread>
 #include "render/camera.hpp"
 #include "render/control.hpp"
 #include "render/ren_text.hpp"
 #include "utils/noise.hpp"
+#include "utils/res_image.hpp"
 
 void effects_init(); // defined in effects.cpp
 
@@ -150,6 +152,7 @@ public:
 	TimeSpan last;
 	
 	vec2fp vport_offset = {4, 3}; ///< Occlusion rect size offset
+	std::optional<std::pair<int, ImageInfo>> dbg_sshot_img;
 	
 	
 	
@@ -198,6 +201,24 @@ public:
 			c->_vel = phy.get_vel();
 			c->sync();
 		}
+		
+		if (dbg_sshot_img)
+		{
+			if (dbg_sshot_img->first != 3) dbg_sshot_img->first |= 2;
+			else {
+				std::thread thr([](ImageInfo img)
+				{
+					img.convert(ImageInfo::FMT_RGB);
+					img.vflip();
+					std::string s = FMT_FORMAT("debug_{}.png", date_time_fn());
+					img.save( s.data() );
+					VLOGI("Saved sshot: {}", s);
+				}
+				, std::move(dbg_sshot_img->second));
+				dbg_sshot_img = {};
+				thr.detach();
+			}
+		}
 	}
 	void add_cmd(PresCommand c)
 	{
@@ -245,10 +266,21 @@ public:
 			if (it->t > 0) ++it;
 			else it = f_texts.erase(it);
 		}
+		
+		if (dbg_sshot_img && dbg_sshot_img->first == 2)
+		{
+			dbg_sshot_img->first |= 1;
+			if (RenderControl::get().img_screenshot) VLOGW("GamePresenter::dbg_screenshot() ignored");
+			else RenderControl::get().img_screenshot = &dbg_sshot_img->second;
+		}
 	}
 	TimeSpan get_passed()
 	{
 		return last;
+	}
+	void dbg_screenshot()
+	{
+		dbg_sshot_img = {0, {}};
 	}
 	
 	

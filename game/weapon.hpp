@@ -11,6 +11,7 @@ enum class AmmoType
 	Bullet,
 	Rocket,
 	Energy,
+	FoamCell,
 	
 	TOTAL_COUNT
 };
@@ -30,11 +31,12 @@ public:
 		
 		AmmoType ammo = AmmoType::None;
 		std::optional<TimeSpan> def_delay; ///< Default delay after shot
-		std::optional<float> def_ammo; ///< Default ammo consumption per shot
+		std::optional<int> def_ammo; ///< Default ammo consumption per shot
 		std::optional<float> def_heat; ///< Default heat increase PER SECOND
 		
 		float bullet_speed = 1.f; ///< Average, meters per second. For AI prediction only
 		vec2fp bullet_offset = {}; ///< For projectile generation, from weapon origin
+		float angle_limit = deg_to_rad(30); ///< Max angle between target and facing direction (DISABLED)
 		
 		void set_origin_from_model(); ///< Sets bullet_offset
 	};
@@ -79,7 +81,7 @@ public:
 	
 	struct ShootResult
 	{
-		std::optional<float> ammo = {}; ///< Ammo spent
+		std::optional<int> ammo = {}; ///< Ammo spent
 		std::optional<TimeSpan> delay = {}; ///< Time before next shot
 		std::optional<float> heat = {}; ///< Heat increase (ignored if oveheat nor present)
 	};
@@ -100,7 +102,8 @@ public:
 		vec2fp origin; ///< Calculated bullet origin
 		vec2fp dir; ///< Normalized
 	};
-	DirectionResult get_direction(const ShootParams& pars);
+	/// If 'ignore_target' is true, always returns (as it ignores angle limitation)
+	std::optional<DirectionResult> get_direction(const ShootParams& pars, bool ignore_target = false);
 	
 private:
 	friend EC_Equipment;
@@ -113,10 +116,10 @@ struct EC_Equipment : EComp
 {
 	struct Ammo
 	{
-		float value = 0, max = 1;
+		int value = 0, max = 1;
 		
-		float add(float amount); ///< Or subtract. Returns actual amount added/subtracted
-		bool has(float amount) {return value >= amount;}
+		float add(int amount); ///< Or subtract. Returns actual amount added/subtracted
+		bool has(int amount) {return value >= amount;}
 		bool has(Weapon& w) {return w.info->def_ammo ? has(*w.info->def_ammo) : true;}
 	};
 	
@@ -130,7 +133,7 @@ struct EC_Equipment : EComp
 	EC_Equipment(Entity* ent);
 	
 	/// Uses previous button states, obtained by this functions
-	void try_shoot(vec2fp target, bool main, bool alt, bool is_player = false);
+	void try_shoot(vec2fp target, bool main, bool alt);
 	
 	/// Returns false if not possible atm
 	bool shoot(Weapon::ShootParams pars);
@@ -144,7 +147,7 @@ struct EC_Equipment : EComp
 	void add_wpn(Weapon* wpn); ///< Assumes ownership
 	Ammo& get_ammo(AmmoType type) {return ammos[static_cast<size_t>(type)];}
 	
-	bool has_ammo(Weapon& w, std::optional<float> amount = {}); ///< For use by Weapon
+	bool has_ammo(Weapon& w, std::optional<int> amount = {}); ///< For use by Weapon
 	auto& raw_wpns() {return wpns;}
 	
 private:

@@ -208,6 +208,9 @@ public:
 	/// Temporary effect, must return false when should be destroyed
 	void add_effect(std::function<bool(TimeSpan passed)> eff);
 	void add_float_text(FloatText text);
+	
+	/// Performs debug screenshot on following rendering step
+	virtual void dbg_screenshot() = 0;
 };
 
 #endif // GAME_PRESENTER_HPP

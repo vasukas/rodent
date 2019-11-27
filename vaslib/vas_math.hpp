@@ -9,8 +9,8 @@
 #include <array>
 #include <cinttypes>
 #include <cmath>
-#include <functional>
 #include <optional>
+#include "vas_cpp_utils.hpp"
 
 using uint = unsigned int;
 
@@ -44,7 +44,7 @@ inline float clampf_n(float x) {return clampf(x, 0, 1);}
 template <typename T> T clamp(T x, T min, T max) {return std::max(min, std::min(max, x));}
 
 template <typename T1, typename T2, typename T3>
-typename std::common_type<T1, T2, T3>::type
+typename std::common_type<T1, T2>::type
 lerp (T1 a, T2 b, T3 t) {return a * (1 - t) + b * t;}
 
 template <typename T>
@@ -134,7 +134,6 @@ struct vec2i {
 };
 
 inline vec2i operator * (double f, const vec2i& v) {return vec2i(std::floor(v.x * f), std::floor(v.y * f));}
-inline vec2i lerp (const vec2i& a, const vec2i& b, double t) {return a * (1. - t) + b * t;}
 
 inline vec2i min(const vec2i& a, const vec2i& b) {return {std::min(a.x, b.x), std::min(a.y, b.y)};}
 inline vec2i max(const vec2i& a, const vec2i& b) {return {std::max(a.x, b.x), std::max(a.y, b.y)};}
@@ -217,7 +216,6 @@ inline float dot  (const vec2fp& a, const vec2fp& b) {return a.x * b.x + a.y * b
 inline float cross(const vec2fp& a, const vec2fp& b) {return a.x * b.y - a.y * b.x;}
 
 inline vec2fp operator * (double f, const vec2fp& v) {return vec2fp(v.x * f, v.y * f);}
-inline vec2fp lerp (const vec2fp &a, const vec2fp &b, double t) {return a * (1. - t) + b * t;}
 
 /// Spherical linear interpolation of unit vectors
 vec2fp slerp (const vec2fp &v0, const vec2fp &v1, float t);
@@ -230,6 +228,12 @@ std::optional<vec2fp> lineseg_intersect(vec2fp a1, vec2fp a2, vec2fp b1, vec2fp 
 
 /// Returns t,u of intersection point a+at*t = b+bt*u if lines aren't collinear or parallel
 std::optional<std::pair<float, float>> line_intersect_t(vec2fp a, vec2fp at, vec2fp b, vec2fp bt, float eps = 1e-10);
+
+/// Returns 't' (C = A + t*(B-A)) - point together with 'p' forming perpendicular to line a-b
+float lineseg_perpen_t(vec2fp a, vec2fp b, vec2fp p);
+
+/// Returns point which together with 'p' forms perpendicular to line a-b, if it lies in segment bounds
+std::optional<vec2fp> lineseg_perpen(vec2fp a, vec2fp b, vec2fp p);
 
 /// Calculates scale and offset to fit rectangle of one size into another, keeping aspect ratio
 std::pair<float, vec2fp> fit_rect(vec2fp size, vec2fp into);
@@ -274,16 +278,16 @@ struct Rect {
 	
 	/// Maps function over entire area, scanline-like. 
 	/// Lower edge included, upper excluded.
-	void map(std::function<void(vec2i p)> f) const;
+	void map(callable_ref<void(vec2i p)> f) const;
 	
 	/// Same as map, but returns false as soon as 'f' does
-	bool map_check(std::function<bool(vec2i p)> f) const;
+	bool map_check(callable_ref<bool(vec2i p)> f) const;
 	
 	/// Maps function over outer border (-1 from lower and ON upper)
-	void map_outer(std::function<void(vec2i p)> f) const;
+	void map_outer(callable_ref<void(vec2i p)> f) const;
 	
 	/// Maps function over inner border (on lower and -1 from upper)
-	void map_inner(std::function<void(vec2i p)> f) const;
+	void map_inner(callable_ref<void(vec2i p)> f) const;
 };
 
 Rect calc_intersection(const Rect& a, const Rect& b); ///< Returns rectangle representing overlap

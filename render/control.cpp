@@ -1,6 +1,7 @@
 #include <unordered_map>
 #include <SDL2/SDL.h>
 #include "core/settings.hpp"
+#include "utils/res_image.hpp"
 #include "vaslib/vas_log.hpp"
 #include "camera.hpp"
 #include "control.hpp"
@@ -310,6 +311,16 @@ public:
 				VLOGE("RenderControl::render() postproc failed: {}", e.what());
 				return false;
 			}
+		}
+		
+		if (img_screenshot)
+		{
+			vec2i sz = get_size();
+			img_screenshot->reset(sz, ImageInfo::FMT_RGBA);
+			glFinish();
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+			glReadPixels(0, 0, sz.x, sz.y, GL_RGBA, GL_UNSIGNED_BYTE, img_screenshot->raw());
+			img_screenshot = nullptr;
 		}
 		
 		SDL_GL_SwapWindow(wnd);

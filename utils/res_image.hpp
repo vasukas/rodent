@@ -1,7 +1,6 @@
 #ifndef RES_IMAGE_HPP
 #define RES_IMAGE_HPP
 
-#include <functional>
 #include <vector>
 #include "vaslib/vas_math.hpp"
 
@@ -102,7 +101,7 @@ struct ImageInfo
 	void blit( vec2i to, const ImageInfo& from, vec2i src, vec2i size );
 	
 	/// Calls function with pointer to beginning of each pixel
-	void map_pixel(std::function<void(uint8_t*)> f);
+	void map_pixel(callable_ref<void(uint8_t*)> f);
 	
 private:
 	std::vector <uint8_t> px;

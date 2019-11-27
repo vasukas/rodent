@@ -251,6 +251,9 @@ public:
 	vigAverage dbg_serv_avg;
 	RAII_Guard dbg_serv_g;
 	
+	double serv_avg_total = 0;
+	size_t serv_avg_count = 0;
+	
 	std::unique_ptr<LevelMap> lmap;
 	
 	bool is_far_cam = false;
@@ -296,6 +299,8 @@ public:
 	std::atomic<bool> pause_logic = false; ///< Control
 	std::atomic<bool> pause_logic_ok = false; ///< Is really paused
 	bool is_ren_paused = false; ///< Is paused be window becoming non-visible
+	
+	bool is_first_frame = false;
 	
 	
 	
@@ -374,6 +379,8 @@ public:
 		thr_term = true;
 		if (thr_serv.joinable())
 			thr_serv.join();
+		
+		VLOGI("Average logic frame length: {} ms, {} samples", serv_avg_total, serv_avg_count);
 	}
 	void on_event(SDL_Event& ev)
 	{
@@ -431,10 +438,14 @@ public:
 				VLOGI("Game render init finished in {:.3f} seconds", (TimeSpan::since_start() - time0).seconds());
 				log_write_str(LogLevel::Critical,
 				              FMT_FORMAT("Full init took {:.3f} seconds", TimeSpan::since_start().seconds()).data());
+				
+				Postproc::get().tint_seq({}, FColor(0,0,0,0));
+				Postproc::get().tint_seq(TimeSpan::seconds(30), FColor(0,0,0,0));
 			}
 		}
 		else if (game_fin)
 		{
+			winrars.resize(40);
 			for (auto& w : winrars) w.draw();
 			draw_text_message("Game completed.\n\nA WINRAR IS YOU.");
 		}
@@ -446,6 +457,12 @@ public:
 		else {
 //#warning Debug exit
 //			save_automap("AUTOMAP.png"); throw std::logic_error("Debug exit");
+			
+			if (is_first_frame && core->get().get_step_time().is_positive())
+			{
+				is_first_frame = false;
+				Postproc::get().tint_default(TimeSpan::seconds(3));
+			}
 			
 			// set camera
 			
@@ -485,7 +502,7 @@ public:
 				
 				if (std::fabs(tar_d.x) > scr.x || std::fabs(tar_d.y) > scr.y)
 				{
-					auto half = TimeSpan::seconds(0.3);
+					auto half = TimeSpan::seconds(0.5);
 					if (!cam_telep_tmo.is_positive())
 					{
 						Postproc::get().tint_reset();
@@ -602,7 +619,6 @@ public:
 				
 				if (GameCore::get().get_pmg().is_game_finished())
 				{
-					winrars.resize(40);
 					game_fin = true;
 					break;
 				}
@@ -614,6 +630,11 @@ public:
 			wdog.add(st);
 			
 			dbg_serv_avg.add (dt.seconds());
+			
+			if (!pause_logic_ok) {
+				++serv_avg_count;
+				serv_avg_total += (dt.seconds() * 1000 - serv_avg_total) / serv_avg_count;
+			}
 		}
 	}
 	catch (std::exception& e) {

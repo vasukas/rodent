@@ -64,7 +64,7 @@ struct Noise
 					V = calc(pV, nV);
 				}
 				
-				H = lerp(170, 210, H) / 360;
+				H = lerp<float>(170, 210, H) / 360;
 				V = lerp(0.15, 0.30, V);
 				
 				uint8_t* px = img_px.data() + (z * (size * size) + y * size + x)*3;

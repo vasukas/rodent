@@ -212,7 +212,7 @@ void PlayerMovement::step()
 ShieldControl::ShieldControl(Entity& root, size_t armor_index)
 	: root(root), armor_index(armor_index), tr({root.get_phobj().get_radius() + GameConst::hsz_pshl.x, 0})
 {
-	sh.reset( new DmgShield(400, 40) );
+	sh.reset( new DmgShield(500, 200/5.f) );
 	root.get_hlc()->add_prot(sh, armor_index);
 }
 void ShieldControl::enable()
@@ -353,7 +353,7 @@ void PlayerLogic::step()
 	prev_tar = tar;
 	
 	self->mov.upd_vel(cst.mov, accel, prev_tar);
-	eqp.try_shoot(tar, cst.is[PlayerController::A_SHOOT], cst.is[PlayerController::A_SHOOT_ALT], true );
+	eqp.try_shoot(tar, cst.is[PlayerController::A_SHOOT], cst.is[PlayerController::A_SHOOT_ALT] );
 	
 	// set rotation
 	
@@ -421,6 +421,7 @@ PlayerEntity::PlayerEntity(vec2fp pos, std::shared_ptr<PlayerController> ctr)
 	eqp.get_ammo(AmmoType::Bullet).add(200);
 	eqp.get_ammo(AmmoType::Rocket).add(12);
 	eqp.get_ammo(AmmoType::Energy).add(40);
+	eqp.get_ammo(AmmoType::FoamCell).add(30);
 	
 	eqp.add_wpn(new WpnMinigun);
 	eqp.add_wpn(new WpnRocket);

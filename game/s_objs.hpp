@@ -47,7 +47,7 @@ public:
 	struct AmmoPack
 	{
 		AmmoType type;
-		float amount;
+		int amount;
 	};
 	
 	struct Func

@@ -171,7 +171,7 @@ Mode options (--game):
     {
 		LoggerSettings lsets = LoggerSettings::current();
 		lsets.file.reset( File::open( log_filename.c_str(), File::OpenCreate | File::OpenDisableBuffer ) );
-		if (!lsets.file) VLOGW("Log not written to file!");
+		if (!lsets.file) log_write_str(LogLevel::Warning, "Log not written to file!");
 		
 		if (cli_verb) lsets.level = *cli_verb;
 		if (cli_logclr) lsets.use_clr = *cli_logclr;
@@ -180,6 +180,14 @@ Mode options (--game):
 #endif
 		lsets.apply();
     }
+	
+	{	std::string s = "libfmt version: ";
+		s += std::to_string(FMT_VERSION) + " (";
+		s += std::to_string(FMT_VERSION / 10000) + '.';
+		s += std::to_string(FMT_VERSION % 10000 / 100) + '.';
+		s += std::to_string(FMT_VERSION % 100) + ")";
+		log_write_str(LogLevel::Info, s.data());
+	}
 	VLOGI("Launched at {}", date_time_str());
 	
 	VLOGD("CLI ARGUMENTS:");
@@ -298,9 +306,19 @@ Mode options (--game):
 	
 	log_write_str(LogLevel::Critical, "=== main loop begin ===");
 	
+	
+	
 	TimeSpan passed = loop_length; // render time
 	TimeSpan last_time = loop_length; // processing time (for info)
 	avg_passed = std::make_unique<vigAverage>(5, 1.f/target_fps);
+	
+	std::vector<uint8_t> lag_spike_flags;
+	lag_spike_flags.resize( TimeSpan::seconds(5) / loop_length );
+	size_t lag_spike_i = 0;
+	int lag_spike_count = 0;
+	
+	double avg_total = 0;
+	size_t avg_total_n = 0;
 	
 	
 	
@@ -382,6 +400,7 @@ Mode options (--game):
 		RenImm::get().set_context( RenImm::DEFCTX_UI );
 		
 		auto dbg_str = FMT_FORMAT( "{:6.3f}\n{:6.3f}", passed.micro() / 1000.f, last_time.micro() / 1000.f );
+		if (lag_spike_count) dbg_str += FMT_FORMAT("\nSkips: {:3} / 5s", lag_spike_count);
 		draw_text_hud( {-1,0}, dbg_str, 0x00ff00ff );
 		avg_passed->add( last_time.micro() / 1000.f, passed.seconds() );
 		
@@ -425,8 +444,17 @@ Mode options (--game):
 			sleep(loop_length - loop_total);
 		}
 		else passed = loop_total;
+		
+		if (lag_spike_flags[lag_spike_i]) --lag_spike_count;
+		lag_spike_flags[lag_spike_i] = loop_total > loop_length;
+		if (lag_spike_flags[lag_spike_i]) ++lag_spike_count;
+		lag_spike_i = (lag_spike_i + 1) % lag_spike_flags.size();
+		
+		++avg_total_n;
+		avg_total += (loop_total.seconds() * 1000 - avg_total) / avg_total_n;
 	}
 	
+	VLOGI("Average render frame length: {} ms, {} samples", avg_total, avg_total_n);
 	log_write_str(LogLevel::Critical, "main() normal exit");
 	
 	dbg_g.trigger();

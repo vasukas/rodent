@@ -101,16 +101,13 @@ float fast_invsqrt(float x)
 
 float wrap_angle_2(float x)
 {
-	int i = static_cast<int>( x / (M_PI*2.) );
-	x -= i * (M_PI*2.);
-	if (x < 0) x += M_PI*2.;
-	return x;
+	float y = std::fmod(x, M_PI*2);
+	return y < 0 ? y + M_PI*2 : y;
 }
 float wrap_angle(float x)
 {
-	int i = static_cast<int>(x / M_PI);
-	x -= i * M_PI;
-	return x;
+	if (x > 0) return std::fmod(x + M_PI, M_PI*2) - M_PI;
+	else       return std::fmod(x - M_PI, M_PI*2) + M_PI;
 }
 float angle_delta(float target, float current)
 {
@@ -277,6 +274,19 @@ std::optional<std::pair<float, float>> line_intersect_t(vec2fp a, vec2fp at, vec
 	float u = cross(b, at) / im;
 	return std::make_pair(t, u);
 }
+float lineseg_perpen_t(vec2fp a, vec2fp b, vec2fp c)
+{
+//	ASSERT(!a.equals(b, 1e-5));
+	vec2fp rb = b - a;
+	vec2fp rc = c - a;
+	return (rc.x * rb.x + rc.y * rb.y) / (rb.x * rb.x + rb.y * rb.y);
+}
+std::optional<vec2fp> lineseg_perpen(vec2fp a, vec2fp b, vec2fp p)
+{
+	float t = lineseg_perpen_t(a, b, p);
+	if (t < 0 || t > 1) return {};
+	return lerp(a, b, t);
+}
 std::pair<float, vec2fp> fit_rect(vec2fp size, vec2fp into)
 {
 	vec2fp pk = into / size;
@@ -314,20 +324,20 @@ void Rect::set(const SDL_Rect& r)
 	off = {r.x, r.y};
 	sz  = {r.w, r.h};
 }
-void Rect::map(std::function<void(vec2i p)> f) const
+void Rect::map(callable_ref<void(vec2i p)> f) const
 {
 	for (int y = lower().y; y < upper().y; ++y)
 	for (int x = lower().x; x < upper().x; ++x)
 		f({x, y});
 }
-bool Rect::map_check(std::function<bool(vec2i p)> f) const
+bool Rect::map_check(callable_ref<bool(vec2i p)> f) const
 {
 	for (int y = lower().y; y < upper().y; ++y)
 	for (int x = lower().x; x < upper().x; ++x)
 		if (!f({x, y})) return false;
 	return true;
 }
-void Rect::map_outer(std::function<void(vec2i p)> f) const
+void Rect::map_outer(callable_ref<void(vec2i p)> f) const
 {
 	for (int y = lower().y; y < upper().y; ++y) {
 		f({ lower().x - 1, y });
@@ -342,7 +352,7 @@ void Rect::map_outer(std::function<void(vec2i p)> f) const
 	f({ lower().x - 1, upper().y });
 	f({ upper().x,     upper().y });
 }
-void Rect::map_inner(std::function<void(vec2i p)> f) const
+void Rect::map_inner(callable_ref<void(vec2i p)> f) const
 {
 	for (int y = lower().y + 1; y < upper().y - 1; ++y) {
 		f({ lower().x,     y });

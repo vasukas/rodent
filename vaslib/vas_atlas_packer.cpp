@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <functional>
 #include <memory.h>
 #include "vaslib/vas_atlas_packer.hpp"
 #include "vaslib/vas_cpp_utils.hpp"
@@ -62,8 +61,8 @@ std::vector <AtlasPacker::AtlasInfo> AtlasPacker::build()
 	auto occupied = [&]( Atlas& at, int x, int y ) -> uint8_t& { return at.is_occ[ y * real_size + x ];};
 	
 	// builder func
-	std::function<bool(size_t, SpriteData&)> place =
-	[&]( size_t at_ix, SpriteData& im ) -> bool
+	auto place =
+	[&]( size_t at_ix, SpriteData& im, auto place ) -> bool
 	{
 		Atlas& at = ats[ at_ix ];
 		
@@ -116,7 +115,7 @@ std::vector <AtlasPacker::AtlasInfo> AtlasPacker::build()
 			req_ht = real_size;
 		}
 		at.y_max = req_ht;
-		return place( at_ix, im );
+		return place( at_ix, im, place );
 	};
 	
 	// placement loop
@@ -125,7 +124,7 @@ std::vector <AtlasPacker::AtlasInfo> AtlasPacker::build()
 		size_t at_ix = 0;
 		for (; at_ix < ats.size(); ++at_ix)
 		{
-			if (place( at_ix, im ))
+			if (place( at_ix, im, place ))
 				break;
 		}
 		if (at_ix == ats.size())
@@ -139,7 +138,7 @@ std::vector <AtlasPacker::AtlasInfo> AtlasPacker::build()
 				THROW_FMTSTR( "AtlasPacker::build() allocation failed - {}", e.what() );
 			}
 			
-			if (!place( at_ix, im ))
+			if (!place( at_ix, im, place ))
 				THROW_FMTSTR( "AtlasPacker::build() sprite {} is bigger than max_size", im.id );
 		}
 	}

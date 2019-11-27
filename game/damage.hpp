@@ -115,6 +115,7 @@ struct DamageFilter
 
 struct DmgShield : DamageFilter
 {
+	static constexpr float dead_absorb = 100; ///< How much additional damage absorbed on destruction
 	bool enabled = true;
 	bool is_filter = true; // used only for rendering
 	

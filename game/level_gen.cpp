@@ -1860,7 +1860,7 @@ void LevelTerrain::test_save(const char *prefix, bool img_line, bool img_grid) c
 			else if (c.is_wall) v = 0x404040;
 			else {
 				v = 0xffff00;
-				v |= int_round(lerp(0xff, 0xa0, r->far_value));
+				v |= int_round(lerp<float>(0xff, 0xa0, r->far_value));
 			}
 		}
 		

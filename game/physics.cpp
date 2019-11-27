@@ -397,7 +397,7 @@ void PhysicsWorld::raycast_all(std::vector<RaycastResult>& es, b2Vec2 from, b2Ve
 	world.RayCast(&cb, from, to);
 	++ raycast_count;
 }
-std::optional<PhysicsWorld::RaycastResult> PhysicsWorld::raycast_nearest(b2Vec2 from, b2Vec2 to, CastFilter cf)
+std::optional<PhysicsWorld::RaycastResult> PhysicsWorld::raycast_nearest(b2Vec2 from, b2Vec2 to, CastFilter cf, std::optional<float> width)
 {
 	if ((from - to).LengthSquared() < raycast_zero_dist) return {};
 	
@@ -410,6 +410,7 @@ std::optional<PhysicsWorld::RaycastResult> PhysicsWorld::raycast_nearest(b2Vec2 
 		float32 ReportFixture(b2Fixture* fix, const b2Vec2& point, const b2Vec2&, float32 frac)
 		{
 			if (!cf.is_ok(*fix)) return -1;
+			if (res && res->distance < frac) return res->distance;
 			res = RaycastResult
 			{
 				getptr(fix->GetBody())->ent,
@@ -420,9 +421,21 @@ std::optional<PhysicsWorld::RaycastResult> PhysicsWorld::raycast_nearest(b2Vec2 
 			return frac;
 		}
 	};
+	
 	Cb cb(cf);
 	world.RayCast(&cb, from, to);
 	++ raycast_count;
+	
+	if (width)
+	{
+		b2Vec2 off = (to - from).Skew();
+		off.Normalize();
+		off *= *width / 2;
+		
+		world.RayCast(&cb, from - off, to - off);
+		world.RayCast(&cb, from + off, to + off);
+		raycast_count += 2;
+	}
 	
 	if (cb.res) cb.res->distance *= (from - to).Length();
 	return cb.res;

@@ -54,4 +54,34 @@ void append( T& target, const T& from )
 	target.insert( target.end(), from.begin(), from.end() );
 }
 
+
+
+/// Non-owning reference to callable object
+template <typename F>
+class callable_ref;
+
+/// Non-owning reference to callable object
+template <typename Ret, typename... Args>
+class callable_ref<Ret(Args...)>
+{
+	// P0792R0 (open-std.org)
+    void* _ptr;
+	Ret(*_erased_fn)(void*, Args...);
+
+public:
+	template <typename T, std::enable_if_t<
+		std::is_invocable_r<Ret, T, Args...>::value &&
+		!std::is_same<std::decay_t<T>, callable_ref<Ret(Args...)>>::value, int > = 0>
+	callable_ref(T&& f) noexcept {
+		_ptr = static_cast<void*>(std::addressof(f));
+		_erased_fn = [](void* ptr, Args... xs) -> Ret {
+			return (*reinterpret_cast<std::add_pointer_t<T>>(ptr))(std::forward<Args>(xs)...);
+		};
+	}
+	
+	auto operator()(Args... xs) {
+		return _erased_fn(_ptr, std::forward<Args>(xs)...);
+	}
+};
+
 #endif // VAS_CPP_UTILS_HPP

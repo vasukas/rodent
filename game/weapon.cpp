@@ -10,9 +10,10 @@ ModelType ammo_model(AmmoType type)
 {
 	switch (type)
 	{
-	case AmmoType::Bullet: return MODEL_MINIGUN_AMMO;
-	case AmmoType::Rocket: return MODEL_ROCKET_AMMO;
-	case AmmoType::Energy: return MODEL_ELECTRO_AMMO;
+	case AmmoType::Bullet:   return MODEL_MINIGUN_AMMO;
+	case AmmoType::Rocket:   return MODEL_ROCKET_AMMO;
+	case AmmoType::Energy:   return MODEL_ELECTRO_AMMO;
+	case AmmoType::FoamCell: return MODEL_GRENADE_AMMO;
 		
 	case AmmoType::None:
 	case AmmoType::TOTAL_COUNT:
@@ -31,18 +32,32 @@ bool Weapon::is_ready()
 {
 	return equip->has_ammo(*this);
 }
-Weapon::DirectionResult Weapon::get_direction(const ShootParams& pars)
+std::optional<Weapon::DirectionResult> Weapon::get_direction(const ShootParams& pars, bool ignore_target)
 {
 	auto ent = equip->ent;
+	vec2fp orig = ent->get_pos();
 	float rot = ent->get_face_rot();
 	
-	vec2fp p = ent->get_pos() + info->bullet_offset.get_rotated( rot );
-	vec2fp v = pars.target - p;
+/*
+	if (!ignore_target)
+	{
+		float ta = (pars.target - orig).fastangle();
+		if (std::fabs(wrap_angle( ta - rot )) > info->angle_limit)
+			return {};
+	}
+*/
 	
-	v.norm();
-	p += v * ent->get_phy().get_radius();
+	vec2fp offset = {ent->get_phy().get_radius(), 0};
+	offset.rotate(rot);
+	offset += info->bullet_offset.get_rotated( rot );
 	
-	return {p, v};
+	if (!GameCore::get().get_phy().raycast_nearest( conv(orig), conv(orig + offset) ))
+		orig += offset;
+	
+	vec2fp dir = ignore_target ? offset : pars.target - orig;
+	dir.norm();
+
+	return DirectionResult{orig, dir};
 }
 void Weapon::Overheat::shoot(float amount)
 {
@@ -55,9 +70,9 @@ void Weapon::Overheat::cool()
 	if (value < 0) value = 0;
 	if (value < thr_off) flag = false;
 }
-float EC_Equipment::Ammo::add(float amount)
+float EC_Equipment::Ammo::add(int amount)
 {
-	amount = clampf(amount, -value, max - value);
+	amount = clamp(amount, -value, max - value);
 	value += amount;
 	return amount;
 }
@@ -71,25 +86,12 @@ EC_Equipment::EC_Equipment(Entity* ent)
 	
 	ammos[static_cast<size_t>(AmmoType::Bullet)].max = 450;
 	ammos[static_cast<size_t>(AmmoType::Rocket)].max = 40;
-	ammos[static_cast<size_t>(AmmoType::Energy)].max = 60;
+	ammos[static_cast<size_t>(AmmoType::Energy)].max = 70;
+	ammos[static_cast<size_t>(AmmoType::FoamCell)].max = 100;
 }
-void EC_Equipment::try_shoot(vec2fp target, bool main, bool alt, bool is_player)
+void EC_Equipment::try_shoot(vec2fp target, bool main, bool alt)
 {
 	if (!main && !prev_main && !alt && !prev_alt) return;
-	
-	if (is_player)
-	{
-		auto wpn = wpn_ptr();
-		if (!wpn) return;
-		
-		float rot = ent->get_face_rot();
-		vec2fp p = ent->get_pos();
-		p += vec2fp(ent->get_phy().get_radius() + 0.1, 0).get_rotated( rot );
-		p += wpn->info->bullet_offset.get_rotated( rot );
-		
-		if (GameCore::get().get_phy().raycast_nearest( conv(ent->get_pos()), conv(p) ))
-			return;
-	}
 	
 	Weapon::ShootParams pars = {target, main, prev_main, alt, prev_alt};
 	prev_main = main;
@@ -190,7 +192,7 @@ void EC_Equipment::add_wpn(Weapon* wpn)
 	wpns.emplace_back(wpn);
 	wpn->equip = this;
 }
-bool EC_Equipment::has_ammo(Weapon& w, std::optional<float> amount)
+bool EC_Equipment::has_ammo(Weapon& w, std::optional<int> amount)
 {
 	if (infinite_ammo) return true;
 	if (!amount) amount = w.info->def_ammo;

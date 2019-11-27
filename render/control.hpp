@@ -8,6 +8,7 @@
 
 class  Camera;
 struct GLA_VertexArray;
+struct ImageInfo;
 class  PP_Graph;
 union  SDL_Event;
 struct SDL_Window;
@@ -26,6 +27,10 @@ public:
 	
 	static bool opt_gldbg;
 	static bool opt_fullscreen;
+	
+	/// If set, writes screen data (RGBA, y-flipped) to it before swapping buffers. 
+	/// Reset after each render() call
+	ImageInfo* img_screenshot = nullptr;
 	
 	
 	

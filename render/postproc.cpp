@@ -89,28 +89,22 @@ struct PPF_Tint : PP_Filter
 	struct Step
 	{
 		float t, tps;
-		FColor d_mul, d_add;
+		FColor mul, add;
 	};
 	std::deque<Step> steps;
-	FColor mul = FColor(1,1,1,1);
-	FColor add = FColor(0,0,0,0);
+	FColor p_mul = FColor(1,1,1,1);
+	FColor p_add = FColor(0,0,0,0);
 	
 	PPF_Tint()
 	{
 		sh = Shader::load_cb("pp/tint", [this](Shader& sh){
-		     sh.set_clr("mul", mul);
-		     sh.set_clr("add", add);
+		     sh.set_clr("mul", p_mul);
+		     sh.set_clr("add", p_add);
 		});
 	}
 	bool is_ok_int() override
 	{
-		if (!steps.empty()) return true;
-		for (int i=0; i<4; ++i)
-		{
-			if (!aequ(mul[i], 1.f, 0.001)) return true;
-			if (!aequ(add[i], 0.f, 0.001)) return true;
-		}
-		return false;
+		return !steps.empty();
 	}
 	void proc() override
 	{
@@ -118,50 +112,48 @@ struct PPF_Tint : PP_Filter
 		while (!steps.empty())
 		{
 			auto& s = steps.front();
-			bool fin = false;
-			
 			float incr = s.tps * time.seconds();
 			
 			float left = 1 - s.t;
-			if (incr >= left)
+			if (incr < left)
 			{
-				float used = left / incr;
-				time *= 1 - used;
-				
-				incr = left;
-				fin = true;
+				s.t += incr;
+				break;
 			}
-			else s.t += incr;
 			
-			mul += FColor(s.d_mul).mul(incr);
-			add += FColor(s.d_add).mul(incr);
+			float used = left / incr;
+			time *= 1 - used;
 			
-			if (fin) steps.pop_front();
-			else break;
+			p_mul = s.mul;
+			p_add = s.add;
+			steps.pop_front();
 		}
 		
 		sh->bind();
+		auto [mul, add] = calc_state();
 		sh->set_clr("mul", mul);
 		sh->set_clr("add", add);
 		draw(true);
 	}
 	void reset()
 	{
+		std::tie(p_mul, p_add) = calc_state();
 		steps.clear();
 	}
 	void add_step(TimeSpan ttr, FColor tar_mul, FColor tar_add)
 	{
-		FColor m0 = mul, a0 = add;
-		for (auto& s : steps) {
-			m0 += s.d_mul;
-			a0 += s.d_add;
-		}
-		
 		auto& ns = steps.emplace_back();
 		ns.t = 0;
-		ns.tps = 1.f / ttr.seconds();
-		ns.d_mul = tar_mul - m0;
-		ns.d_add = tar_add - a0;
+		ns.tps = 1.f / std::max(ttr, TimeSpan::fps(10000)).seconds();
+		ns.mul = tar_mul;
+		ns.add = tar_add;
+	}
+	std::pair<FColor, FColor> calc_state()
+	{
+		if (steps.empty()) return {p_mul, p_add};
+		auto& s = steps.back();
+		float t = std::min(1.f, s.t);
+		return {lerp(p_mul, s.mul, t), lerp(p_add, s.add, t)};
 	}
 };
 
@@ -169,8 +161,6 @@ struct PPF_Tint : PP_Filter
 class PP_Bloom : public PP_Node
 {
 public:
-	std::function<bool()> is_enabled;
-	
 	PP_Bloom(std::string name)
 	    : PP_Node(std::move(name))
 	{
@@ -221,9 +211,6 @@ private:
 	
 	bool prepare() override
 	{
-		if (is_enabled && !is_enabled())
-			return false;
-		
 		if (!sh_blur->is_ok() || !sh_mix->is_ok())
 			return false;
 		

@@ -103,10 +103,11 @@ static FColor get_color(const EPickable::Value& val)
 EPickable::AmmoPack EPickable::rnd_ammo()
 {
 	auto type = GameCore::get().get_random().random_el(
-		normalize_chances<AmmoType, 3>({{
-			{AmmoType::Bullet, 1.3},
-			{AmmoType::Rocket, 0.8},
-			{AmmoType::Energy, 1},
+		normalize_chances<AmmoType, 4>({{
+			{AmmoType::Bullet,   1.3},
+			{AmmoType::Rocket,   0.8},
+			{AmmoType::Energy,   1},
+	        {AmmoType::FoamCell, 0.4}
 		}})
 	);
 	return std_ammo(type);
@@ -116,9 +117,10 @@ EPickable::AmmoPack EPickable::std_ammo(AmmoType type)
 	AmmoPack ap = {type, 0};
 	switch (type)
 	{
-	case AmmoType::Bullet: ap.amount = 50; break;
-	case AmmoType::Rocket: ap.amount = 6;  break;
-	case AmmoType::Energy: ap.amount = 18;  break;
+	case AmmoType::Bullet:   ap.amount = 50; break;
+	case AmmoType::Rocket:   ap.amount = 6;  break;
+	case AmmoType::Energy:   ap.amount = 18; break;
+	case AmmoType::FoamCell: ap.amount = 20; break;
 
 	case AmmoType::None:
 	case AmmoType::TOTAL_COUNT:
@@ -145,13 +147,12 @@ void EPickable::on_cnt(const CollisionEvent& ce)
 	if (auto v = std::get_if<AmmoPack>(&val))
 	{
 		auto eqp = ce.other->get_eqp();
-		float delta = eqp->get_ammo(v->type).add(v->amount);
+		int delta = eqp->get_ammo(v->type).add(v->amount);
 		
-		if (delta > 1e-5)
+		if (delta > 0)
 		{
 			v->amount -= delta;
-			
-			if (v->amount < 1e-5) destroy();
+			if (v->amount <= 0) destroy();
 			else ren.parts(ren.model, ME_DEATH, {});
 		}
 	}
@@ -198,7 +199,7 @@ ETurret::ETurret(vec2fp at, std::shared_ptr<AI_Group> grp, size_t team)
 	b2FixtureDef fd;
 	phy.add_circle(fd, GameConst::hsz_box_small, 1);
 	
-	eqp.add_wpn(new WpnMinigun);
+	eqp.add_wpn(new WpnMinigunTurret);
 	eqp.set_wpn(0);
 }
 
@@ -224,7 +225,7 @@ EEnemyDrone::EEnemyDrone(vec2fp at, const Init& init)
 	fd.restitution = 0.4;
 	phy.add_circle(fd, GameConst::hsz_drone * 1.4, 25); // sqrt2 - diagonal
 	
-	hlc.add_filter(std::make_shared<DmgShield>(100, 20));
+	hlc.add_filter(std::make_shared<DmgShield>(100, 20, TimeSpan::seconds(5)));
 //	hlc.ph_thr = 100;
 //	hlc.ph_k = 0.2;
 //	hlc.hook(phy);

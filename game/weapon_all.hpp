@@ -29,9 +29,10 @@ struct StdProjectile : EComp
 		bool trail = false; ///< If true, leaves particle trail
 		
 		float size = GameConst::hsz_proj; ///< Projectile radius
+		bool friendly_fire = false;
 	};
 	
-	static PhysicsWorld::CastFilter make_cf(EntityIndex src);
+	static PhysicsWorld::CastFilter make_cf(EntityIndex src); ///< Note: 'src' currently ignored
 	static void explode(size_t src_team, EntityIndex src_eid, b2Vec2 self_vel, PhysicsWorld::RaycastResult hit, const Params& pars);
 	
 	StdProjectile(Entity* ent, const Params& pars, EntityIndex src, std::optional<vec2fp> target);
@@ -117,11 +118,14 @@ private:
 	EC_Health hlc;
 	size_t team;
 	
+	static constexpr TimeSpan frozen_left = TimeSpan::seconds(0.1);
 	TimeSpan left;
 	bool frozen = false;
 	float min_spd; // squared
+	
 	bool is_first;
 	EntityIndex src_i;
+	vec2fp vel_initial;
 	
 	ECompPhysics& get_phy() override {return phy;}
 	ECompRender*  get_ren() override {return &ren;}
@@ -138,22 +142,23 @@ private:
 class GrenadeProjectile : public Entity
 {
 public:
-	GrenadeProjectile(vec2fp pos, vec2fp dir, size_t team);
+	GrenadeProjectile(vec2fp pos, vec2fp dir, EntityIndex src_eid);
 	
 private:
 	EVS_SUBSCR;
 	EC_Physics phy;
 	EC_RenderSimple ren;
 	EC_Health hlc;
-	size_t team;
 	
+	EntityIndex src_eid;
+	TimeSpan ignore_tmo;
 	TimeSpan left;
 	float clr_t = 0;
 	
 	ECompPhysics& get_phy() override {return phy;}
 	ECompRender*  get_ren() override {return &ren;}
 	EC_Health*    get_hlc() override {return &hlc;}
-	size_t get_team() const override {return team;}
+	size_t get_team() const override {return TEAM_ENVIRON;}
 	
 	void step() override;
 	void on_event(const CollisionEvent& ev);
@@ -166,6 +171,19 @@ class WpnMinigun : public Weapon
 {
 public:
 	WpnMinigun();
+	
+private:
+	StdProjectile::Params pp, p2;
+	std::optional<ShootResult> shoot(ShootParams pars) override;
+};
+
+
+
+/// Old minigun
+class WpnMinigunTurret : public Weapon
+{
+public:
+	WpnMinigunTurret();
 	
 private:
 	StdProjectile::Params pp;
@@ -207,6 +225,7 @@ public:
 	WpnFoam();
 	
 private:
+	int ammo_skip_count = 0;
 	std::optional<ShootResult> shoot(ShootParams pars) override;
 };
 

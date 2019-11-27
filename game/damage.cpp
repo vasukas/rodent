@@ -17,7 +17,10 @@ void HealthPool::apply(int amount, bool limited)
 {
 	hp += amount;
 	if (limited && hp > hp_max) hp = hp_max;
-	if (amount < 0) tmo = regen_wait;
+	if (hp < 0) {
+		hp = -1;
+		tmo = regen_wait;
+	}
 }
 void HealthPool::renew(std::optional<int> new_max)
 {
@@ -171,11 +174,15 @@ DmgShield::DmgShield(int capacity, int regen_per_second, TimeSpan regen_wait)
 }
 void DmgShield::proc(EC_Health& hlc, DamageQuant& q)
 {
-	if (!enabled || !hp.is_alive()) return;
+	if (!enabled || !hp.is_alive()) {
+		hp.apply(-1); // reset regen timer
+		return;
+	}
 	auto dmg_ren = q.amount;
 	
+	auto am_left = q.amount - hp.exact().first;
 	hp.apply(-q.amount);
-	q.amount = 0;
+	q.amount = am_left - dead_absorb;
 	
 	if (is_filter) {
 		auto& phy = hlc.ent->get_phy();
@@ -207,10 +214,36 @@ void DmgShield::proc(EC_Health& hlc, DamageQuant& q)
 		q.wpos.reset();
 	}
 }
-void DmgShield::step(EC_Health&)
+void DmgShield::step(EC_Health& hlc)
 {
+	int hp_has = hp.exact().first;
+	
 	hp.step();
 	if (hit_ren_tmo.is_positive()) hit_ren_tmo -= GameCore::step_len;
+	
+	if (is_filter && enabled)
+	{
+		int hp_now = hp.exact().first;
+		if (hp_has == hp_now)
+			return;
+		
+		ParticleBatchPars bp;
+		bp.clr = FColor(0.3, 0.3, 1, 1);
+		
+		if		(hp_has < 0) bp.power = 1;
+		else if (hp_now == hp.exact().second) bp.power = 2;
+		else {
+			if (hit_ren_tmo.is_positive())
+				return;
+			bp.power = 0.3;
+			bp.clr.a = 0.4;
+		}
+		
+		auto& phy = hlc.ent->get_phy();
+		bp.tr = Transform{phy.get_pos()};
+		bp.rad = phy.get_radius() + 0.5f;
+		GamePresenter::get()->effect(FE_CIRCLE_AURA, bp);
+	}
 }
 
 

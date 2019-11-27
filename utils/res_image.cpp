@@ -269,7 +269,7 @@ void ImageInfo::blit( vec2i dst, const ImageInfo& from, vec2i src, vec2i sz )
 		   from.px.data() + (s_y * from.size.x + s_x) * bpp, bpp );
 	}
 }
-void ImageInfo::map_pixel(std::function<void(uint8_t*)> f)
+void ImageInfo::map_pixel(callable_ref<void(uint8_t *)> f)
 {
 	for (size_t i=0; i<px.size(); i += get_bpp())
 		f(px.data() + i);

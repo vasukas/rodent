@@ -12,7 +12,7 @@ class Postproc
 public:
 	static Postproc& get(); ///< Returns singleton
 	
-	virtual void tint_reset() = 0;
+	virtual void tint_reset() = 0; ///< Resets sequence, keeps current state
 	virtual void tint_seq(TimeSpan time_to_reach, FColor target_mul, FColor target_add = FColor(0,0,0,0)) = 0;
 	void tint_default(TimeSpan time_to_reach) {tint_seq(time_to_reach, FColor(1,1,1,1), FColor(0,0,0,0));}
 	
