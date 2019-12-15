@@ -134,11 +134,10 @@ public:
 	virtual void raw_object(uint tex, uint32_t clr) = 0; ///< tex 0 is 'color only'
 	
 protected:
-	friend class RenderControl_Impl;
+	friend class Postproc_Impl;
 	static RenImm* init();
 	virtual ~RenImm();
 	
-	friend class Postproc_Impl;
 	virtual void render_pre() = 0;
 	virtual void render(CtxIndex id) = 0;
 	virtual void render_post() = 0;

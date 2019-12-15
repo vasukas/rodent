@@ -62,17 +62,27 @@ struct LevelTerrain
 	std::vector<std::vector<vec2fp>> ls_wall; ///< Line segment loops representing walls
 	std::vector<std::pair<vec2fp, vec2fp>> ls_grid; ///< Line segments representing background grid
 	
+	enum DbgSpawn
+	{
+		DBG_SPAWN_PLAYER,
+		DBG_SPAWN_DRONE
+	};
+	std::vector<std::pair<vec2i, DbgSpawn>> dbg_spawns; ///< If set, normal spawning doesn't happen
+	
 	
 	
 	struct GenParams
 	{
-		RandomGen* rnd;
+		RandomGen* rnd; ///< Must be non-null
 		vec2i grid_size;
 		float cell_size;
 	};
 	
-	/// Generates level, never fails
+	/// Generates level, never returns null
 	static LevelTerrain* generate(const GenParams& pars);
+	
+	/// Loads debug level from image. Throws on error. Never returns null
+	static LevelTerrain* load_test(const char *filename, float cell_size);
 	
 	///
 	ImageInfo draw_grid(bool is_debug) const;

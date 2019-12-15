@@ -1,67 +1,33 @@
 #include <deque>
 #include "core/settings.hpp"
+#include "vaslib/vas_log.hpp"
 #include "postproc.hpp"
 #include "pp_graph.hpp"
 
-#include "particles.hpp"
 #include "ren_aal.hpp"
 #include "ren_imm.hpp"
+#include "ren_particles.hpp"
 
 
 
-struct PPF_Glowblur : PP_Filter
+static std::vector<float> gauss_kernel(int n, float a)
 {
-	const float a = 12.f; // sigma
-	int n = 3, n_old = -1;
-	int pass = 1;
+	int size = n*2+1;
+	float em = -1 / (2 * a * a);
+	float cm = 1 / sqrt(2 * M_PI * a * a);
+	float s = 0;
 	
-	PPF_Glowblur()
-	{
-		sh = Shader::load_cb("pp/gauss", [this](Shader&){ n_old = -1; });
+	std::vector<float> ker(size);
+	for (int i=0; i<size; i++) {
+		int d = i - n;
+		ker[i] = exp(d*d * em) * cm;
+		s += ker[i];
 	}
-	bool is_ok_int() override
-	{
-		return n > 0 && pass > 0;
-	}
-	void proc() override
-	{
-		sh->bind();
-		sh->set2f("scr_px_size", RenderControl::get_size());
-		
-		if (n_old != n)
-		{
-			auto def = sh->get_def("KERN_SIZE");
-			
-			const int n_max = def ? std::atoi(def->value.c_str()) : 8;
-			n_old = n = std::min(n, n_max);
-			
-			int size = n*2+1;
-			float em = -1 / (2 * a * a);
-			float cm = 1 / sqrt(2 * M_PI * a * a);
-			
-			float s = 0;
-			std::vector<float> ker(size);
-			for (int i=0; i<size; i++) {
-				int d = i - n;
-				ker[i] = exp(d*d * em) * cm;
-				s += ker[i];
-			}
-			for (int i=0; i<size; i++) ker[i] /= s;
-			ker[n] = 1;
-			
-			sh->set1i("size", n);
-			sh->setfv("mul", ker.data(), size);
-		}
-		for (int i=0; i<pass; ++i)
-		{
-			sh->set1i("horiz", 1);
-			draw(false);
-			
-			sh->set1i("horiz", 0);
-			draw(i == pass-1);
-		}
-	}
-};
+	
+	for (int i=0; i<size; i++) ker[i] /= s;
+	return ker;
+}
+
 
 
 struct PPF_Bleed : PP_Filter
@@ -70,7 +36,7 @@ struct PPF_Bleed : PP_Filter
 	
 	PPF_Bleed()
 	{
-		sh = Shader::load("pp/bleed");
+		sh = Shader::load("pp/bleed", {});
 	}
 	bool is_ok_int() override
 	{
@@ -82,6 +48,7 @@ struct PPF_Bleed : PP_Filter
 		for (int i=0; i<n; ++i) draw(i == n-1);
 	}
 };
+
 
 
 struct PPF_Tint : PP_Filter
@@ -97,10 +64,7 @@ struct PPF_Tint : PP_Filter
 	
 	PPF_Tint()
 	{
-		sh = Shader::load_cb("pp/tint", [this](Shader& sh){
-		     sh.set_clr("mul", p_mul);
-		     sh.set_clr("add", p_add);
-		});
+		sh = Shader::load("pp/tint", {});
 	}
 	bool is_ok_int() override
 	{
@@ -158,9 +122,13 @@ struct PPF_Tint : PP_Filter
 };
 
 
+
 class PP_Bloom : public PP_Node
 {
 public:
+	static constexpr float blur_a = 12.f; // sigma
+	static constexpr int blur_n = 3;
+	
 	PP_Bloom(std::string name)
 	    : PP_Node(std::move(name))
 	{
@@ -171,52 +139,38 @@ public:
 				tex_s[i].set(GL_RGBA, RenderControl::get_size(), 0, 4);
 				fbo_s[i].attach_tex(GL_COLOR_ATTACHMENT0, tex_s[i]);
 			}
-		}
-		, true);
+		});
 		
-		sh_blur = Shader::load("pp/gauss", false, false);
-		sh_blur->pre_reb = [this](Shader& sh)
-		{
-			sh.get_def("KERN_SIZE")->value = std::to_string(n_cut*2+1);
+		Shader::Callbacks cbs;
+		cbs.pre_build = [](Shader& sh) {
+			sh.set_def("KERN_SIZE", std::to_string(blur_n*2 + 1));
 		};
-		sh_blur->on_reb = [this](Shader& sh)
-		{
-			int size = n_cut*2+1;
-			int off = n_cut - n;
-			std::vector<float> ker(size);
-			for (int i=0; i<size; i++) {
-				int d = i + off - n;
-				ker[i] = d? 1.f / (d * rad / n) : 1;
-			}
-			
-			sh.set1i("size", n_cut);
-			sh.setfv("mul", ker.data(), size);
+		cbs.post_build = [](Shader& sh) {
+			auto ker = gauss_kernel(blur_n, blur_a);
+			ker[blur_n] = 1;
+		    
+		    sh.set1i("size", blur_n);
+		    sh.setfv("mul", ker.data(), ker.size());
 		};
-		sh_blur->rebuild();
+		sh_blur = Shader::load("pp/blur", std::move(cbs));
 		
-		sh_mix = Shader::load("pp/pass");
+		sh_mix = Shader::load("pp/pass", {});
 	}
 	
 private:
-	const int n = 8;
-	const int n_cut = 5;
-	const float rad = 2.5;
-	
 	GLA_Framebuffer fbo_s[2];
 	GLA_Texture tex_s[2];
 	RAII_Guard rsz_g;
-	
-	Shader* sh_blur;
-	Shader* sh_mix;
+	std::unique_ptr<Shader> sh_blur, sh_mix;
 	
 	bool prepare() override
 	{
 		if (!sh_blur->is_ok() || !sh_mix->is_ok())
 			return false;
 		
-		for (int i=0; i<2; ++i)
+		for (auto& fbo : fbo_s)
 		{
-			fbo_s[i].bind();
+			fbo.bind();
 			glClearColor(0, 0, 0, 0);
 			glClear(GL_COLOR_BUFFER_BIT);
 		}
@@ -230,10 +184,25 @@ private:
 		glActiveTexture(GL_TEXTURE0);
 		RenderControl::get().ndc_screen2().bind();
 		
-		fbo_s[1].bind();
-		tex_s[0].bind();
 		sh_blur->bind();
 		sh_blur->set2f("scr_px_size", RenderControl::get_size());
+		
+		// 1st pass
+		
+		fbo_s[1].bind();
+		tex_s[0].bind();
+		sh_blur->set1i("horiz", 1);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		
+		fbo_s[0].bind();
+		tex_s[1].bind();
+		sh_blur->set1i("horiz", 0);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		
+		// 2nd pass
+		
+		fbo_s[1].bind();
+		tex_s[0].bind();
 		sh_blur->set1i("horiz", 1);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 		
@@ -241,38 +210,8 @@ private:
 		tex_s[1].bind();
 		sh_blur->set1i("horiz", 0);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
-		
-		tex_s[0].bind();
-		sh_mix->bind();
-		glDrawArrays(GL_TRIANGLES, 0, 6);
 	}
 	GLuint get_input_fbo() override {return fbo_s[0].fbo;}
-};
-
-
-
-struct PPF_Hole : PP_Filter
-{
-	std::optional<vec2fp> pos;
-	
-	PPF_Hole() {
-		sh = Shader::load("pp/hole");
-	}
-	bool is_ok_int() override {
-		return !!pos && AppSettings::get().hole_min_alpha < 0.99;
-	}
-	void proc() override
-	{
-		vec2fp sz = RenderControl::get().get_size();
-		vec2fp p = *pos / sz;
-		p.y = 1 - p.y;
-		vec2fp r(0.15, sz.y / sz.x);
-		
-		sh->bind();
-		sh->set4f("pars", p.x, p.y, r.x * r.x, r.y);
-		sh->set1f("min_alpha", AppSettings::get().hole_min_alpha);
-		draw(true);
-	}
 };
 
 
@@ -293,15 +232,6 @@ public:
 	
 	
 	
-	PPF_Hole* hole = nullptr;
-	
-	void set_particle_shadow(std::optional<vec2i> p)
-	{
-		if (hole) hole->pos = p;
-	}
-	
-	
-	
 	struct CaptureInfo
 	{
 		GLA_Framebuffer fbo;
@@ -317,6 +247,7 @@ public:
 		capture = CaptureInfo{};
 		capture->tex = tex;
 		capture->fbo.attach_tex(GL_COLOR_ATTACHMENT0, tex->get_obj());
+		capture->fbo.check_throw("Postproc:: capture");
 		display->fbo = capture->fbo.fbo;
 		draw_ui->enabled = false;
 	}
@@ -331,9 +262,28 @@ public:
 	
 	
 	
-	Postproc_Impl()
+	// deleter for all renderers
+	std::vector<std::function<void()>> r_dels;
+	
+	Postproc_Impl(bool& ok)
 	{
-		auto g = RenderControl::get().get_ppg();
+#define INIT(NAME) \
+		try {\
+			auto var = NAME::init();\
+			VLOGI(#NAME " initialized");\
+			r_dels.emplace_back([var]{ delete var; });\
+		} catch (std::exception& e) {\
+			VLOGE(#NAME " initialization failed: {}", e.what());\
+			return;}
+		
+		INIT(RenAAL);
+		INIT(RenImm);
+		INIT(RenParticles);
+		//
+		INIT(PP_Graph);
+		
+		//
+		
 		display = new PPN_OutputScreen;
 		
 		new PPN_InputDraw("grid", [](auto fbo)
@@ -356,7 +306,7 @@ public:
 			glBlendEquation(GL_FUNC_ADD);
 			
 			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-			ParticleRenderer::get().render();
+			RenParticles::get().render();
 		});
 		
 		new PPN_InputDraw("imm", [](auto fbo)
@@ -386,32 +336,37 @@ public:
 				glBlendEquation(GL_FUNC_ADD);
 			});
 		}{
-			fts.emplace_back(new PPF_Glowblur);
-			fts.emplace_back(hole = new PPF_Hole);
-			new PPN_Chain("E2", std::move(fts), []
-			{
-				glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
-				glBlendEquation(GL_FUNC_ADD);
-			});
+			new PP_Bloom("bloom");
 		}{
 			fts.emplace_back(tint = new PPF_Tint);
 			new PPN_Chain("post", std::move(fts), {});
-		}{
-			new PP_Bloom("bloom");
 		}
 		
-		g->connect("grid", "post", 1);
-		g->connect("aal", "E1", 2);
-		g->connect("imm", "display", 2);
-		g->connect("parts", "E2");
+		auto& g = PP_Graph::get();
 		
-		g->connect("E1", "post", 2);
-//		g->connect("E2", "post", 3);
-		g->connect("post", "display", 1);
-		g->connect("ui", "display", 3);
+		g.connect("grid", "post", 1);
+		g.connect("aal", "E1", 2);
+		g.connect("imm", "display", 2);
 		
-		g->connect("E2", "bloom");
-		g->connect("bloom", "post", 3);
+		g.connect("parts", "bloom");
+		g.connect("bloom", "post", 3);
+		
+		g.connect("E1", "post", 2);
+		g.connect("post", "display", 1);
+		g.connect("ui", "display", 3);
+		
+		ok = true;
+	}
+	~Postproc_Impl()
+	{
+		for (auto it = r_dels.rbegin(); it != r_dels.rend(); ++it)
+			(*it)();
+	}
+	void render()
+	{
+		RenImm::get().render_pre();
+		PP_Graph::get().render();
+		RenImm::get().render_post();
 	}
 };
 
@@ -419,5 +374,11 @@ public:
 
 static Postproc* rni;
 Postproc& Postproc::get() {return *rni;}
-Postproc* Postproc::init() {return rni = new Postproc_Impl;}
+Postproc* Postproc::init()
+{
+	bool ok = false;
+	rni = new Postproc_Impl(ok);
+	if (!ok) delete rni;
+	return rni;
+}
 Postproc::~Postproc() {rni = nullptr;}

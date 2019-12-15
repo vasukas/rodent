@@ -190,9 +190,9 @@ void vig_begin() {
 	//
 	text_input_ev.clear();
 }
-void vig_on_event(const SDL_Event* ev) {
-	if		(ev->type == SDL_KEYDOWN) {
-		int code = ev->key.keysym.scancode;
+void vig_on_event(const SDL_Event& ev) {
+	if		(ev.type == SDL_KEYDOWN) {
+		int code = ev.key.keysym.scancode;
 		
 		// find if key is already detected (repeated event)
 		auto it = std::find_if( keys.begin(), keys.end(), [&code](auto &&v) {return v.code == code;} );
@@ -208,7 +208,7 @@ void vig_on_event(const SDL_Event* ev) {
 			it->passed = 0;
 			
 			// set modifiers
-			int st = ev->key.keysym.mod;
+			int st = ev.key.keysym.mod;
 			auto& mod = it->mod;
 			mod = 0;
 			if (st & KMOD_CTRL)  mod |= vig_Keymod_Ctrl;
@@ -217,8 +217,8 @@ void vig_on_event(const SDL_Event* ev) {
 			if (st & KMOD_CAPS)  mod |= vig_Keymod_Caps;
 		}
 	}
-	else if (ev->type == SDL_KEYUP) {
-		int code = ev->key.keysym.scancode;
+	else if (ev.type == SDL_KEYUP) {
+		int code = ev.key.keysym.scancode;
 		
 		// find if key was pressed (i.e. if discarded it on limit)
 		auto it = std::find_if( keys.begin(), keys.end(), [&code](auto &&v) {return v.code == code;} );
@@ -227,34 +227,34 @@ void vig_on_event(const SDL_Event* ev) {
 		if (it->passed) it->code = 0; // reset key
 		else it->time = -1; // key was pressed and released on same event cycle, will be resetted in vig_draw_end()
 	}
-	else if (ev->type == SDL_MOUSEBUTTONDOWN) {
+	else if (ev.type == SDL_MOUSEBUTTONDOWN) {
 		// set 'pressed' flag if in range
-		int i = ev->button.button;
+		int i = ev.button.button;
 		if (i < vig_Mouse_ButtonCount)
 			mouse_state |= vig_Mouse_PressN(i);
 		
 		// get pos
-		mouse_pos = {ev->button.x, ev->button.y};
+		mouse_pos = {ev.button.x, ev.button.y};
 	}
-	else if (ev->type == SDL_MOUSEBUTTONUP) {
+	else if (ev.type == SDL_MOUSEBUTTONUP) {
 		// if in range and pressed, reset and set click
-		int i = ev->button.button;
+		int i = ev.button.button;
 		if (i < vig_Mouse_ButtonCount && (mouse_state & vig_Mouse_PressN(i))) {
 			mouse_state &= ~vig_Mouse_PressN(i);
 			mouse_state |= vig_Mouse_ClickN(i);
 		}
 	}
-	else if (ev->type == SDL_MOUSEWHEEL) {
-		int x = ev->wheel.x, y = -ev->wheel.y;
-		if (ev->wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {x = -x; y = -y;}
+	else if (ev.type == SDL_MOUSEWHEEL) {
+		int x = ev.wheel.x, y = -ev.wheel.y;
+		if (ev.wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {x = -x; y = -y;}
 		if (x) mouse_state |= x<0? vig_Mouse_WheelLeft : vig_Mouse_WheelRight;
 		if (y) mouse_state |= y<0? vig_Mouse_WheelUp : vig_Mouse_WheelDown;
 	}
-	else if (ev->type == SDL_MOUSEMOTION) {
-		mouse_pos = {ev->motion.x, ev->motion.y};
+	else if (ev.type == SDL_MOUSEMOTION) {
+		mouse_pos = {ev.motion.x, ev.motion.y};
 	}
-	else if (ev->type == SDL_TEXTINPUT) {
-		text_input_ev += ev->text.text;
+	else if (ev.type == SDL_TEXTINPUT) {
+		text_input_ev += ev.text.text;
 	}
 }
 void vig_draw_start() {

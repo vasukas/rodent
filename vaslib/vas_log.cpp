@@ -186,18 +186,20 @@ void log_write_str(LogLevel level, const char *str, size_t length)
 	
 	if (length == std::string::npos) length = strlen (str);
 	s.insert( s.end(), str, str + length );
-	s.push_back('\n');
 	
 	if (lsets.use_cons)
 	{
+		if (lsets.use_clr) s.append( "\033[0m\n", 5 );
+		else s.push_back('\n');
 		auto f = level < LogLevel::Error ? stdout : stderr;
-		if (lsets.use_clr)
-		{
-			fwrite( s.data(), 1, s.length() - 1, f );
-			if (lsets.use_clr) fwrite( "\033[0m\n", 1, 5, stdout );
+		fwrite( s.data(), 1, s.length(), f );
+		if (lsets.use_clr) {
+			s.resize( s.size() - 5 );
+			s.push_back('\n');
 		}
-		else fwrite( s.data(), 1, s.length(), f );
 	}
+	else s.push_back('\n');
+	
 	if (lsets.file && level >= lsets.file_level)
 	{
 		size_t n = s.length() - pref_n;

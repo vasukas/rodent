@@ -332,7 +332,7 @@ void PlayerController::update()
 		
 		p_mov = gpad->get_left();
 		p_tar = gpad->get_right() * gpad_aim_dist;
-		p_tar += RenderControl::get().get_world_camera()->mouse_cast( RenderControl::get_size() /2 );
+		p_tar += RenderControl::get().get_world_camera().mouse_cast( RenderControl::get_size() /2 );
 	}
 	else
 	{
@@ -347,7 +347,7 @@ void PlayerController::update()
 		
 		int mx, my;
 		SDL_GetMouseState(&mx, &my);
-		p_tar = RenderControl::get().get_world_camera()->mouse_cast({mx, my});
+		p_tar = RenderControl::get().get_world_camera().mouse_cast({mx, my});
 	}
 	
 	state.acts.clear();

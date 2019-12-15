@@ -104,5 +104,5 @@ public:
 
 static LevelMap* rni;
 LevelMap* LevelMap::init(const LevelTerrain& lt) {return rni = new LevelMap_Impl (lt);}
-LevelMap* LevelMap::get() {return rni;}
+LevelMap& LevelMap::get() {return *rni;}
 LevelMap::~LevelMap() {rni = nullptr;}

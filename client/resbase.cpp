@@ -1,7 +1,8 @@
 #include <future>
 #include "game/common_defs.hpp"
 #include "render/ren_aal.hpp"
-#include "render/particles.hpp"
+#include "render/ren_particles.hpp"
+#include "render/texture.hpp"
 #include "utils/image_utils.hpp"
 #include "utils/noise.hpp"
 #include "utils/svg_simple.hpp"

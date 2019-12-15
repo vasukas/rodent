@@ -1,11 +1,9 @@
 #include "core/vig.hpp"
 #include "utils/noise.hpp"
-#include "vaslib/vas_cpp_utils.hpp"
-#include "vaslib/vas_file.hpp"
 #include "vaslib/vas_log.hpp"
 #include "camera.hpp"
 #include "control.hpp"
-#include "particles.hpp"
+#include "ren_particles.hpp"
 #include "shader.hpp"
 
 
@@ -21,63 +19,12 @@ void ParticleParams::decel_to_zero()
 }
 void ParticleGroupGenerator::draw(const ParticleBatchPars& pars)
 {
-	ParticleRenderer::get().add(*this, pars);
+	RenParticles::get().add(*this, pars);
 }
 
 
 
-size_t ParticleGroupStd::begin(const ParticleBatchPars &pars, ParticleParams& p)
-{
-	t_tr = pars.tr;
-	t_spdmax = speed_max < 0 ? speed_min : speed_max;
-	t_rotmax = rot_speed_max < 0 ? rot_speed_min : rot_speed_max;
-	t_lmax = (TTL_max.ms() < 0 ? TTL : TTL_max).seconds();
-	t_fmax = (FT_max.ms() < 0 ? FT : FT_max).seconds();
-	
-	p.set_zero(false, true);
-	p.size = px_radius;
-	return count;
-}
-void ParticleGroupStd::gen(ParticleParams& p)
-{
-	// position
-	float ppr = t_tr.rot + rnd_stat().range(rot_min, rot_max);
-	vec2fp rv = {radius_fixed? radius : (float) rnd_stat().range(0, radius), 0.f};
-	rv.fastrotate(ppr);
-	p.pos = t_tr.pos + rv;
-	
-	// speed
-	float sp = rnd_stat().range(speed_min, t_spdmax);
-	float sa = rnd_stat().range(rot_min, rot_max);
-	p.vel = {sp, 0};
-	p.vel.fastrotate(sa);
-	
-	// color
-	if (colors.size()) {
-		int i = rnd_stat().range_index(colors.size());
-		p.clr[0] = (colors[i] >> 24) / 255.f;
-		p.clr[1] = (colors[i] >> 16) / 255.f;
-		p.clr[2] = (colors[i] >> 8) / 255.f;
-		if (alpha) p.clr[3] = alpha / 255.f;
-		else p.clr[3] = colors[i] / 255.f;
-	}
-	else {
-		for (int i=0; i<3; i++) p.clr[i] = rnd_stat().range(colors_range[i], colors_range[i+3]) / 255.f;
-		p.clr[3] = alpha / 255.f;
-	}
-	if (color_speed != 0.f) {
-		for (int j=0; j<3; j++)
-			p.clr[j] *= (1. - color_speed);
-	}
-	
-	// time
-	p.lt = rnd_stat().range(TTL.seconds(), t_lmax);
-	p.ft = rnd_stat().range( FT.seconds(), t_fmax);
-}
-
-
-
-class ParticleRenderer_Impl : public ParticleRenderer
+class RenParticles_Impl : public RenParticles
 {
 public:
 	const int per_part = 5*4; // values per particle
@@ -88,8 +35,7 @@ public:
 	std::shared_ptr<GLA_Buffer> bufs[2];
 	std::vector<float> upd_data; // buffer data
 	
-	Shader* sh_calc = nullptr;
-	Shader* sh_draw = nullptr;
+	std::unique_ptr<Shader> sh_calc, sh_draw;
 	
 	struct Group {
 		int off, num;
@@ -103,10 +49,10 @@ public:
 	
 	
 	
-	ParticleRenderer_Impl()
+	RenParticles_Impl()
 	{
-		sh_calc = Shader::load("ps_calc", true, false);
-		sh_calc->pre_link = [](Shader& sh)
+		Shader::Callbacks cbs;
+		cbs.pre_link = [](Shader& sh)
 		{
 			const char *vars[] = {
 			    "newd[0]",
@@ -117,7 +63,7 @@ public:
 			};
 			glTransformFeedbackVaryings(sh.get_prog(), 5, vars, GL_INTERLEAVED_ATTRIBS);
 		};
-		sh_calc->rebuild();
+		sh_calc = Shader::load("ps_calc", std::move(cbs));
 		
 		for (int i=0; i<2; ++i) {
 			bufs[i].reset( new GLA_Buffer(0) );
@@ -125,7 +71,7 @@ public:
 		}
 		
 		resize_bufs(0);
-		sh_draw = Shader::load("ps_draw", true);
+		sh_draw = Shader::load("ps_draw", {}, true);
 		
 		dbgm_g = vig_reg_menu(VigMenu::DebugRenderer, [this](){vig_label_a("Particles: {:5} / {:5}\n", gs_off_max, part_lim);});
 	}
@@ -198,7 +144,7 @@ public:
 		if (!gs_off_max) return;
 		
 		sh_draw->bind();
-		sh_draw->set4mx("proj", RenderControl::get().get_world_camera()->get_full_matrix());
+		sh_draw->set4mx("proj", RenderControl::get().get_world_camera().get_full_matrix());
 		
 		vao[0].bind();
 		glDrawArrays(GL_POINTS, 0, gs_off_max);
@@ -275,10 +221,7 @@ public:
 
 
 
-static ParticleRenderer_Impl* rni;
-ParticleRenderer& ParticleRenderer::get() {
-	if (!rni) LOG_THROW_X("ParticleRenderer::get() null");
-	return *rni;
-}
-ParticleRenderer* ParticleRenderer::init() {return rni = new ParticleRenderer_Impl;}
-ParticleRenderer::~ParticleRenderer() {rni = nullptr;}
+static RenParticles_Impl* rni;
+RenParticles& RenParticles::get() {return *rni;}
+RenParticles* RenParticles::init() {return rni = new RenParticles_Impl;}
+RenParticles::~RenParticles() {rni = nullptr;}

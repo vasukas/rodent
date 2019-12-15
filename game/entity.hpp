@@ -124,7 +124,7 @@ public:
 	std::string dbg_id() const;
 	
 	
-	/// Called only if in step list
+	/// Called only if in step list (just after ECompType::StepLogic) 
 	virtual void step() {}
 	
 	void   reg_this() noexcept; ///< Adds entity to step list (safe)

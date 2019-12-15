@@ -53,10 +53,6 @@ T fracpart(T x) {return std::fmod(x, 1);}
 template <typename T>
 int int_round(T value) {return static_cast<int>(std::round(value));}
 
-template <typename T>
-typename std::enable_if<std::is_signed<T>::value, bool>::value
-same_sign(T a, T b) {return a < 0 == b < 0;}
-
 
 
 constexpr float deg_to_rad(float x) {return x / 180.f * M_PI;}
@@ -64,7 +60,11 @@ constexpr float deg_to_rad(float x) {return x / 180.f * M_PI;}
 float wrap_angle_2(float x); ///< Brings to [0; 2pi]
 float wrap_angle(float x); ///< Brings to [-pi, +pi]
 
+/// Returns delta for lerp from current to target (shortest path, [-pi; +pi])
 float angle_delta(float target, float current);
+
+/// Returns absolute difference between two unbound angles, [0; pi]
+inline float abs_angle_diff(float a1, float a2) {return std::fabs(wrap_angle( a1 - a2 ));}
 
 /// Linear interpolation between two angles, expressed in radians. Handles all cases
 template <typename T1, typename T2, typename T3>

@@ -3,9 +3,9 @@
 
 #include "client/presenter.hpp"
 #include "utils/time_utils.hpp"
-#include "entity.hpp"
-#include "physics.hpp"
-#include "weapon.hpp"
+#include "game/entity.hpp"
+#include "game/physics.hpp"
+#include "game/weapon.hpp"
 
 class PlayerController;
 

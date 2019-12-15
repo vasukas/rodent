@@ -20,7 +20,7 @@ union  SDL_Event;
 void vig_begin();
 
 /// Must be called only between calls to vig_begin() and vig_draw_start()
-void vig_on_event(const SDL_Event* ev);
+void vig_on_event(const SDL_Event& ev);
 
 /// Must be called after vig_begin() when all events are processed. 
 /// GUI elements can be rendered only between calls to this and vig_draw_end()

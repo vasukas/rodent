@@ -2,8 +2,49 @@
 #define VAS_CPP_UTILS_HPP
 
 #include <algorithm>
+#include <optional>
 #include <functional>
 #include <vector>
+#include "vaslib/vas_types.hpp"
+
+
+
+template <typename T>
+struct ptr_range
+{
+	typedef T value_type;
+	typedef std::remove_const_t<T> mut_t;
+	typedef const mut_t const_t;
+	
+	ptr_range(T* p, size_t n): p(p), n(n) {}
+	
+	template <typename Vec>
+	ptr_range(Vec& vec): p(vec.data()), n(vec.size()) {}
+	
+	mut_t* begin() {return p;}
+	mut_t* end()   {return p + n;}
+	
+	const_t* cbegin() const {return p;}
+	const_t* cend()   const {return p + n;}
+	
+	bool  empty() const {return n == 0;}
+	size_t size() const {return n;}
+	
+	mut_t&   operator[] (size_t i)       {return p[i];}
+	const_t& operator[] (size_t i) const {return p[i];}
+	
+private:
+	T* p;
+	size_t n;
+};
+
+template <typename Vec>
+ptr_range<typename Vec::value_type> ptr_range_offset(Vec& vec, size_t off, std::optional<size_t> num = {}) {
+	return ptr_range(vec.data() + off, (num? *num : vec.size() - off)); }
+
+template <typename Vec>
+ptr_range<typename Vec::value_type> ptr_range_slice(Vec& vec, size_t begin, size_t end) {
+	return ptr_range(vec.data() + begin, end - begin); }
 
 
 
@@ -83,5 +124,10 @@ public:
 		return _erased_fn(_ptr, std::forward<Args>(xs)...);
 	}
 };
+
+
+
+template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
+template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
 #endif // VAS_CPP_UTILS_HPP

@@ -245,7 +245,7 @@ public:
 		for (auto& d : dbg_rs) RenImm::get().draw_rect(d.dst, d.clr);
 		for (auto& d : dbg_ls) RenImm::get().draw_line(d.a, d.b, d.clr, d.wid);
 		
-		float text_k = 1.f / RenderControl::get().get_world_camera()->get_state().mag;
+		float text_k = 1.f / RenderControl::get().get_world_camera().get_state().mag;
 		for (auto& d : dbg_ts) RenImm::get().draw_text(d.at, d.str, RenImm::White, false, text_k);
 		
 		for (auto i = ef_fs.begin(); i != ef_fs.end(); )
@@ -287,8 +287,8 @@ public:
 	
 	Rectfp vport_rect()
 	{
-		auto cam = RenderControl::get().get_world_camera();
-		return Rectfp::from_center( cam->get_state().pos, (cam->coord_size() /2) + vport_offset );
+		auto& cam = RenderControl::get().get_world_camera();
+		return Rectfp::from_center( cam.get_state().pos, (cam.coord_size() /2) + vport_offset );
 	}
 	
 	template <typename T>
@@ -391,6 +391,6 @@ void GamePresenter::add_float_text(FloatText text)
 
 
 static GamePresenter* rni;
-void GamePresenter::init(const InitParams& pars) {rni = new GamePresenter_Impl (pars);}
+GamePresenter* GamePresenter::init(const InitParams& pars) {return rni = new GamePresenter_Impl (pars);}
 GamePresenter* GamePresenter::get() {return rni;}
 GamePresenter::~GamePresenter() {rni = nullptr;}

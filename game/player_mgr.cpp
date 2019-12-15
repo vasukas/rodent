@@ -6,9 +6,9 @@
 #include "render/ren_imm.hpp"
 #include "game_core.hpp"
 #include "level_ctr.hpp"
-#include "player.hpp"
 #include "player_mgr.hpp"
-#include "s_objs.hpp"
+#include "game_objects/player.hpp"
+#include "game_objects/s_objs.hpp"
 
 
 
@@ -194,8 +194,10 @@ public:
 				const int alpha = 0xc0;
 				
 				const TimeSpan hide = TimeSpan::seconds(2);
-				const TimeSpan fade = TimeSpan::seconds(0.5);
+				const TimeSpan fade = TimeSpan::seconds(0.4);
 				TimeSpan now = GameCore::get().get_step_time();
+				
+				//
 				
 				if (auto m = wpn->info->def_delay; m && *m > TimeSpan::seconds(0.5))
 				{
@@ -292,7 +294,7 @@ public:
 			{
 				lct_found = true;
 				add_msg("You have found\nlevel control room");
-				LevelMap::get()->mark_final_term();
+				LevelMap::get().mark_final_term();
 			}
 			
 			if (obj_count < obj_need)
@@ -323,7 +325,7 @@ public:
 
 				auto usage = e->use_string();
 				RenImm::get().draw_text(
-					RenderControl::get().get_world_camera()->direct_cast(e->get_pos()),
+					RenderControl::get().get_world_camera().direct_cast(e->get_pos()),
 					usage.second, usage.first? 0xffffffff : 0xff6060ff, true);
 				
 				auto now = GameCore::get().get_step_time();
@@ -345,9 +347,9 @@ public:
 			else s = "NO DEBUG STATS";
 			draw_text_hud({0, RenderControl::get_size().y / 2.f}, s);
 			
-			auto cam  = RenderControl::get().get_world_camera();
-			auto pos  = cam->direct_cast( ent->get_pos() );
-			auto size = cam->direct_cast( ent->get_pos() + vec2fp::one(ent->get_phy().get_radius()) );
+			auto& cam = RenderControl::get().get_world_camera();
+			auto pos  = cam.direct_cast( ent->get_pos() );
+			auto size = cam.direct_cast( ent->get_pos() + vec2fp::one(ent->get_phy().get_radius()) );
 			RenImm::get().draw_frame( Rectfp::from_center(pos, size - pos), 0x00ff00ff, 3 );
 		}
 	}

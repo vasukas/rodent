@@ -5,8 +5,6 @@
 #include "vaslib/vas_math.hpp"
 #include "gl_utils.hpp"
 
-
-
 /// Shader program wrapper
 class Shader
 {
@@ -15,33 +13,38 @@ public:
 	{
 		std::string name;
 		std::string value; ///< Call rebuild() to apply changes
-		
-		bool is_src = false; ///< Set to true if was defined in shader (not used internally)
 		bool is_default = true; ///< Set to false if value shouldn't be replaced with default on reload
 	};
 	
-	std::vector<Define> def_list; ///< Parameters, either specified by shader or added manually
+	struct Callbacks
+	{
+		std::function<void(Shader&)> post_build = {}; ///< Called on rebuild, shader is already built and bound
+		std::function<void(Shader&)> pre_build = {}; ///< Called on rebuild before compiling and linking shader
+		std::function<void(Shader&)> pre_link = {}; ///< Called on rebuild between attaching shaders and linking
+	};
 	
-	std::function<void(Shader&)> pre_reb; ///< Called on rebuild before compiling and linking shader
-	std::function<void(Shader&)> on_reb; ///< Called on rebuild, shader is already built and bound
-	std::function<void(Shader&)> pre_link; ///< Called on rebuild between attaching shaders and linking
+	Callbacks cbs;
+	bool is_critical;
 	
 	
+	
+	static ptr_range<Shader*> get_all_ptrs(); ///< Returns all shaders
 	
 	/// Never returns null
-	static Shader* load(const char *name, bool is_critical = false, bool do_build = true);
+	static std::unique_ptr<Shader> load(const char *name, Callbacks cbs, bool is_critical = false, bool do_build = true);
 	
-	/// Non-critical, sets on_reb and builds shader
-	static Shader* load_cb(const char *name, std::function<void(Shader&)> on_reb);
+	Shader(const Shader&) = delete;
+	~Shader();
 	
-	const std::string& get_name() const {return name;}
-	bool is_ok() const {return prog;} ///< Returns true if can be used
+	const std::string& get_name() const {return prog_name;}
+	bool is_ok() const {return prog || never_built;} ///< Returns true if can be used
 	
 	Define* get_def(std::string_view name); ///< Returns define from 'def_list' or null if not found
+	void set_def(std::string_view name, std::string value); ///< Sets define value if it exists. Shader marked for rebuild
 	GLuint get_prog() {return prog;} ///< May return 0
 	
+	bool reload(); ///< Loads shader sources and rebuilds shader if it was built before
 	bool rebuild(bool forced = true); ///< Just rebuilds program
-	bool reload(); ///< Loads shader sources and rebuilds program if needed
 	
 	void bind(); ///< Builds shader if not already
 	
@@ -61,37 +64,20 @@ public:
 	
 	
 private:
-	friend class RenderControl_Impl;
-	
-	struct DEL {void operator()(Shader* p){delete p;}};
-	static std::vector<std::unique_ptr<Shader, DEL>> sh_col;
-	
-	struct SingleShader
-	{
-		std::string name; ///< file name
-		GLenum type;
-		std::string full_name; ///< name with type
-		std::string src_version; ///< #version
-		std::string src_code;
-		std::vector<Define> defs;
-	};
-	
-	static std::shared_ptr<SingleShader> read_shader(std::vector<std::string_view>& lines, size_t& i, const std::string& full_name);
-	static std::shared_ptr<SingleShader> get_shd(GLenum type, std::string name);
-	
 	GLuint prog = 0; ///< Program object (can be 0)
-	std::vector<std::shared_ptr<SingleShader>> src; ///< Indices into 'sh_src'
+	std::vector<size_t> src_ixs; ///< Index into sh_col
+	std::vector<Define> def_list; ///< All defines from separate shaders
 	
-	std::string name;
+	std::string prog_name; ///< Same as filename
 	bool validate = false;
+	
+	std::vector<uint32_t> no_such_loc; // hash
+	bool never_built = true;
 	
 	
 	
 	Shader() = default;
-	~Shader() {reset_prog();}
 	void reset_prog();
-	
-	//
 	
 	/// Returns binding point or -1 if not found
 	GLint find_loc( const char *uniform_name );

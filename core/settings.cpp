@@ -36,7 +36,7 @@ AppSettings::AppSettings()
 		VLOGE("SDL_GetBasePath failed - {}", SDL_GetError());
 	}
 	
-	if (char* s = SDL_GetBasePath())
+	if (char* s = SDL_GetPrefPath("madkrabs", "rodent"))
 	{
 		pref = s;
 		SDL_free(s);
@@ -64,21 +64,33 @@ bool AppSettings::load()
 	BC_Cmd* c;
 	float f;
 	
+#define P_INT(NAME, CHECK)\
+	c = &cs.emplace_back( true, true, #NAME, [&](){ NAME = i; return CHECK; }); \
+	c->val(i)
+	
+#define P_FLOAT(NAME, CHECK)\
+	c = &cs.emplace_back( true, true, #NAME, [&](){ NAME = f; return CHECK; }); \
+	c->val(f)
+	
+#define P_BOOL(NAME)\
+	c = &cs.emplace_back( true, true, #NAME, [&](){ NAME = i; return i == 0 || i == 1; }); \
+	c->val(i)
+	
+#define P_TERN(NAME)\
+	c = &cs.emplace_back( true, true, #NAME, [&](){ NAME = i; return i > -2 && i < 2; }); \
+	c->val(i)
+	
+	//
+	
 	c = &cs.emplace_back( true, true, "wnd_size", [&](){ wnd_size = {i, i2}; return i > 0 && i2 > 0; });
 	c->val(i);
 	c->val(i2);
 	
-	c = &cs.emplace_back( true, true, "wnd_size_max", [&](){ wnd_size_max = i; return i == 0 || i == 1; });
-	c->val(i);
+	P_BOOL(wnd_size_max);
+	P_TERN(fscreen);
 	
-	c = &cs.emplace_back( true, true, "fscreen", [&](){ fscreen = i; return i > -2 && i < 2; });
-	c->val(i);
-	
-	c = &cs.emplace_back( true, true, "target_fps", [&](){ target_fps = i; return i > 0 && i <= 1000; });
-	c->val(i);
-	
-	c = &cs.emplace_back( true, true, "set_vsync", [&](){ set_vsync = i; return i > -2 && i < 2; });
-	c->val(i);
+	P_INT(target_fps, i > 0 && i <= 1000);
+	P_TERN(set_vsync);
 	
 #define FONT(NM) \
 	c = &cs.emplace_back( true, true, "font_" #NM "fn", [&](){ font_##NM##path = s; font_##NM##path.insert( 0, "res/" ); return true; }); \
@@ -88,15 +100,9 @@ bool AppSettings::load()
 	
 	FONT();
 	FONT(dbg_);
+	P_INT(font_supersample, i >= 1);
 	
-	c = &cs.emplace_back( true, true, "font_supersample", [&](){ font_supersample = i; return i > 1; });
-	c->val(i);
-	
-	c = &cs.emplace_back( true, true, "hole_min_alpha", [&](){ hole_min_alpha = f; return true; });
-	c->val(f);
-	
-	c = &cs.emplace_back( true, true, "cam_mag_mul", [&](){ cam_mag_mul = f; return true; });
-	c->val(f);
+	P_FLOAT(cam_mag_mul, true);
 	
 	return bc_parsefile( path_settings.c_str(), std::move(cs), 2, BC_Block::F_IGNORE_UNKNOWN );
 }

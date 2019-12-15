@@ -51,8 +51,9 @@ std::optional<Weapon::DirectionResult> Weapon::get_direction(const ShootParams& 
 	offset.rotate(rot);
 	offset += info->bullet_offset.get_rotated( rot );
 	
-	if (!GameCore::get().get_phy().raycast_nearest( conv(orig), conv(orig + offset) ))
-		orig += offset;
+	if (auto rc = GameCore::get().get_phy().raycast_nearest( conv(orig), conv(orig + offset) ))
+		offset = 0.9 * (conv(rc->poi) - orig);
+	orig += offset;
 	
 	vec2fp dir = ignore_target ? offset : pars.target - orig;
 	dir.norm();

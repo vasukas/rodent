@@ -2,7 +2,7 @@
 #include "client/presenter.hpp"
 #include "render/ren_aal.hpp"
 #include "utils/noise.hpp"
-#include "game_core.hpp"
+#include "game/game_core.hpp"
 #include "weapon_all.hpp"
 
 
@@ -347,7 +347,7 @@ bool ElectroCharge::SrcParams::ignore(Entity* ent)
 	if (!ign) prev.push_back(ent);
 	return ign;
 }
-bool ElectroCharge::generate(vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim, bool is_first)
+bool ElectroCharge::generate(vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim)
 {
 	PhysicsWorld::CastFilter check(
 		[](auto, b2Fixture* f)
@@ -416,6 +416,7 @@ bool ElectroCharge::generate(vec2fp pos, SrcParams src, std::optional<vec2fp> di
 		q.amount = damage;
 		q.wpos = r.poi;
 		q.armor = r.armor;
+		q.src_eid = src.src_eid;
 		r.hc->apply(q);
 		
 		auto& n = n_cs.emplace_back();
@@ -425,18 +426,28 @@ bool ElectroCharge::generate(vec2fp pos, SrcParams src, std::optional<vec2fp> di
 	}
 	
 	for (auto& n : n_cs) {
-		effect_lightning(pos, n, is_first? EffectLightning::First : EffectLightning::Regular, left_init);
+		effect_lightning(pos, n, src.gener == 0 ? EffectLightning::First : EffectLightning::Regular, left_init);
 		new ElectroCharge(n, src, (n - pos).get_norm());
 	}
 	
 	return !n_cs.empty();
 }
+ElectroCharge::ElectroCharge(vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim)
+	: phy(this, Transform{pos}), src(src), dir_lim(dir_lim)
+{
+	reg_this();
+}
 void ElectroCharge::step()
 {
+	GameCore::get().valid_ent(src.src_eid);
+	
 	left -= GameCore::step_len;
 	if (left.is_negative())
 	{
-		generate(phy.get_pos(), src, dir_lim, false);
+		if (src.gener != last_generation) {
+			++src.gener;
+			generate(phy.get_pos(), src, dir_lim);
+		}
 		destroy();
 	}
 }
@@ -511,7 +522,7 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 	
 	if (pars.alt)
 	{
-		bool ok = ElectroCharge::generate(p, {ent->get_team()}, v, true);
+		bool ok = ElectroCharge::generate(p, {ent->get_team(), ent->index}, v);
 		if (ok) return ShootResult{};
 	}
 	
@@ -622,7 +633,7 @@ void FoamProjectile::freeze()
 	hlc.get_hp().renew(80);
 	
 	phw.post_step([this]{ phy.body->SetType(b2_staticBody); });
-	EVS_SUBSCR_FORCE_ALL;
+	EVS_SUBSCR_UNSUB_ALL;
 	
 	team = TEAM_ENVIRON;
 	ren.clr = FColor(0.95, 1, 1);

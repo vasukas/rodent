@@ -17,6 +17,7 @@ public:
 	
 	void set_state(Frame frm);
 	const Frame& get_state() const {return cur;}
+	      Frame& mut_state();
 	
 	void set_vport(Rect vp);
 	void set_vport_full(); ///< Sets full window viewport

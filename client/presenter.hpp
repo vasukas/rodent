@@ -5,7 +5,7 @@
 #include <variant>
 #include <vector>
 #include "game/entity.hpp"
-#include "render/particles.hpp"
+#include "render/ren_particles.hpp"
 #include "utils/color_manip.hpp"
 #include "vaslib/vas_time.hpp"
 #include "resbase.hpp"
@@ -187,7 +187,7 @@ public:
 		std::shared_ptr<LevelTerrain> lvl; ///< Must be non-null
 	};
 	
-	static void init(const InitParams& pars); ///< Creates singleton (must be called from render thread)
+	static GamePresenter* init(const InitParams& pars); ///< Creates singleton (must be called from render thread)
 	static GamePresenter* get(); ///< Returns singleton
 	virtual ~GamePresenter();
 	

@@ -1,5 +1,17 @@
 #include "vas_containers.hpp"
 
+#ifdef _MSC_VER
+#include <malloc.h>
+#define ALIGN_ALLOC(ALIGN, SIZE) _aligned_malloc(SIZE, ALIGN)
+#define ALIGN_FREE(PTR) _aligned_free(PTR)
+#else
+#include <cstdlib>
+#define ALIGN_ALLOC(ALIGN, SIZE) std::aligned_alloc(ALIGN, SIZE)
+#define ALIGN_FREE(PTR) std::free(PTR)
+#endif
+
+
+
 PoolAllocator::PoolAllocator(Param new_par)
     : par(0, 1)
 {
@@ -36,13 +48,13 @@ void PoolAllocator::free(void* ptr)
 void PoolAllocator::set_params(Param new_par)
 {
 	size_t old_off = id_off;
-	size_t old_size = obj_size;
+	size_t old_size = bc_size;
 	
 	par = new_par;
-	id_off = std::max(sizeof(Id), par.obj_align);
-	obj_size = par.obj_size + id_off;
+	id_off = std::max(id_sizeof, par.obj_align);
+	bc_size = par.obj_size + id_off;
 	
-	if (old_size != obj_size || old_off != id_off)
+	if (old_size != bc_size || old_off != id_off)
 	{
 		size_t i = 0;
 		for (auto& p : ps) {
@@ -58,15 +70,17 @@ void PoolAllocator::set_params(Param new_par)
 PoolAllocator::Pool::Pool(PoolAllocator* pa, size_t self_index)
 {
 	size = pa->par.pool_size;
-	
-	mem = new uint8_t [size * pa->obj_size];
+
+	mem = static_cast<uint8_t*>( ALIGN_ALLOC(pa->par.obj_align, size * pa->bc_size) );
+	if (!mem) throw std::bad_alloc();
+
 	fs = new size_t [size];
 	f_num = size;
 
 	for (size_t i=0; i<size; ++i)
 	{
-		size_t offset = i * pa->obj_size + pa->id_off;
-		auto& id = *reinterpret_cast<Id*>(mem + i * pa->obj_size);
+		size_t offset = i * pa->bc_size + pa->id_off; // to actual data
+		auto& id = *reinterpret_cast<Id*>(mem + i * pa->bc_size);
 		id.pool = self_index;
 		id.index = offset;
 		fs[size - i - 1] = offset;
@@ -74,6 +88,14 @@ PoolAllocator::Pool::Pool(PoolAllocator* pa, size_t self_index)
 }
 PoolAllocator::Pool::~Pool()
 {
-	delete[] mem;
+	ALIGN_FREE(mem);
 	delete[] fs;
+}
+void PoolAllocator::Pool::operator=(Pool&& p)
+{
+	std::swap(mem,   p.mem);
+	std::swap(fs,    p.fs);
+	std::swap(f_num, p.f_num);
+	std::swap(size,  p.size);
+	std::swap(old,   p.old);
 }

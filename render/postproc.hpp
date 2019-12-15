@@ -16,15 +16,13 @@ public:
 	virtual void tint_seq(TimeSpan time_to_reach, FColor target_mul, FColor target_add = FColor(0,0,0,0)) = 0;
 	void tint_default(TimeSpan time_to_reach) {tint_seq(time_to_reach, FColor(1,1,1,1), FColor(0,0,0,0));}
 	
-	/// If set, dims particles near that screen area
-	virtual void set_particle_shadow(std::optional<vec2i> p) = 0;
-	
 	virtual void capture_begin(Texture* tex) = 0; ///< Texture must have same size as window
 	virtual void capture_end() = 0;
 	
 protected:
 	friend class RenderControl_Impl;
 	static Postproc* init(); ///< Creates singleton
+	virtual void render() = 0;
 	virtual ~Postproc();
 };
 

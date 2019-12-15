@@ -2,7 +2,10 @@
 #include "vaslib/vas_cpp_utils.hpp"
 #include "vaslib/vas_file.hpp"
 #include "vaslib/vas_log.hpp"
+#include "vaslib/vas_misc.hpp"
 #include "vaslib/vas_string_utils.hpp"
+
+
 
 /*
 	Format directives: 
@@ -15,15 +18,24 @@
 	//@def <NAME> <DEF_VALUE>   // declares parameter
 */
 
-std::vector<std::unique_ptr<Shader, Shader::DEL>> Shader::sh_col;
+struct SingleShader
+{
+	std::string fname; ///< file name (without res path)
+	GLenum type;
+	std::string full_name; ///< name:type
+	std::string src_version; ///< #version
+	std::string src_code;
+	std::vector<Shader::Define> defs;
+};
+static std::vector<SingleShader> sh_col;
 
 template<typename T, typename R>
-bool begins_with(T& s, const R& pref) {
+bool begins_with(const T& s, const R& pref) {
 	return !s.compare(0, pref.length(), pref);
 }
 
 template<typename T>
-bool begins_with(T& s, const char *pref) {
+bool begins_with(const T& s, const char *pref) {
 	return !s.compare(0, strlen(pref), pref);
 }
 
@@ -40,12 +52,12 @@ static const std::vector<PrefAssoc> pref_assoc =
     {GL_GEOMETRY_SHADER, "//@geom", "geom"}
 };
 
-std::shared_ptr<Shader::SingleShader> Shader::read_shader(std::vector<std::string_view>& lines, size_t& i, const std::string& full_name)
+static std::optional<SingleShader> read_shader(const std::vector<std::string_view>& lines, size_t& i, const std::string& full_name)
 {
 	// i ->: first line of block (excluding header)
 	// i <-: first line after block (excluding @end)
 	
-	Shader::SingleShader sh;
+	SingleShader sh;
 	
 	for (; i < lines.size(); ++i)
 	{
@@ -67,7 +79,6 @@ std::shared_ptr<Shader::SingleShader> Shader::read_shader(std::vector<std::strin
 			}
 			
 			auto& d = sh.defs.emplace_back();
-			d.is_src = true;
 			d.name = args[1];
 			d.value = args[2];
 		}
@@ -103,24 +114,31 @@ std::shared_ptr<Shader::SingleShader> Shader::read_shader(std::vector<std::strin
 		return {};
 	}
 	
-	return std::make_shared<Shader::SingleShader>(std::move(sh));
+	return sh;
 }
 
-std::shared_ptr<Shader::SingleShader> Shader::get_shd(GLenum type, std::string name)
+static std::optional<size_t> get_shd_existing(GLenum type, const std::string& fname)
+{
+	for (size_t i = 0; i < sh_col.size(); ++i)
+	{
+		auto& s = sh_col[i];
+		if (s.type == type && s.fname == fname)
+			return i;
+	}
+	return {};
+}
+
+static std::optional<size_t> get_shd(GLenum type, const std::string& fname)
 {
 	// search loaded
 	
-	for (auto& p : sh_col)
-	for (auto& s : p->src)
-	{
-		if (s->type == type && s->name == name)
-			return s;
-	}
+	if (auto i = get_shd_existing(type, fname))
+		return i;
 	
 	// get pref & make name
 	
 	std::string_view pref;
-	std::string full_name = name;
+	std::string full_name = fname;
 	full_name += ':';
 	
 	for (auto& p : pref_assoc)
@@ -133,16 +151,16 @@ std::shared_ptr<Shader::SingleShader> Shader::get_shd(GLenum type, std::string n
 		}
 	}
 	if (pref.empty()) {
-		VLOGE("Shader:: no directive for shader type {}; '{}'", type, name);
+		VLOGE("Shader:: no directive for shader type {}; '{}'", type, fname);
 		return {};
 	}
 	
 	// read file
 	
-	auto file_opt = readfile( (std::string("res/shaders/") + name).data() );
+	auto file_opt = readfile( (std::string("res/shaders/") + fname).data() );
 	if (!file_opt) {
-		VLOGE("Shader:: can't read shader \"{}\"; '{}'", name, full_name);
-		return nullptr;
+		VLOGE("Shader:: can't read shader \"{}\"; '{}'", fname, full_name);
+		return {};
 	}
 	
 	const std::string& file = *file_opt;
@@ -177,38 +195,43 @@ std::shared_ptr<Shader::SingleShader> Shader::get_shd(GLenum type, std::string n
 	auto sh = read_shader(lines, i, full_name);
 	if (!sh) return {};
 	
-	sh->name = std::move(name);
+	sh->fname = fname;
 	sh->type = type;
 	sh->full_name = std::move(full_name);
-	return sh;
+	
+	sh_col.emplace_back( std::move(*sh) );
+	return sh_col.size() - 1;
 }
 
-Shader* Shader::load(const char *name, bool, bool do_build)
+
+
+static std::vector<Shader*> all_shader_ptr;
+
+ptr_range<Shader*> Shader::get_all_ptrs()
 {
-	for (auto& s : sh_col)
-	{
-		if (s->name == name)
-		{
-			if (do_build) s->rebuild(false);
-			return s.get();
-		}
-	}
-	
-	auto& s = sh_col.emplace_back(new Shader);
-	s->name = name;
-	
-	s->reload();
-	if (do_build) s->rebuild();
-	
-	return s.get();
+	return all_shader_ptr;
 }
 
-Shader* Shader::load_cb(const char *name, std::function<void(Shader&)> on_reb)
+std::unique_ptr<Shader> Shader::load(const char *name, Callbacks cbs, bool is_critical, bool do_build)
 {
-	Shader* s = load(name, false, false);
-	s->on_reb = std::move(on_reb);
-	s->rebuild();
+	std::unique_ptr<Shader> s(new Shader);
+	all_shader_ptr.push_back(s.get());
+	
+	s->cbs = std::move(cbs);
+	s->is_critical = is_critical;
+	s->prog_name = name;
+	
+	if (s->reload() && do_build) s->rebuild();
 	return s;
+}
+
+Shader::~Shader()
+{
+	reset_prog();
+	
+	auto it = std::find(all_shader_ptr.begin(), all_shader_ptr.end(), this);
+	if (it != all_shader_ptr.end())
+		all_shader_ptr.erase(it);
 }
 
 Shader::Define* Shader::get_def(std::string_view name)
@@ -220,18 +243,213 @@ Shader::Define* Shader::get_def(std::string_view name)
 	return nullptr;
 }
 
+void Shader::set_def(std::string_view name, std::string value)
+{
+	auto d = get_def(name);
+	if (d) {
+		d->value = std::move(value);
+		reset_prog();
+	}
+	else VLOGD("Shader::set_def() no '{}' in '{}'", name, prog_name);
+}
+
+bool Shader::reload()
+{
+	bool was_built = (prog != 0);
+	
+	// read file
+	
+	auto file_opt = readfile( (std::string("res/shaders/") + prog_name).data() );
+	if (!file_opt) {
+		VLOGE("Shader::reload() can't read file; '{}'", prog_name);
+		return false;
+	}
+	
+	const std::string& file = *file_opt;
+	auto lines = string_split_view(file, {"\n"}, false);
+	
+	// clear
+	
+	src_ixs.clear();
+	reset_prog();
+	
+	// parse file
+	
+	for (size_t i=0; i < lines.size(); ++i)
+	{
+		auto& ln = lines[i];
+		
+		if (begins_with(ln, "//@"))
+		{
+			GLenum type = 0;
+			std::string full_name = prog_name;
+			
+			for (auto& p : pref_assoc)
+			{
+				if (begins_with(ln, p.pref))
+				{
+					type = p.type;
+					full_name += ':';
+					full_name += p.name;
+					break;
+				}
+			}
+			
+			if (!type) {
+				VLOGE("Shader::reload() inappropriate directive; '{}' (line {})", prog_name, i+1);
+				return false;
+			}
+			
+			auto args = string_split_view(ln, {" "});
+			if		(args.size() == 1)
+			{
+				++i;
+				auto sh = read_shader(lines, i, full_name);
+				if (!sh) {
+					VLOGE("Shader::reload() can't load shader; '{}' (line {})", full_name, i+1);
+					return false;
+				}
+				--i;
+				
+				sh->fname = prog_name;
+				sh->type = type;
+				sh->full_name = std::move(full_name);
+				
+				//
+				
+				auto i_src = get_shd_existing(sh->type, prog_name);
+				if (i_src) sh_col[*i_src] = std::move(*sh);
+				else {
+					i_src = sh_col.size();
+					sh_col.emplace_back(std::move(*sh));
+				}
+				src_ixs.push_back(*i_src);
+			}
+			else if (args.size() == 2)
+			{
+				auto sh = get_shd(type, std::string(args[1]));
+				if (!sh) {
+					VLOGE("Shader::reload() can't find or load shader; '{}' (line {})", full_name, i+1);
+					return false;
+				}
+				src_ixs.push_back(*sh);
+			}
+			else {
+				VLOGE("Shader::reload() inappropriate 'shader' directive; '{}' (line {})", prog_name, i+1);
+				return false;
+			}
+		}
+		else if (!begins_with(ln, "//"))
+		{
+			for (auto& c : ln)
+			{
+				if (c != ' ' && c != '\t') {
+					VLOGE("Shader::reload() code outside of block; '{}' (line {})", prog_name, i+1);
+					return false;
+				}
+			}
+		}
+	}
+	
+	// check shader types
+	
+	int n_vert = 0;
+	int n_frag = 0;
+	int n_geom = 0;
+	int n_unk = 0;
+	
+	for (auto& i_src : src_ixs)
+	{
+		auto& s = sh_col[i_src];
+		switch (s.type)
+		{
+		case GL_VERTEX_SHADER:   ++n_vert; break;
+		case GL_FRAGMENT_SHADER: ++n_frag; break;
+		case GL_GEOMETRY_SHADER: ++n_geom; break;
+		default: ++n_unk; break;
+		}
+	}
+	
+	if (n_vert > 1 || n_frag > 1 || n_geom > 1)
+	{
+		std::string ls;
+		for (auto& i_src : src_ixs) {ls += "  "; ls += sh_col[i_src].full_name;}
+		VLOGE("Shader::reload() more than one shader of same type found; '{}':\n{}", prog_name, ls);
+	}
+	if (n_unk) VLOGW("Shader::reload() {} unknown shader types in '{}'", n_unk, prog_name);
+	
+	if (src_ixs.empty()) VLOGE("Shader::reload() no shaders in '{}'", prog_name);
+	else {
+		if (!n_vert) VLOGW("Shader::reload() no vertex shader in '{}'", prog_name);
+		if (!n_frag) VLOGW("Shader::reload() no fragment shader in '{}'", prog_name);
+	}
+	
+	// update defines
+	
+	auto old_defs = std::move(def_list);
+	
+	for (auto& i_src : src_ixs)
+	{
+		auto& s = sh_col[i_src];
+		for (auto& new_d : s.defs)
+		{
+			bool skip = false;
+			for (auto& d : def_list)
+			{
+				if (d.name == new_d.name)
+				{
+					if (d.value != new_d.value)
+						VLOGW("Shader::reload() define declared multiple times with different value (first one is used) - '{}' in '{}'",
+						      d.name, prog_name);
+					
+					skip = true;
+					break;
+				}
+			}
+			if (skip) continue;
+			
+			//
+				
+			auto& nd = def_list.emplace_back();
+			nd = new_d;
+			
+			// check if had non-default value
+			
+			Define* d_old = {};
+			for (auto& d : old_defs) {
+				if (d.name == new_d.name) {
+					d_old = &d;
+					break;
+				}
+			}
+			
+			if (d_old && !d_old->is_default)
+			{
+				nd.value = std::move(d_old->value);
+				nd.is_default = false;
+			}
+		}
+	}
+	
+	//
+	
+//	VLOGV("Shader::reload() ok - {}", name);
+	return was_built? rebuild() : true;
+}
+
 bool Shader::rebuild(bool forced)
 {
 	if (prog && !forced)
 		return true;
 	
+	never_built = false;
 	reset_prog();
 	
-	if (src.empty())
+	if (src_ixs.empty())
 		return false;
 	
-	if (pre_reb)
-		pre_reb(*this);
+	if (cbs.pre_build)
+		cbs.pre_build(*this);
 	
 	// get defines
 	
@@ -255,22 +473,23 @@ bool Shader::rebuild(bool forced)
 	{
 		for (auto& s : shs) glDeleteShader(s);
 		if (did_fail) {
-			VLOGE("Shader::rebuild() failed - [] {}", name);
+			VLOGE("Shader::rebuild() failed - [] {}", prog_name);
 			reset_prog();
 		}
 	});
 	
 	// compile
 	
-	for (auto& src : src)
+	for (auto& i_src : src_ixs)
 	{
-		src_s[0] = src->src_version.data();
-		src_n[0] = src->src_version.length();
-		src_s[2] = src->src_code.data();
-		src_n[2] = src->src_code.length();
+		auto& src = sh_col[i_src];
+		src_s[0] = src.src_version.data();
+		src_n[0] = src.src_version.length();
+		src_s[2] = src.src_code.data();
+		src_n[2] = src.src_code.length();
 		
 		GLuint& sh = shs.emplace_back();
-		sh = glCreateShader(src->type);
+		sh = glCreateShader(src.type);
 		glShaderSource(sh, 3, src_s, src_n);
 		glCompileShader(sh);
 		
@@ -285,7 +504,7 @@ bool Shader::rebuild(bool forced)
 			GLsizei len = 0;
 			glGetShaderInfoLog(sh, str_n, &len, str);
 			VLOGE("Shader:: compilation of '{}' failed:\n{}\nEND\n",
-			      src->full_name, std::string_view(str, len));
+			      src.full_name, std::string_view(str, len));
 			
 			delete[] str;
 			return false;
@@ -295,13 +514,13 @@ bool Shader::rebuild(bool forced)
 		{
 			GLint str_n = 0;
 			glGetShaderiv(sh, GL_INFO_LOG_LENGTH, &str_n);
-			if (str_n)
+			if (str_n > 3) // just newline
 			{
 				char *str = new char [str_n];
 				GLsizei len = 0;
 				glGetShaderInfoLog(sh, str_n, &len, str);
 				VLOGE("Shader::rebuild() compilation info for '{}' in {}:\n{}\nEND\n",
-				      src->full_name, name, std::string_view(str, len));
+				      src.full_name, prog_name, std::string_view(str, len));
 				delete[] str;
 			}
 		}
@@ -314,8 +533,8 @@ bool Shader::rebuild(bool forced)
 	for (auto& s : shs)
 		glAttachShader(prog, s);
 	
-	if (pre_link)
-		pre_link(*this);
+	if (cbs.pre_link)
+		cbs.pre_link(*this);
 	
 	glLinkProgram(prog);
 	
@@ -345,7 +564,7 @@ bool Shader::rebuild(bool forced)
 			GLsizei len = 0;
 			glGetProgramInfoLog(prog, str_n, &len, str);
 			VLOGV("Shader::rebuild() link info for [{}] {}:\n{}\nEND\n",
-			      prog, name, std::string_view(str, len));
+			      prog, prog_name, std::string_view(str, len));
 			delete[] str;
 		}
 	}
@@ -355,171 +574,16 @@ bool Shader::rebuild(bool forced)
 	
 	// finished
 	
-	VLOGD("Shader::rebuild() ok - [{}] {}", prog, name);
+	VLOGD("Shader::rebuild() ok - [{}] {}", prog, prog_name);
 	did_fail = false;
 	
-	if (on_reb) {
+	if (cbs.post_build) {
 		glUseProgram(prog);
-		on_reb(*this);
+		cbs.post_build(*this);
 	}
 	
 	validate = true;
 	return true;
-}
-
-bool Shader::reload()
-{
-	bool was_built = is_ok();
-	
-	// read file
-	
-	auto file_opt = readfile( (std::string("res/shaders/") + name).data() );
-	if (!file_opt) {
-		VLOGE("Shader::reload() can't read file; '{}'", name);
-		return false;
-	}
-	
-	const std::string& file = *file_opt;
-	auto lines = string_split_view(file, {"\n"}, false);
-	
-	// clear
-	
-	src.clear();
-	reset_prog();
-	
-	// parse file
-	
-	for (size_t i=0; i < lines.size(); ++i)
-	{
-		auto& ln = lines[i];
-		
-		if (begins_with(ln, "//@"))
-		{
-			GLenum type = 0;
-			std::string full_name = name;
-			
-			for (auto& p : pref_assoc)
-			{
-				if (begins_with(ln, p.pref))
-				{
-					type = p.type;
-					full_name += p.name;
-					break;
-				}
-			}
-			
-			if (!type) {
-				VLOGE("Shader::reload() inappropriate directive; '{}' (line {})", name, i+1);
-				return false;
-			}
-			
-			auto args = string_split_view(ln, {" "});
-			if		(args.size() == 1)
-			{
-				++i;
-				auto sh = read_shader(lines, i, full_name);
-				if (!sh) {
-					VLOGE("Shader::reload() can't load shader; '{}' (line {})", full_name, i+1);
-					return false;
-				}
-				--i;
-				
-				sh->name = name;
-				sh->type = type;
-				sh->full_name = std::move(full_name);
-				src.emplace_back(std::move(sh));
-			}
-			else if (args.size() == 2)
-			{
-				auto sh = get_shd(type, std::string(args[1]));
-				if (!sh) {
-					VLOGE("Shader::reload() can't find or load shader; '{}' (line {})", full_name, i+1);
-					return false;
-				}
-				src.emplace_back(std::move(sh));
-			}
-			else {
-				VLOGE("Shader::reload() inappropriate 'shader' directive; '{}' (line {})", name, i+1);
-				return false;
-			}
-		}
-		else if (!begins_with(ln, "//"))
-		{
-			for (auto& c : ln)
-			{
-				if (c != ' ' && c != '\t') {
-					VLOGE("Shader::reload() code outside of block; '{}' (line {})", name, i+1);
-					return false;
-				}
-			}
-		}
-	}
-	
-	// check shader types
-	
-	int n_vert = 0;
-	int n_frag = 0;
-	int n_geom = 0;
-	int n_unk = 0;
-	
-	for (size_t i=0; i < src.size(); ++i)
-	{
-		switch (src[i]->type)
-		{
-		case GL_VERTEX_SHADER:   ++n_vert; break;
-		case GL_FRAGMENT_SHADER: ++n_frag; break;
-		case GL_GEOMETRY_SHADER: ++n_geom; break;
-		default: ++n_unk; break;
-		}
-	}
-	
-	if (n_vert > 1 || n_frag > 1 || n_geom > 1)
-	{
-		std::string ls;
-		for (auto& s : src) {ls += "  "; ls += s->full_name;}
-		VLOGE("Shader::reload() more than one shader of same type found; '{}':\n{}", name, ls);
-	}
-	if (n_unk) VLOGW("Shader::reload() {} unknown shader types in '{}'", n_unk, name);
-	
-	if (src.empty()) VLOGE("Shader::reload() no shaders in '{}'", name);
-	else {
-		if (!n_vert) VLOGW("Shader::reload() no vertex shader in '{}'", name);
-		if (!n_frag) VLOGW("Shader::reload() no fragment shader in '{}'", name);
-	}
-	
-	// defines: remove unused, remove new dupes, default defaultable
-	
-	for (auto i = def_list.begin(); i != def_list.end(); )
-	{
-		bool any = false;
-		
-		for (auto& s : src)
-		for (auto n = s->defs.begin(); n != s->defs.end(); )
-		{
-			if (n->name == i->name)
-			{
-				if (i->is_default)
-					i->value = n->value;
-				
-				any = true;
-				n = s->defs.erase(n);
-			}
-			else ++n;
-		}
-		
-		if (any) ++i;
-		else i = def_list.erase(i);
-	}
-	
-	// defines: add new
-	
-	for (auto& s : src)
-		append(def_list, s->defs);
-	
-	//
-	
-//	VLOGV("Shader::reload() ok - {}", name);
-	return was_built? rebuild() : true;
 }
 
 void Shader::bind()
@@ -527,7 +591,7 @@ void Shader::bind()
 	if (!prog)
 	{
 		if (!rebuild())
-			LOG_THROW("Shader::bind() can't build: {}", name);
+			LOG_THROW("Shader::bind() can't build: {}", prog_name);
 	}
 	
 	if (validate)
@@ -538,10 +602,10 @@ void Shader::bind()
 		GLint err;
 		glGetProgramiv(prog, GL_VALIDATE_STATUS, &err);
 		
-		if (err == GL_TRUE) VLOGV("Validation ok: [{}] {}", prog, name);
+		if (err == GL_TRUE) VLOGV("Validation ok: [{}] {}", prog, prog_name);
 		else
 		{
-			VLOGW("Validation failed: [{}] {}", prog, name);
+			VLOGW("Validation failed: [{}] {}", prog, prog_name);
 			
 			GLint str_n = 0;
 			glGetProgramiv(prog, GL_INFO_LOG_LENGTH, &str_n);
@@ -554,6 +618,8 @@ void Shader::bind()
 				delete[] str;
 			}
 		}
+		
+		no_such_loc.clear();
 	}
 	
 	glUseProgram(prog);
@@ -567,7 +633,16 @@ void Shader::reset_prog()
 
 GLint Shader::find_loc( const char *name )
 {
-	return glGetUniformLocation(prog, name);
+	GLint loc = glGetUniformLocation(prog, name);
+	if (loc < 0)
+	{
+		auto h = fast_hash32(name);
+		if (no_such_loc.end() == std::find( no_such_loc.begin(), no_such_loc.end(), h )) {
+			no_such_loc.push_back(h);
+			VLOGW("Shader::find_loc() no '{}' in '{}'", name, prog_name);
+		}
+	}
+	return loc;
 }
 
 

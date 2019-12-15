@@ -1,6 +1,7 @@
 #ifndef VAS_CONTAINERS_HPP
 #define VAS_CONTAINERS_HPP
 
+#include <numeric>
 #include "vaslib/vas_cpp_utils.hpp"
 
 template <typename T>
@@ -20,7 +21,13 @@ class SparseArray
 	IsNull is_null;
 	
 public:
+	typedef T value_type;
+	typedef T& reference;
+	typedef const T& const_reference;
+	
 	size_t block_size; ///< internal arrays are expanded in blocks of such size
+	
+	// Note: free and new don't invalidate existing iterators
 	
 	
 	
@@ -161,18 +168,42 @@ public:
 
 
 
+template <typename... Ts>
+struct PoolAllocator_AutoParam;
+
+template <typename T>
+struct PoolAllocator_AutoParam<T> {
+	static constexpr size_t size  = sizeof(T);
+	static constexpr size_t align = alignof(T);
+};
+
+template <typename T, typename... Ts>
+struct PoolAllocator_AutoParam<T, Ts...> {
+	static constexpr size_t size  = std::max(sizeof(T),  PoolAllocator_AutoParam<Ts...>::size);
+	static constexpr size_t align = std::lcm(alignof(T), PoolAllocator_AutoParam<Ts...>::align);
+};
+
 class PoolAllocator
 {
 public:
 	struct Param
 	{
-		size_t obj_size; ///< Object byte size
+		size_t obj_size; ///< Object byte size (without alignment padding)
 		size_t obj_align; ///< Object alignment
 		size_t pool_size; ///< Object count per pool
 		
 		Param(size_t obj_size, size_t obj_align, size_t pool_size = 128)
 			: obj_size(obj_size), obj_align(obj_align), pool_size(pool_size)
 		{}
+		
+		template <typename... Ts>
+		static Param autoset(size_t pool_size) {
+			return {
+				PoolAllocator_AutoParam<Ts...>::size,
+				PoolAllocator_AutoParam<Ts...>::align,
+				pool_size
+			};
+		}
 	};
 	
 	PoolAllocator(Param new_par = {0, 1});
@@ -191,25 +222,27 @@ public:
 	Param get_params() const {return par;}
 	
 private:
+	static constexpr size_t id_sizeof = 4;
 	struct Id {
 		unsigned pool  : 16;
 		unsigned index : 16;
 	};
 	size_t id_off;
-	size_t obj_size;
+	size_t bc_size; // total object size in pool
 	
 	struct Pool
 	{
-		uint8_t* mem;
-		size_t* fs; // byte offsets to T, free
+		uint8_t* mem = nullptr;
+		size_t* fs = nullptr; // byte offsets to T, free
 		size_t f_num; // number of free offsets
 		size_t size; // obj count
 		bool old = false; // must be deleted
 		
 		Pool(PoolAllocator* pa, size_t self_index);
-		Pool(Pool&& p) = default;
+		Pool(const Pool&) = delete;
+		Pool(Pool&& p) {*this = std::move(p);}
 		~Pool();
-		void operator=(Pool&& p) {std::swap(*this, p);}
+		void operator=(Pool&& p);
 	};
 	
 	std::vector<Pool> ps;
@@ -225,7 +258,7 @@ class TypedPoolAllocator
 public:
 	
 	TypedPoolAllocator(size_t pool_size = 128)
-		: pa({sizeof(T), alignof(T), pool_size})
+		: pa( PoolAllocator::Param::autoset<T>(pool_size) )
 	{}
 	
 	void* alloc() {return pa.alloc();}
@@ -238,16 +271,16 @@ public:
 	}
 	
 	template<typename... Args>
-	T* emplace(Args&&... args)
-	{
+	T* emplace(Args&&... args) {
 		return new(pa.alloc()) T( std::forward<Args>(args)... );
 	}
 	
-	void set_pool_size(size_t pool_size)
-	{
-		pa.set_params({sizeof(T), alignof(T), pool_size});
+	void set_pool_size(size_t pool_size) {
+		pa.set_params( PoolAllocator::Param::autoset<T>(pool_size) );
 	}
-	size_t get_pool_size() const {return pa.get_params().pool_size;}
+	size_t get_pool_size() const {
+		return pa.get_params().pool_size;
+	}
 };
 
 #endif // VAS_CONTAINERS_HPP

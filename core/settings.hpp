@@ -19,13 +19,10 @@ struct AppSettings
 	
 	std::string font_path = "res/font.ttf";
 	std::string font_dbg_path = {};
-	
 	float font_pt = 16;
 	float font_dbg_pt = 16;
-
 	int font_supersample = 2;
 	
-	float hole_min_alpha = 0.5;
 	float cam_mag_mul = 1;
 	
 	

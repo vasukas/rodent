@@ -16,6 +16,7 @@ Special
 | ~ + R   | reload shaders
 | ~ + F   | toggle fullscreen
 | ~ + S   | reset window size
+| ~ + C   | reload config
 | ~ + 1-3 | debug menues
 | F2      | toggle log display
 

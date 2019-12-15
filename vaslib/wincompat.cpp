@@ -28,6 +28,8 @@ std::string winc_error( int error )
 }
 std::string winc_strconv( std::wstring_view s )
 {
+	if (s.empty()) return {};
+	
 	std::string out;
 	size_t size = WideCharToMultiByte( CP_UTF8, 0, s.data(), s.length(), out.data(), 0, NULL, NULL );
 	out.resize( size );
@@ -41,6 +43,8 @@ std::string winc_strconv( std::wstring_view s )
 }
 std::wstring winc_strconv( std::string_view s )
 {
+	if (s.empty()) return {};
+	
 	std::wstring out;
 	size_t size = MultiByteToWideChar( CP_UTF8, 0, s.data(), s.length(), out.data(), 0 );
 	out.resize( size );

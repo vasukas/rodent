@@ -98,23 +98,23 @@ SOURCES += \
 	game/level_gen.cpp \
 	game/level_ctr.cpp \
 	game/physics.cpp \
-	game/player.cpp \
 	game/player_mgr.cpp \
-	game/s_objs.cpp \
 	game/weapon.cpp \
-	game/weapon_all.cpp \
 	game_ai/ai_components.cpp \
 	game_ai/ai_drone.cpp \
 	game_ai/ai_group.cpp \
 	game_ai/ai_group_target.cpp \
+	game_objects/player.cpp \
+	game_objects/s_objs.cpp \
+	game_objects/weapon_all.cpp \
 	render/camera.cpp \
 	render/control.cpp \
 	render/gl_utils.cpp \
-	render/particles.cpp \
 	render/postproc.cpp \
 	render/pp_graph.cpp \
 	render/ren_aal.cpp \
 	render/ren_imm.cpp \
+	render/ren_particles.cpp \
 	render/ren_text.cpp \
 	render/shader.cpp \
 	render/texture.cpp \
@@ -154,24 +154,24 @@ HEADERS += \
 	game/level_gen.hpp \
 	game/level_ctr.hpp \
 	game/physics.hpp \
-	game/player.hpp \
 	game/player_mgr.hpp \
-	game/s_objs.hpp \
 	game/weapon.hpp \
-	game/weapon_all.hpp \
 	game_ai/ai_common.hpp \
 	game_ai/ai_components.hpp \
 	game_ai/ai_drone.hpp \
 	game_ai/ai_group.hpp \
 	game_ai/ai_group_target.hpp \
+	game_objects/player.hpp \
+	game_objects/s_objs.hpp \
+	game_objects/weapon_all.hpp \
 	render/camera.hpp \
 	render/control.hpp \
 	render/gl_utils.hpp \
-	render/particles.hpp \
 	render/postproc.hpp \
 	render/pp_graph.hpp \
 	render/ren_aal.hpp \
 	render/ren_imm.hpp \
+	render/ren_particles.hpp \
 	render/ren_text.hpp \
 	render/shader.hpp \
 	render/texture.hpp \

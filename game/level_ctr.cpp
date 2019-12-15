@@ -6,7 +6,7 @@
 #include "level_ctr.hpp"
 #include "level_gen.hpp"
 #include "player_mgr.hpp"
-#include "s_objs.hpp"
+#include "game_objects/s_objs.hpp"
 
 
 
@@ -148,6 +148,32 @@ LevelControl::LevelControl(const LevelTerrain& lt)
 	}
 }
 void LevelControl::fin_init(LevelTerrain& lt)
+{
+	if (lt.dbg_spawns.empty()) fin_init_normal(lt);
+	else {
+		VLOGW("LevelControl:: debug spawn only");
+		fin_init_debug(lt);
+	}
+	
+	//
+	
+	for (int y=0; y<size.y; ++y)
+	for (int x=0; x<size.x; ++x)
+	{
+		auto& lc = lt.cs[y * size.x + x];
+		auto& nc = cells[y * size.x + x];
+		nc.is_wall |= lc.decor_used;
+	}
+	
+	std::vector<uint8_t> aps_ps;
+	aps_ps.resize( cells.size() );
+	for (size_t i=0; i < cells.size(); ++i)
+		aps_ps[i] = cells[i].is_wall ? 0 : 1;
+	
+	aps.reset( AsyncPathSearch::create_default() );
+	aps->update(size, std::move(aps_ps));
+}
+void LevelControl::fin_init_normal(LevelTerrain& lt)
 {
 	TimeSpan time_start = TimeSpan::since_start();
 	
@@ -931,24 +957,33 @@ void LevelControl::fin_init(LevelTerrain& lt)
 	VLOGD("                 spawns:  {:.3f} seconds", (time_enemies - time_spawns ).seconds());
 	VLOGD("                 enemies: {:.3f} seconds", (time_doors   - time_enemies).seconds());
 	VLOGD("                 doors:   {:.3f} seconds", (time_end     - time_doors  ).seconds());
-	
+}
+void LevelControl::fin_init_debug(LevelTerrain& lt)
+{
+	EEnemyDrone::Init drone;
+	drone.grp = std::make_shared<AI_Group>( Rect({1,1}, lt.grid_size - vec2i::one(1), false) );
+	drone.pars = std::make_shared<AI_DroneParams>();
 	//
+	drone.pars->speed = {4, 7, 9};
+	drone.pars->dist_minimal = 8;
+	drone.pars->dist_optimal = 14;
+	drone.pars->dist_visible = 20;
+	drone.pars->dist_suspect = 25;
 	
-	for (int y=0; y<size.y; ++y)
-	for (int x=0; x<size.x; ++x)
+	for (auto& sp : lt.dbg_spawns)
 	{
-		auto& lc = lt.cs[y * size.x + x];
-		auto& nc = cells[y * size.x + x];
-		nc.is_wall |= lc.decor_used;
+		vec2fp pos = to_center_coord(sp.first);
+		switch (sp.second)
+		{
+		case LevelTerrain::DBG_SPAWN_PLAYER:
+			spps.push_back({ SP_PLAYER, pos });
+			break;
+			
+		case LevelTerrain::DBG_SPAWN_DRONE:
+			new EEnemyDrone( pos, drone );
+			break;
+		}
 	}
-	
-	std::vector<uint8_t> aps_ps;
-	aps_ps.resize( cells.size() );
-	for (size_t i=0; i < cells.size(); ++i)
-		aps_ps[i] = cells[i].is_wall ? 0 : 1;
-	
-	aps.reset( AsyncPathSearch::create_default() );
-	aps->update(size, std::move(aps_ps));
 }
 LevelControl::Cell* LevelControl::cell(vec2i pos) noexcept
 {

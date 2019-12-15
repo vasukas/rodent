@@ -238,6 +238,9 @@ static void parse(SVG_File& f, const XML_Element& el)
 				p.id = e.get_attr("id");
 				p.pos.x = rpos(e.get_attr("cx"));
 				p.pos.y = rpos(e.get_attr("cy"));
+				
+				if (e.name == "circle") p.radius = rpos(e.get_attr("r"));
+				else p.radius = std::max(rpos(e.get_attr("rx")), rpos(e.get_attr("ry")));
 			}
 		}
 	}

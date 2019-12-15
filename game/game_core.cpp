@@ -39,7 +39,9 @@ public:
 		ents.block_size = 256;
 		phy.reset(new PhysicsWorld(*this));
 		pmg = std::move(pars.pmg);
-		rndg.gen.seed(pars.random_seed);
+
+		if (!pars.random_init.empty() && !rndg.load(pars.random_init))
+			throw std::runtime_error("GameCore:: failed to init random");
 	}
 	~GameCore_Impl() = default;
 	
@@ -67,17 +69,6 @@ public:
 		
 		// tick entities
 		
-		{	Entity* ent = nullptr;
-			try {
-				for (auto& e : es_list)
-					(ent = e)->step();
-			}
-			catch (std::exception& e) {
-				THROW_FMTSTR("Failed to step entity ({}) - {}",
-				             ent? ent->dbg_id() : "null", e.what());
-			}
-		}
-		
 		auto step_comp = [this](ECompType type)
 		{
 			Entity* ent = nullptr;
@@ -92,8 +83,21 @@ public:
 				             enum_name(type), ent? ent->dbg_id() : "null", e.what());
 			}
 		};
+		
 		step_comp(ECompType::StepPreUtil);
 		step_comp(ECompType::StepLogic);
+		
+		{	Entity* ent = nullptr;
+			try {
+				for (auto& e : es_list)
+					(ent = e)->step();
+			}
+			catch (std::exception& e) {
+				THROW_FMTSTR("Failed to step entity ({}) - {}",
+				             ent? ent->dbg_id() : "null", e.what());
+			}
+		}
+		
 		step_comp(ECompType::StepPostUtil);
 		
 		// tick systems

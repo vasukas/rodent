@@ -143,3 +143,19 @@ uint32_t crc32(uint32_t crc, const void *data, int len) {
 	}
 	return ~crc;
 }
+
+
+
+uint32_t fast_hash32(const void *data, size_t len)
+{
+	const uint32_t prime  = 16777619; // FNV-1a, 32-bit
+	const uint32_t offset = 2166136261;
+	auto buf = static_cast<const uint8_t*>(data);
+	uint32_t h = offset;
+	while (len--) {
+		h ^= (*buf);
+		h *= prime;
+		++buf;
+	}
+	return h;
+}

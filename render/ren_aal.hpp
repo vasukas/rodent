@@ -31,11 +31,10 @@ public:
 	virtual void draw_inst(const Transform& tr, FColor clr, size_t id) = 0; ///< Draws instanced object
 	
 protected:
-	friend class RenderControl_Impl;
+	friend class Postproc_Impl;
 	static RenAAL* init();
 	virtual ~RenAAL();
 	
-	friend class Postproc_Impl;
 	virtual void render() = 0;
 	virtual void render_grid(unsigned int fbo_out) = 0;
 };

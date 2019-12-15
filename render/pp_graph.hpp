@@ -42,7 +42,7 @@ public:
 	virtual void connect(std::string output, std::string input, int order = 0) = 0;
 	
 protected:
-	friend class RenderControl_Impl;
+	friend class Postproc_Impl;
 	static PP_Graph* init();
 	virtual ~PP_Graph();
 	virtual void render() = 0;
@@ -134,7 +134,7 @@ class PP_Filter
 {
 public:
 	bool enabled = true;
-	Shader* sh = nullptr;
+	std::unique_ptr<Shader> sh;
 	
 	
 	virtual ~PP_Filter() = default;

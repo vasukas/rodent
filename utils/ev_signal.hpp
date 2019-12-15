@@ -23,7 +23,7 @@
 	SIG.connect(nullptr, FUNC)
 
 /// Disconnects subscriber from everything
-#define EVS_SUBSCR_FORCE_ALL \
+#define EVS_SUBSCR_UNSUB_ALL \
 	_ev_signal_subscr.rem_all()
 
 

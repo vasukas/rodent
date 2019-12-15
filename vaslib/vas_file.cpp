@@ -292,7 +292,7 @@ public:
 		if (free_src && std::fclose( src ))
 			VLOGE( "File_STD:: fclose failed - {}", errno_str() );
 	}
-	size_t read( void *buf, size_t buf_size )
+	size_t read( void *buf, size_t buf_size ) override
 	{
 		size_t n = std::fread( buf, 1, buf_size, src );
 		if (n != buf_size && std::ferror( src ))
@@ -302,7 +302,7 @@ public:
 		}
 		return n;
 	}
-	size_t write( const void *buf, size_t buf_size )
+	size_t write( const void *buf, size_t buf_size ) override
 	{
 		size_t n = std::fwrite( buf, 1, buf_size, src );
 		if (n != buf_size)
@@ -312,7 +312,7 @@ public:
 		}
 		return n;
 	}
-	int64_t seek( int64_t ptr, SeekWhence whence )
+	int64_t seek( int64_t ptr, SeekWhence whence ) override
 	{
 		if (std::fseek( src, ptr, whence ))
 		{
@@ -322,7 +322,7 @@ public:
 		}
 		return tell();
 	}
-	int64_t tell() const
+	int64_t tell() const override
 	{
 		auto ret = std::ftell( src );
 		if (ret == -1)
@@ -333,7 +333,7 @@ public:
 		}
 		return ret;
 	}
-	bool flush()
+	bool flush() override
 	{
 		if (std::fflush( src ))
 		{
@@ -431,7 +431,7 @@ public:
 	{
 		if (free_src) delete f;
 	}
-	size_t read( void *buf, size_t buf_size )
+	size_t read( void *buf, size_t buf_size ) override
 	{
 		int64_t sp = f->tell();
 		if (sp < 0)
@@ -448,7 +448,7 @@ public:
 		f->seek( sp, SeekSet );
 		return n;
 	}
-	size_t write( const void *buf, size_t buf_size )
+	size_t write( const void *buf, size_t buf_size ) override
 	{
 		if (!writeable)
 		{
@@ -472,16 +472,16 @@ public:
 		f->seek( sp, SeekSet );
 		return n;
 	}
-	int64_t seek(int64_t p, SeekWhence whence)
+	int64_t seek(int64_t p, SeekWhence whence) override
 	{
 		ptr = seek_ptr( ptr, len, p, whence );
 		return ptr;
 	}
-	int64_t tell() const
+	int64_t tell() const override
 	{
 		return ptr;
 	}
-	int64_t get_size() const
+	int64_t get_size() const override
 	{
 		return len;
 	}

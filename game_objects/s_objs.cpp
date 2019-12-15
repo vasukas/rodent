@@ -1,10 +1,10 @@
 #include "client/effects.hpp"
-#include "game_ai/ai_group.hpp"
 #include "render/ren_aal.hpp"
 #include "utils/noise.hpp"
 #include "vaslib/vas_log.hpp"
-#include "game_core.hpp"
-#include "player_mgr.hpp"
+#include "game/game_core.hpp"
+#include "game/player_mgr.hpp"
+#include "game_ai/ai_group.hpp"
 #include "s_objs.hpp"
 #include "weapon_all.hpp"
 
@@ -308,9 +308,13 @@ void EDoor::on_cnt(const CollisionEvent& ce)
 	}
 	else if (GameCore::get().get_pmg().is_player( ce.other ))
 	{
-		if      (ce.type == CollisionEvent::T_BEGIN) open();
+		if (ce.type == CollisionEvent::T_BEGIN) {
+			++num_cnt;
+			open();
+		}
 		else if (ce.type == CollisionEvent::T_END)
 		{
+			--num_cnt;
 			if (state == ST_TO_OPEN) tm_left = anim_time - tm_left;
 			else if (state == ST_OPEN) tm_left = anim_time;
 			else return;

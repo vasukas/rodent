@@ -12,7 +12,7 @@ class LevelMap
 {
 public:
 	static LevelMap* init(const LevelTerrain& lt); ///< Inits singleton
-	static LevelMap* get(); ///< Returns existing singleton
+	static LevelMap& get(); ///< Returns existing singleton
 	virtual ~LevelMap();
 	
 	// Must be called from render thread

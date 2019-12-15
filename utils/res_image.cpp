@@ -176,6 +176,16 @@ void ImageInfo::vflip()
 		for (int i=0; i<n; ++i) std::swap(a[i], b[i]);
 	}
 }
+void ImageInfo::px_swap(std::vector<uint8_t>& px , std::optional<vec2i> new_size)
+{
+	this->px.swap(px);
+	if (new_size) size = *new_size;
+}
+std::vector<uint8_t> ImageInfo::move_px()
+{
+	size = {};
+	return std::move(px);
+}
 ImageInfo ImageInfo::subimg( Rect r ) const
 {
 	int bpp = get_bpp();

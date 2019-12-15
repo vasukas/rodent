@@ -98,27 +98,27 @@ struct Noise
 		}
 		return has_tex;
 	}
-	void setup(Shader* sh, TimeSpan passed)
+	void setup(Shader& sh, TimeSpan passed)
 	{
 		glActiveTexture(GL_TEXTURE1);
 		tex.bind();
 		
-		sh->set1f("t", t / depth * 0.7);
+		sh.set1f("t", t / depth * 0.7);
 		t += passed.seconds();
 		
-		auto cam = RenderControl::get().get_world_camera();
-		auto ssz = RenderControl::get().get_size();
+		auto& cam = RenderControl::get().get_world_camera();
+		auto  ssz = RenderControl::get().get_size();
 		
 		vec2fp ssz_k = {float(ssz.x) / ssz.y, 1};
 		ssz_k /= ck;
 		
-		vec2fp scr_z = cam->coord_size();
-		vec2fp cpos = cam->get_state().pos;
+		vec2fp scr_z = cam.coord_size();
+		vec2fp cpos = cam.get_state().pos;
 		cpos.y = -cpos.y;
 		cpos *= 0.8; // looks bit better for some reason
 		
-		sh->set2f("offset", cpos / (scr_z / ssz_k));
-		sh->set2f("scrk", ssz_k.x, ssz_k.y);
+		sh.set2f("offset", cpos / (scr_z / ssz_k));
+		sh.set2f("scrk", ssz_k.x, ssz_k.y);
 	}
 	
 private:
@@ -157,8 +157,7 @@ public:
 	size_t objs_off = 0; ///< Last vertex count
 	std::vector<Obj> objs;
 	
-	Shader* sh;
-	Shader* sh_inst;
+	std::unique_ptr<Shader> sh, sh_inst;
 	uint32_t prev_clr = 0;
 	
 	GLA_Texture tex;
@@ -171,7 +170,7 @@ public:
 	// for grid
 	GLA_Framebuffer fbo;
 	GLA_Texture fbo_clr;
-	Shader* fbo_sh;
+	std::unique_ptr<Shader> fbo_sh;
 	RAII_Guard fbo_g;
 	Noise fbo_noi;
 	
@@ -276,8 +275,8 @@ public:
 		auto buf = std::make_shared<GLA_Buffer>(0);
 		vao.set_attribs({ {buf, 4}, {buf, 3} });
 		
-		sh      = Shader::load("aal", true);
-		sh_inst = Shader::load("aal_inst", true);
+		sh      = Shader::load("aal", {}, true);
+		sh_inst = Shader::load("aal_inst", {}, true);
 		
 		const int n = 200;
 		float data[n];
@@ -310,7 +309,7 @@ public:
 		
 		// for grid
 		
-		fbo_sh = Shader::load_cb("pp/aal_grid", [](Shader& sh){ sh.set1i("noi", 1); });
+		fbo_sh = Shader::load("pp/aal_grid", {[](Shader& sh){ sh.set1i("noi", 1); }});
 		fbo_g = RenderControl::get().add_size_cb([this]{ fbo_clr.set(GL_RGBA, RenderControl::get_size(), 0, 4); }, true);
 
 		fbo.bind();
@@ -337,8 +336,7 @@ public:
 	}
 	void render()
 	{
-		Camera* cam = RenderControl::get().get_world_camera();
-		const float *mx = cam->get_full_matrix();
+		const float *mx = RenderControl::get().get_world_camera().get_full_matrix();
 		const float scrmul = 1.f;//cam->get_state().mag;
 		
 		glActiveTexture(GL_TEXTURE0);
@@ -405,8 +403,7 @@ public:
 		
 		inst_vao.bind();
 		
-		Camera* cam = RenderControl::get().get_world_camera();
-		const float *mx = cam->get_full_matrix();
+		const float *mx = RenderControl::get().get_world_camera().get_full_matrix();
 		const float scrmul = 1.f;//cam->get_state().mag;
 		
 		glActiveTexture(GL_TEXTURE0);
@@ -434,7 +431,7 @@ public:
 		glBlendEquation(GL_FUNC_ADD);
 		
 		fbo_sh->bind();
-		fbo_noi.setup(fbo_sh, RenderControl::get().get_passed());
+		fbo_noi.setup(*fbo_sh, RenderControl::get().get_passed());
 		
 		glActiveTexture(GL_TEXTURE0);
 		fbo_clr.bind();

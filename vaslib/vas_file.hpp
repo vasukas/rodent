@@ -79,7 +79,7 @@ public:
 	Endianess def_endian = EndNative; ///< Default endianess (used by r\w*D functions)
 	
 	// Note: all errors are logged in any case
-	bool error_throw = true; ///< Raise exception on any error (Note: endianess functions always throw)
+	bool error_throw = true; ///< Throw exception on any error (Note: endianess functions always throw)
 	
 	
 	
@@ -129,6 +129,9 @@ public:
 	/// Returns file size (or -1 on error). 
 	/// Default implementation seeks to the end of file, gets position and seeks back
 	virtual int64_t get_size() const;
+	
+	/// Reserves more data on write or silently fails
+	virtual void reserve_more( size_t bytes ) {(void) bytes;}
 	
 	/// Flushes buffered data (returns true if not available)
 	virtual bool flush() {return true;}
@@ -216,16 +219,16 @@ public:
 	MemoryFile( MemoryFile&& f );
 	MemoryFile( const MemoryFile& f ) = delete;
 	
-	size_t read( void *buf, size_t buf_size );
-	size_t write( const void *buf, size_t buf_size );
-	int64_t seek( int64_t ptr, SeekWhence whence = SeekSet );
-	int64_t tell() const;
-	int64_t get_size() const;
+	size_t read( void *buf, size_t buf_size ) override;
+	size_t write( const void *buf, size_t buf_size ) override;
+	int64_t seek( int64_t ptr, SeekWhence whence = SeekSet ) override;
+	int64_t tell() const override;
+	int64_t get_size() const override;
 	
 	
 	
 	/// Reserves additional memory (or silently fails)
-	void reserve_more( size_t bytes );
+	void reserve_more( size_t bytes ) override;
 	
 	/// Sets size and pointer to zero, may free memory
 	void reset( bool free_mem = true );

@@ -1,4 +1,3 @@
-#include <unordered_map>
 #include <SDL2/SDL.h>
 #include "core/settings.hpp"
 #include "utils/res_image.hpp"
@@ -6,11 +5,7 @@
 #include "camera.hpp"
 #include "control.hpp"
 #include "gl_utils.hpp"
-#include "particles.hpp"
 #include "postproc.hpp"
-#include "pp_graph.hpp"
-#include "ren_aal.hpp"
-#include "ren_imm.hpp"
 #include "ren_text.hpp"
 #include "shader.hpp"
 
@@ -64,7 +59,6 @@ class RenderControl_Impl : public RenderControl
 {
 public:
 	bool crit_error = false;
-	bool reload_fail = false;
 	
 	SDL_Window* wnd = nullptr;
 	SDL_GLContext glctx = nullptr;
@@ -74,12 +68,7 @@ public:
 	Camera cam, cam_ui;
 	
 	GLA_VertexArray* ndc_screen2_obj = nullptr;
-	
-	ParticleRenderer* r_part = nullptr;
-	RenAAL* r_aal = nullptr;
-	RenImm* r_imm = nullptr;
 	RenText* r_text = nullptr;
-	PP_Graph* pp_graph = nullptr;
 	Postproc* pp_main = nullptr;
 	
 	std::vector< std::function<void()> > cb_resize;
@@ -107,7 +96,7 @@ public:
 		int ctx_flags = SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG;
 		if (opt_gldbg) {
 			ctx_flags |= SDL_GL_CONTEXT_DEBUG_FLAG;
-			VLOGW("Using debug OpenGL context");
+			VLOGW("RenderControl:: Using debug OpenGL context");
 		}
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, ctx_flags);
 		SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
@@ -135,6 +124,9 @@ public:
 			SDL_QuitSubSystem(SDL_INIT_VIDEO);
 			return;
 		}
+
+		wnd_sz = get_size();
+		VLOGD("RenderControl:: resized to {} {}", wnd_sz.x, wnd_sz.y);
 		
 		glctx = SDL_GL_CreateContext(wnd);
 		if (!glctx)
@@ -171,6 +163,9 @@ public:
 //					if (sever == GL_DEBUG_SEVERITY_HIGH) rct->crit_error = true;
 					if (type == GL_DEBUG_TYPE_ERROR) VLOGE("GL [Error/{}]: {}", dbgo_sever_name(sever), std::string_view(msg, length));
 					else if (opt_gldbg) VLOGV("GL [{}/{}]: {}", dbgo_type_name(type), dbgo_sever_name(sever), std::string_view(msg, length));
+					
+					if (type == GL_DEBUG_TYPE_ERROR && sever == GL_DEBUG_SEVERITY_HIGH)
+						debugbreak();
 				}
 			};
 			
@@ -193,10 +188,8 @@ public:
 		
 		glDisable(GL_CULL_FACE);
 		glDisable(GL_DEPTH_TEST);
-		glDepthMask(0);
 		
 		glEnable(GL_SCISSOR_TEST);
-		glHint(GL_GENERATE_MIPMAP_HINT, GL_NICEST);
 		
 		
 		
@@ -204,8 +197,8 @@ public:
 		ndc_screen2_obj->set_buffers({ std::make_shared<GLA_Buffer>(2) });
 		
 		const float ps[] = {
-		    -1, -1,   1, -1,   -1, 1,
-		              1, -1,   -1, 1,   1, 1
+		    -1, -1,   1, -1,   1,  1,
+		     1,  1,  -1,  1,  -1, -1
 		};
 		ndc_screen2_obj->bufs[0]->usage = GL_STATIC_DRAW;
 		ndc_screen2_obj->bufs[0]->update(12, ps);
@@ -214,26 +207,13 @@ public:
 		
 		rct = this; // may be needed in these classes
 		
-#define INIT(VAR, NAME) \
-	try {VAR = NAME::init(); VLOGI(#NAME " initialized");} \
-	catch (std::exception& e) {VLOGE(#NAME " initialization failed: {}", e.what()); return;}
-		
-		INIT(r_text, RenText);
-		INIT(r_imm, RenImm);
-		INIT(r_aal, RenAAL);
-		INIT(r_part, ParticleRenderer);
-		
 		try {
-			pp_graph = PP_Graph::init();
+			r_text = RenText::init();
 			pp_main = Postproc::init();
-			VLOGI("Postproc initialized");
 		}
 		catch (std::exception& e)
 		{
-			VLOGE("Postproc init failed: {}", e.what());
-			
-			pp_graph = nullptr;
-			pp_main = nullptr;
+			VLOGE("RenderControl:: init exception: {}", e.what());
 			return;
 		}
 		
@@ -242,15 +222,7 @@ public:
 	~RenderControl_Impl()
 	{
 		delete pp_main;
-		delete pp_graph;
-		
-		delete r_aal;
-		delete r_imm;
-		delete r_part;
-		
 		delete r_text;
-		
-		Shader::sh_col.clear();
 		delete ndc_screen2_obj;
 	
 		SDL_GL_DeleteContext( glctx );
@@ -261,11 +233,10 @@ public:
 	}
 	
 	int     get_max_tex()      { return max_tex_size; }
-	Camera* get_world_camera() { return &cam; }
-	Camera* get_ui_camera()    { return &cam_ui; }
+	Camera& get_world_camera() { return cam; }
+	Camera& get_ui_camera()    { return cam_ui; }
 	bool    is_visible()       { return visib; }
 	SDL_Window* get_wnd()      { return wnd; }
-	PP_Graph*   get_ppg()      { return pp_graph; }
 	TimeSpan    get_passed()   { return last_passed; }
 	
 	bool render( TimeSpan passed )
@@ -280,12 +251,21 @@ public:
 			for (auto& c : cb_resize) if (c) c();
 			old_size = n_size;
 			if (fs_cur == FULLSCREEN_OFF) nonfs_size = old_size;
+			VLOGD("RenderControl:: resized to {} {}", n_size.x, n_size.y);
 		}
 		
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glViewport(0, 0, n_size.x, n_size.y);
 		
-		if (reload_fail)
+		bool shaders_ok = true;
+		for (auto& s : Shader::get_all_ptrs()) {
+			if (s->is_critical && !s->is_ok()) {
+				shaders_ok = false;
+				break;
+			}
+		}
+		
+		if (!shaders_ok)
 		{
 			glClearColor(1, 0, 0, 1);
 			glClear(GL_COLOR_BUFFER_BIT);
@@ -303,24 +283,22 @@ public:
 			cam_ui.set_state(frm);
 			
 			try {
-				RenImm::get().render_pre();
-				pp_graph->render();
-				RenImm::get().render_post();
+				pp_main->render();
 			}
 			catch (std::exception& e) {
-				VLOGE("RenderControl::render() postproc failed: {}", e.what());
+				VLOGE("RenderControl::render() exception: {}", e.what());
 				return false;
 			}
-		}
-		
-		if (img_screenshot)
-		{
-			vec2i sz = get_size();
-			img_screenshot->reset(sz, ImageInfo::FMT_RGBA);
-			glFinish();
-			glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-			glReadPixels(0, 0, sz.x, sz.y, GL_RGBA, GL_UNSIGNED_BYTE, img_screenshot->raw());
-			img_screenshot = nullptr;
+			
+			if (img_screenshot)
+			{
+				vec2i sz = get_size();
+				img_screenshot->reset(sz, ImageInfo::FMT_RGBA);
+				glFinish();
+				glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+				glReadPixels(0, 0, sz.x, sz.y, GL_RGBA, GL_UNSIGNED_BYTE, img_screenshot->raw());
+				img_screenshot = nullptr;
+			}
 		}
 		
 		SDL_GL_SwapWindow(wnd);
@@ -400,7 +378,7 @@ public:
 	}
 	void reload_shaders()
 	{
-		for (auto& s : Shader::sh_col)
+		for (auto& s : Shader::get_all_ptrs())
 			s->reload();
 	}
 	GLA_VertexArray& ndc_screen2()

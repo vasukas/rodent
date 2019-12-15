@@ -1,4 +1,3 @@
-#include <unordered_map>
 #include "vaslib/vas_log.hpp"
 #include "gl_utils.hpp"
 #include "texture.hpp"
@@ -253,4 +252,40 @@ void GLA_Texture::set_byte_size(size_t new_byte_size)
 	Texture::dbg_total_size -= byte_size;
 	byte_size = new_byte_size;
 	Texture::dbg_total_size += byte_size;
+}
+
+
+
+bool GLA_Framebuffer::check()
+{
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	GLenum st = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	switch (st)
+	{
+	case GL_FRAMEBUFFER_COMPLETE:
+		return true;
+	
+	case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
+		VLOGE("GLA_Framebuffer::check() invalid attachment");
+		return false;
+		
+	case GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS_EXT:
+		VLOGE("GLA_Framebuffer::check() invalid dimensions");
+		return false;
+		
+	case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
+		VLOGE("GLA_Framebuffer::check() no attachments");
+		return false;
+		
+	case GL_FRAMEBUFFER_UNSUPPORTED:
+		VLOGE("GLA_Framebuffer::check() unsupported combination");
+		return false;
+	}
+	VLOGE("GLA_Framebuffer::check() unknown status");
+	return false;
+}
+void GLA_Framebuffer::check_throw(std::string_view where)
+{
+	if (!check())
+		THROW_FMTSTR("GLA_Framebuffer check failed - {}", where);
 }

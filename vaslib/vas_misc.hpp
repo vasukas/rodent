@@ -36,4 +36,8 @@ struct ArgvParse
 /// Calculates checksum (initial sum value is 0)
 uint32_t crc32(uint32_t sum, const void *data, size_t len);
 
+/// Calculates fast hash (FNV-1a)
+uint32_t fast_hash32(const void *data, size_t len);
+inline uint32_t fast_hash32(std::string_view s) {return fast_hash32(s.data(), s.size());}
+
 #endif // VAS_MISC_HPP

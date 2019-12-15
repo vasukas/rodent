@@ -105,6 +105,7 @@ int main( int argc, char *argv[] )
 	std::optional<LogLevel> cli_verb;
 	
 	std::string log_filename = AppSettings::get().path_log; // init settings
+	bool cfg_override = false;
 
 	ArgvParse arg;
 	arg.set(argc-1, argv+1);
@@ -136,7 +137,10 @@ Mode options (--game):
 			}
 			else if (arg.is("--log")) log_filename = arg.str();
 			else if (arg.is("--logclr")) cli_logclr = arg.flag();
-			else if (arg.is("--cfg")) AppSettings::get_mut().path_settings  = arg.str();
+			else if (arg.is("--cfg")) {
+				AppSettings::get_mut().path_settings  = arg.str();
+				cfg_override = true;
+			}
 			else if (arg.is("--res")) AppSettings::get_mut().path_resources = arg.str();
 			else if (arg.is("-v0")) cli_verb = LogLevel::Info;
 			else if (arg.is("-v"))  cli_verb = LogLevel::Debug;
@@ -195,13 +199,33 @@ Mode options (--game):
 	
 	platform_info();
 	
-	if (!set_current_dir( AppSettings::get().path_resources.c_str() )) VLOGW("Can't set resources directory");
-	if (!AppSettings::get_mut().load())
+
+	
+	if (!set_current_dir( AppSettings::get().path_resources.c_str() ))
+		VLOGW("Can't set resources directory");
+	
+	auto cfg_load = [&]
 	{
-		VLOGE("Can't load settings. Check working directory - it must contain 'res' folder");
-		VLOGW("Using default settings");
-//		return 1;
-	}
+		if (cfg_override)
+		{
+			if (!AppSettings::get_mut().load()) {
+				VLOGE("Can't load overriden settings, using default path");
+				cfg_override = false;
+			}
+			else VLOGI("Override (cmd) settings loaded");
+		}
+		if (!cfg_override)
+		{
+			AppSettings::get_mut().path_settings = "res/settings.cfg.default";
+			if (!AppSettings::get_mut().load())
+				VLOGW("Can't load default (base) settings");
+			
+			AppSettings::get_mut().path_settings = "res/settings.cfg";
+			if (AppSettings::get_mut().load())
+				VLOGI("User (override) settings loaded");
+		}
+	};
+	cfg_load();
 	
 	
 	
@@ -216,13 +240,13 @@ Mode options (--game):
 			Texture::dbg_total_size >> 10);
 		
 		auto fs_val = RenderControl::get().get_fscreen();
-		if (vig_button("[f] FS on", 'f', fs_val == RenderControl::FULLSCREEN_ENABLED))
+		if (vig_button("Fullscreen on", 0, fs_val == RenderControl::FULLSCREEN_ENABLED))
 		{
 			if (fs_val == RenderControl::FULLSCREEN_ENABLED)
 				RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_OFF);
 			else RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_ENABLED);
 		}
-		if (vig_button("[w] FS wnd", 'w', fs_val == RenderControl::FULLSCREEN_DESKTOP))
+		if (vig_button("Fullscreen window", 0, fs_val == RenderControl::FULLSCREEN_DESKTOP))
 		{
 			if (fs_val == RenderControl::FULLSCREEN_DESKTOP)
 				RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_OFF);
@@ -230,7 +254,7 @@ Mode options (--game):
 		}
 		vig_lo_next();
 		
-		if (vig_button("[r] Reload shaders", 'r')) RenderControl::get().reload_shaders();
+		if (vig_button("Reload shaders")) RenderControl::get().reload_shaders();
 		vig_lo_next();
 		
 		avg_passed->draw();
@@ -281,8 +305,7 @@ Mode options (--game):
 		lsets.lines = sz.y;
 		lsets.lines_width = sz.x;
 		lsets.apply();
-	}
-	, true);
+	});
 	
 	
 	
@@ -338,21 +361,29 @@ Mode options (--game):
 			else if (ev.type == SDL_KEYDOWN)
 			{
 				auto &ks = ev.key.keysym;
-				if		(ks.scancode == SDL_SCANCODE_Q && debug_key_combo) run = false;
-				else if (ks.scancode == SDL_SCANCODE_R && debug_key_combo) RenderControl::get().reload_shaders();
-				else if (ks.scancode == SDL_SCANCODE_F && debug_key_combo)
+				if (debug_key_combo)
 				{
-					if (RenderControl::get().get_fscreen() == RenderControl::FULLSCREEN_OFF)
-						RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_DESKTOP);
-					else RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_OFF);
-				}
-				else if (ks.scancode == SDL_SCANCODE_S && debug_key_combo)
-				{
-					auto wnd = RenderControl::get().get_wnd();
-					RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_OFF);
-					SDL_RestoreWindow(wnd);
-					SDL_SetWindowSize(wnd, 320, 240);
-					SDL_SetWindowPosition(wnd, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+					if		(ks.scancode == SDL_SCANCODE_Q) run = false;
+					else if (ks.scancode == SDL_SCANCODE_R) RenderControl::get().reload_shaders();
+					else if (ks.scancode == SDL_SCANCODE_F)
+					{
+						if (RenderControl::get().get_fscreen() == RenderControl::FULLSCREEN_OFF)
+							RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_DESKTOP);
+						else RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_OFF);
+					}
+					else if (ks.scancode == SDL_SCANCODE_S)
+					{
+						auto wnd = RenderControl::get().get_wnd();
+						RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_OFF);
+						SDL_RestoreWindow(wnd);
+						SDL_SetWindowSize(wnd, 320, 240);
+						SDL_SetWindowPosition(wnd, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+					}
+					else if (ks.scancode == SDL_SCANCODE_C)
+					{
+						VLOGI("Reloading settings");
+						cfg_load();
+					}
 				}
 				else if (ks.scancode == SDL_SCANCODE_GRAVE) debug_key_combo = true;
 				else if (ks.scancode == SDL_SCANCODE_F2) log_shown = !log_shown;
@@ -366,8 +397,8 @@ Mode options (--game):
 			Gamepad::on_event(ev);
 			RenderControl::get().on_event( ev );
 			
-			vig_on_event(&ev);
-			if (vig_current_menu() != VigMenu::Default || debug_key_combo) continue;
+			vig_on_event(ev);
+			if (debug_key_combo) continue;
 			
 			try {MainLoop::current->on_event(ev);}
 			catch (std::exception& e) {
@@ -454,6 +485,7 @@ Mode options (--game):
 		avg_total += (loop_total.seconds() * 1000 - avg_total) / avg_total_n;
 	}
 	
+	VLOGI("Total run time: {:.3f} seconds", (TimeSpan::since_start() - time_init).seconds());
 	VLOGI("Average render frame length: {} ms, {} samples", avg_total, avg_total_n);
 	log_write_str(LogLevel::Critical, "main() normal exit");
 	

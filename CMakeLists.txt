@@ -114,11 +114,8 @@ list(APPEND SRC_LIST
 	game/level_ctr
 	game/level_gen
 	game/physics
-	game/player
 	game/player_mgr
-	game/s_objs
 	game/weapon
-	game/weapon_all
 
 	game_ai/ai_common.hpp
 	game_ai/ai_components
@@ -126,14 +123,18 @@ list(APPEND SRC_LIST
 	game_ai/ai_group
 	game_ai/ai_group_target
 
+	game_objects/player
+	game_objects/s_objs
+	game_objects/weapon_all
+
 	render/camera
 	render/control
 	render/gl_utils
-	render/particles
 	render/postproc
 	render/pp_graph
 	render/ren_aal
 	render/ren_imm
+	render/ren_particles
 	render/ren_text
 	render/shader
 	render/texture

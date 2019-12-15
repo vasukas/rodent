@@ -300,9 +300,9 @@ PPN_Chain::PPN_Chain(std::string name, std::vector<std::unique_ptr<PP_Filter>> f
 		{
 			tex_s[i].set(GL_RGBA, RenderControl::get_size(), 0, 4);
 			fbo_s[i].attach_tex(GL_COLOR_ATTACHMENT0, tex_s[i]);
+			fbo_s[i].check_throw(FMT_FORMAT("PPN_Chain({}) {}", this->name, i));
 		}
-	}
-	, true);
+	});
 }
 bool PPN_Chain::prepare()
 {
@@ -321,7 +321,6 @@ void PPN_Chain::proc(GLuint output_fbo)
 	glClearColor(0, 0, 0, 0);
 	bs_index = true;
 	
-	glActiveTexture(GL_TEXTURE0);
 	RenderControl::get().ndc_screen2().bind();
 	
 	size_t last = fts.size() - 1;

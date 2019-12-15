@@ -10,8 +10,8 @@
 #include "game/level_ctr.hpp"
 #include "game/level_gen.hpp"
 #include "game/player_mgr.hpp"
-#include "game/s_objs.hpp"
 #include "game_ai/ai_group.hpp"
+#include "game_objects/s_objs.hpp"
 #include "render/camera.hpp"
 #include "render/control.hpp"
 #include "render/postproc.hpp"
@@ -22,37 +22,6 @@
 #include "vaslib/vas_file.hpp"
 #include "vaslib/vas_log.hpp"
 #include "main_loop.hpp"
-
-
-
-struct Watchdog
-{
-	const TimeSpan max = TimeSpan::seconds(3);
-	
-	void reset() {
-		std::unique_lock l(m);
-		t = {};
-	}
-	void add(TimeSpan val) {
-		std::unique_lock l(m);
-		t += val;
-		if (t > max && enabled) {
-			VLOGC("!!!WATCHDOG!!!");
-			log_terminate_h_reset();
-			std::terminate();
-		}
-	}
-	void set_enabled(bool new_enabled) {
-		std::unique_lock l(m);
-		enabled = new_enabled;
-	}
-	
-private:
-	std::mutex m;
-	TimeSpan t;
-	bool enabled = false;
-};
-static Watchdog wdog;
 
 
 
@@ -73,7 +42,7 @@ public:
 			ctr->set_gpad( std::unique_ptr<Gamepad> (Gamepad::open_default()) );
 		}
 	}
-	void on_event(SDL_Event& ev)
+	void on_event(const SDL_Event& ev)
 	{
 		if		(ev.type == SDL_KEYUP)
 		{
@@ -87,8 +56,6 @@ public:
 	}
 	void render(TimeSpan)
 	{
-		wdog.reset();
-		
 		vig_lo_push_scroll( RenderControl::get_size() - vig_element_decor()*2, scroll_pos );
 		
 		vig_label("KEYBINDS (hover over action to see description)\n");
@@ -382,7 +349,7 @@ public:
 		
 		VLOGI("Average logic frame length: {} ms, {} samples", serv_avg_total, serv_avg_count);
 	}
-	void on_event(SDL_Event& ev)
+	void on_event(const SDL_Event& ev)
 	{
 		if (ev.type == SDL_KEYUP) {
 			int k = ev.key.keysym.scancode;
@@ -417,8 +384,6 @@ public:
 	}
 	void render(TimeSpan passed)
 	{
-		wdog.reset();
-		
 		std::unique_lock lock(ren_lock);
 		if (thr_term) throw std::runtime_error("Game failed");
 		if (!pres)
@@ -460,6 +425,7 @@ public:
 			
 			if (is_first_frame && core->get().get_step_time().is_positive())
 			{
+				VLOGI("First game frame rendered at {:.3f} seconds", TimeSpan::since_start().seconds());
 				is_first_frame = false;
 				Postproc::get().tint_default(TimeSpan::seconds(3));
 			}
@@ -468,7 +434,7 @@ public:
 			
 			if (auto ent = core->get_pmg().get_ent())
 			{
-				auto cam = RenderControl::get().get_world_camera();
+				auto& cam = RenderControl::get().get_world_camera();
 				
 				vec2fp cam_size_m;
 				if (pc_ctr->get_state().is[ PlayerController::A_CAM_CLOSE_SW ]) cam_size_m = {60, 35};
@@ -476,7 +442,7 @@ public:
 				float calc_mag = (vec2fp(RenderControl::get().get_size()) / cam_size_m).minmax().x;
 				
 				const float tar_min = GameConst::hsz_rat * 2;
-				const float tar_max = 15.f * (calc_mag / cam->get_state().mag);
+				const float tar_max = 15.f * (calc_mag / cam.get_state().mag);
 				const float per_second = 0.08 / TimeSpan::fps(60).seconds();
 				
 				const vec2fp pos = ent->get_phy().get_pos();
@@ -492,12 +458,12 @@ public:
 					else if (tar_d.len() > tar_max) tar = pos + tar_d.get_norm() * tar_max;
 				}
 				
-				auto frm = cam->get_state();
+				auto frm = cam.get_state();
 				if (is_far_cam) calc_mag /= 1.5;
 				else calc_mag *= AppSettings::get().cam_mag_mul;
 				frm.mag = calc_mag;
 				
-				const vec2fp scr = cam->coord_size();
+				const vec2fp scr = cam.coord_size();
 				const vec2fp tar_d = (tar - frm.pos);
 				
 				if (std::fabs(tar_d.x) > scr.x || std::fabs(tar_d.y) > scr.y)
@@ -515,9 +481,9 @@ public:
 					{
 						cam_telep_tmo = {};
 						frm.pos = tar;
-						cam->set_state(frm);
+						cam.set_state(frm);
 					}
-					else cam->set_state(frm);
+					else cam.set_state(frm);
 				}
 				else
 				{
@@ -525,7 +491,7 @@ public:
 					
 					cam_telep_tmo = {};
 					frm.pos += dt;
-					cam->set_state(frm);
+					cam.set_state(frm);
 				}
 			}
 			
@@ -548,14 +514,14 @@ public:
 			
 			// draw UI
 			
-			vec2i mpos;
-			SDL_GetMouseState(&mpos.x, &mpos.y);
-			Postproc::get().set_particle_shadow(mpos);
-			
 			RenImm::get().set_context(RenImm::DEFCTX_UI);
 			
 			if (vig_current_menu() == VigMenu::Default)
+			{
+				vec2i mpos;
+				SDL_GetMouseState(&mpos.x, &mpos.y);
 				core->get_pmg().render(passed, mpos);
+			}
 			
 			std::optional<vec2fp> plr_p;
 			if (auto ent = core->get_pmg().get_ent()) plr_p = ent->get_phy().get_pos();
@@ -586,10 +552,7 @@ public:
 		while (!pres)
 		{
 			if (thr_term) throw std::runtime_error("init_game() interrupted");
-			
-			TimeSpan st = TimeSpan::fps(30);
-			sleep(st);
-			wdog.add(st);
+			sleep(TimeSpan::fps(30));
 		}
 		
 		new EWall(lt->ls_wall);
@@ -623,14 +586,11 @@ public:
 					break;
 				}
 			}
-			auto dt = TimeSpan::since_start() - t0;
 			
-			TimeSpan st = core->step_len - dt;
-			sleep(st);
-			wdog.add(st);
+			auto dt = TimeSpan::since_start() - t0;
+			sleep(core->step_len - dt);
 			
 			dbg_serv_avg.add (dt.seconds());
-			
 			if (!pause_logic_ok) {
 				++serv_avg_count;
 				serv_avg_total += (dt.seconds() * 1000 - serv_avg_total) / serv_avg_count;
@@ -649,29 +609,27 @@ public:
 		pause_logic = true;
 		while (!pause_logic_ok) sleep(TimeSpan::ms(5));
 		
-		wdog.set_enabled(false);
-		
 		vec2fp size = LevelControl::get().get_size();
 		size *= LevelControl::get().cell_size;
 		
-		auto cam = RenderControl::get().get_world_camera();
-		auto orig_frm = cam->get_state();
-		cam->set_vport_full();
+		auto& cam = RenderControl::get().get_world_camera();
+		auto orig_frm = cam.get_state();
+		cam.set_vport_full();
 		
 		Camera::Frame frm;
 		
 		frm.mag = 0.05;
-		cam->set_state(frm);
+		cam.set_state(frm);
 		GamePresenter::get()->sync();
 		
 		frm.mag = 8;
-		cam->set_state(frm);
+		cam.set_state(frm);
 		
 		vec2i tex_sz = RenderControl::get_size();
 		std::unique_ptr<Texture> tex( Texture::create_empty( tex_sz, Texture::FMT_RGBA ) );
 		Postproc::get().capture_begin( tex.get() );
 		
-		vec2fp cam_sz = cam->coord_size();
+		vec2fp cam_sz = cam.coord_size();
 		vec2i count = (size / cam_sz).int_ceil();
 		vec2i ipos;
 		
@@ -690,7 +648,7 @@ public:
 		{
 			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
 			
-			cam->set_state(frm);
+			cam.set_state(frm);
 			GamePresenter::get()->render({});
 			RenderControl::get().render({});
 			
@@ -709,11 +667,8 @@ public:
 		ImageInfo::png_compression_level = png_level;
 		
 		Postproc::get().capture_end();
-		cam->set_state(orig_frm);
+		cam.set_state(orig_frm);
 		pause_logic = false;
-		
-		wdog.reset();
-		wdog.set_enabled(true);
 	}
 };
 
@@ -721,7 +676,7 @@ public:
 
 MainLoop* MainLoop::current;
 
-MainLoop* MainLoop::create(InitWhich which)
+void MainLoop::create(InitWhich which)
 {
 	MainLoop* prev = current;
 	
@@ -743,7 +698,6 @@ MainLoop* MainLoop::create(InitWhich which)
 	}
 	
 	current->ml_prev = prev;
-	return current;
 }
 MainLoop::~MainLoop() {
 	if (current == this) current = ml_prev;

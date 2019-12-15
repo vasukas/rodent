@@ -76,6 +76,8 @@ public:
 	
 	GLint vp[4]; // for restoring after clip rects
 	
+	std::unique_ptr<Shader> sh_default, sh_default_text;
+	
 	
 	
 #define u0 tc.lower().x
@@ -259,16 +261,19 @@ public:
 		
 		ctxs.resize(DEFCTX_NONE);
 		Context* cx;
+
+		sh_default      = Shader::load("imm", {}, true);
+		sh_default_text = Shader::load("imm_text", {}, true);
 		
 		cx = &ctxs[DEFCTX_WORLD].ctx;
-		cx->sh      = Shader::load("imm", true);
-		cx->sh_text = Shader::load("imm_text", true);
-		cx->cam = RenderControl::get().get_world_camera();
+		cx->sh      = sh_default.get();
+		cx->sh_text = sh_default_text.get();
+		cx->cam = &RenderControl::get().get_world_camera();
 		
 		cx = &ctxs[DEFCTX_UI].ctx;
-		cx->sh      = Shader::load("imm", true);
-		cx->sh_text = Shader::load("imm_text", true);
-		cx->cam = RenderControl::get().get_ui_camera();
+		cx->sh      = sh_default.get();
+		cx->sh_text = sh_default_text.get();
+		cx->cam = &RenderControl::get().get_ui_camera();
 	}
 	Context& get_context (CtxIndex id)
 	{

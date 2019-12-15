@@ -20,7 +20,7 @@ class GameCore
 public:
 	struct InitParams
 	{
-		uint32_t random_seed = 0;
+		std::string random_init;
 		std::unique_ptr<PlayerManager> pmg;
 	};
 	

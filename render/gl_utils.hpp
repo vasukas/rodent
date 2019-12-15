@@ -53,6 +53,8 @@ struct GLA_Buffer
 	void update_part( size_t offset, size_t val_count, const void* data );
 	void get_part( size_t offset, size_t val_count, void* data );
 	size_t size_bytes() const;
+	
+	void update( const std::vector<float>& vs ) {update(vs.size(), vs.data());}
 };
 
 
@@ -162,6 +164,13 @@ struct GLA_Framebuffer
 		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, point, GL_TEXTURE_2D, tex, 0);
 	}
+	void attach_rbf(GLenum point, GLuint rbf) {
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, point, GL_RENDERBUFFER, rbf);
+	}
+	
+	bool check();
+	void check_throw(std::string_view where);
 };
 
 #endif // GL_UTILS_HPP

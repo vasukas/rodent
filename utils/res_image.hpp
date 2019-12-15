@@ -46,7 +46,7 @@ struct ImageInfo
 	/// Clears image (optionally changing format)
 	void reset( vec2i new_size, std::optional<Format> new_fmt = {} );
 	
-	/// Clears image
+	/// Clears image (sets pixels to zero)
 	void clear();
 	
 	/// Changes format
@@ -56,6 +56,12 @@ struct ImageInfo
 	void vflip();
 	
 	
+	
+	/// Swaps pixel data. Format isn't changed
+	void px_swap( std::vector<uint8_t>& px, std::optional<vec2i> new_size = {} );
+	
+	/// Returns moved pixel data. Size set to zero
+	std::vector<uint8_t> move_px();
 	
 	/// Returns raw pixel pointer
 	const uint8_t* raw() const { return px.data(); }

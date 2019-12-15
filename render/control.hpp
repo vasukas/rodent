@@ -9,7 +9,6 @@
 class  Camera;
 struct GLA_VertexArray;
 struct ImageInfo;
-class  PP_Graph;
 union  SDL_Event;
 struct SDL_Window;
 
@@ -43,13 +42,12 @@ public:
 	static vec2i get_size(); ///< Returns window width & height in pixels
 	virtual int get_max_tex() = 0; ///< Returns maximum texture dimension possible
 	
-	virtual Camera* get_world_camera() = 0;
-	virtual Camera* get_ui_camera()    = 0; ///< Always reset before rendering
+	virtual Camera& get_world_camera() = 0;
+	virtual Camera& get_ui_camera()    = 0; ///< Always reset before rendering
 	
 	virtual bool is_visible() = 0; ///< Returns true if window is visible on screen
 	virtual SDL_Window* get_wnd() = 0;
 	
-	virtual PP_Graph* get_ppg() = 0;
 	virtual TimeSpan get_passed() = 0; ///< Returns last 'passed' value which was passed to render()
 	
 	
@@ -80,11 +78,11 @@ public:
 	/// Reloads all shaders
 	virtual void reload_shaders() = 0;
 	
-	/// Returns internal VAO representing full screen in NDC as two triangles - 6 vertices of vec2
+	/// Returns internal VAO representing full screen in NDC as two triangles - 6 vertices of vec2 (CCW winding)
 	virtual GLA_VertexArray& ndc_screen2() = 0;
 	
 	/// Adds callback to be called at screen size change. Returns callback deleter
-	[[nodiscard]] virtual RAII_Guard add_size_cb(std::function<void()> cb, bool call_now = false) = 0;
+	[[nodiscard]] virtual RAII_Guard add_size_cb(std::function<void()> cb, bool call_now = true) = 0;
 };
 
 #endif // REN_CTL_HPP

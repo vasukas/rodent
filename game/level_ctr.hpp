@@ -3,6 +3,7 @@
 
 #include "entity.hpp"
 
+class  AsyncPathSearch;
 struct LevelTerrain;
 
 
@@ -39,8 +40,6 @@ private:
 };
 
 
-
-class AsyncPathSearch;
 
 class LevelControl final
 {
@@ -92,7 +91,7 @@ public:
 	vec2fp to_center_coord(vec2i  p) const {return vec2fp(p) * cell_size + vec2fp::one(cell_size * 0.5);}
 	bool is_same_coord(vec2fp a, vec2fp b) const {return to_cell_coord(a) == to_cell_coord(b);}
 	
-	Room* get_room(vec2fp pos); ///< May return null
+	Room* get_room(vec2fp pos);
 	
 protected:
 	vec2i size;
@@ -102,6 +101,8 @@ protected:
 	std::unique_ptr<AsyncPathSearch> aps;
 	
 	LevelControl(const LevelTerrain& lt);
+	void fin_init_normal(LevelTerrain& lt);
+	void fin_init_debug(LevelTerrain& lt);
 };
 
 #endif // LEVEL_CTR_HPP

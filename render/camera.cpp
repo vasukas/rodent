@@ -6,6 +6,11 @@ void Camera::set_state (Frame frm)
 	cur = frm;
 	mx_req_upd = 3;
 }
+Camera::Frame& Camera::mut_state()
+{
+	mx_req_upd = 3;
+	return cur;
+}
 void Camera::set_vport (Rect vp)
 {
 	vport = vp;

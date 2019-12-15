@@ -25,9 +25,6 @@ font_dbg_pt  16
 # upscale of texture atlas on generation
 font_supersample 2
 
-# alpha value of particle shadow
-hole_min_alpha 1
-
 # camera magnification multiplier
 cam_mag_mul 1
 

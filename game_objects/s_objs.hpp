@@ -2,10 +2,10 @@
 #define S_OBJS_HPP
 
 #include "client/presenter.hpp"
+#include "game/level_ctr.hpp"
+#include "game/physics.hpp"
+#include "game/weapon.hpp"
 #include "game_ai/ai_drone.hpp"
-#include "level_ctr.hpp"
-#include "physics.hpp"
-#include "weapon.hpp"
 
 
 

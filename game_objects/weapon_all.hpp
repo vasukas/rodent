@@ -2,8 +2,8 @@
 #define WEAPON_ALL_HPP
 
 #include "client/presenter.hpp"
-#include "physics.hpp"
-#include "weapon.hpp"
+#include "game/physics.hpp"
+#include "game/weapon.hpp"
 
 
 
@@ -82,23 +82,24 @@ public:
 	struct SrcParams
 	{
 		size_t team;
+		EntityIndex src_eid;
+		int gener = 0; // generation
 		std::vector <Entity*> prev = {};
 		
 		bool ignore(Entity* ent);
 	};
 	
-	static bool generate(vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim, bool is_first);
+	static bool generate(vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim);
 	
 private:
+	static constexpr int last_generation = 2; // 3 gens
 	static constexpr TimeSpan left_init = TimeSpan::seconds(0.3);
 	TimeSpan left = left_init;
 	EC_VirtualBody phy;
 	SrcParams src;
 	std::optional<vec2fp> dir_lim;
 	
-	ElectroCharge(vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim)
-	    : phy(this, Transform{pos}), src(src), dir_lim(dir_lim)
-	{reg_this();}
+	ElectroCharge(vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim);
 	ECompPhysics& get_phy() override {return phy;}
 	void step() override;
 };

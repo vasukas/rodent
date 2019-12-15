@@ -23,6 +23,7 @@
     <ClCompile Include="core\*.cpp" />
     <ClCompile Include="game\*.cpp" />
     <ClCompile Include="game_ai\*.cpp" />
+    <ClCompile Include="game_objects\*.cpp" />
     <ClCompile Include="render\*.cpp" />
     <ClCompile Include="utils\*.cpp" />
     <ClCompile Include="vaslib\*.cpp" />
@@ -39,6 +40,7 @@
     <Content Include="core\*.hpp" />
     <Content Include="game\*.hpp" />
     <Content Include="game_ai\*.hpp" />
+    <Content Include="game_objects\*.hpp" />
     <Content Include="render\*.hpp" />
     <Content Include="utils\*.hpp" />
     <Content Include="vaslib\*.hpp" />

@@ -17,10 +17,8 @@ void HealthPool::apply(int amount, bool limited)
 {
 	hp += amount;
 	if (limited && hp > hp_max) hp = hp_max;
-	if (hp < 0) {
-		hp = -1;
-		tmo = regen_wait;
-	}
+	if (hp < 0) hp = -1;
+	if (amount < 0) tmo = regen_wait;
 }
 void HealthPool::renew(std::optional<int> new_max)
 {

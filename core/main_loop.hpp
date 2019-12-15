@@ -17,11 +17,11 @@ public:
 		INIT_SETTINGS
 	};
 	
-	static MainLoop* create(InitWhich which); ///< And makes current
-	virtual void init() = 0; ///< Called after engine init
+	static void create(InitWhich which); ///< Makes it current
+	virtual void init() = 0; ///< Must be called after create
 	virtual bool parse_arg(ArgvParse& arg);
 	
-	virtual void on_event(SDL_Event&) {}
+	virtual void on_event(const SDL_Event&) {}
 	virtual void render(TimeSpan passed) = 0; ///< Called each frame on unset renderer
 	virtual ~MainLoop();
 	

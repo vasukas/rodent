@@ -1589,7 +1589,7 @@ struct Gen1
 
 LevelTerrain* LevelTerrain::generate(const GenParams& pars)
 {
-	LevelTerrain* lt_ptr = new LevelTerrain;
+	auto lt_ptr = std::make_unique<LevelTerrain>();
 	LevelTerrain& lt = *lt_ptr;
 	
 	TimeSpan t0 = TimeSpan::since_start();
@@ -1619,7 +1619,53 @@ LevelTerrain* LevelTerrain::generate(const GenParams& pars)
 		VLOGD("               gen_grid:   {:.3f} seconds, {} lines", (t3 - t2).seconds(), lt.ls_grid.size());
 	}
 	
-	return lt_ptr;
+	return lt_ptr.release();
+}
+LevelTerrain* LevelTerrain::load_test(const char *filename, float cell_size)
+{
+	ImageInfo img;
+	if (!img.load(filename, ImageInfo::FMT_RGB))
+		THROW_FMTSTR("LevelTerrain::load_test() can't load \"{}\"", filename);
+	
+	auto lt_ptr = std::make_unique<LevelTerrain>();
+	LevelTerrain& lt = *lt_ptr;
+	
+	lt.grid_size = img.get_size();
+	lt.cs.resize( lt.grid_size.area() );
+	for (auto& c : lt.cs) c.is_wall = false;
+	
+	for (int y=0; y < lt.grid_size.y; ++y)
+	for (int x=0; x < lt.grid_size.x; ++x)
+	{
+		auto& cell = lt.cs[y * lt.grid_size.x + x];
+		uint32_t clr = img.get_pixel_fast({x,y});
+		switch (clr)
+		{
+		case 0xffffff:
+			break;
+		
+		case 0x000000:
+			cell.is_wall = true;
+			break;
+			
+		case 0x00ff00:
+			lt.dbg_spawns.push_back({ {x,y}, DBG_SPAWN_PLAYER });
+			break;
+			
+		case 0xff0000:
+			lt.dbg_spawns.push_back({ {x,y}, DBG_SPAWN_DRONE });
+			break;
+			
+		default:
+			THROW_FMTSTR("LevelTerrain::load_test() file \"{}\", unknown color {:#6x} at {}x{} (0-based)",
+			             filename, clr, x, y);
+		}
+	}
+	
+	lt.cell_size = cell_size;
+	lt.ls_wall = lt.vectorize();
+	lt.ls_grid = lt.gen_grid();
+	return lt_ptr.release();
 }
 
 

@@ -22,11 +22,11 @@ enum class DamageType
 
 struct DamageQuant
 {
-	DamageType type;
-	int amount; ///< Negative is treated like zero
+	DamageType type = DamageType::Kinetic;
+	int amount = 0; ///< Negative is treated like zero
 	std::optional<size_t> armor = {}; ///< Armored area index
 	std::optional<vec2fp> wpos = {}; ///< World position (to display particles)
-	EntityIndex src_eid = {}; ///< Who caused damage, MUST exist and be valid!
+	EntityIndex src_eid = {}; ///< Who caused damage. If set, MUST be valid!
 };
 
 
@@ -115,7 +115,7 @@ struct DamageFilter
 
 struct DmgShield : DamageFilter
 {
-	static constexpr float dead_absorb = 100; ///< How much additional damage absorbed on destruction
+	static constexpr int dead_absorb = 100; ///< How much additional damage absorbed on destruction
 	bool enabled = true;
 	bool is_filter = true; // used only for rendering
 	

@@ -1,6 +1,6 @@
 #include "client/plr_control.hpp"
 #include "vaslib/vas_log.hpp"
-#include "game_core.hpp"
+#include "game/game_core.hpp"
 #include "player.hpp"
 #include "weapon_all.hpp"
 
@@ -55,7 +55,7 @@ void PlayerRender::step()
 	
 	if (true)
 	{
-		float k = 1.f / RenderControl::get().get_world_camera()->get_state().mag;
+		float k = 1.f / RenderControl::get().get_world_camera().get_state().mag;
 		RenImm::get().draw_text( get_pos().pos, dbg_info_real, RenImm::White, false, k );
 	}
 }
@@ -91,7 +91,7 @@ void PlayerRender::set_ray_tar(vec2fp new_tar)
 }
 
 
-	
+
 PlayerMovement::PlayerMovement(Entity* ent)
 	: EComp(ent)
 {
