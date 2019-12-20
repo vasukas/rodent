@@ -113,16 +113,18 @@ void PlayerMovement::upd_vel(vec2fp dir, bool is_accel, vec2fp look_pos)
 	for (int i=0; i<4; ++i)
 	{
 		auto sz = i&1? vec2fp(len, wid) : vec2fp(wid, len);
-		auto pos = vec2fp(off, 0).get_rotated( M_PI_2 * i );
+		auto pos = vec2fp(off, 0).rotate( M_PI_2 * i );
 		pos += ent->get_phy().get_pos();
 		
-		std::vector<PhysicsWorld::PointResult> rs;
-		GameCore::get().get_phy().area_cast(rs, Rectfp::from_center(pos, sz),
-		{[&](auto, b2Fixture* fix){
-		     auto d = getptr(fix);
-		     if (d && (d->typeflags & FixtureInfo::TYPEFLAG_WALL)) side_col[i] = true;
-		     return false;
-		}});
+		GameCore::get().get_phy().query_aabb(Rectfp::from_center(pos, sz),
+		[&](auto&, b2Fixture& fix) {
+			auto d = getptr(&fix);
+			if (d && (d->typeflags & FixtureInfo::TYPEFLAG_WALL)) {
+				side_col[i] = true;
+				return false;
+			}
+			return true;
+		});
 	}
 	
 	// prepare
@@ -136,7 +138,7 @@ void PlayerMovement::upd_vel(vec2fp dir, bool is_accel, vec2fp look_pos)
 	is_accel = !accel_ss.is_zero();
 	
 	std::optional<float> spd;
-	if (static_cast<PlayerEntity*>(ent)->log.shlc.is_enabled())
+	if (dynamic_cast<PlayerEntity&>(*ent).log.shlc.is_enabled())
 	{
 		is_accel = false;
 		spd = spd_shld;
@@ -209,11 +211,11 @@ void PlayerMovement::step()
 
 
 
-ShieldControl::ShieldControl(Entity& root, size_t armor_index)
-	: root(root), armor_index(armor_index), tr({root.get_phobj().get_radius() + GameConst::hsz_pshl.x, 0})
+ShieldControl::ShieldControl(Entity& root)
+	: root(root), tr({root.get_phobj().get_radius() + GameConst::hsz_pshl.x, 0})
 {
 	sh.reset( new DmgShield(500, 200/5.f) );
-	root.get_hlc()->add_prot(sh, armor_index);
+	armor_index = root.get_hlc()->add_prot(sh);
 }
 void ShieldControl::enable()
 {
@@ -297,11 +299,36 @@ bool ShieldControl::step(bool sw_state)
 PlayerLogic::PlayerLogic(Entity* ent, std::shared_ptr<PlayerController> ctr_in)
     :
 	EComp(ent),
-	shlc(*ent, PlayerEntity::ARMI_SHLD_PROJ),
+	shlc(*ent),
 	ctr(std::move(ctr_in))
 {
 	reg(ECompType::StepLogic);
 	prev_tar = ent->get_phy().get_pos() + vec2fp(1, 0);
+	
+	b2FixtureDef fd;
+	fd.isSensor = true;
+	ent->get_phobj().add_circle(fd, GameConst::hsz_rat + col_dmg_radius, 0, new FI_Sensor);
+	
+	EVS_CONNECT1(ent->get_phobj().ev_contact, on_cnt);
+}
+void PlayerLogic::on_cnt(const CollisionEvent& ev)
+{
+	if (!dynamic_cast<FI_Sensor*>(ev.fix_this)) return;
+	if (ev.type == CollisionEvent::T_BEGIN)
+	{
+		if (auto hc = ev.other->get_hlc())
+		{
+			float spd = ent->get_phy().get_vel().pos.len_squ();
+			if (spd > col_dmg_spd_min * col_dmg_spd_min)
+			{
+				spd = std::sqrt(spd);
+				float t = 1 + (spd - col_dmg_spd_min) * col_dmg_spd_mul;
+				
+				hc->apply({DamageType::Direct, int_round( col_dmg_val * t )});
+				shld_restore_left += col_dmg_restore * t;
+			}
+		}
+	}
 }
 void PlayerLogic::step()
 {
@@ -317,6 +344,10 @@ void PlayerLogic::step()
 	
 	ctr->set_switch(PlayerController::A_SHIELD_SW, shlc.step(cst.is[PlayerController::A_SHIELD_SW]));
 	
+	float sh_rest = std::min( shld_restore_left, shld_restore_rate * GameCore::time_mul );
+	dynamic_cast<PlayerEntity&>(*ent).pers_shld->get_hp().apply( sh_rest );
+	shld_restore_left -= sh_rest;
+	
 	// actions
 	
 	bool accel = cst.is[PlayerController::A_ACCEL];
@@ -325,13 +356,25 @@ void PlayerLogic::step()
 	{
 		if		(a == PlayerController::A_WPN_PREV)
 		{
-			auto i = eqp.wpn_index();
-			if (i && *i) eqp.set_wpn(*i-1);
+			auto& wpns = eqp.raw_wpns();
+			auto i = eqp.wpn_index(), j = i - 1;
+			for (; j != i; --j)
+			{
+				if (j >= wpns.size()) j = wpns.size() - 1;
+				if (eqp.set_wpn(j)) break;
+			}
+			if (i == j) eqp.set_wpn(i);
 		}
 		else if (a == PlayerController::A_WPN_NEXT)
 		{
-			auto i = eqp.wpn_index();
-			if (i && *i != eqp.raw_wpns().size() - 1) eqp.set_wpn(*i+1);
+			auto& wpns = eqp.raw_wpns();
+			auto i = eqp.wpn_index(), j = i + 1;
+			for (; j != i; ++j)
+			{
+				if (j >= wpns.size()) j = 0;
+				if (eqp.set_wpn(j)) break;
+			}
+			if (i == j) eqp.set_wpn(i);
 		}
 		else if (a == PlayerController::A_WPN_1) eqp.set_wpn(0);
 		else if (a == PlayerController::A_WPN_2) eqp.set_wpn(1);
@@ -353,7 +396,7 @@ void PlayerLogic::step()
 	prev_tar = tar;
 	
 	self->mov.upd_vel(cst.mov, accel, prev_tar);
-	eqp.try_shoot(tar, cst.is[PlayerController::A_SHOOT], cst.is[PlayerController::A_SHOOT_ALT] );
+	eqp.shoot(tar, cst.is[PlayerController::A_SHOOT], cst.is[PlayerController::A_SHOOT_ALT] );
 	
 	// set rotation
 	
@@ -385,16 +428,14 @@ void PlayerLogic::step()
 
 
 
-b2BodyDef PlayerEntity::ph_def(vec2fp pos)
-{
-	b2BodyDef bd;
-	bd.type = b2_dynamicBody;
-	bd.position = conv(pos);
-	return bd;
-}
 PlayerEntity::PlayerEntity(vec2fp pos, std::shared_ptr<PlayerController> ctr)
 	:
-	phy(this, ph_def(pos)),
+	phy(this, [&]{
+		b2BodyDef bd;
+		bd.type = b2_dynamicBody;
+		bd.position = conv(pos);
+		return bd;
+	}()),
 	ren(this),
 	mov(this),
 	hlc(this, 150),
@@ -406,14 +447,21 @@ PlayerEntity::PlayerEntity(vec2fp pos, std::shared_ptr<PlayerController> ctr)
 	fd.restitution = 0.5;
 	phy.add_circle(fd, GameConst::hsz_rat, 15);
 	
+	//
+	
 	auto& hp = hlc.get_hp();
 //	hp.regen_at = 0.7;
 	hp.regen_hp = 3;
 	hp.regen_cd = TimeSpan::seconds(0.7);
-	hp.regen_wait = TimeSpan::seconds(5);
+	hp.regen_wait = TimeSpan::seconds(12);
 	
 	pers_shld.reset(new DmgShield (150, 10, TimeSpan::seconds(2)));
-	hlc.add_filter(pers_shld, ARMI_PERSONAL_SHLD);
+	hlc.add_filter(pers_shld);
+	
+	armor.reset(new DmgArmor(300));
+	hlc.add_filter(armor);
+	
+	//
 	
 	eqp.infinite_ammo = false;
 //	eqp.hand = 1;
@@ -428,5 +476,6 @@ PlayerEntity::PlayerEntity(vec2fp pos, std::shared_ptr<PlayerController> ctr)
 	eqp.add_wpn(new WpnElectro);
 	eqp.add_wpn(new WpnFoam);
 	eqp.add_wpn(new WpnRifle);
-	eqp.set_wpn(0);
+	eqp.add_wpn(new WpnUber);
+	eqp.set_wpn(1);
 }

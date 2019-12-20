@@ -171,6 +171,10 @@ public:
 		bool is_ok(b2Fixture& f);
 	};
 	
+	using QueryCb    = callable_ref<void(Entity&, b2Fixture&)>;
+	using QueryCbRet = callable_ref<bool(Entity&, b2Fixture&)>; ///< If returns false, query stops (unless it's wide)
+	using OptQueryCbRet = opt_callable_ref<bool(Entity&, b2Fixture&)>;
+	
 	GameCore& core;
 	b2World world;
 	
@@ -193,17 +197,26 @@ public:
 	/// Returns nearest object hit
 	std::optional<RaycastResult> raycast_nearest(b2Vec2 from, b2Vec2 to, CastFilter cf = {}, std::optional<float> width = {});
 	
-	/// Appends result - all objects inside the circle
+	/// Calls function for all objects inside circle
+	void query_circle_all(b2Vec2 ctr, float radius, QueryCbRet narrow, OptQueryCbRet wide = nullptr);
+	
+	/// Calls function for all objects inside circle
+	void query_circle_all(b2Vec2 ctr, float radius, QueryCb narrow, OptQueryCbRet wide = nullptr);
+	
+	/// Appends result - all objects inside circle
 	void circle_cast_all(std::vector<CastResult>& es, b2Vec2 ctr, float radius, CastFilter cf = {});
 	
-	/// Appends result - objects inside the circle which are nearest to center
+	/// Appends result - objects inside circle which are nearest to center
 	void circle_cast_nearest(std::vector<RaycastResult>& es, b2Vec2 ctr, float radius, CastFilter cf = {});
 	
 	/// Returns non-sensor object in which point lays
 	std::optional<PointResult> point_cast(b2Vec2 ctr, float radius, CastFilter cf = {});
 	
-	/// Appends result - all objects inside rectangle
-	void area_cast(std::vector<PointResult>& es, Rectfp area, CastFilter cf = {});
+	/// Calls function for all objects inside rectangle
+	void query_aabb(Rectfp area, QueryCbRet f);
+	
+	/// Calls function for all objects inside rectangle
+	void query_aabb(Rectfp area, QueryCb f);
 	
 	/// Executes function after step (or immediatly, if not inside one)
 	void post_step(std::function<void()> f);

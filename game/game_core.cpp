@@ -29,12 +29,14 @@ public:
 	
 	RandomGen rndg;
 	bool step_flag = false;
+	bool is_freeing_flag = false;
 	
 	
 	
 	GameCore_Impl(InitParams pars)
 	{
 		dbg_ai_attack = true;
+		spawn_drop = false;
 		
 		ents.block_size = 256;
 		phy.reset(new PhysicsWorld(*this));
@@ -43,7 +45,9 @@ public:
 		if (!pars.random_init.empty() && !rndg.load(pars.random_init))
 			throw std::runtime_error("GameCore:: failed to init random");
 	}
-	~GameCore_Impl() = default;
+	~GameCore_Impl() {
+		is_freeing_flag = true;
+	}
 	
 	PhysicsWorld&  get_phy()    noexcept {return *phy;}
 	PlayerManager& get_pmg()    noexcept {return *pmg;}
@@ -52,6 +56,7 @@ public:
 	uint32_t      get_step_counter() const noexcept {return step_cou;}
 	TimeSpan      get_step_time()    const noexcept {return step_time_cou;}
 	bool          is_in_step()       const noexcept {return step_flag;}
+	bool          is_freeing()       const noexcept {return is_freeing_flag;}
 	
 	void step()
 	{
@@ -122,6 +127,9 @@ public:
 		
 		step_flag = false;
 		e_todel.clear();
+		
+		if (auto gp = GamePresenter::get())
+			gp->del_sync();
 		
 		pmg->step();
 	}

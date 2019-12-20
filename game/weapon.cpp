@@ -48,11 +48,12 @@ std::optional<Weapon::DirectionResult> Weapon::get_direction(const ShootParams& 
 */
 	
 	vec2fp offset = {ent->get_phy().get_radius(), 0};
-	offset.rotate(rot);
-	offset += info->bullet_offset.get_rotated( rot );
+	offset.fastrotate(rot);
+	offset += vec2fp(info->bullet_offset).fastrotate( rot );
 	
-	if (auto rc = GameCore::get().get_phy().raycast_nearest( conv(orig), conv(orig + offset) ))
+	if (auto rc = GameCore::get().get_phy().raycast_nearest( conv(orig), conv(orig + offset) )) {
 		offset = 0.9 * (conv(rc->poi) - orig);
+	}
 	orig += offset;
 	
 	vec2fp dir = ignore_target ? offset : pars.target - orig;
@@ -90,68 +91,31 @@ EC_Equipment::EC_Equipment(Entity* ent)
 	ammos[static_cast<size_t>(AmmoType::Energy)].max = 70;
 	ammos[static_cast<size_t>(AmmoType::FoamCell)].max = 100;
 }
-void EC_Equipment::try_shoot(vec2fp target, bool main, bool alt)
+void EC_Equipment::shoot(vec2fp target, bool main, bool alt)
 {
-	if (!main && !prev_main && !alt && !prev_alt) return;
-	
-	Weapon::ShootParams pars = {target, main, prev_main, alt, prev_alt};
-	prev_main = main;
-	prev_alt = alt;
-	shoot(pars);
+	pars.target = target;
+	pars.main = main;
+	pars.alt = alt;
 }
-bool EC_Equipment::shoot(Weapon::ShootParams pars)
-{
-	if (has_shot) return true;
-	
-	auto wpn = wpn_ptr();
-	if (!wpn || !wpn->is_ready()) return false;
-	
-	if (wpn->rof_left.is_positive()) return false;
-	if (!has_ammo(*wpn)) return false;
-	if (wpn->overheat && !wpn->overheat->is_ok()) return false;
-	
-	has_shot = true;
-	auto res = wpn->shoot(pars);
-	if (!res) return false;
-	
-	if (!res->ammo)  res->ammo  = wpn->info->def_ammo;
-	if (!res->delay) res->delay = wpn->info->def_delay;
-	if (!res->heat)  res->heat  = wpn->info->def_heat;
-	
-	if (!res->delay || *res->delay < GameCore::step_len)
-		res->delay = GameCore::step_len;
-	
-	if (wpn->overheat && res->heat) wpn->overheat->shoot(*res->heat * res->delay->seconds());
-	wpn->rof_left = *res->delay;
-	if (!infinite_ammo && res->ammo) get_ammo(wpn->info->ammo).add(-*res->ammo);
-	
-	return true;
-}
-bool EC_Equipment::set_wpn(std::optional<size_t> index)
+bool EC_Equipment::set_wpn(size_t index)
 {
 	if (index == wpn_cur) return true;
 	if (index >= wpns.size()) return false;
 	
-	// check if can be holstered
-	if (auto wpn = wpn_ptr())
+	// check if can be equipped
 	{
-		bool ok = true;
-		if (wpn->overheat && !wpn->overheat->is_ok()) ok = false;
-		
-		if (!ok)
-		{
-			last_req = index;
+		auto& wpn = wpns[index];
+		if (!infinite_ammo && !get_ammo(wpn->info->ammo).has(*wpn))
 			return false;
-		}
 	}
 	
-	// check if can be equipped
-	if (index)
+	// check if current can be holstered
+	if (wpn_cur != size_t_inval)
 	{
-		auto& wpn = wpns[*index];
-		if (!infinite_ammo && !get_ammo(wpn->info->ammo).has(*wpn))
+		auto& wpn = get_wpn();
+		if (wpn.overheat && !wpn.overheat->is_ok())
 		{
-			last_req.reset();
+			last_req = index;
 			return false;
 		}
 	}
@@ -160,38 +124,42 @@ bool EC_Equipment::set_wpn(std::optional<size_t> index)
 	if (auto rc = ent->get_ren())
 		rc->detach(ECompRender::ATT_WEAPON);
 	
+	if (wpn_cur != size_t_inval) w_prev = wpn_cur;
 	wpn_cur = index;
-	
 	last_req.reset();
-	has_shot = false;
 	
 	// update
-	if (auto wpn = wpn_ptr())
+	if (auto rc = ent->get_ren())
 	{
-		auto rc = ent->get_ren();
-		if (rc) {
-			auto& ri = *wpn->info;
-			int w_hand = ri.hand ? *ri.hand : hand;
-			
-			float r = ent->get_phy().get_radius();
-			rc->attach( ECompRender::ATT_WEAPON, Transform{vec2fp(r, r/2 * w_hand)}, ri.model, FColor(1, 0.4, 0, 1) );
-		}
+		auto& ri = *get_wpn().info;
+		int w_hand = ri.hand ? *ri.hand : hand;
+		
+		float r = ent->get_phy().get_radius();
+		rc->attach( ECompRender::ATT_WEAPON, Transform{vec2fp(r, r/2 * w_hand)}, ri.model, FColor(1, 0.4, 0, 1) );
 	}
+	
 	return true;
 }
-Weapon* EC_Equipment::wpn_ptr()
+size_t EC_Equipment::wpn_index()
 {
-	return wpn_cur ? wpns[*wpn_cur].get() : nullptr;
+	if (wpns.empty()) throw std::runtime_error("EC_Equipment::wpn_index() no weapons");
+	return wpn_cur;
 }
 Weapon& EC_Equipment::get_wpn()
 {
-	if (!wpn_cur) throw std::runtime_error("EC_Equipment::get_wpn() null");
-	return *wpns[*wpn_cur];
+	if (wpns.empty()) throw std::runtime_error("EC_Equipment::get_wpn() no weapons");
+	return *wpns[wpn_cur];
 }
 void EC_Equipment::add_wpn(Weapon* wpn)
 {
 	wpns.emplace_back(wpn);
 	wpn->equip = this;
+	
+	if (wpns.size() == 1) {
+		wpn_cur = size_t_inval;
+		set_wpn(0);
+		wpn_cur = 0;
+	}
 }
 bool EC_Equipment::has_ammo(Weapon& w, std::optional<int> amount)
 {
@@ -199,19 +167,65 @@ bool EC_Equipment::has_ammo(Weapon& w, std::optional<int> amount)
 	if (!amount) amount = w.info->def_ammo;
 	return amount ? get_ammo(w.info->ammo).has(*amount) : true;
 }
+bool EC_Equipment::shoot_internal(Weapon& wpn, Weapon::ShootParams pars)
+{
+	auto res = wpn.shoot(pars);
+	if (!res) return false;
+	
+	if (!res->ammo)  res->ammo  = wpn.info->def_ammo;
+	if (!res->delay) res->delay = wpn.info->def_delay;
+	if (!res->heat)  res->heat  = wpn.info->def_heat;
+	
+	if (!res->delay || *res->delay < GameCore::step_len)
+		res->delay = GameCore::step_len;
+	
+	if (wpn.overheat && res->heat) wpn.overheat->shoot(*res->heat * res->delay->seconds());
+	wpn.rof_left = *res->delay;
+	if (!infinite_ammo && res->ammo) get_ammo(wpn.info->ammo).add(-*res->ammo);
+	
+	return true;
+}
+bool EC_Equipment::shoot_check(Weapon& wpn)
+{
+	if (!wpn.is_ready()) return false;
+	
+	if (wpn.rof_left.is_positive()) return false;
+	if (!has_ammo(wpn)) return false;
+	if (wpn.overheat && !wpn.overheat->is_ok()) return false;
+	
+	return true;
+}
 void EC_Equipment::step()
 {
+	if (wpns.empty()) return;
+	
 	if (last_req)
 		set_wpn(*last_req);
 	
-	for (auto& wpn : wpns)
+	if (w_prev && *w_prev != wpn_cur)
 	{
+		auto sp = pars;
+		sp.main = sp.alt = false;
+		shoot_internal(*wpns[*w_prev], sp);
+		w_prev.reset();
+	}
+	
+	if (!shoot_check(get_wpn()))
+		pars.main = pars.alt = false;
+	
+	bool has_shot = (pars.main || pars.alt || pars.main_was || pars.alt_was) && shoot_internal(get_wpn(), pars);
+	pars.main_was = pars.main;
+	pars.alt_was = pars.alt;
+	pars.main = pars.alt = false;
+	
+	for (size_t i=0; i < wpns.size(); ++i)
+	{
+		auto& wpn = wpns[i];
+		
 		if (wpn->rof_left.is_positive())
 			wpn->rof_left -= GameCore::step_len;
 		
-		if (wpn->overheat && (wpn.get() != wpn_ptr() || !has_shot))
+		if (wpn->overheat && (i != wpn_cur || !has_shot))
 			wpn->overheat->cool();
 	}
-	
-	has_shot = false;
 }

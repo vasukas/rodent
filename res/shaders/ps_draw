@@ -45,25 +45,21 @@ void main() {
 	gl_Position = mx * vec4( -size, -size, 0, 1);
 	tc = vec2(-1, -1);
 	tclr = clr;
-	gl_PrimitiveID = gl_PrimitiveIDIn;
 	EmitVertex();
 
 	gl_Position = mx * vec4( +size, -size, 0, 1);
 	tc = vec2(+1, -1);
 	tclr = clr;
-	gl_PrimitiveID = gl_PrimitiveIDIn;
 	EmitVertex();
 
 	gl_Position = mx * vec4( -size, +size, 0, 1);
 	tc = vec2(-1, +1);
 	tclr = clr;
-	gl_PrimitiveID = gl_PrimitiveIDIn;
 	EmitVertex();
 
 	gl_Position = mx * vec4( +size, +size, 0, 1);
 	tc = vec2(+1, +1);
 	tclr = clr;
-	gl_PrimitiveID = gl_PrimitiveIDIn;
 	EmitVertex();
 
 	EndPrimitive();

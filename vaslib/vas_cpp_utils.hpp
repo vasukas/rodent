@@ -98,12 +98,12 @@ void append( T& target, const T& from )
 
 
 /// Non-owning reference to callable object
-template <typename F>
-class callable_ref;
+template <bool AllowOptional, typename F>
+class callable_ref_base;
 
 /// Non-owning reference to callable object
-template <typename Ret, typename... Args>
-class callable_ref<Ret(Args...)>
+template <bool AllowOptional, typename Ret, typename... Args>
+class callable_ref_base<AllowOptional, Ret(Args...)>
 {
 	// P0792R0 (open-std.org)
     void* _ptr;
@@ -111,19 +111,38 @@ class callable_ref<Ret(Args...)>
 
 public:
 	template <typename T, std::enable_if_t<
-		std::is_invocable_r<Ret, T, Args...>::value &&
-		!std::is_same<std::decay_t<T>, callable_ref<Ret(Args...)>>::value, int > = 0>
-	callable_ref(T&& f) noexcept {
+		std::is_invocable_v<T, Args...> &&
+		std::is_same_v<Ret, std::invoke_result_t<T, Args...>> &&
+		!std::is_same_v<std::decay_t<T>, callable_ref_base<true,  Ret(Args...)>> &&
+		!std::is_same_v<std::decay_t<T>, callable_ref_base<false, Ret(Args...)>>, bool> = false>
+	callable_ref_base(T&& f) noexcept {
 		_ptr = static_cast<void*>(std::addressof(f));
 		_erased_fn = [](void* ptr, Args... xs) -> Ret {
 			return (*reinterpret_cast<std::add_pointer_t<T>>(ptr))(std::forward<Args>(xs)...);
 		};
 	}
+
+	template <typename T, std::enable_if_t<
+		AllowOptional && std::is_null_pointer_v<T>, bool> = false>
+	callable_ref_base(T) noexcept {
+		_ptr = nullptr;
+		_erased_fn = nullptr;
+	}
 	
+	operator bool() const {
+		return _ptr != nullptr;
+	}
 	auto operator()(Args... xs) {
+		if (AllowOptional && !(*this)) throw std::logic_error("null opt_callable_ref invoked");
 		return _erased_fn(_ptr, std::forward<Args>(xs)...);
 	}
 };
+
+template <typename F>
+using callable_ref = callable_ref_base<false, F>;
+
+template <typename F>
+using opt_callable_ref = callable_ref_base<true, F>;
 
 
 

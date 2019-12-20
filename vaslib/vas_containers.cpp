@@ -1,6 +1,6 @@
 #include "vas_containers.hpp"
 
-#ifdef _MSC_VER
+#ifdef _WIN32
 #include <malloc.h>
 #define ALIGN_ALLOC(ALIGN, SIZE) _aligned_malloc(SIZE, ALIGN)
 #define ALIGN_FREE(PTR) _aligned_free(PTR)

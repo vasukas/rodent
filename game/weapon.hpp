@@ -94,7 +94,7 @@ public:
 	/// Default checks default ammo
 	virtual bool is_ready();
 	
-	virtual std::optional<UI_Info> get_ui_info() {return {};}
+	virtual std::optional<UI_Info> get_ui_info() {return {};} ///< Should return always, even if no info available
 	std::optional<TimeSpan> get_reload_timeout() const {if (rof_left.is_positive()) return rof_left; return {};}
 	
 	struct DirectionResult
@@ -132,33 +132,29 @@ struct EC_Equipment : EComp
 	
 	EC_Equipment(Entity* ent);
 	
-	/// Uses previous button states, obtained by this functions
-	void try_shoot(vec2fp target, bool main, bool alt);
+	/// Sets with which weapon shoot at the end of the step
+	void shoot(vec2fp target, bool main, bool alt);
 	
-	/// Returns false if not possible atm
-	bool shoot(Weapon::ShootParams pars);
+	bool set_wpn(size_t index); ///< Returns false if can't be set
+	size_t wpn_index();
 	
-	bool set_wpn(std::optional<size_t> index); ///< Returns false if can't
-	std::optional<size_t> wpn_index() {return wpn_cur;}
-	
-	Weapon* wpn_ptr(); ///< Returns current weapon (or nullptr if none)
-	Weapon& get_wpn(); ///< Returns current weapon (throws if none)
-	
+	Weapon& get_wpn(); ///< Returns current weapon
 	void add_wpn(Weapon* wpn); ///< Assumes ownership
-	Ammo& get_ammo(AmmoType type) {return ammos[static_cast<size_t>(type)];}
+	auto& raw_wpns() {return wpns;} ///< Do NOT erase anything
 	
+	Ammo& get_ammo(AmmoType type) {return ammos[static_cast<size_t>(type)];}
 	bool has_ammo(Weapon& w, std::optional<int> amount = {}); ///< For use by Weapon
-	auto& raw_wpns() {return wpns;}
 	
 private:
 	std::vector<std::unique_ptr<Weapon>> wpns; // no nulls
 	std::array<Ammo, static_cast<size_t>(AmmoType::TOTAL_COUNT)> ammos;
-	std::optional<size_t> wpn_cur;
+	size_t wpn_cur = size_t_inval;
 	std::optional<size_t> last_req; ///< change request
-	bool has_shot = false;
-	bool prev_main = false;
-	bool prev_alt = false;
+	std::optional<size_t> w_prev;
+	Weapon::ShootParams pars = {};
 	
+	bool shoot_internal(Weapon& wpn, Weapon::ShootParams pars);
+	bool shoot_check(Weapon& wpn);
 	void step() override;
 };
 

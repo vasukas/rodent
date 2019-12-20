@@ -80,7 +80,7 @@ private:
 
 struct ShieldControl
 {
-	ShieldControl(Entity& root, size_t armor_index);
+	ShieldControl(Entity& root);
 	void enable();
 	void disable();
 	
@@ -112,14 +112,24 @@ struct PlayerLogic : EComp
 	PlayerLogic(Entity* ent, std::shared_ptr<PlayerController> ctr_in);
 	
 private:
-	std::shared_ptr<PlayerController> ctr;
+	struct FI_Sensor : FixtureInfo {};
 	
-	const float push_angle = deg_to_rad(60.f); // pushoff params
-	const float push_imp_max = 120.f;
+	EVS_SUBSCR;
+	std::shared_ptr<PlayerController> ctr;
 	
 	const float min_tar_dist = 1.2; // minimal target distance
 	vec2fp prev_tar; // used if current dist < minimal
 	
+	const float col_dmg_radius = 1; // additional radius for collision sensor
+	const int   col_dmg_val = 60; // base collision damage
+	const float col_dmg_spd_min = 15; // minimal speed for collision damage
+	const float col_dmg_spd_mul = 1 / 10.f; // speed -> damage increase multiplier
+	const int   col_dmg_restore = 120; // base shield restore
+	
+	float shld_restore_left = 0;
+	float shld_restore_rate = 100; // per second
+	
+	void on_cnt(const CollisionEvent& ev);
 	void step() override;
 };
 
@@ -127,14 +137,7 @@ private:
 
 class PlayerEntity final : public Entity
 {
-	static b2BodyDef ph_def(vec2fp pos);
 public:
-	enum
-	{
-		ARMI_PERSONAL_SHLD = 0, ///< Filter
-		ARMI_SHLD_PROJ = 0 ///< Armor
-	};
-	
 	EC_Physics     phy;
 	PlayerRender   ren;
 	PlayerMovement mov;
@@ -144,6 +147,7 @@ public:
 	float rot = 0.f; // rotation override
 	
 	std::shared_ptr<DmgShield> pers_shld;
+	std::shared_ptr<DmgArmor> armor;
 	
 	PlayerEntity(vec2fp pos, std::shared_ptr<PlayerController> ctr);
 	std::string ui_descr() const override {return "Player";}

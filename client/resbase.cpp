@@ -264,7 +264,7 @@ void ResBase_Impl::init_ren()
 					auto n = l.b - l.a;
 					n.norm();
 					n.rot90ccw();
-					if (dot(n, lerp(l.a, l.b, 0.5).get_norm()) < 0) n = -n;
+					if (dot(n, lerp(l.a, l.b, 0.5).norm()) < 0) n = -n;
 					return n;
 				};
 				
@@ -377,7 +377,7 @@ void ResBase_Impl::init_ren()
 			ctr = pars.tr.pos;
 			pwr = clampf(pars.power, 0.2, 3);
 			
-			return int_round( rnd_stat().range(6, 9) ); 
+			return int_round( rnd_stat().range(8, 10) ); 
 		}
 		void gen(ParticleParams& p)
 		{
@@ -393,7 +393,8 @@ void ResBase_Impl::init_ren()
 			dt.fastrotate( rnd_stat().range_n2() * M_PI );
 			
 			p.pos = ctr + dt * 0.5;
-			p.vel = dt * 4 * pwr;
+			p.vel = dt * rnd_stat().range(1.5, 7) * pwr;
+			p.decel_to_zero();
 		}
 	};
 
@@ -523,6 +524,7 @@ void ResBase_Impl::init_ren()
 	    {MODEL_MINIGUN, "mgun"},
 	    {MODEL_ROCKET, "rocket"},
 	    {MODEL_ELECTRO, "electro"},
+	    {MODEL_UBERGUN, "ubergun"},
 	    
 	    {MODEL_HANDGUN_AMMO, "claw_ammo"},
 	    {MODEL_BOLTER_AMMO, "bolter_ammo"},
@@ -743,7 +745,8 @@ void ResBase_Impl::init_ren()
         MODEL_GRENADE,
 	    MODEL_MINIGUN,
 	    MODEL_ROCKET,
-	    MODEL_ELECTRO
+	    MODEL_ELECTRO,
+	    MODEL_UBERGUN
 	};
 	
 	for (auto i : wpn_ixs)

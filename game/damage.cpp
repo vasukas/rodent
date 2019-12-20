@@ -15,9 +15,9 @@ float HealthPool::t_state() const
 }
 void HealthPool::apply(int amount, bool limited)
 {
-	hp += amount;
-	if (limited && hp > hp_max) hp = hp_max;
-	if (hp < 0) hp = -1;
+	if (limited) hp = std::min(hp + amount, std::max(hp, hp_max));
+	else hp += amount;
+	if (hp < 0) hp = 0;
 	if (amount < 0) tmo = regen_wait;
 }
 void HealthPool::renew(std::optional<int> new_max)
@@ -118,29 +118,29 @@ void EC_Health::on_event(const CollisionEvent& ev)
 	if (ev.type == CollisionEvent::T_RESOLVE)
 		apply({ DamageType::Physical, static_cast<int>(ev.imp) });
 }
-size_t EC_Health::add_filter(std::shared_ptr<DamageFilter> f, std::optional<size_t> index)
+size_t EC_Health::add_filter(std::shared_ptr<DamageFilter> f)
 {
-	return add(fils, std::move(f), index);
+	return add(fils, std::move(f));
 }
 void EC_Health::rem_filter(size_t i)
 {
 	rem(fils, i);
 }
-size_t EC_Health::add_prot(std::shared_ptr<DamageFilter> f, std::optional<size_t> index)
+size_t EC_Health::add_prot(std::shared_ptr<DamageFilter> f)
 {
-	return add(pr_area, std::move(f), index);
+	return add(pr_area, std::move(f));
 }
 void EC_Health::rem_prot(size_t i)
 {
 	rem(pr_area, i);
 }
-size_t EC_Health::add(std::vector<std::shared_ptr<DamageFilter>>& fs, std::shared_ptr<DamageFilter> f, std::optional<size_t> index)
+size_t EC_Health::add(std::vector<std::shared_ptr<DamageFilter>>& fs, std::shared_ptr<DamageFilter> f)
 {
-	size_t i = index? *index : fs.size();
 	bool hs = f->has_step();
 	
-	if (i >= fs.size()) fs.resize( i + 1 );
-	if (fs[i]) GAME_THROW("EC_Health::add() index {} already taken (ent {})", i, ent->dbg_id());
+	size_t i = 0;
+	for (; i < fs.size(); ++i) if (!fs[i]) break;
+	if (i == fs.size()) fs.emplace_back();
 	fs[i] = std::move(f);
 	
 	if (hs && !hp.has_regen()) reg(ECompType::StepPostUtil);
@@ -151,7 +151,7 @@ void EC_Health::rem(std::vector<std::shared_ptr<DamageFilter>>& fs, size_t i)
 	if (i >= fs.size() || !fs[i]) return;
 	
 	bool hs = fs[i]->has_step();
-	fs.erase( fs.begin() + i );
+	fs[i].reset();
 	
 	if (hs && !hp.has_regen()) upd_hp();
 }
@@ -172,15 +172,20 @@ DmgShield::DmgShield(int capacity, int regen_per_second, TimeSpan regen_wait)
 }
 void DmgShield::proc(EC_Health& hlc, DamageQuant& q)
 {
+	constexpr int dead_absorb = 100; ///< How much additional damage absorbed on destruction
+	constexpr float absorb_per = 0.2; // Minimal HP for absorb to take effect (percentage)
+	constexpr int   absorb_thr = 50;  // Minimal HP for absorb to take effect (value)
+	
 	if (!enabled || !hp.is_alive()) {
 		hp.apply(-1); // reset regen timer
 		return;
 	}
 	auto dmg_ren = q.amount;
 	
+	auto absorb = hp.t_state() > absorb_per || hp.exact().first > absorb_thr ? dead_absorb : 0;
 	auto am_left = q.amount - hp.exact().first;
 	hp.apply(-q.amount);
-	q.amount = am_left - dead_absorb;
+	q.amount = am_left - absorb;
 	
 	if (is_filter) {
 		auto& phy = hlc.ent->get_phy();
@@ -228,7 +233,7 @@ void DmgShield::step(EC_Health& hlc)
 		ParticleBatchPars bp;
 		bp.clr = FColor(0.3, 0.3, 1, 1);
 		
-		if		(hp_has < 0) bp.power = 1;
+		if		(hp_has <= 0) bp.power = 1;
 		else if (hp_now == hp.exact().second) bp.power = 2;
 		else {
 			if (hit_ren_tmo.is_positive())
@@ -254,9 +259,9 @@ void DmgArmor::proc(EC_Health&, DamageQuant& q)
 	if (!hp.is_alive()) return;
 	if (q.type != DamageType::Kinetic) return;
 	
-	if (q.amount < thr) q.amount = 0;
-	else {
-		q.amount *= mod;
-		hp.apply(-q.amount * self);
-	}
+	int orig = q.amount;
+	q.amount *= lerp(k_mod_min, k_mod_max, hp.t_state());
+	
+	/*if (q.amount < dmg_thr) q.amount = 0;
+	else*/ hp.apply(-orig * k_self);
 }

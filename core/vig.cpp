@@ -85,9 +85,9 @@ const uint32_t vig_Colors[vig_Color_Count] = {
     0xe0e0e0ff,
     0xffffffff,
     0x682020ff,
-    0x00000080,
+    0x000000e0,
     
-    0xa0000080
+    0xa00000e0
 };
 
 

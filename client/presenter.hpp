@@ -50,6 +50,7 @@ using PresCommand = std::variant
 
 struct ECompRender : EComp
 {
+	// MUST be inited after physics component (unless null ent is supplied)
 	// WARNING: step() and syn() may not be called at each step
 	
 	enum AttachType
@@ -81,7 +82,7 @@ private:
 	friend class GamePresenter_Impl;
 	bool _is_ok = true;
 	bool _in_vport = false; // is shown
-	Transform _pos, _vel;
+	Transform _pos, _vel = {};
 	size_t _comp_id = size_t_inval;
 	
 	friend class GameCore_Impl;
@@ -162,6 +163,7 @@ struct PresCmdDbgLine {
 struct PresCmdDbgText {
 	vec2fp at;
 	std::string str;
+	uint32_t clr;
 };
 struct PresCmdEffectFunc {
 	std::function<bool(TimeSpan)> eff;
@@ -192,10 +194,12 @@ public:
 	virtual ~GamePresenter();
 	
 	virtual void sync() = 0; ///< Synchronizes with GameCore (must be called from logic thread)
+	virtual void del_sync() = 0; ///< Processes only delete messages and nothing else
 	virtual void add_cmd(PresCommand c) = 0;
 	
 	virtual void render(TimeSpan passed) = 0; ///< Renders everything (must be called from render thread)
 	virtual TimeSpan get_passed() = 0; ///< Returns last passed time (for components)
+	virtual float get_time_t() = 0; ///< Returns current interpolation value
 	
 	void effect(FreeEffect effect, const ParticleBatchPars& pars);
 	
@@ -203,7 +207,7 @@ public:
 	void dbg_line(vec2fp a, vec2fp b, uint32_t clr, float wid = 0.2f);
 	void dbg_rect(Rectfp area, uint32_t clr);
 	void dbg_rect(vec2fp ctr, uint32_t clr, float rad = 0.5f);
-	void dbg_text(vec2fp at, std::string str);
+	void dbg_text(vec2fp at, std::string str, uint32_t clr = 0xffffffff);
 	
 	/// Temporary effect, must return false when should be destroyed
 	void add_effect(std::function<bool(TimeSpan passed)> eff);

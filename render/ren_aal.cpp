@@ -376,7 +376,7 @@ public:
 			
 			for (auto& o : inst_q)
 			{
-				auto cs = cossin_ft(o.tr.rot);
+				auto cs = cossin_lut(o.tr.rot);
 				sh_inst->set4f("obj_tr", o.tr.pos.x, o.tr.pos.y, cs.x, cs.y);
 				sh_inst->set_clr("clr", o.clr);
 				

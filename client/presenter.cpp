@@ -21,6 +21,7 @@ void effects_init(); // defined in effects.cpp
 ECompRender::ECompRender(Entity* ent)
     : EComp(ent)
 {
+	if (ent) _pos = ent->get_phy().get_trans();
 	send(PresCmdCreate{this});
 }
 void ECompRender::parts(ModelType model, ModelEffect effect, const ParticleBatchPars& pars)
@@ -150,6 +151,7 @@ public:
 	
 	SparseArray<ECompRender*> cs;
 	TimeSpan last;
+	float t_last;
 	
 	vec2fp vport_offset = {4, 3}; ///< Occlusion rect size offset
 	std::optional<std::pair<int, ImageInfo>> dbg_sshot_img;
@@ -170,15 +172,9 @@ public:
 		catch (std::exception& e) {
 			THROW_FMTSTR("GamePresenter::init() ResBase failed: {}", e.what());
 		}
-		
 		RenAAL::get().inst_end();
-		RenAAL::get().draw_grid = true;
 		
 		effects_init();
-	}
-	~GamePresenter_Impl()
-	{
-		RenAAL::get().draw_grid = false;
 	}
 	void sync()
 	{
@@ -219,6 +215,41 @@ public:
 				thr.detach();
 			}
 		}
+		
+		t_last = 0;
+	}
+	void del_sync()
+	{
+		for (int i=0; i < int(cmds_queue.size()); )
+		{
+			if (auto cmd = std::get_if<PresCmdDelete>(&cmds_queue[i]))
+			{
+				auto copy = *cmd;
+				
+				for (int j=0; j < int(cmds_queue.size()); )
+				{
+#define CHECK(TYPE)\
+	if (auto cmd = std::get_if<TYPE>(&cmds_queue[j])) {\
+		if (cmd->ptr == copy.ptr) {\
+			(*this)(*cmd);\
+			del = true; }}
+					
+					bool del = false;
+					     CHECK(PresCmdObjEffect)
+					else CHECK(PresCmdEffect)
+#undef CHECK       
+					if (!del) ++j;
+					else {
+						cmds_queue.erase( cmds_queue.begin() + j );
+						if (i > j) --i;
+					}
+				}
+				
+				(*this)(copy);
+				cmds_queue.erase( cmds_queue.begin() + i );
+			}
+			else ++i;
+		}
 	}
 	void add_cmd(PresCommand c)
 	{
@@ -234,6 +265,7 @@ public:
 		part_del.clear();
 		
 		last = passed;
+		t_last += passed / GameCore::step_len;
 		for (auto& c : cs)
 		{
 			if (!c->_in_vport) continue;
@@ -246,7 +278,7 @@ public:
 		for (auto& d : dbg_ls) RenImm::get().draw_line(d.a, d.b, d.clr, d.wid);
 		
 		float text_k = 1.f / RenderControl::get().get_world_camera().get_state().mag;
-		for (auto& d : dbg_ts) RenImm::get().draw_text(d.at, d.str, RenImm::White, false, text_k);
+		for (auto& d : dbg_ts) RenImm::get().draw_text(d.at, d.str, d.clr, false, text_k);
 		
 		for (auto i = ef_fs.begin(); i != ef_fs.end(); )
 		{
@@ -277,6 +309,10 @@ public:
 	TimeSpan get_passed()
 	{
 		return last;
+	}
+	float get_time_t()
+	{
+		return t_last;
 	}
 	void dbg_screenshot()
 	{
@@ -375,9 +411,9 @@ void GamePresenter::dbg_rect(vec2fp ctr, uint32_t clr, float rad)
 {
 	dbg_rect(Rectfp::from_center(ctr, vec2fp::one(rad)), clr);
 }
-void GamePresenter::dbg_text(vec2fp at, std::string str)
+void GamePresenter::dbg_text(vec2fp at, std::string str, uint32_t clr)
 {
-	add_cmd(PresCmdDbgText{at, std::move(str)});
+	add_cmd(PresCmdDbgText{at, std::move(str), clr});
 }
 void GamePresenter::add_effect(std::function<bool(TimeSpan passed)> eff)
 {

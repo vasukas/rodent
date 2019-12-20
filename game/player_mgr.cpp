@@ -1,5 +1,6 @@
 #include "client/level_map.hpp"
 #include "client/plr_control.hpp"
+#include "core/settings.hpp"
 #include "core/vig.hpp"
 #include "render/camera.hpp"
 #include "render/control.hpp"
@@ -97,6 +98,11 @@ public:
 			             plr->mov.get_t_accel().second);
 			vig_lo_next();
 			
+			{	auto& hp = plr->armor->get_hp();
+				vig_progress(FMT_FORMAT("Armor {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
+			}
+			vig_lo_next();
+			
 			{	auto& hp = plr->pers_shld->get_hp();
 				vig_progress(FMT_FORMAT("P.shld {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
 			}
@@ -115,18 +121,21 @@ public:
 			}
 			vig_lo_next();
 			
-			vec2fp pos = plr_ent->get_phy().get_pos();
-			vig_label_a("X {:3.3f} Y {:3.3f}\n", pos.x, pos.y);
+//			vec2fp pos = plr_ent->get_phy().get_pos();
+//			vig_label_a("X {:3.3f} Y {:3.3f}\n", pos.x, pos.y);
 			
 			bool wpn_menu = pc_ctr->get_state().is[PlayerController::A_SHOW_WPNS];
 			
 			const vec2i el_size = {60, 60};
-//			const vec2i el_off = vec2i::one(4);
+			const vec2i el_off = vec2i::one(4);
 			
-			auto eqp = plr_ent->get_eqp();
-			for (auto& wpn : eqp->raw_wpns())
+			auto& eqp = plr_ent->eqp;
+			size_t i=0;
+			
+			for (auto& wpn : eqp.raw_wpns())
 			{
-				bool is_cur = wpn.get() == eqp->wpn_ptr();
+				bool is_cur = (i == eqp.wpn_index());
+				++i;
 				if (!is_cur && !wpn_menu) continue;
 				
 				auto& ri = *wpn->info;
@@ -139,17 +148,19 @@ public:
 				
 				EC_Equipment::Ammo* ammo;
 				if (wpn->info->ammo == AmmoType::None) ammo = nullptr;
-				else ammo = &eqp->get_ammo(wpn->info->ammo);
+				else ammo = &eqp.get_ammo(wpn->info->ammo);
 				
 				uint32_t clr;
 				if (is_cur)
 				{
-					if (ammo && !eqp->has_ammo(*wpn)) clr = 0xff0000ff;
+					if (ammo && !eqp.has_ammo(*wpn)) clr = 0xff0000ff;
 					else clr = 0x00ff00ff;
 				}
-				else if (ammo && !eqp->has_ammo(*wpn)) clr = 0xff0000ff;
+				else if (ammo && !eqp.has_ammo(*wpn)) clr = 0xff0000ff;
 				else clr = 0xff8000ff;
+				
 				RenImm::get().draw_frame(Rectfp{pos, el_size, true}, clr, 2);
+				RenImm::get().draw_text( pos + el_off, std::to_string(i) );
 				
 				std::string s;
 				s.reserve(40);
@@ -158,7 +169,7 @@ public:
 				
 				if (ammo)
 				{
-					if (eqp->infinite_ammo) s += "\nAMMO CHEAT ENABLED";
+					if (eqp.infinite_ammo) s += "\nAMMO CHEAT ENABLED";
 					else s += FMT_FORMAT("\nAmmo: {} / {}", ammo->value, ammo->max);
 				}
 				if (is_cur)
@@ -185,10 +196,11 @@ public:
 				vig_lo_next();
 			}
 			
-			if (auto wpn = plr_ent->eqp.wpn_ptr())
+			//
+			
+			int cursor_rings_x = 0;
+			if (AppSettings::get().cursor_info_flags & 1)
 			{
-//				RenImm::get().draw_rect( Rectfp::from_center(mpos, vec2i::one(20)), 0x00ff0040 );
-				
 				float radius = 20;
 				const float width = 6;
 				const int alpha = 0xc0;
@@ -199,43 +211,105 @@ public:
 				
 				//
 				
-				if (auto m = wpn->info->def_delay; m && *m > TimeSpan::seconds(0.5))
+				auto& wpn = eqp.get_wpn();
+				
+				if (!eqp.has_ammo(wpn))
 				{
-					uint32_t clr = alpha; float t;
-					if (auto tmo = wpn->get_reload_timeout()) {
-						clr |= 0xc0ff4000;
-						t = 1 - *tmo / *m;
-						wpn_ring_reload = now;
-					}
-					else {
-						auto diff = now - wpn_ring_reload;
-						if (diff > hide) clr = alpha * clampf_n(1. - (diff - hide) / fade);
-						clr |= 0x40ff4000;
-						t = 1;
-					}
-					draw_progress_ring(mou_pos, t, clr, radius, width);
+					float t = fracpart(now.seconds());
+					if (t > 0.5) t = 1 - t;
+					t *= 2;
+					
+					uint32_t clr = 0xff000000 | alpha;
+					clr += lerp<int>(64, 220, t) << 16;
+					clr += lerp<int>(64, 220, t) << 8;
+					
+					draw_progress_ring(mou_pos, 1, clr, radius, width);
 					radius += width;
 				}
-				if (auto& m = wpn->overheat)
+				else
 				{
-					uint32_t clr = m->flag ? 0xff606000 : 0xffff0000;
-					draw_progress_ring(mou_pos, m->value, clr | alpha, radius, width);
-					radius += width;
+					if (auto m = wpn.info->def_delay; m && *m > TimeSpan::seconds(0.5))
+					{
+						uint32_t clr = alpha; float t;
+						if (auto tmo = wpn.get_reload_timeout()) {
+							clr |= 0xc0ff4000;
+							t = 1 - *tmo / *m;
+							wpn_ring_reload = now;
+						}
+						else {
+							auto diff = now - wpn_ring_reload;
+							if (diff > hide) clr = alpha * clampf_n(1. - (diff - hide) / fade);
+							clr |= 0x40ff4000;
+							t = 1;
+						}
+						draw_progress_ring(mou_pos, t, clr, radius, width);
+						radius += width;
+					}
+					if (auto& m = wpn.overheat)
+					{
+						uint32_t clr = m->flag ? 0xff606000 : 0xffff0000;
+						draw_progress_ring(mou_pos, m->value, clr | alpha, radius, width);
+						radius += width;
+					}
+					if (auto m = wpn.get_ui_info())
+					{
+						if (m->charge_t)
+						{
+							uint32_t clr = alpha;
+							if (*m->charge_t > 0.99) {
+								auto diff = now - wpn_ring_charge;
+								if (diff > hide) clr = alpha * clampf_n(1. - (diff - hide) / fade);
+								clr |= 0xe0ffff00;
+							}
+							else {
+								clr |= 0x40c0ff00;
+								wpn_ring_charge = now;
+							}
+							draw_progress_ring(mou_pos, *m->charge_t, clr, radius, width);
+						}
+						radius += width;
+					}
 				}
-				if (auto m = wpn->get_ui_info(); m && m->charge_t)
+				cursor_rings_x = radius;
+			}
+			
+			if (AppSettings::get().cursor_info_flags & 6)
+			{
+				const int hlen = 12; // half height
+				const int width = 6;
+				const int space = 1;
+				const int frame = 2;
+				const int alpha = 0xc0;
+				int xoff = std::max(cursor_rings_x + 5, 10);
+				
+				auto rect = [&](int num, float t, uint32_t clr)
 				{
-					uint32_t clr = alpha;
-					if (*m->charge_t > 0.99) {
-						auto diff = now - wpn_ring_charge;
-						if (diff > hide) clr = alpha * clampf_n(1. - (diff - hide) / fade);
-						clr |= 0xe0ffff00;
-					}
-					else {
-						clr |= 0x40c0ff00;
-						wpn_ring_charge = now;
-					}
-					draw_progress_ring(mou_pos, *m->charge_t, clr, radius, width);
-					radius += width;
+					if (num > 0) --num;
+					float x = xoff + (width + frame*2 + space) * std::abs(num);
+					if (num < 0) x = -x;
+					x += mou_pos.x;
+					
+					float y = mou_pos.y - (hlen + frame);
+					RenImm::get().draw_frame({{x,y}, {width + frame*2, (hlen + frame)*2}, true}, clr, frame);
+					
+					y = 2*hlen * (1 - t);
+					RenImm::get().draw_rect({{x + frame, mou_pos.y - hlen + y}, {width, hlen*2 - y}, true}, clr);
+				};
+				
+				if (AppSettings::get().cursor_info_flags & 2)
+				{
+					rect(-1, plr->pers_shld->get_hp().t_state(), 0x40c0ff00 | alpha);
+					
+					auto& sh = plr->log.shlc;
+					if (sh.is_enabled()) rect(1, sh.get_ft()->get_hp().t_state(), 0x40c0ff00 | alpha);
+					else rect(1, 1, (sh.get_dead_tmo() ? 0xff404000 : 0x40ff4000) | alpha);
+				}
+				if (AppSettings::get().cursor_info_flags & 4)
+				{
+					rect(-2, plr_ent->get_hlc()->get_hp().t_state(), 0x40ffc000 | alpha);
+					
+					auto ta = plr->mov.get_t_accel();
+					rect(2, ta.second, (ta.first ? 0x4040ff00 : 0xc0606000) | alpha);
 				}
 			}
 		}
@@ -293,9 +367,13 @@ public:
 			if (!lct_found && room && room->is_final_term)
 			{
 				lct_found = true;
-				add_msg("You have found\nlevel control room");
+				add_msg("You have found\ncontrol room");
 				LevelMap::get().mark_final_term();
 			}
+			
+			auto& lc = LevelControl::get();
+			if (auto c = lc.cell( lc.to_cell_coord( pc_ctr->get_state().tar_pos ) ))
+				stat_str += FMT_FORMAT("{} {}x{}\n", c->is_wall ? "Wall" : "Cell", c->pos.x, c->pos.y);
 			
 			if (obj_count < obj_need)
 				stat_str += FMT_FORMAT("Objective: collect security tokens ({} left)", obj_need - obj_count);
@@ -304,29 +382,44 @@ public:
 				if (obj_term->timer_end.is_positive())
 				{
 					TimeSpan left = obj_term->timer_end - GameCore::get().get_step_time();
-					if (left.is_negative()) stat_str += "Objective: use level control terminal";
-					else stat_str += FMT_FORMAT("Objective: wait for level control terminal to boot - {:.1f} seconds", left.seconds());
+					if (left.is_negative()) stat_str += "Objective: use control terminal";
+					else stat_str += FMT_FORMAT("Objective: wait for control terminal to boot - {:.1f} seconds", left.seconds());
 				}
-				else if (!lct_found) stat_str += "Objective: find level control terminal";
-				else stat_str += "Objective: activate level control terminal";
+				else if (!lct_found) stat_str += "Objective: find control terminal";
+				else stat_str += "Objective: activate control terminal";
 			}
 			draw_text_hud({0, -1}, stat_str);
 			
 			//
 			
-			std::vector<PhysicsWorld::CastResult> res;
-			GameCore::get().get_phy().circle_cast_all(res, conv(plr_ent->get_pos()), GameConst::hsz_rat + 2,
-			{[&](auto, b2Fixture* f){return getptr(f) && (getptr(f)->typeflags & FixtureInfo::TYPEFLAG_INTERACTIVE);}, {}, false});
+			Entity* einter = nullptr;
+			size_t einter_num = 0;
 			
-			if (res.size() == 1)
+			GameCore::get().get_phy().query_circle_all( conv(plr_ent->get_pos()), GameConst::hsz_rat + 2,
+			[&](auto& ent, auto&) {
+				einter = &ent;
+				++einter_num;
+			},
+			[](auto&, auto& fix) {
+				auto f = getptr(&fix);
+				return f && (f->typeflags & FixtureInfo::TYPEFLAG_INTERACTIVE);
+			});
+			
+			if (einter_num == 1)
 			{
-				auto e = dynamic_cast<EInteractive*>(res[0].ent);
-				if (!e) THROW_FMTSTR("Entity is not EInteractive - {}", res[0].ent->dbg_id());
+				auto e = dynamic_cast<EInteractive*>(einter);
+				if (!e) THROW_FMTSTR("Entity is not EInteractive - {}", einter->dbg_id());
 
 				auto usage = e->use_string();
+				
+				std::string str;
+				if (usage.first) str = FMT_FORMAT("[{}] ", pc_ctr->get_hint( PlayerController::A_INTERACT ));
+				str += usage.second;
+				
 				RenImm::get().draw_text(
 					RenderControl::get().get_world_camera().direct_cast(e->get_pos()),
-					usage.second, usage.first? 0xffffffff : 0xff6060ff, true);
+					str, usage.first? 0xffffffff : 0xff6060ff, true
+				);
 				
 				auto now = GameCore::get().get_step_time();
 				if (pc_ctr->get_state().is[ PlayerController::A_INTERACT ] && now > interact_after)
@@ -357,8 +450,8 @@ public:
 	{
 		if (cheat_godmode)
 		{
-			if (!plr_ent) force_spawn();		
-			plr_ent->get_hlc()->add_filter(std::make_shared<DmgIDDQD>());
+			if (!plr_ent) plr_resp = {};
+			else plr_ent->get_hlc()->add_filter(std::make_shared<DmgIDDQD>());
 		}
 		else
 		{
@@ -429,8 +522,8 @@ public:
 		++obj_count;
 		if (obj_count == obj_need)
 		{
-			if (lct_found) add_msg("Go to level control terminal");
-			else add_msg("Find level control terminal");
+			if (lct_found) add_msg("Activate control terminal");
+			else add_msg("Find control terminal");
 			obj_term->enabled = true;
 		}
 		else /*if (obj_count < 3)*/ // this bug is funny

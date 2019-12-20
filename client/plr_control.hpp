@@ -144,6 +144,8 @@ public:
 	void set_gpad(std::unique_ptr<Gamepad> gpad) {this->gpad = std::move(gpad);}
 	Gamepad* get_gpad() {return gpad.get();}
 	
+	std::string get_hint(Action act);
+	
 private:
 	std::array<Bind, ACTION_TOTAL_COUNT_INTERNAL> binds;
 	std::unique_ptr<Gamepad> gpad;

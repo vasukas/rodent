@@ -19,6 +19,8 @@ public:
 	virtual void capture_begin(Texture* tex) = 0; ///< Texture must have same size as window
 	virtual void capture_end() = 0;
 	
+	virtual void screen_shake(float power) = 0;
+	
 protected:
 	friend class RenderControl_Impl;
 	static Postproc* init(); ///< Creates singleton

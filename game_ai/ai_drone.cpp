@@ -238,7 +238,7 @@ void AI_Drone::step()
 					auto rc = GameCore::get().get_phy().raycast_nearest( conv(pos), conv(tar) );
 					if (rc) tar = conv(rc->poi);
 					
-					tar -= vec2fp( ent->get_phy().get_radius(), 0 ).get_rotated( da );
+					tar -= vec2fp( ent->get_phy().get_radius(), 0 ).rotate( da );
 					mov->set_target( tar, AI_Speed::Slow );
 				}
 				else if (*tar_dist > pars->dist_optimal)
@@ -249,7 +249,7 @@ void AI_Drone::step()
 					vec2fp pos = ent->get_pos();
 					vec2fp tar = pos + (delta / *tar_dist) * pars->dist_optimal;
 					
-					tar += vec2fp( ent->get_phy().get_radius(), 0 ).get_rotated( da );
+					tar += vec2fp( ent->get_phy().get_radius(), 0 ).rotate( da );
 					mov->set_target( tar, AI_Speed::Accel );
 				}
 				else
@@ -277,21 +277,19 @@ void AI_Drone::step()
 					vec2fp crowd_dir = {}; // FROM crowd
 					bool crowd_any = false;
 					
-					std::vector<PhysicsWorld::CastResult> es;
-					GameCore::get().get_phy().circle_cast_all(es, conv(ent->get_pos()), AI_Const::crowd_distance);
-					for (auto& e : es)
+					GameCore::get().get_phy().query_circle_all(conv(ent->get_pos()), AI_Const::crowd_distance,
+					[&](auto& e, auto&)
 					{
-						if (e.ent != ent &&
-							e.ent->get_team() == ent->get_team())
+						if (auto d = e.get_ai_drone();
+							d /*&& d->mov && !d->mov->has_target()*/)
 						{
-							if (auto d = e.ent->get_ai_drone();
-								d /*&& d->mov && !d->mov->has_target()*/)
-							{
-								crowd_dir += ent->get_pos() - e.ent->get_pos();
-								crowd_any = true;
-							}
+							crowd_dir += ent->get_pos() - e.get_pos();
+							crowd_any = true;
 						}
-					}
+					},
+					[&](auto& e, auto&) {
+						return &e != ent && e.get_team() == ent->get_team();
+					});
 					
 					if (!crowd_any) st->crowd_cou = {};
 					else st->crowd_cou += GameCore::step_len;

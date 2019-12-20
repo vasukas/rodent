@@ -24,7 +24,7 @@ public:
 		FULLSCREEN_DESKTOP
 	};
 	
-	static bool opt_gldbg;
+	static bool opt_gldbg; // init options
 	static bool opt_fullscreen;
 	
 	/// If set, writes screen data (RGBA, y-flipped) to it before swapping buffers. 

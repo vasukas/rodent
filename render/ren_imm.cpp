@@ -338,7 +338,7 @@ public:
 		if (!can_add( IS_TEXT_WHITE )) return;
 		reserve(1);
 		
-		auto rk = cossin_ft(rot);
+		auto rk = cossin_lut(rot);
 		add_rect(dst, rk.x, rk.y, white_tc);
 		add_obj(white_tex, clr, IS_TEXT_WHITE);
 	}
@@ -351,7 +351,7 @@ public:
 		auto y0 = dst.lower().y;
 		
 		auto sz = dst.size();
-		auto rk = cossin_ft(rot);
+		auto rk = cossin_lut(rot);
 		auto x1 = x0 + sz.x * rk.x;
 		auto y1 = y0 + sz.y * rk.y;
 		
@@ -371,7 +371,7 @@ public:
 		if (!can_add( false )) return;
 		reserve(1);
 		
-		auto rk = cossin_ft( rot );
+		auto rk = cossin_lut( rot );
 		add_rect( dst, rk.x, rk.y, src );
 		add_obj( tex, clr, false );
 	}

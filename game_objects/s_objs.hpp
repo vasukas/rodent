@@ -50,6 +50,11 @@ public:
 		int amount;
 	};
 	
+	struct ArmorShard
+	{
+		int amount;
+	};
+	
 	struct Func
 	{
 		/// Returns true if pickable should be destroyed
@@ -58,12 +63,13 @@ public:
 		FColor clr = FColor(1, 1, 1);
 	};
 	
-	using Value = std::variant<AmmoPack, Func>;
+	using Value = std::variant<AmmoPack, ArmorShard, Func>;
 	
 	
 	
 	static AmmoPack rnd_ammo();
 	static AmmoPack std_ammo(AmmoType type);
+	static void death_drop(vec2fp pos, float value);
 	
 	EPickable(vec2fp pos, Value val);
 	std::string ui_descr() const override {return "Pickable";}
@@ -116,15 +122,19 @@ class EEnemyDrone final : public Entity
 	AI_Drone logic;
 	AI_TargetPlayer l_tar;
 	AI_Movement mov;
+	float drop_value;
 	
 public:
 	struct Init
 	{
 		std::shared_ptr<AI_Group> grp;
 		std::shared_ptr<AI_DroneParams> pars;
+		ModelType model = MODEL_DRONE;
+		float drop_value = 0;
 	};
 	
 	EEnemyDrone(vec2fp at, const Init& init);
+	~EEnemyDrone();
 	std::string ui_descr() const override {return "Drone";}
 	float get_face_rot() override {return logic.face_rot;}
 	

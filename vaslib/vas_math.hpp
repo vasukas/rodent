@@ -23,8 +23,8 @@ struct vec2fp;
 
 
 
-float sine_ft_norm(float x); ///< Table-lookup sine, x is [0, 1] representing [0, 2pi]
-vec2fp cossin_ft(float rad); ///< Table-lookup cosine (x) + sine (y)
+float sine_lut_norm(float x); ///< Table-lookup sine, x is [0, 1] representing [0, 2pi]
+vec2fp cossin_lut(float rad); ///< Table-lookup cosine (x) + sine (y)
 
 /// Integer square root
 uint isqrt(uint value);
@@ -118,13 +118,13 @@ struct vec2i {
 	void rot90cw()  {int t = x; x = y; y = -t;}
 	void rot90ccw() {int t = x; x = -y; y = t;}
 	
-	vec2i get_rotated (double angle) const; ///< Rotation by angle (radians)
-	void rotate (double angle); ///< Rotation by angle (radians)
-	void fastrotate (float angle); ///< Rotation by angle (radians) using table functions
+	vec2fp rotate (double angle) const; ///< Rotation by angle (radians)
+	vec2fp fastrotate (float angle) const; ///< Rotation by angle (radians) using table lookup
 
 	int area() const {return std::abs(x * y);}
 	int perimeter() const {return (x+y)*2;}
 	vec2i minmax() const; ///< (min, max)
+	double xy_ratio() const {return double(x) / y;}
 	
 	template <typename T> int& operator() (T) = delete;
 	int& operator() (bool is_x) {return is_x? x : y;}
@@ -189,17 +189,15 @@ struct vec2fp {
 	void rot90cw()  {float t = x; x = y; y = -t;}
 	void rot90ccw() {float t = x; x = -y; y = t;}
 	
-	vec2fp get_rotated (double angle) const; ///< Rotation by angle (radians)
-	void rotate (double angle); ///< Rotation by angle (radians)
-	void fastrotate (float angle); ///< Rotation by angle (radians) using table functions
-
-	vec2fp get_rotate (float cos, float sin);
-	void rotate (float cos, float sin);
+	vec2fp& rotate(double angle); ///< Rotation by angle (radians)
+	vec2fp& fastrotate(float angle); ///< Rotation by angle (radians) using table lookup
+	vec2fp& rotate(float cos, float sin);
+	vec2fp get_rotated(double angle) const {return vec2fp(*this).rotate(angle);}
 	
-	vec2fp get_norm() const; ///< Returns normalized vector
-	void norm(); ///< Normalizes vector
-	void norm_to(float n); ///< Brings vector to specified length
-	void limit_to(float n); ///< Brings vector to specified length if it exceeds it
+	vec2fp& norm(); ///< Normalizes vector
+	vec2fp& norm_to(float n); ///< Brings vector to specified length
+	vec2fp& limit_to(float n); ///< Brings vector to specified length if it exceeds it
+	vec2fp get_norm() const {return vec2fp(*this).norm();}
 	
 	float area() const {return std::fabs(x * y);}
 	vec2fp minmax() const; ///< (min, max)

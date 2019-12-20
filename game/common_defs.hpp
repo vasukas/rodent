@@ -10,7 +10,7 @@ namespace GameConst
 // physical radiuses
 
 const float hsz_supply = 0.5; ///< Supplies
-const float hsz_supply_big = 1; ///< Powerups etc
+const float hsz_supply_big = 0.8; ///< Powerups etc
 const float hsz_proj = 0.3; ///< Normal projectile
 const float hsz_proj_big = 0.45; ///< Big projectile
 
@@ -27,7 +27,7 @@ const vec2fp hsz_pshl = {0.7, 1.2}; ///< Projected shield
 
 // other consts
 
-const size_t total_key_count = 8;
+const size_t total_key_count = 6;
 }
 
 

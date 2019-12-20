@@ -155,15 +155,10 @@ void LevelControl::fin_init(LevelTerrain& lt)
 		fin_init_debug(lt);
 	}
 	
-	//
+	for (size_t i=0; i < cells.size(); ++i)
+		cells[i].is_wall |= lt.cs[i].is_wall;
 	
-	for (int y=0; y<size.y; ++y)
-	for (int x=0; x<size.x; ++x)
-	{
-		auto& lc = lt.cs[y * size.x + x];
-		auto& nc = cells[y * size.x + x];
-		nc.is_wall |= lc.decor_used;
-	}
+	//
 	
 	std::vector<uint8_t> aps_ps;
 	aps_ps.resize( cells.size() );
@@ -257,7 +252,7 @@ void LevelControl::fin_init_normal(LevelTerrain& lt)
 			for (int x=0; x<r.area.size().x; ++x)
 			{
 				auto& c = lt_cref(vec2i{x, y} + r.area.lower());
-				bool is_wall = c.is_wall || c.decor_used;
+				bool is_wall = c.is_wall;
 				
 				if (is_wall) cd({x+1, y+1}) = -1;
 				else {
@@ -322,8 +317,10 @@ void LevelControl::fin_init_normal(LevelTerrain& lt)
 				return {};
 			
 			bool rots[4]; // -x, +x, -y, +y
-			for (int i=0; i<4; ++i)
-				rots[i] = lt_cref(at + sg_dirs[i]).is_wall;
+			for (int i=0; i<4; ++i) {
+				auto& c = lt_cref(at + sg_dirs[i]);
+				rots[i] = c.is_wall && !c.decor_used;
+			}
 			
 			int rot_sel;
 			if (horiz)
@@ -376,6 +373,7 @@ void LevelControl::fin_init_normal(LevelTerrain& lt)
 				lt_cref(at).decor_used = true;
 			}
 		};
+		// mk returns false if it's ghost
 		auto add_decor = [&](vec2i at, auto mk, bool directional)
 		{
 			float r;
@@ -388,20 +386,23 @@ void LevelControl::fin_init_normal(LevelTerrain& lt)
 				r = M_PI/2 * rnd.range_index(4);
 			}
 			
-			mk(at, r);
 			lt_cref(at).decor_used = true;
+			if (mk(at, r)) lt_cref(at).is_wall = true;
 		};
 		
 		auto mk_cont = [](vec2i at, float r) {
 			new EDecor( "Box", {at, {1,1}, true}, r, rnd_stat().range_n() < 0.3 ? MODEL_STORAGE_BOX_OPEN : MODEL_STORAGE_BOX );
+			return true;
 		};
 		auto mk_abox = [](vec2i at, float r) {
 			new EDecor( "Autobox", {at, {1,1}, true}, r, MODEL_STORAGE, FColor(0.7, 0.9, 0.7) );
+			return true;
 		};
 		auto mk_mk = [](const char *name, ModelType model, bool is_ghost) {
 			return [=](vec2i at, float r) {
 				if (is_ghost) new EDecorGhost( Transform(LevelControl::get().to_center_coord(at), r), model );
 				else new EDecor( name, {at, {1,1}, true}, r, model );
+				return !is_ghost;
 			};
 		};
 		
@@ -601,7 +602,7 @@ void LevelControl::fin_init_normal(LevelTerrain& lt)
 						if		(t < 0.4) new EDecor( "Conveyor",  {p, {1,1}, true}, rot, MODEL_CONVEYOR );
 						else if (t < 0.7) new EDecor( "Assembler", {p, {1,1}, true}, rot, MODEL_ASSEMBLER );
 						else              mk_abox(p, rot);
-						lt_cref(p).decor_used = true;
+						lt_cref(p).is_wall = true;
 					}
 				}
 			}
@@ -705,7 +706,7 @@ void LevelControl::fin_init_normal(LevelTerrain& lt)
 	
 	// spawn keys & terminals
 	
-	auto spawn_key = [&](auto& room)
+	auto spawn_key = [&](LevelTerrain::Room& r)
 	{
 		EPickable::Func f;
 		f.f = [](Entity& ent)
@@ -716,7 +717,22 @@ void LevelControl::fin_init_normal(LevelTerrain& lt)
 		};
 		f.model = MODEL_TERMINAL_KEY;
 		f.clr   = FColor(1, 0.8, 0.4);
-		new EPickable( room_ctr(room), f );
+		
+		auto next_pos = [&](bool check_dec) -> std::optional<vec2i>
+		{
+			vec2i at;
+			at.x = rnd.range( r.area.lower().x, r.area.upper().x - 1 );
+			at.y = rnd.range( r.area.lower().y, r.area.upper().y - 1 );
+			
+			auto& c = lt_cref(at);
+			if (!c.is_wall && (!check_dec || !c.decor_used)) return at;
+			return {};
+		};
+		
+		std::optional<vec2i> at;
+		for (int i=0; i<40 && !at; ++i) at = next_pos(true);
+		while (!at) at = next_pos(false);	
+		new EPickable( to_center_coord(*at), std::move(f) );
 	};
 	
 	std::vector<LevelTerrain::Room*> key_rooms;
@@ -743,9 +759,9 @@ void LevelControl::fin_init_normal(LevelTerrain& lt)
 	auto pars_workr = std::make_shared<AI_DroneParams>();
 	pars_workr->speed = {2, 3, 4};
 	pars_workr->dist_minimal = 3;
-	pars_workr->dist_optimal = 8;
-	pars_workr->dist_visible = 12;
-	pars_workr->dist_suspect = 13;
+	pars_workr->dist_optimal = 10;
+	pars_workr->dist_visible = 14;
+	pars_workr->dist_suspect = 16;
 	
 	auto pars_drone = std::make_shared<AI_DroneParams>();
 	pars_drone->speed = {4, 7, 9};
@@ -815,7 +831,7 @@ void LevelControl::fin_init_normal(LevelTerrain& lt)
 		r.area.map([&](vec2i p)
 		{
 			auto& c = lt_cref(p);
-			if (!c.is_wall && !c.decor_used)
+			if (!c.is_wall /*&& !c.decor_used*/)
 				ps.push_back(p);
 		});
 		num = std::min(num, ps.size());
@@ -845,11 +861,11 @@ void LevelControl::fin_init_normal(LevelTerrain& lt)
 			float rnd_k = GameCore::get().get_random().range_n();
 			if		(rnd_k < dl_work)
 			{
-				new EEnemyDrone(at, {grp, pars_workr});
+				new EEnemyDrone(at, {grp, pars_workr, MODEL_WORKER, 0.4});
 			}
 			else if (rnd_k < dl_drone)
 			{
-				new EEnemyDrone(at, {grp, pars_drone});
+				new EEnemyDrone(at, {grp, pars_drone, MODEL_DRONE, 0.7});
 			}
 			else //if (rnd_k < dl_heavy)
 			{
@@ -942,8 +958,8 @@ void LevelControl::fin_init_normal(LevelTerrain& lt)
 			new EDoor({x, y}, ext, room, plr_only);
 			
 			if (plr_only) {
-				if (ext.x) {for (int i=0; i<ext.x; ++i) lt_cref({x + i, y}).decor_used = true;}
-				else       {for (int i=0; i<ext.y; ++i) lt_cref({x, y + i}).decor_used = true;}
+				if (ext.x) {for (int i=0; i<ext.x; ++i) lt_cref({x + i, y}).is_wall = true;}
+				else       {for (int i=0; i<ext.y; ++i) lt_cref({x, y + i}).is_wall = true;}
 			}
 		}
 	}

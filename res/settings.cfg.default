@@ -28,3 +28,13 @@ font_supersample 2
 # camera magnification multiplier
 cam_mag_mul 1
 
+# camera shake effect strength
+cam_pp_shake_str 0.007
+
+# info shown on cursor
+# sum of: 1 weapon status, 2 shield status, 4 more status
+cursor_info_flags 1
+
+# drop from destroyed eneimes (on/off)
+spawn_drop 1
+

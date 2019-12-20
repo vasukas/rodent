@@ -33,6 +33,8 @@ struct StdProjectile : EComp
 	};
 	
 	static PhysicsWorld::CastFilter make_cf(EntityIndex src); ///< Note: 'src' currently ignored
+	
+	/// Velocity can be zero. Hit must contain only valid pos, everything else can be null/zero
 	static void explode(size_t src_team, EntityIndex src_eid, b2Vec2 self_vel, PhysicsWorld::RaycastResult hit, const Params& pars);
 	
 	StdProjectile(Entity* ent, const Params& pars, EntityIndex src, std::optional<vec2fp> target);
@@ -50,14 +52,8 @@ private:
 class ProjectileEntity : public Entity
 {
 public:
-	ProjectileEntity(vec2fp pos, vec2fp vel, std::optional<vec2fp> target, Entity* src, const StdProjectile::Params& pars, ModelType model, FColor clr)
-	    :
-	    phy(this, Transform{pos, vel.angle()}, Transform{vel}),
-	    ren(this, model, clr),
-	    proj(this, pars, src? src->index : EntityIndex{}, target),
-	    team(src? src->get_team() : TEAM_ENVIRON)
-	{}
-	
+	ProjectileEntity(vec2fp pos, vec2fp vel, std::optional<vec2fp> target, Entity* src,
+	                 const StdProjectile::Params& pars, ModelType model, FColor clr);
 private:
 	EC_VirtualBody phy;
 	EC_RenderSimple ren;
@@ -168,6 +164,40 @@ private:
 
 
 
+class ElectroBall : public Entity
+{
+public:
+	ElectroBall(vec2fp pos, vec2fp dir);
+	
+private:
+	EVS_SUBSCR;
+	EC_Physics phy;
+	EC_RenderSimple ren;
+	
+	EntityIndex target_id;
+	TimeSpan tmo_target;
+	TimeSpan tmo_ignore = TimeSpan::seconds(1.5);
+	
+	int explode_left = 10;
+	TimeSpan tmo_explode;
+	//
+	size_t explode_cntc = 0;
+	bool explode_close = false;
+	
+	static constexpr float expl_radius = 3;
+	static constexpr float speed_min = 7;
+	static constexpr float speed_max = 40;
+	
+	ECompPhysics& get_phy() override {return  phy;}
+	ECompRender*  get_ren() override {return &ren;}
+	size_t get_team() const override {return TEAM_ENVIRON;}
+	
+	void on_cnt(const CollisionEvent& ev);
+	void step() override;
+};
+
+
+
 class WpnMinigun : public Weapon
 {
 public:
@@ -239,6 +269,46 @@ public:
 	
 private:
 	StdProjectile::Params pp;
+	std::optional<ShootResult> shoot(ShootParams pars) override;
+};
+
+
+
+class WpnUber;
+class WpnUber_Ray : public Entity
+{
+public:
+	struct Render : ECompRender {
+		TimeSpan left;
+		Render(Entity* ent): ECompRender(ent) {}
+		void step();
+	};
+	struct ProxyPos : ECompPhysics {
+		ProxyPos(Entity* ent): ECompPhysics(ent) {}
+		Transform get_trans() const;
+		float get_radius() const {return 1;}
+	};
+	
+	WpnUber& wpn;
+	ProxyPos phy;
+	Render ren;
+	vec2fp b_last = {};
+	bool show = false;
+	
+	WpnUber_Ray(WpnUber& wpn);
+	ECompPhysics& get_phy() override {return  phy;}
+	ECompRender*  get_ren() override {return &ren;}
+};
+
+class WpnUber : public Weapon
+{
+public:
+	WpnUber();
+	~WpnUber();
+	
+private:
+	int ammo_skip_count = 0;
+	WpnUber_Ray* ray_ren;
 	std::optional<ShootResult> shoot(ShootParams pars) override;
 };
 

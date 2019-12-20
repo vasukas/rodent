@@ -15,6 +15,7 @@
 #include "render/camera.hpp"
 #include "render/control.hpp"
 #include "render/postproc.hpp"
+#include "render/ren_aal.hpp"
 #include "render/ren_imm.hpp"
 #include "utils/noise.hpp"
 #include "utils/res_image.hpp"
@@ -56,6 +57,7 @@ public:
 	}
 	void render(TimeSpan)
 	{
+		RenImm::get().draw_rect({{}, RenderControl::get_size(), false}, 0xff);
 		vig_lo_push_scroll( RenderControl::get_size() - vig_element_decor()*2, scroll_pos );
 		
 		vig_label("KEYBINDS (hover over action to see description)\n");
@@ -349,6 +351,11 @@ public:
 		
 		VLOGI("Average logic frame length: {} ms, {} samples", serv_avg_total, serv_avg_count);
 	}
+	void on_current()
+	{
+		RenAAL::get().draw_grid = true;
+		is_ren_paused = true;
+	}
 	void on_event(const SDL_Event& ev)
 	{
 		if (ev.type == SDL_KEYUP) {
@@ -363,6 +370,9 @@ public:
 			if		(k == SDL_SCANCODE_0) ph_debug_draw = !ph_debug_draw;
 			else if (k == SDL_SCANCODE_ESCAPE || k == SDL_SCANCODE_F10)
 			{
+				pause_logic = true;
+				RenAAL::get().draw_grid = false;
+				
 				MainLoop::create(INIT_SETTINGS);
 				dynamic_cast<ML_Settings&>(*MainLoop::current).ctr = pc_ctr;
 				MainLoop::current->init();
@@ -376,6 +386,14 @@ public:
 			}
 			else if (k == SDL_SCANCODE_F5) save_automap("AUTOMAP.png");
 		}
+		else if (ev.type == SDL_MOUSEBUTTONUP)
+		{
+			if (is_ren_paused) {
+				pause_logic = false;
+				is_ren_paused = false;
+				return;
+			}
+		}
 		
 		if (!pause_logic) {
 			auto g = pc_ctr->lock();
@@ -386,9 +404,37 @@ public:
 	{
 		std::unique_lock lock(ren_lock);
 		if (thr_term) throw std::runtime_error("Game failed");
+		
 		if (!pres)
 		{
-			draw_text_message("Generating...");
+			static std::string gen_msg;
+			if (gen_msg.empty())
+			{
+				auto& rnd = rnd_stat();
+				rnd.gen.seed( fast_hash32(date_time_str()) );
+				
+				std::vector<std::string> vs;
+				if (rnd.range_n() < 0.3) {}
+				else if (rnd.range_n() < 0.8) {
+					vs.emplace_back("Incrementing headcrabs...");
+					vs.emplace_back("Reversing linked lists...");
+					vs.emplace_back("Summoning CPU spirits...");
+					vs.emplace_back("Converting walls to zombies...");
+					vs.emplace_back("SPAM SPAM SPAM SPAM\nSPAM SPAM SPAM SPAM\nLovely spam!\nWonderful spam!");
+					vs.emplace_back("Cake isn't implemented yet");
+				} else {
+					vs.emplace_back("///\\.oOOo./\\\\\\");
+					vs.emplace_back("(;;)");
+					vs.emplace_back("()_.._()");
+				}
+				
+				gen_msg = "Generating...";
+				if (!vs.empty()) {
+					gen_msg += "\n\n";
+					gen_msg += rnd.random_el(vs);
+				}
+			}
+			draw_text_message(gen_msg);
 			
 			if (gp_init)
 			{
@@ -398,18 +444,24 @@ public:
 				pres.reset( GamePresenter::get() );
 				gp_init.reset();
 				
-				lmap->ren_init();
-				
+				lmap->ren_init();				
 				VLOGI("Game render init finished in {:.3f} seconds", (TimeSpan::since_start() - time0).seconds());
 				log_write_str(LogLevel::Critical,
 				              FMT_FORMAT("Full init took {:.3f} seconds", TimeSpan::since_start().seconds()).data());
 				
+				RenAAL::get().draw_grid = true;
 				Postproc::get().tint_seq({}, FColor(0,0,0,0));
 				Postproc::get().tint_seq(TimeSpan::seconds(30), FColor(0,0,0,0));
 			}
 		}
 		else if (game_fin)
 		{
+			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
+			GamePresenter::get()->render(passed);
+			//
+			RenImm::get().set_context(RenImm::DEFCTX_UI);
+			RenImm::get().draw_rect({{}, RenderControl::get_size(), false}, 0xa0);
+			
 			winrars.resize(40);
 			for (auto& w : winrars) w.draw();
 			draw_text_message("Game completed.\n\nA WINRAR IS YOU.");
@@ -428,6 +480,12 @@ public:
 				VLOGI("First game frame rendered at {:.3f} seconds", TimeSpan::since_start().seconds());
 				is_first_frame = false;
 				Postproc::get().tint_default(TimeSpan::seconds(3));
+			}
+			
+			if (SDL_GetKeyboardFocus() != RenderControl::get().get_wnd())
+			{
+				pause_logic = true;
+				is_ren_paused = true;
 			}
 			
 			// set camera
@@ -508,6 +566,7 @@ public:
 			if (pause_logic || pause_logic_ok)
 			{
 				RenImm::get().set_context(RenImm::DEFCTX_UI);
+				RenImm::get().draw_rect({{}, RenderControl::get_size(), false}, 0xa0);
 				draw_text_message("PAUSED\nPress any key to continue");
 				return;
 			}
@@ -545,7 +604,9 @@ public:
 		
 		ai_ctr.reset( AI_Controller::init() );
 		lmap.reset( LevelMap::init(*lt) );
+		
 		core.reset( GameCore::create( std::move(gci) ) );
+		core->spawn_drop = AppSettings::get().spawn_drop;
 		lvl.reset( LevelControl::init(*lt) );
 		
 		gp_init = {{lt}};
@@ -570,21 +631,19 @@ public:
 		while (!thr_term)
 		{
 			auto t0 = TimeSpan::since_start();
-			if (MainLoop::current == this)
+			
+			pause_logic_ok = pause_logic.load();
+			if (!pause_logic)
 			{
-				pause_logic_ok = pause_logic.load();
-				if (!pause_logic)
-				{
-					std::unique_lock lock(ren_lock);
-					core->step();
-					ai_ctr->step();
-				}
-				
-				if (GameCore::get().get_pmg().is_game_finished())
-				{
-					game_fin = true;
-					break;
-				}
+				std::unique_lock lock(ren_lock);
+				core->step();
+				ai_ctr->step();
+			}
+			
+			if (GameCore::get().get_pmg().is_game_finished())
+			{
+				game_fin = true;
+				break;
 			}
 			
 			auto dt = TimeSpan::since_start() - t0;
@@ -700,6 +759,9 @@ void MainLoop::create(InitWhich which)
 	current->ml_prev = prev;
 }
 MainLoop::~MainLoop() {
-	if (current == this) current = ml_prev;
+	if (current == this) {
+		current = ml_prev;
+		if (current) current->on_current();
+	}
 }
 bool MainLoop::parse_arg(ArgvParse&) {return false;}

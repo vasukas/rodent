@@ -1,3 +1,4 @@
+#include "render/postproc.hpp"
 #include "render/ren_aal.hpp"
 #include "render/ren_imm.hpp"
 #include "utils/noise.hpp"
@@ -97,7 +98,8 @@ void effect_lightning(vec2fp a, vec2fp b, EffectLightning type, TimeSpan length,
 void effect_explosion_wave(vec2fp ctr, float power)
 {
 	constexpr float t_dur = 1; // duration, seconds
-	constexpr float r_max = 4; // max radius, meters
+	constexpr float r_max = 3.5; // max radius, meters
+	constexpr float a_thr = 0.4; // fade below this 't'
 	
 	struct Effect
 	{
@@ -111,11 +113,13 @@ void effect_explosion_wave(vec2fp ctr, float power)
 		}
 		bool operator()(TimeSpan passed) {
 			int a;
-			if (t > 0.3) a = 255 * lerp(0.7, 1, (t - 0.3) / 0.7);
-			else a = 255 * 0.7 * (t / 0.3);
-			RenImm::get().draw_image( Rectfp::from_center(pos, vec2fp::one( (1 - t) * szk )), tex_explowave.get(), 0xffffff00 | a );
+			if (t > a_thr) a = 255 * lerp(1 - a_thr, 1, (t - a_thr) / (1 - a_thr));
+			else a = 255 * (1 - a_thr) * (t / a_thr);
+			RenImm::get().draw_image( Rectfp::from_center(pos, vec2fp::one( (1 - t*t*t) * szk )), tex_explowave.get(), 0xffffff00 | a );
 			return (t -= tps * passed.seconds()) > 0;
 		}
 	};
 	GamePresenter::get()->add_effect(Effect(ctr, power));
+	
+	Postproc::get().screen_shake(power);
 }

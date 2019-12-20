@@ -181,14 +181,14 @@ PlayerController::PlayerController()
 		b.name = "Previous weapon";
 		b.type = BT_ONESHOT;
 		b.key = SDL_SCANCODE_LEFTBRACKET;
-		b.mou = MOUSE_WHEELDOWN;
+		b.mou = MOUSE_WHEELUP;
 		b.but = Gamepad::B_LEFT;
 	}{
 		Bind& b = binds[A_WPN_NEXT];
 		b.name = "Next weapon";
 		b.type = BT_ONESHOT;
 		b.key = SDL_SCANCODE_RIGHTBRACKET;
-		b.mou = MOUSE_WHEELUP;
+		b.mou = MOUSE_WHEELDOWN;
 		b.but = Gamepad::B_RIGHT;
 	}
 	
@@ -388,4 +388,12 @@ void PlayerController::update()
 void PlayerController::set_switch(Action act, bool value)
 {
 	binds[static_cast<size_t>(act)].sw_val = value;
+}
+std::string PlayerController::get_hint(Action act)
+{
+	if (!gpad) {
+		auto k = binds[static_cast<size_t>(act)].key.v;
+		return SDL_GetScancodeName(k);
+	}
+	return "???";
 }

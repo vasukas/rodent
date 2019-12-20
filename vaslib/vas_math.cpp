@@ -4,37 +4,37 @@
 
 
 
-struct sin_ft_t
+struct sin_lut_t
 {
 	static const int table_size = 1024;
 	static_assert(table_size % 4 == 0);
 	
 	float *table;
 	
-	sin_ft_t() {
+	sin_lut_t() {
 		table = new float [table_size + 1];
 		for (int i = 0; i < table_size; ++i) table[i] = sinf( i * M_PI*2 / table_size );
 		table[table_size] = table[0];
 	}
-	~sin_ft_t() {
+	~sin_lut_t() {
 		delete[] table;
 	}
 };
-static sin_ft_t sin_ft;
+static sin_lut_t sin_lut;
 
-float sine_ft_norm(float x)
+float sine_lut_norm(float x)
 {
 	if (!std::isfinite(x)) return 0;
 	if (x < 0) x = 1 - x;
 	
-	x *= sin_ft.table_size;
+	x *= sin_lut.table_size;
 	int i = static_cast<int>(x);
 	x -= i;
 	
-	i %= sin_ft.table_size;
-	return lerp( sin_ft.table[i], sin_ft.table[i+1], x );
+	i %= sin_lut.table_size;
+	return lerp( sin_lut.table[i], sin_lut.table[i+1], x );
 }
-vec2fp cossin_ft(float x)
+vec2fp cossin_lut(float x)
 {
 //	return {cos(x), sin(x)};
 	
@@ -42,17 +42,17 @@ vec2fp cossin_ft(float x)
 	x = wrap_angle_2(x);
 	x /= M_PI*2;
 	
-	x *= sin_ft.table_size;
+	x *= sin_lut.table_size;
 	int i = static_cast<int>(x);
 	x -= i;
 	
-	if (i < 0) i += sin_ft.table_size;
-	i %= sin_ft.table_size;
-	int j = (i + sin_ft.table_size /4) % sin_ft.table_size;
+	if (i < 0) i += sin_lut.table_size;
+	i %= sin_lut.table_size;
+	int j = (i + sin_lut.table_size /4) % sin_lut.table_size;
 	
 	return {
-		lerp( sin_ft.table[j], sin_ft.table[j+1], x ), // cosine
-		lerp( sin_ft.table[i], sin_ft.table[i+1], x ), // sine
+		lerp( sin_lut.table[j], sin_lut.table[j+1], x ), // cosine
+		lerp( sin_lut.table[i], sin_lut.table[i+1], x ), // sine
 	};
 }
 
@@ -125,24 +125,21 @@ float angle_delta(float target, float current)
 
 
 
-vec2i vec2i::get_rotated (double angle) const
+vec2fp vec2i::rotate (double angle) const
 {
-	float c = cos(angle), s = sin(angle);
-	return vec2i (
+	double c = cos(angle), s = sin(angle);
+	return vec2fp(
 		c * x - s * y,
 		s * x + c * y
 	);
 }
-void vec2i::rotate (double angle)
+vec2fp vec2i::fastrotate (float angle) const
 {
-	*this = get_rotated (angle);
-}
-void vec2i::fastrotate (float angle)
-{
-	vec2fp cs = cossin_ft(angle);
-	int t = x;
-	x = cs.x * t - cs.y * y;
-	y = cs.y * t + cs.x * y;
+	vec2fp cs = cossin_lut(angle);
+	return vec2fp(
+		cs.x * x - cs.y * y,
+		cs.y * x + cs.x * y
+	);
 }
 vec2i vec2i::minmax() const
 {
@@ -182,24 +179,21 @@ float vec2fp::angle() const {
 	float a = std::atan2(y, x);
 	return std::isfinite(a)? a : 0.f;
 }
-vec2fp vec2fp::get_rotated (double angle) const
+vec2fp& vec2fp::rotate (double angle)
 {
-	float c = cos(angle), s = sin(angle);
-	return vec2fp (
-		c * x - s * y,
-		s * x + c * y
-	);
+	double c = cos(angle), s = sin(angle);
+	float t = x;
+	x = c * t - s * y;
+	y = s * t + c * y;
+	return *this;
 }
-void vec2fp::rotate (double angle)
+vec2fp& vec2fp::fastrotate (float angle)
 {
-	*this = get_rotated (angle);
-}
-void vec2fp::fastrotate (float angle)
-{
-	vec2fp cs = cossin_ft(angle);
+	vec2fp cs = cossin_lut(angle);
 	float t = x;
 	x = cs.x * t - cs.y * y;
 	y = cs.y * t + cs.x * y;
+	return *this;
 }
 vec2fp vec2fp::minmax() const
 {
@@ -207,40 +201,33 @@ vec2fp vec2fp::minmax() const
 		? vec2fp{std::abs(x), std::abs(y)}
 		: vec2fp{std::abs(y), std::abs(x)};
 }
-vec2fp vec2fp::get_norm() const
-{
-	float t = len();
-	return {x / t, y / t};
-}
-void vec2fp::norm()
+vec2fp& vec2fp::norm()
 {
 	float t = len();
 	x /= t; y /= t;
+	return *this;
 }
-void vec2fp::norm_to(float n)
+vec2fp& vec2fp::norm_to(float n)
 {
 	float t = n / len();
 	x *= t; y *= t;
+	return *this;
 }
-void vec2fp::limit_to(float n)
+vec2fp& vec2fp::limit_to(float n)
 {
 	float cur = len_squ();
 	if (cur > n*n) {
 		float t = n / std::sqrt(cur);
 		x *= t; y *= t;
 	}
+	return *this;
 }
-vec2fp vec2fp::get_rotate (float cos, float sin)
-{
-	return {
-		cos * x - sin * y ,
-		sin * x + cos * y };
-}
-void vec2fp::rotate (float cos, float sin)
+vec2fp& vec2fp::rotate (float cos, float sin)
 {
 	float t = x;
 	x = cos * t - sin * y;
 	y = sin * t + cos * y;
+	return *this;
 }
 
 
@@ -248,10 +235,10 @@ void vec2fp::rotate (float cos, float sin)
 vec2fp slerp (const vec2fp &v0, const vec2fp &v1, float t)
 {
 	float dp = dot(v0, v1);
-	if (dp > 0.9995) return lerp(v0, v1, t).get_norm();
+	if (dp > 0.9995) return lerp(v0, v1, t).norm();
 	
-	vec2fp v2 = (v1 - dp * v0).get_norm();
-	auto [c, s] = cossin_ft(t * std::acos(dp));
+	vec2fp v2 = (v1 - dp * v0).norm();
+	auto [c, s] = cossin_lut(t * std::acos(dp));
 	return v0 * c + v2 * s;
 }
 std::optional<vec2fp> lineseg_intersect(vec2fp a1, vec2fp a2, vec2fp b1, vec2fp b2, float eps)
@@ -443,7 +430,7 @@ std::array <vec2fp, 4> Rectfp::rotate( float cs, float sn ) const
 }
 std::array <vec2fp, 4> Rectfp::rotate_fast( float rad ) const
 {
-	vec2fp cs = cossin_ft(rad);
+	vec2fp cs = cossin_lut(rad);
 	return rotate( cs.x, cs.y );
 }
 void Rectfp::merge( const Rectfp& r )
@@ -473,7 +460,7 @@ bool Rectfp::contains(vec2fp p, float width) const
 
 
 
-vec2fp Transform::apply(vec2fp p) const {return (p + pos).get_rotated(rot);}
+vec2fp Transform::apply(vec2fp p) const {return (p + pos).rotate(rot);}
 vec2fp Transform::reverse(vec2fp p) const {return p.get_rotated(-rot) - pos;}
 void Transform::combine(const Transform& t)
 {

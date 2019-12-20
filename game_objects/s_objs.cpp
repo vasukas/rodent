@@ -65,16 +65,14 @@ EWall::EWall(const std::vector<std::vector<vec2fp>>& walls)
 
 
 
-static b2BodyDef EPhyBox_bd(vec2fp at)
-{
-	b2BodyDef bd;
-	bd.type = b2_dynamicBody;
-	bd.position = conv(at);
-	return bd;
-}
 EPhyBox::EPhyBox(vec2fp at)
     :
-    phy(this, EPhyBox_bd(at)),
+    phy(this, [&]{
+		b2BodyDef bd;
+		bd.type = b2_dynamicBody;
+		bd.position = conv(at);
+		return bd;
+	}()),
     ren(this, MODEL_BOX_SMALL, FColor(1, 0.6, 0.2, 1)),
     hlc(this, 250)
 {
@@ -90,23 +88,27 @@ EPhyBox::EPhyBox(vec2fp at)
 
 static ModelType get_model(const EPickable::Value& val)
 {
-	if		(auto v = std::get_if<EPickable::AmmoPack>(&val)) return ammo_model(v->type);
-	else if (auto v = std::get_if<EPickable::Func>    (&val)) return v->model;
-	return MODEL_ERROR;
+	return std::visit(overloaded{
+		[](const EPickable::AmmoPack& v) {return ammo_model(v.type);},
+		[](const EPickable::ArmorShard&) {return MODEL_ARMOR;},
+		[](const EPickable::Func& v) {return v.model;}
+	}, val);
 }
 static FColor get_color(const EPickable::Value& val)
 {
-	if		(         std::get_if<EPickable::AmmoPack>(&val)) return FColor(1, 1, 1);
-	else if (auto v = std::get_if<EPickable::Func>    (&val)) return v->clr;
-	return FColor(1, 1, 1);
+	return std::visit(overloaded{
+		[](const EPickable::AmmoPack&) {return FColor(1, 1, 1);},
+		[](const EPickable::ArmorShard&) {return FColor(0.3, 1, 0.2);},
+		[](const EPickable::Func& v) {return v.clr;}
+	}, val);
 }
 EPickable::AmmoPack EPickable::rnd_ammo()
 {
 	auto type = GameCore::get().get_random().random_el(
 		normalize_chances<AmmoType, 4>({{
 			{AmmoType::Bullet,   1.3},
-			{AmmoType::Rocket,   0.8},
-			{AmmoType::Energy,   1},
+			{AmmoType::Rocket,   1.0},
+			{AmmoType::Energy,   0.8},
 	        {AmmoType::FoamCell, 0.4}
 		}})
 	);
@@ -128,6 +130,34 @@ EPickable::AmmoPack EPickable::std_ammo(AmmoType type)
 	}
 	return ap;
 }
+void EPickable::death_drop(vec2fp pos, float value)
+{
+	auto& rnd = GameCore::get().get_random();
+	if (value < rnd.range_n()) return;
+	
+	float m0 = clampf_n( (value - 0.5) / 0.5 );
+	float m1 = std::max(value - 1, 0.f);
+	
+	Value v;
+	if (rnd.range_n() < 0.5)
+	{
+		AmmoPack ap = rnd_ammo();
+		ap.amount *= rnd.range(
+			lerp(0.2, 0.3, m0),
+			lerp(0.7, 2,   m1)
+		);
+		v = ap;
+	}
+	else {
+		v = ArmorShard{rnd.int_range(
+			lerp(20, 80,  m0),
+			lerp(80, 100, m1))};
+	}
+	new EPickable(pos, std::move(v));
+}
+
+
+
 EPickable::EPickable(vec2fp pos, Value val)
 	:
     phy(this, [&]{b2BodyDef d; d.position = conv(pos); return d;}()),
@@ -136,7 +166,7 @@ EPickable::EPickable(vec2fp pos, Value val)
 {
 	b2FixtureDef fd;
 	fd.isSensor = true;
-	phy.add_circle(fd, GameConst::hsz_supply, 0);
+	phy.add_circle(fd, GameConst::hsz_supply + 0.2, 0);
 	EVS_CONNECT1(phy.ev_contact, on_cnt);
 }
 void EPickable::on_cnt(const CollisionEvent& ce)
@@ -144,23 +174,43 @@ void EPickable::on_cnt(const CollisionEvent& ce)
 	if (ce.type != CollisionEvent::T_BEGIN) return;
 	if (!GameCore::get().get_pmg().is_player( ce.other )) return;
 	
-	if (auto v = std::get_if<AmmoPack>(&val))
+	bool del = std::visit(overloaded
 	{
-		auto eqp = ce.other->get_eqp();
-		int delta = eqp->get_ammo(v->type).add(v->amount);
-		
-		if (delta > 0)
+		[&](AmmoPack& v)
 		{
-			v->amount -= delta;
-			if (v->amount <= 0) destroy();
-			else ren.parts(ren.model, ME_DEATH, {});
+			if (v.amount <= 0) return true; // rare bug
+
+			auto eqp = ce.other->get_eqp();
+			int delta = eqp->get_ammo(v.type).add(v.amount);
+			
+			if (delta > 0)
+			{
+				v.amount -= delta;
+				if (v.amount <= 0) return true;
+				else ren.parts(ren.model, ME_DEATH, {});
+			}
+			return false;
+		},
+		[&](ArmorShard& v)
+		{
+			auto& fs = ce.other->get_hlc()->raw_fils();
+			for (auto& f : fs)
+			{
+				if (auto p = dynamic_cast<DmgArmor*>(f.get()))
+				{
+					p->get_hp().apply(v.amount);
+					return true;
+				}
+			}
+			return false;
+		},
+		[&](Func& v)
+		{
+			return v.f(*ce.other);
 		}
-	}
-	else if (auto v = std::get_if<Func>(&val))
-	{
-		if (v->f(*ce.other))
-			destroy();
-	}
+	}, val);
+	
+	if (del) destroy();
 }
 
 
@@ -179,16 +229,14 @@ static std::shared_ptr<AI_DroneParams> pars_turret()
 	}
 	return pars;
 }
-static b2BodyDef ETurret_bd(vec2fp at)
-{
-	b2BodyDef bd;
-	bd.position = conv(at);
-	bd.fixedRotation = true;
-	return bd;
-}
 ETurret::ETurret(vec2fp at, std::shared_ptr<AI_Group> grp, size_t team)
 	:
-    phy(this, ETurret_bd(at)),
+	phy(this, [&]{
+		b2BodyDef bd;
+		bd.position = conv(at);
+		bd.fixedRotation = true;
+		return bd;
+	}()),
     ren(this, MODEL_BOX_SMALL, FColor(1, 0, 1, 1)),
     hlc(this, 400),
     eqp(this),
@@ -200,25 +248,25 @@ ETurret::ETurret(vec2fp at, std::shared_ptr<AI_Group> grp, size_t team)
 	phy.add_circle(fd, GameConst::hsz_box_small, 1);
 	
 	eqp.add_wpn(new WpnMinigunTurret);
-	eqp.set_wpn(0);
 }
 
 
 
 EEnemyDrone::EEnemyDrone(vec2fp at, const Init& init)
 	:
-	phy(this, [](vec2fp at){
+	phy(this, [&]{
         b2BodyDef def;
 		def.position = conv(at);
 		def.type = b2_dynamicBody;
 		return def;
-	}(at)),
-	ren(this, MODEL_DRONE, FColor(1, 0, 0, 1)),
+	}()),
+	ren(this, init.model, FColor(1, 0, 0, 1)),
 	hlc(this, 70),
 	eqp(this),
 	logic(this, init.pars, init.grp, std::make_shared<AI_Drone::State>(AI_Drone::IdlePoint{at})),
 	l_tar(&logic),
-	mov(&logic)
+	mov(&logic),
+	drop_value(init.drop_value)
 {
 	b2FixtureDef fd;
 	fd.friction = 0.8;
@@ -231,7 +279,11 @@ EEnemyDrone::EEnemyDrone(vec2fp at, const Init& init)
 //	hlc.hook(phy);
 	
 	eqp.add_wpn(new WpnRocket);
-	eqp.set_wpn(0);
+}
+EEnemyDrone::~EEnemyDrone()
+{
+	if (!GameCore::get().is_freeing() && GameCore::get().spawn_drop)
+		EPickable::death_drop(get_pos(), drop_value);
 }
 
 
@@ -297,6 +349,7 @@ void EDoor::RenDoor::step()
 }
 void EDoor::on_cnt(const CollisionEvent& ce)
 {
+	if (!dynamic_cast<FI_Sensor*>(ce.fix_this)) return;
 	if (!plr_only)
 	{
 		if (!ce.other->get_eqp()) return;

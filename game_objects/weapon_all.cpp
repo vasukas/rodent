@@ -3,6 +3,7 @@
 #include "render/ren_aal.hpp"
 #include "utils/noise.hpp"
 #include "game/game_core.hpp"
+#include "game/level_ctr.hpp"
 #include "weapon_all.hpp"
 
 
@@ -41,7 +42,7 @@ void StdProjectile::explode(size_t src_team, EntityIndex src_eid, b2Vec2 self_ve
 			q.src_eid = src_eid;
 			hc->apply(q);
 		}
-		if (pars.imp != 0.f)
+		if (pars.imp != 0.f && v.LengthSquared() > 0.01)
 		{
 			auto& pc = tar->get_phobj();
 			
@@ -157,9 +158,10 @@ void StdProjectile::step()
 	
 	GameCore::get().valid_ent(src);
 	
-	const b2Vec2 vel = conv(self.get_vel().pos);
-	const vec2fp ray0 = self.pos.pos,
-	             rayd = self.get_vel().pos * GameCore::time_mul;
+	const float d_err = 0.1;
+	const vec2fp k_vel = self.get_vel().pos;
+	const vec2fp rayd = k_vel * GameCore::time_mul + k_vel.get_norm() * d_err * 2,
+	             ray0 = self.pos.pos - k_vel.get_norm() * d_err;
 	
 	if (target)
 	{
@@ -170,30 +172,30 @@ void StdProjectile::step()
 		{
 			PhysicsWorld::RaycastResult hit = {};
 			hit.poi = conv(*target);
-			explode(ent->get_team(), src, vel, hit, pars);
+			explode(ent->get_team(), src, conv(k_vel), hit, pars);
 			ent->destroy();
 			return;
 		}
 	}
 	
-	vec2fp roff = rayd;
-	roff.rot90cw();
-	roff.norm_to(pars.size);
-	
-	std::optional<PhysicsWorld::RaycastResult> hit;
-	PhysicsWorld::CastFilter check = make_cf(src);
-	
-	if (!hit) hit = GameCore::get().get_phy().raycast_nearest(conv(ray0 + roff), conv(ray0 + rayd + roff), check);
-	if (!hit) hit = GameCore::get().get_phy().raycast_nearest(conv(ray0 - roff), conv(ray0 + rayd - roff), check);
-	if (!hit) {
-		hit = GameCore::get().get_phy().raycast_nearest(conv(ray0 + rayd), conv(ray0), check);
-		if (!hit) return;
-		hit->poi = conv(ray0);
-		hit->distance = 0;
+	auto hit = GameCore::get().get_phy().raycast_nearest(conv(ray0), conv(ray0 + rayd), make_cf(src), pars.size);
+	if (hit) {
+		explode(ent->get_team(), src, conv(k_vel), *hit, pars);
+		ent->destroy();
 	}
-	
-	explode(ent->get_team(), src, vel, *hit, pars);
-	ent->destroy();
+}
+ProjectileEntity::ProjectileEntity(vec2fp pos, vec2fp vel, std::optional<vec2fp> target, Entity* src,
+                                   const StdProjectile::Params& pars, ModelType model, FColor clr)
+    :
+    phy(this, Transform{pos, vel.angle()}, Transform{vel}),
+    ren(this, model, clr),
+    proj(this, pars, src? src->index : EntityIndex{}, target),
+    team(src? src->get_team() : TEAM_ENVIRON)
+{
+	// Projectile created by (StepLogic -> EC_Equip -> Weapon) chain,
+	// so first logic step happens after first position step.
+	// This corrects position, so it'll be correct on first logic step
+	phy.pos.pos -= vel * GameCore::time_mul;
 }
 
 
@@ -393,7 +395,7 @@ bool ElectroCharge::generate(vec2fp pos, SrcParams src, std::optional<vec2fp> di
 		         FixtureInfo* f = getptr(fix);
 		         return ent == r.ent || (f && (f->typeflags & FixtureInfo::TYPEFLAG_WALL));}});
 		vec2fp r_poi = rc? conv(rc->poi) : r.ent->get_pos();
-		if (dir_lim && dot(*dir_lim, (pos - r_poi).get_norm()) > -angle_lim) continue;
+		if (dir_lim && dot(*dir_lim, (pos - r_poi).norm()) > -angle_lim) continue;
 		
 		auto& ro = rs_o.emplace_back();
 		ro.hc = hc;
@@ -427,7 +429,7 @@ bool ElectroCharge::generate(vec2fp pos, SrcParams src, std::optional<vec2fp> di
 	
 	for (auto& n : n_cs) {
 		effect_lightning(pos, n, src.gener == 0 ? EffectLightning::First : EffectLightning::Regular, left_init);
-		new ElectroCharge(n, src, (n - pos).get_norm());
+		new ElectroCharge(n, src, (n - pos).norm());
 	}
 	
 	return !n_cs.empty();
@@ -530,13 +532,9 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 }
 std::optional<Weapon::UI_Info> WpnElectro::get_ui_info()
 {
-	if (charge_lvl > 0.f)
-	{
-		UI_Info inf;
-		inf.charge_t = charge_lvl;
-		return inf;
-	}
-	return {};
+	UI_Info inf;
+	if (charge_lvl > 0.f) inf.charge_t = charge_lvl;
+	return inf;
 }
 
 
@@ -546,11 +544,14 @@ bool FoamProjectile::can_create(vec2fp pos, EntityIndex src_i)
 	if (!src_i) return true;
 	bool ok = true;
 	
-	std::vector<PhysicsWorld::CastResult> es;
-	GameCore::get().get_phy().circle_cast_all(es, conv(pos), 2, {[&](auto ent, auto){
-		if (src_i == ent->index) ok = false;
-		return false;
-	}});
+	GameCore::get().get_phy().query_circle_all(conv(pos), 2,
+	[&](auto& ent, auto&){
+		if (src_i == ent.index) {
+			ok = false;
+			return false;
+		}
+		return true;
+	});
 	return ok;
 }
 FoamProjectile::FoamProjectile(vec2fp pos, vec2fp vel, size_t team, EntityIndex src_i, bool is_first)
@@ -863,5 +864,267 @@ std::optional<Weapon::ShootResult> WpnRifle::shoot(ShootParams pars)
 		return ShootResult{8, TimeSpan::seconds(0.7)};
 	}
 	
+	return {};
+}
+
+
+
+ElectroBall::ElectroBall(vec2fp pos, vec2fp dir)
+	:
+	phy(this, [&]{
+		b2BodyDef d;
+		d.type = b2_kinematicBody;
+		d.position = conv(pos);
+		d.linearVelocity = conv(dir * speed_min);
+		return d;
+	}()),
+	ren(this, MODEL_GRENADE_PROJ_ALT, FColor(0.4, 0.2, 1))
+{
+	b2FixtureDef fd;
+	fd.isSensor = true;
+	phy.add_circle(fd, expl_radius, 0);
+	EVS_CONNECT1(phy.ev_contact, on_cnt);
+	
+	reg_this();
+}
+void ElectroBall::on_cnt(const CollisionEvent& ev)
+{
+	if (ev.other->get_eqp())
+	{
+		if		(ev.type == CollisionEvent::T_BEGIN) ++explode_cntc;
+		else if (ev.type == CollisionEvent::T_END)   --explode_cntc;
+	}
+}
+void ElectroBall::step()
+{
+	GamePresenter::get()->effect(FE_CIRCLE_AURA, {Transform{get_pos()}, 0.005, FColor(0.4, 0.2, 1, 0.5)});
+	
+	const float find_radius = 16;
+	
+	if (tmo_ignore.is_positive()) {
+		tmo_ignore -= GameCore::step_len;
+		return;
+	}
+	
+	if (tmo_explode.is_positive()) tmo_explode -= GameCore::step_len;
+	else if (explode_cntc != 0 || explode_close)
+	{
+		phy.body->SetLinearVelocity({0,0});
+		auto& rnd = GameCore::get().get_random();
+		
+		StdProjectile::Params pp;
+		pp.dq.amount = 150;
+		pp.rad = 4;
+		pp.rad_full = true;
+		pp.imp = 1200;
+		
+		PhysicsWorld::RaycastResult rc = {};
+		{
+			vec2fp v(rnd.range(1, 4), 0);
+			v.rotate( rnd.range_n2() * M_PI );
+			rc.poi = conv(get_pos() + v);
+		}
+		StdProjectile::explode(TEAM_ENVIRON, {}, {}, rc, pp);
+		
+		for (int i=0; i<4; ++i)
+		{
+			vec2fp v(rnd.range(3, 12), 0);
+			v.rotate( rnd.range_n2() * M_PI );
+			
+			vec2fp p = get_pos() + v;
+			ElectroCharge::generate( p, {TEAM_ENVIRON, {}}, {} );
+			
+			GamePresenter::get()->effect(FE_EXPLOSION_FRAG, {Transform{p}, 0.2});
+			GamePresenter::get()->effect(FE_CIRCLE_AURA, {Transform{p}, 4, FColor(0.6, 0.2, 1, 3)});
+		}
+		
+		tmo_explode = TimeSpan::seconds(0.5);
+		if (--explode_left == 0) destroy();
+		return;
+	}
+	
+	//
+	
+	if (auto tar = GameCore::get().valid_ent(target_id))
+	{
+		vec2fp dt = tar->get_pos() - get_pos();
+		float dist = dt.len();
+		if (dist > find_radius)
+		{
+			target_id = {};
+			return;
+		}
+		
+		float spd = lerp(speed_max, speed_min, dist / find_radius);
+		dt.norm_to(spd);
+		
+		vec2fp vel = phy.get_vel().pos;
+		vel += (dt - vel) * (GameCore::step_len / TimeSpan::seconds(0.8));
+		phy.body->SetLinearVelocity(conv(vel));
+		
+		explode_close = (dist < expl_radius);
+	}
+	else
+	{
+		explode_close = false;
+		
+		auto& rnd = GameCore::get().get_random();
+		vec2fp rv( rnd.range(3, 18), 0 );
+		rv.rotate( rnd.range_n2() * M_PI );
+		
+		if (tmo_target.is_positive()) tmo_target -= GameCore::step_len;
+		else {
+			std::vector<EntityIndex> es_tars;
+			std::vector<Entity*> es_grav;
+			
+			GameCore::get().get_phy().query_circle_all( conv(get_pos()), find_radius,
+			[&](auto& ent, auto&) {
+				if (ent.get_eqp()) es_tars.push_back(ent.index);
+				else es_grav.push_back(&ent);
+			},
+			[&](auto& ent, auto& fix) {
+				return (ent.get_eqp() && !fix.IsSensor()) || (typeid(ent) == typeid(ElectroBall) && (&ent) != this);
+			});
+			
+			if (!es_tars.empty()) target_id = rnd.random_el(es_tars);
+			else
+			{
+				tmo_target = TimeSpan::seconds(0.3);
+				
+				for (auto& e : es_grav) // just for fun - gravity
+				{
+					vec2fp dt = e->get_pos() - get_pos();
+					float n = dt.len();
+					if (n < 1e-5) continue;
+					
+					const float lim = expl_radius + 2;
+					if (n > lim) n = 0.7 * lerp(speed_max, speed_min, (n - lim) / (find_radius - lim));
+					else {
+						dt = -dt;
+						n = speed_max;
+					}
+					
+					dt.norm_to(n);
+					rv += dt;
+					tmo_target = {};
+				}
+			}
+		}
+		
+		vec2fp vel = phy.get_vel().pos;
+		vel += (rv - vel) * (GameCore::step_len / TimeSpan::seconds(2));
+		phy.body->SetLinearVelocity(conv(vel));
+	}
+	
+	if (!LevelControl::get().cell( LevelControl::get().to_cell_coord( get_pos() ) ))
+		destroy();
+}
+
+
+
+WpnUber_Ray::WpnUber_Ray(WpnUber& wpn)
+	: wpn(wpn), phy(this), ren(nullptr)
+{
+	ren.ent = this;
+}
+void WpnUber_Ray::Render::step()
+{
+	auto& self = dynamic_cast<WpnUber_Ray&>(*ent);
+	if (!self.show && !left.is_positive()) return;
+	
+	vec2fp b, a = get_pos().pos;
+	
+	constexpr TimeSpan left_max = TimeSpan::seconds(0.5);
+	if (self.show) {
+		left = left_max;
+		b = self.b_last;
+	}
+	else {
+		left -= GamePresenter::get()->get_passed();
+		
+		vec2fp v((self.b_last - a).fastlen() * (left / left_max), 0);
+		v.fastrotate( self.wpn.equip->ent->get_face_rot() );
+		b = a + v;
+	}
+	
+	RenAAL::get().draw_line(a, b, FColor(1, 0.3, 0.2).to_px(), 0.2, 4, left / left_max);
+}
+Transform WpnUber_Ray::ProxyPos::get_trans() const
+{
+	return dynamic_cast<WpnUber_Ray&>(*ent).wpn.equip->ent->get_phy().get_trans();
+}
+
+
+WpnUber::WpnUber()
+    : Weapon([]{
+		static std::optional<Info> info;
+		if (!info) {
+			info = Info{};
+			info->name = "Plasma cannon";
+			info->model = MODEL_UBERGUN;
+			info->ammo = AmmoType::Energy;
+			info->def_ammo = 1;
+			info->set_origin_from_model();
+		}
+		return &*info;
+	}())
+{
+	overheat = Overheat{};
+	overheat->thr_off = 0.1;
+	overheat->v_decr = 0.2;
+	overheat->v_cool = 0.3;
+	
+	ray_ren = new WpnUber_Ray(*this);
+}
+WpnUber::~WpnUber()
+{
+	if (!GameCore::get().is_freeing())
+		ray_ren->destroy();
+}
+std::optional<Weapon::ShootResult> WpnUber::shoot(ShootParams pars)
+{
+	if (pars.main_was) ray_ren->show = false;
+	
+	auto dirs_tuple = get_direction(pars);
+	if (!dirs_tuple) return {};
+	auto [p, v] = *dirs_tuple;
+
+	if (pars.main)
+	{
+		const float max_dist = 20;
+		const float ray_width = 1; // full-width
+		
+		auto ent = equip->ent;
+		b2Vec2 tar = conv(p + max_dist * v);
+		auto hit = GameCore::get().get_phy().raycast_nearest(conv(p), tar, StdProjectile::make_cf(ent->index), ray_width);
+		if (!hit) {
+			hit = PhysicsWorld::RaycastResult{};
+			hit->poi = tar;
+		}
+		
+		ray_ren->b_last = conv(hit->poi);
+		ray_ren->show = true;
+		
+		float dist = conv(hit->poi).dist(p) / max_dist;
+		
+		StdProjectile::Params pp;
+		pp.dq.amount = lerp(450, 30, dist) * GameCore::time_mul;
+		pp.imp = lerp(30, -5, dist);
+		StdProjectile::explode(ent->get_team(), ent->index, conv(v), *hit, pp);
+		
+		GamePresenter::get()->effect(FE_EXPLOSION, {Transform{conv(hit->poi)}, lerp(0.2f, 0.07f, dist)});
+		GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform(p, v.angle()), 0.3, FColor(1, 0.7, 0.5, 0.7)});
+		
+		ammo_skip_count = (ammo_skip_count + 1) % 3;
+		return ShootResult{ammo_skip_count ? 0 : 1, {}, 0.3};
+	}
+	else if (pars.alt)
+	{
+		const int ammo = 30;
+		if (!equip->has_ammo(*this, ammo)) return {};
+		
+		new ElectroBall(p, v);
+		return ShootResult{ammo, {}, 1 / GameCore::time_mul};
+	}
 	return {};
 }

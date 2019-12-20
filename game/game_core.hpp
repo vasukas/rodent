@@ -25,6 +25,7 @@ public:
 	};
 	
 	bool dbg_ai_attack; ///< Is AI attack enabled
+	bool spawn_drop; ///< From destroyed enemies
 	
 	static GameCore& get(); ///< Returns singleton
 	static GameCore* create(InitParams pars); ///< Creates empty handler and inits all systems
@@ -57,6 +58,9 @@ public:
 	
 	/// Returns true if step currently executed (for functions called inside it)
 	virtual bool is_in_step() const noexcept = 0;
+	
+	/// Returns true if currently being destroyed
+	virtual bool is_freeing() const noexcept = 0;
 	
 	/// Performs single step on all systems and increments step counter
 	virtual void step() = 0;

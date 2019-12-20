@@ -440,6 +440,40 @@ std::optional<PhysicsWorld::RaycastResult> PhysicsWorld::raycast_nearest(b2Vec2 
 	if (cb.res) cb.res->distance *= (from - to).Length();
 	return cb.res;
 }
+void PhysicsWorld::query_circle_all(b2Vec2 ctr, float radius, QueryCbRet narrow, OptQueryCbRet wide)
+{
+	class Cb : public b2QueryCallback {
+	public:
+		float rad;
+		b2Vec2 ctr;
+		QueryCbRet& fn;
+		OptQueryCbRet& fw;
+		
+		Cb(float rad, b2Vec2 ctr, QueryCbRet& fn, OptQueryCbRet& fw) : rad(rad), ctr(ctr), fn(fn), fw(fw) {}
+		bool ReportFixture(b2Fixture* fix)
+		{
+			auto ent = getptr(fix->GetBody())->ent;
+			if (fw && !fw(*ent, *fix)) return true;
+			float d = (fix->GetBody()->GetWorldCenter() - ctr).LengthSquared();
+			
+			float z = getptr(fix->GetBody())->get_radius();
+			d -= z*z;
+			
+			if (d < rad*rad) return fn(*ent, *fix);
+			return true;
+		}
+	};
+	Cb cb(radius, ctr, narrow, wide);
+	b2AABB box;
+	box.lowerBound = ctr - b2Vec2(radius, radius);
+	box.upperBound = ctr + b2Vec2(radius, radius);
+	world.QueryAABB(&cb, box);
+	++ aabb_query_count;
+}
+void PhysicsWorld::query_circle_all(b2Vec2 ctr, float radius, QueryCb narrow, OptQueryCbRet wide)
+{
+	query_circle_all(ctr, radius, [&](auto& a, auto& b) {narrow(a, b); return true;}, wide);
+}
 void PhysicsWorld::circle_cast_all(std::vector<CastResult>& es, b2Vec2 ctr, float radius, CastFilter cf)
 {
 	class Cb : public b2QueryCallback {
@@ -525,30 +559,27 @@ std::optional<PhysicsWorld::PointResult> PhysicsWorld::point_cast(b2Vec2 ctr, fl
 	++ aabb_query_count;
 	return cb.res;
 }
-void PhysicsWorld::area_cast(std::vector<PointResult>& es, Rectfp area, CastFilter cf)
+void PhysicsWorld::query_aabb(Rectfp area, QueryCbRet f)
 {
 	class Cb : public b2QueryCallback {
 	public:
-		std::vector<PointResult>& es;
-		CastFilter& cf;
+		QueryCbRet& f;
 		
-		Cb(std::vector<PointResult>& es, CastFilter& cf): es(es), cf(cf) {}
-		bool ReportFixture(b2Fixture* fix)
-		{
-			if (cf.is_ok(*fix))
-			{
-				reserve_more_block(es, 256);
-				es.push_back({ getptr(fix->GetBody())->ent, getptr(fix) });
-			}
-			return true;
+		Cb(QueryCbRet& f): f(f) {}
+		bool ReportFixture(b2Fixture* fix) {
+			return f(*getptr(fix->GetBody())->ent, *fix);
 		}
 	};
-	Cb cb(es, cf);
+	Cb cb(f);
 	b2AABB box;
 	box.lowerBound = conv(area.lower());
 	box.upperBound = conv(area.upper());
 	world.QueryAABB(&cb, box);
 	++ aabb_query_count;
+}
+void PhysicsWorld::query_aabb(Rectfp area, QueryCb f)
+{
+	query_aabb(area, [&](auto& a, auto& b) {f(a, b); return true;});
 }
 void PhysicsWorld::post_step(std::function<void()> f)
 {

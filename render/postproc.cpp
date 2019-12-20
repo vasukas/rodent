@@ -123,6 +123,42 @@ struct PPF_Tint : PP_Filter
 
 
 
+struct PPF_Shake : PP_Filter
+{
+	float t = 0, str = 0;
+	
+	PPF_Shake()
+	{
+		sh = Shader::load("pp/shake", {});
+	}
+	bool is_ok_int() override
+	{
+		return str > 0 && AppSettings::get().cam_pp_shake_str > 1e-5;
+	}
+	void proc() override
+	{
+		vec2i sz = RenderControl::get_size();
+		float k = std::min(str, 2.f) * AppSettings::get().cam_pp_shake_str;
+		float x = cossin_lut(t * 10).y * k / sz.xy_ratio();
+		float y = cossin_lut(t * 15).y * k * 0.7;
+		
+		float ps = RenderControl::get().get_passed().seconds();
+		t += ps;
+		str -= ps / 0.7;
+		
+		sh->bind();
+		sh->set2f("tmod", x, y);
+		draw(true);
+	}
+	void add(float power)
+	{
+		if (str <= 0) t = 0.01;
+		str = std::min(str + power, 5.f);
+	}
+};
+
+
+
 class PP_Bloom : public PP_Node
 {
 public:
@@ -210,6 +246,11 @@ private:
 		tex_s[1].bind();
 		sh_blur->set1i("horiz", 0);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
+		
+		//
+		
+		glBlendFunc(GL_ONE, GL_ONE);
+		glBlendEquation(GL_FUNC_ADD);
 	}
 	GLuint get_input_fbo() override {return fbo_s[0].fbo;}
 };
@@ -258,6 +299,15 @@ public:
 			draw_ui->enabled = true;
 			capture.reset();
 		}
+	}
+	
+	
+	
+	PPF_Shake* shake;
+	
+	void screen_shake(float power)
+	{
+		if (shake) shake->add(power);
 	}
 	
 	
@@ -338,7 +388,8 @@ public:
 		}{
 			new PP_Bloom("bloom");
 		}{
-			fts.emplace_back(tint = new PPF_Tint);
+			fts.emplace_back(shake = new PPF_Shake);
+			fts.emplace_back(tint  = new PPF_Tint);
 			new PPN_Chain("post", std::move(fts), {});
 		}
 		

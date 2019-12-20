@@ -137,14 +137,14 @@ bool AI_Attack::shoot(Entity* target, float distance, Entity* self)
 	}
 	
 	if (GameCore::get().dbg_ai_attack)
-		self->get_eqp()->try_shoot(p, true, false);
+		self->get_eqp()->shoot(p, true, false);
 	
 	return true;
 }
 void AI_Attack::shoot(vec2fp at, Entity* self)
 {
 	if (!check_los(at, nullptr, self))
-		self->get_eqp()->try_shoot(at, true, false);
+		self->get_eqp()->shoot(at, true, false);
 }
 vec2fp AI_Attack::correction(float distance, float bullet_speed, Entity* target)
 {

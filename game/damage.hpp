@@ -82,21 +82,21 @@ struct EC_Health : EComp
 	void hook(EC_Physics& ph); ///< Connects to collision event
 	void on_event(const CollisionEvent& ev);
 	
-	size_t add_filter(std::shared_ptr<DamageFilter> f, std::optional<size_t> index = {}); ///< Adds filter
-	void rem_filter(size_t i); ///< Removes protected area
+	size_t add_filter(std::shared_ptr<DamageFilter> f); ///< Adds filter. Used in reverse order of addition
+	void rem_filter(size_t i); ///< Removes filter
 	
-	size_t add_prot(std::shared_ptr<DamageFilter> f, std::optional<size_t> index = {}); ///< Adds protected area
+	size_t add_prot(std::shared_ptr<DamageFilter> f); ///< Adds protected area
 	void rem_prot(size_t i); ///< Removes protected area
 	
-	std::vector<std::shared_ptr<DamageFilter>>& raw_fils() {return fils;}
-	std::vector<std::shared_ptr<DamageFilter>>& raw_prot() {return pr_area;}
+	auto& raw_fils() {return fils;}
+	auto& raw_prot() {return pr_area;}
 	
 private:
 	HealthPool hp;
 	std::vector<std::shared_ptr<DamageFilter>> fils; // may contain nullptr
 	std::vector<std::shared_ptr<DamageFilter>> pr_area; // may contain nullptr
 	
-	size_t add(std::vector<std::shared_ptr<DamageFilter>>& fs, std::shared_ptr<DamageFilter> f, std::optional<size_t> index);
+	size_t add(std::vector<std::shared_ptr<DamageFilter>>& fs, std::shared_ptr<DamageFilter> f);
 	void rem(std::vector<std::shared_ptr<DamageFilter>>& fs, size_t i);
 	void step() override;
 };
@@ -115,9 +115,8 @@ struct DamageFilter
 
 struct DmgShield : DamageFilter
 {
-	static constexpr int dead_absorb = 100; ///< How much additional damage absorbed on destruction
 	bool enabled = true;
-	bool is_filter = true; // used only for rendering
+	bool is_filter = true;
 	
 	DmgShield(int capacity, int regen_per_second, TimeSpan regen_wait = TimeSpan::seconds(3));
 	void proc(EC_Health&, DamageQuant& q);
@@ -135,10 +134,11 @@ private:
 
 struct DmgArmor : DamageFilter
 {
-	// ignores non-kinetic damage!
-	int thr = 5; ///< Dmg below this doesn't get through
-	float mod = 0.5f; ///< Dmg mutiplier (after threshold)
-	float self = 0.3f; ///< Dmg to armor multiplier (NOT after mod)
+	// Only for kinetic damage
+	float k_self = 0.15; ///< Damage to armor multiplier (before mod)
+	float k_mod_min = 0.7; ///< Received damage multiplier (min health)
+	float k_mod_max = 0.2; ///< Received damage multiplier (full health)
+//	int dmg_thr = 5; ///< If damage below this, it's ignored (after mod)
 	
 	DmgArmor(int hp_max, int hp = 0);
 	void proc(EC_Health&, DamageQuant& q);
