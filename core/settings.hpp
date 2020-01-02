@@ -29,6 +29,7 @@ struct AppSettings
 	// renderer effects etc
 	float cam_mag_mul = 1;
 	float cam_pp_shake_str = 0.01;
+	int interp_depth = 3;
 	
 	// game
 	int cursor_info_flags = 1;

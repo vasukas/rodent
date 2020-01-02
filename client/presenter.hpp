@@ -51,7 +51,7 @@ using PresCommand = std::variant
 struct ECompRender : EComp
 {
 	// MUST be inited after physics component (unless null ent is supplied)
-	// WARNING: step() and syn() may not be called at each step
+	// WARNING: step() and sync() may not be called at each step
 	
 	enum AttachType
 	{
@@ -70,7 +70,9 @@ struct ECompRender : EComp
 	void attach(AttachType type, Transform at, ModelType model, FColor clr);
 	void detach(AttachType type) {attach(type, {}, MODEL_NONE, {});}
 	
-	const Transform& get_pos() const {return _pos;} ///< Current rendering position
+	/// Current rendering position. 
+	/// Must not be used outside of rendering components (non-atomic)
+	const Transform& get_pos() const {return _pos;}
 	
 protected:
 	void send(PresCommand c);
@@ -82,8 +84,17 @@ private:
 	friend class GamePresenter_Impl;
 	bool _is_ok = true;
 	bool _in_vport = false; // is shown
-	Transform _pos, _vel = {};
+	Transform _pos;
 	size_t _comp_id = size_t_inval;
+	
+	struct PosQueue {
+		std::array<std::pair<TimeSpan, Transform>, 3> fs;
+		int fn = 0;
+	};
+	union {
+		PosQueue _q_pos;
+		Transform _vel;
+	};
 	
 	friend class GameCore_Impl;
 	void on_destroy_ent();
@@ -193,13 +204,13 @@ public:
 	static GamePresenter* get(); ///< Returns singleton
 	virtual ~GamePresenter();
 	
-	virtual void sync() = 0; ///< Synchronizes with GameCore (must be called from logic thread)
+	virtual void sync(TimeSpan now) = 0; ///< Synchronizes with GameCore (must be called from logic thread)
 	virtual void del_sync() = 0; ///< Processes only delete messages and nothing else
 	virtual void add_cmd(PresCommand c) = 0;
 	
-	virtual void render(TimeSpan passed) = 0; ///< Renders everything (must be called from render thread)
+	virtual void render(TimeSpan now, TimeSpan passed) = 0; ///< Renders everything (must be called from render thread)
 	virtual TimeSpan get_passed() = 0; ///< Returns last passed time (for components)
-	virtual float get_time_t() = 0; ///< Returns current interpolation value
+	virtual Rectfp get_vport() = 0; ///< Returns world frustum rect
 	
 	void effect(FreeEffect effect, const ParticleBatchPars& pars);
 	

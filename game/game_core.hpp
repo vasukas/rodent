@@ -63,7 +63,7 @@ public:
 	virtual bool is_freeing() const noexcept = 0;
 	
 	/// Performs single step on all systems and increments step counter
-	virtual void step() = 0;
+	virtual void step(TimeSpan now) = 0;
 	
 	
 	

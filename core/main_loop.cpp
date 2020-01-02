@@ -1,3 +1,4 @@
+#define _ENABLE_ATOMIC_ALIGNMENT_FIX // MSVC
 #include <atomic>
 #include <mutex>
 #include <thread>
@@ -55,7 +56,7 @@ public:
 			}
 		}
 	}
-	void render(TimeSpan)
+	void render(TimeSpan, TimeSpan)
 	{
 		RenImm::get().draw_rect({{}, RenderControl::get_size(), false}, 0xff);
 		vig_lo_push_scroll( RenderControl::get_size() - vig_element_decor()*2, scroll_pos );
@@ -206,22 +207,40 @@ public:
 	std::atomic<bool> thr_term = false;
 	std::thread thr_serv;
 	std::mutex ren_lock;
+	
+	std::atomic<bool> pause_logic = false; ///< Control
+	std::atomic<bool> pause_logic_ok = false; ///< Is really paused
+	bool is_ren_paused = false; ///< Is paused be window becoming non-visible
+	
+	//
 
 	struct GP_Init
 	{
 		GamePresenter::InitParams gp;
 	};
 	std::optional<GP_Init> gp_init;
-	bool game_fin = false;
+	std::atomic<bool> game_fin = false;
+	bool is_first_frame = false;
 	
 	bool use_gamepad = false;
+	bool use_rndseed = false;
+	std::optional<uint32_t> use_seed;
+	
+	//
 	
 	bool ph_debug_draw = false;
 	vigAverage dbg_serv_avg;
 	RAII_Guard dbg_serv_g;
+	std::atomic<std::optional<float>> dbg_serv_avg_last;
 	
 	double serv_avg_total = 0;
 	size_t serv_avg_count = 0;
+	size_t serv_overmax_count = 0;
+	
+	bool dbg_lag_render = 0;
+	bool dbg_lag_logic  = 0;
+	
+	//
 	
 	std::unique_ptr<LevelMap> lmap;
 	
@@ -265,12 +284,6 @@ public:
 	};
 	std::vector<WinrarAnim> winrars;
 	
-	std::atomic<bool> pause_logic = false; ///< Control
-	std::atomic<bool> pause_logic_ok = false; ///< Is really paused
-	bool is_ren_paused = false; ///< Is paused be window becoming non-visible
-	
-	bool is_first_frame = false;
-	
 	
 	
 	ML_Game() = default;
@@ -279,6 +292,8 @@ public:
 		if		(arg.is("--gpad-on"))  use_gamepad = true;
 		else if (arg.is("--gpad-off")) use_gamepad = false;
 		else if (arg.is("--cheats")) PlayerController::allow_cheats = true;
+		else if (arg.is("--rndseed")) use_rndseed = true;
+		else if (arg.is("--seed")) use_seed = arg.i32();
 		else return false;
 		return true;
 	}
@@ -336,6 +351,11 @@ public:
 					if (upd_cheats) core->get_pmg().update_cheats();
 				}
 				else vig_label("Cheats disabled");
+				
+				vig_lo_next();
+				vig_checkbox(dbg_lag_render, "Lag render");
+				vig_checkbox(dbg_lag_logic,  "Lag core");
+				vig_lo_next();
 			}
 		});
 		
@@ -350,6 +370,7 @@ public:
 			thr_serv.join();
 		
 		VLOGI("Average logic frame length: {} ms, {} samples", serv_avg_total, serv_avg_count);
+		VLOGI("Logic frame length > sleep time: {} samples", serv_overmax_count);
 	}
 	void on_current()
 	{
@@ -400,10 +421,16 @@ public:
 			pc_ctr->on_event(ev);
 		}
 	}
-	void render(TimeSpan passed)
+	void render(TimeSpan frame_begin, TimeSpan passed)
 	{
+		if (dbg_lag_render)
+			sleep(TimeSpan::ms(rnd_stat().int_range(20, 35)));
+		
 		std::unique_lock lock(ren_lock);
 		if (thr_term) throw std::runtime_error("Game failed");
+		
+		if (auto t = dbg_serv_avg_last.exchange({}))
+			dbg_serv_avg.add(*t);
 		
 		if (!pres)
 		{
@@ -411,7 +438,7 @@ public:
 			if (gen_msg.empty())
 			{
 				auto& rnd = rnd_stat();
-				rnd.gen.seed( fast_hash32(date_time_str()) );
+				rnd.set_seed( fast_hash32(date_time_str()) );
 				
 				std::vector<std::string> vs;
 				if (rnd.range_n() < 0.3) {}
@@ -420,6 +447,7 @@ public:
 					vs.emplace_back("Reversing linked lists...");
 					vs.emplace_back("Summoning CPU spirits...");
 					vs.emplace_back("Converting walls to zombies...");
+					vs.emplace_back("Uploading browser history...");
 					vs.emplace_back("SPAM SPAM SPAM SPAM\nSPAM SPAM SPAM SPAM\nLovely spam!\nWonderful spam!");
 					vs.emplace_back("Cake isn't implemented yet");
 				} else {
@@ -457,7 +485,7 @@ public:
 		else if (game_fin)
 		{
 			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
-			GamePresenter::get()->render(passed);
+			GamePresenter::get()->render(frame_begin, {});
 			//
 			RenImm::get().set_context(RenImm::DEFCTX_UI);
 			RenImm::get().draw_rect({{}, RenderControl::get_size(), false}, 0xa0);
@@ -503,7 +531,7 @@ public:
 				const float tar_max = 15.f * (calc_mag / cam.get_state().mag);
 				const float per_second = 0.08 / TimeSpan::fps(60).seconds();
 				
-				const vec2fp pos = ent->get_phy().get_pos();
+				const vec2fp pos = ent->get_ren()->get_pos().pos;
 				vec2fp tar = pos;
 				
 				auto& pctr = pc_ctr->get_state();
@@ -556,7 +584,7 @@ public:
 			// draw world
 			
 			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
-			GamePresenter::get()->render(passed);
+			GamePresenter::get()->render( frame_begin, pause_logic ? TimeSpan{} : passed );
 			
 			if (ph_debug_draw)
 				core->get_phy().world.DrawDebugData();
@@ -594,7 +622,19 @@ public:
 	{	
 		TimeSpan t0 = TimeSpan::since_start();
 		
-		RandomGen lt_rnd; // 260,120 180,100
+		RandomGen lt_rnd;
+		if (use_seed) {
+			lt_rnd.set_seed(*use_seed);
+			VLOGI("Level seed (cmd): {}", *use_seed);
+		}
+		else if (use_rndseed) {
+			uint32_t s = fast_hash32(date_time_str());
+			lt_rnd.set_seed(s);
+			VLOGI("Level seed (random): {}", s);
+		}
+		else VLOGI("Level seed: default");
+		
+		// 260,120 180,100
 		std::shared_ptr<LevelTerrain> lt( LevelTerrain::generate({ &lt_rnd, {220,140}, 3 }) );
 //#warning Debug exit
 //		lt->test_save(); throw std::logic_error("Debug exit");
@@ -636,8 +676,11 @@ public:
 			if (!pause_logic)
 			{
 				std::unique_lock lock(ren_lock);
-				core->step();
+				core->step(t0);
 				ai_ctr->step();
+				
+				if (dbg_lag_logic)
+					sleep(TimeSpan::ms(rnd_stat().int_range(35, 50)));
 			}
 			
 			if (GameCore::get().get_pmg().is_game_finished())
@@ -647,9 +690,10 @@ public:
 			}
 			
 			auto dt = TimeSpan::since_start() - t0;
-			sleep(core->step_len - dt);
+			if ((core->step_len - dt) < TimeSpan::ms(1)) ++serv_overmax_count;
+			sleep(core->step_len - dt); // if precise, causes more stutter on Linux
 			
-			dbg_serv_avg.add (dt.seconds());
+			dbg_serv_avg_last = dt.seconds();
 			if (!pause_logic_ok) {
 				++serv_avg_count;
 				serv_avg_total += (dt.seconds() * 1000 - serv_avg_total) / serv_avg_count;
@@ -679,7 +723,7 @@ public:
 		
 		frm.mag = 0.05;
 		cam.set_state(frm);
-		GamePresenter::get()->sync();
+		GamePresenter::get()->sync( TimeSpan::since_start() );
 		
 		frm.mag = 8;
 		cam.set_state(frm);
@@ -708,7 +752,7 @@ public:
 			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
 			
 			cam.set_state(frm);
-			GamePresenter::get()->render({});
+			GamePresenter::get()->render( TimeSpan::since_start(), {} );
 			RenderControl::get().render({});
 			
 			Texture::debug_save(tex->get_obj(), tmp, Texture::FMT_RGBA);

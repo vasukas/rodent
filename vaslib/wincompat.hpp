@@ -3,6 +3,8 @@
 
 #define VAS_WINCOMPAT 1
 
+void winc_sleep(int64_t microseconds);
+
 // general winapi utilities
 
 std::string  winc_error();

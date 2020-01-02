@@ -44,3 +44,17 @@ void sleep(TimeSpan time)
 	auto mk = time.micro();
 	if (mk > 0) std::this_thread::sleep_for( std::chrono::microseconds(mk) );
 }
+
+#ifdef _WIN32
+#include "vaslib/wincompat.hpp"
+void precise_sleep(TimeSpan time)
+{
+	auto mk = time.micro();
+	if (mk > 0) winc_sleep(mk);
+}
+#else
+void precise_sleep(TimeSpan time)
+{
+	sleep(time);
+}
+#endif

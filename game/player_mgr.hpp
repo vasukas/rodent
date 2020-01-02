@@ -3,7 +3,10 @@
 
 #include "entity.hpp"
 
-class PlayerController;
+class  PlayerController;
+struct WeaponMsgReport;
+
+
 
 class PlayerManager
 {

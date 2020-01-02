@@ -104,6 +104,7 @@ bool AppSettings::load()
 	
 	P_FLOAT(cam_mag_mul, true);
 	P_FLOAT(cam_pp_shake_str, true);
+	P_INT(interp_depth, interp_depth == 0 || interp_depth == 2 || interp_depth == 3);
 	
 	P_INT(cursor_info_flags, i >= 0 && i <= 1);
 	P_BOOL(spawn_drop);

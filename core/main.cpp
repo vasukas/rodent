@@ -133,6 +133,8 @@ Mode options (--game):
   --gpad-on   use gamepad by default (if available)
   --gpad-off  don't use gamepad by default [default]
   --cheats    allows cheats
+  --rndseed   use random level seed
+  --seed <N>  use specified level seed
 )");
 			}
 			else if (arg.is("--log")) log_filename = arg.str();
@@ -342,6 +344,7 @@ Mode options (--game):
 	
 	double avg_total = 0;
 	size_t avg_total_n = 0;
+	size_t overmax_count = 0;
 	
 	
 	
@@ -419,7 +422,7 @@ Mode options (--game):
 		vig_draw_start();
 		vig_draw_menues();
 		
-		try {MainLoop::current->render( passed );}
+		try {MainLoop::current->render( loop_0, passed );}
 		catch (std::exception& e) {
 			VLOGE("MainLoop::render() exception: {}", e.what());
 			break;
@@ -472,9 +475,13 @@ Mode options (--game):
 		if (loop_limit && loop_total < loop_length)
 		{
 			passed = loop_length;
-			sleep(loop_length - loop_total);
+			precise_sleep(loop_length - loop_total);
+			if (loop_length < loop_total) ++overmax_count;
 		}
-		else passed = loop_total;
+		else {
+			passed = loop_total;
+			if (!loop_limit) passed = loop_length;
+		}
 		
 		if (lag_spike_flags[lag_spike_i]) --lag_spike_count;
 		lag_spike_flags[lag_spike_i] = loop_total > loop_length;
@@ -487,6 +494,7 @@ Mode options (--game):
 	
 	VLOGI("Total run time: {:.3f} seconds", (TimeSpan::since_start() - time_init).seconds());
 	VLOGI("Average render frame length: {} ms, {} samples", avg_total, avg_total_n);
+	VLOGI("Render frame length > sleep time: {} samples", overmax_count);
 	log_write_str(LogLevel::Critical, "main() normal exit");
 	
 	dbg_g.trigger();

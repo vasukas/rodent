@@ -210,6 +210,20 @@ public:
 		}
 		draw(vs, trin * 3, color);
 	}
+	bool is_ok(const b2Vec2& v)
+	{
+		return GamePresenter::get()->get_vport().contains(conv(v));
+	}
+	bool is_ok(const b2Vec2& v, float radius)
+	{
+		return GamePresenter::get()->get_vport().overlaps( Rectfp::from_center(conv(v), vec2fp::one(radius)) );
+	}
+	bool is_ok(const b2Vec2* vs, int n)
+	{
+		auto vp = GamePresenter::get()->get_vport();
+		for (int i=0; i<n; ++i) if (vp.contains( conv(vs[i]) )) return true;
+		return false;
+	}
 	
 	
 	PHW_Draw() {
@@ -217,31 +231,38 @@ public:
 	}
 	void DrawPolygon(const b2Vec2* vertices, int32 vertexCount, const b2Color& color)
 	{
+		if (!is_ok(vertices, vertexCount)) return;
 		polygon(vertices, vertexCount, color, true);
 	}
 	void DrawSolidPolygon(const b2Vec2* vertices, int32 vertexCount, const b2Color& color)
 	{
+		if (!is_ok(vertices, vertexCount)) return;
 		polygon(vertices, vertexCount, color, false);
 	}
 	void DrawCircle(const b2Vec2& center, float32 radius, const b2Color& color)
 	{
+		if (!is_ok(center, radius)) return;
 		circle(center, radius, color, 0, true);
 	}
 	void DrawSolidCircle(const b2Vec2& center, float32 radius, const b2Vec2& axis, const b2Color& color)
 	{
+		if (!is_ok(center, radius)) return;
 		circle(center, radius, color, atan2(axis.y, axis.x), false);
 	}
 	void DrawSegment(const b2Vec2& p1, const b2Vec2& p2, const b2Color& color)
 	{
+		if (!is_ok(p1) && !is_ok(p2)) return;
 		draw_line(p1, p2, color);
 	}
 	void DrawTransform(const b2Transform& xf)
 	{
+		if (!is_ok(xf.p)) return;
 		draw_line(xf.p, xf.p + xf.q.GetXAxis(), b2Color(1, 0, 0));
 		draw_line(xf.p, xf.p + xf.q.GetYAxis(), b2Color(0, 0, 1));
 	}
 	void DrawPoint(const b2Vec2& p, float32 size, const b2Color& color)
 	{
+		if (!is_ok(p)) return;
 		b2Vec2 vs[4];
 		vs[0] = p;
 		vs[1] = p; vs[1].x += size;

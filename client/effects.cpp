@@ -121,5 +121,6 @@ void effect_explosion_wave(vec2fp ctr, float power)
 	};
 	GamePresenter::get()->add_effect(Effect(ctr, power));
 	
-	Postproc::get().screen_shake(power);
+	if (GamePresenter::get()->get_vport().contains( ctr ))
+		Postproc::get().screen_shake(power);
 }

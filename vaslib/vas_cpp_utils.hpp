@@ -106,7 +106,7 @@ template <bool AllowOptional, typename Ret, typename... Args>
 class callable_ref_base<AllowOptional, Ret(Args...)>
 {
 	// P0792R0 (open-std.org)
-    void* _ptr;
+	void* _ptr;
 	Ret(*_erased_fn)(void*, Args...);
 
 public:
@@ -114,7 +114,7 @@ public:
 		std::is_invocable_v<T, Args...> &&
 		std::is_same_v<Ret, std::invoke_result_t<T, Args...>> &&
 		!std::is_same_v<std::decay_t<T>, callable_ref_base<true,  Ret(Args...)>> &&
-		!std::is_same_v<std::decay_t<T>, callable_ref_base<false, Ret(Args...)>>, bool> = false>
+		!std::is_same_v<std::decay_t<T>, callable_ref_base<false, Ret(Args...)>>, int> = 0>
 	callable_ref_base(T&& f) noexcept {
 		_ptr = static_cast<void*>(std::addressof(f));
 		_erased_fn = [](void* ptr, Args... xs) -> Ret {
@@ -122,15 +122,15 @@ public:
 		};
 	}
 
-	template <typename T, std::enable_if_t<
-		AllowOptional && std::is_null_pointer_v<T>, bool> = false>
+	template <typename T, std::enable_if_t<std::is_null_pointer_v<T>, int> = 0>
 	callable_ref_base(T) noexcept {
+		static_assert(AllowOptional, "non-opt callable_ref can't be initialized with nullptr");
 		_ptr = nullptr;
 		_erased_fn = nullptr;
 	}
 	
 	operator bool() const {
-		return _ptr != nullptr;
+		return AllowOptional ? _ptr != nullptr : true;
 	}
 	auto operator()(Args... xs) {
 		if (AllowOptional && !(*this)) throw std::logic_error("null opt_callable_ref invoked");

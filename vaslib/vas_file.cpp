@@ -240,44 +240,53 @@ FILE_RW_END( 16 )
 FILE_RW_END( 32 )
 FILE_RW_END( 64 )
 
-// that's IEEE754, right?
+// IEEE 754 - binary32 (aka single-precision)
+// 8388608 = 2^23
 
 float File::rpif()
 {
 	uint32_t mem = r32L();
 	float x;
 	
-	int8_t e = (mem >> 23);
-	if (!e) x = 0;
-	else if (e == (int8_t) 0xff) {
-		int k = mem & 0x7fffff;
+	uint32_t k = mem & 0x7f'ffff;
+	if ((mem & 0x7f80'0000) == 0x7f80'0000)
+	{
 		if (k) x = std::numeric_limits<float>::quiet_NaN();
 		else   x = std::numeric_limits<float>::infinity();
 	}
 	else {
-		e -= 126;
-		int k = mem & 0x7fffff;
-		float f = k / (1 << 24) + .5f;
-		x = std::ldexp(f, e);
+		int eint = int((mem >> 23) & 0xff);
+		if (eint) {
+			eint -= 126;
+			float f = float(k) / (8388608.f * 2.f) + 0.5f;
+			x = std::ldexp(f, eint);
+		}
+		else x = 0; // zero or subnormal
 	}
-	if (mem & (1UL << 31)) x = -x;
 	
+	if (mem & 0x8000'0000) x = -x;
 	return x;
 }
 void File::wpif(float x)
 {
-	uint32_t mem = (x < 0)? (1UL << 31) : 0UL;
-	if		(x == 0.f) ;
-	else if (std::isinf(x)) mem |= (0x7f80 << 16);
-	else if (std::isnan(x)) mem |= (0x7f80 << 16) | 1;
-	else {
-		int eint; float f = std::frexp(x, &eint);
-		if (f < 0) f = -f;
-		int8_t e = eint + 126;
-		mem |= e << 23;
-		int k = (f - .5f) * (1 << 24);
-		mem |= k;
+	uint32_t mem;
+	if (x < 0) {
+		mem = 0x8000'0000;
+		x = -x;
 	}
+	else mem = 0;
+	
+	if (std::isnormal(x))
+	{
+		int eint; float f = std::frexp(x, &eint);
+		mem |= uint32_t((eint + 126) & 0xff) << 23;
+		uint32_t k = (f - 0.5f) * 2.f * 8388608.f;
+		mem |= k & 0x7f'ffff; // (1<<23)-1
+	}
+	else if (std::isinf(x)) mem |= 0x7f80'0000;
+	else if (std::isnan(x)) mem |= 0x7f80'0001;
+	// else zero or subnormal
+	
 	w32L( mem );
 }
 

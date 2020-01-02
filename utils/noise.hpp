@@ -10,10 +10,6 @@
 
 struct RandomGen
 {
-	std::mt19937 gen;
-	std::uniform_real_distribution<> d_real;
-	std::normal_distribution<> d_norm;
-	
 	RandomGen();
 	bool flag();
 	double range_n(); ///< uniform distribution [0; 1]
@@ -27,6 +23,7 @@ struct RandomGen
 	
 	std::string save() const;
 	bool load(const std::string& s);
+	void set_seed(uint32_t s);
 	
 	template <typename T>
 	T& random_el(std::vector<T> &els) {return els[range_index(els.size())];}
@@ -44,6 +41,11 @@ struct RandomGen
 		for (auto& v : vs) if (t < v.second) return v.first;
 		return vs.back().first;
 	}
+	
+private:
+	std::mt19937 gen;
+	std::uniform_real_distribution<> d_real;
+	std::normal_distribution<> d_norm;
 };
 
 /// Returns static rndgen

@@ -16,7 +16,7 @@
 class PlayerManager_Impl : public PlayerManager
 {
 public:
-	const TimeSpan resp_time = TimeSpan::seconds(3);
+	const TimeSpan resp_time = TimeSpan::seconds(5);
 	
 	// control
 	
@@ -54,8 +54,38 @@ public:
 	TimeSpan interact_after;
 	EntityIndex dbg_select;
 	
+	// interface - weapons
+	
+	struct WpnMsgRep : WeaponMsgReport
+	{
+		TimeSpan time; // since start
+		std::string str;
+		
+		void jerr(JustError err) {
+			time = TimeSpan::since_start();
+			switch(err)
+			{
+			case ERR_SELECT_OVERHEAT:
+				str = "Can't switch: Overheated";
+				break;
+			case ERR_SELECT_NOAMMO:
+				str = "Can't switch: No ammo";
+				break;
+			case ERR_NO_TARGET:
+				str = "No target";
+				break;
+			}
+		}
+		void no_ammo(int required) {
+			time = TimeSpan::since_start();
+			str = FMT_FORMAT("Need {} ammo", required);
+		}
+	};
+	
 	TimeSpan wpn_ring_reload;
 	TimeSpan wpn_ring_charge;
+	
+	WpnMsgRep wpn_msgrep;
 	
 	
 	
@@ -124,6 +154,8 @@ public:
 //			vec2fp pos = plr_ent->get_phy().get_pos();
 //			vig_label_a("X {:3.3f} Y {:3.3f}\n", pos.x, pos.y);
 			
+			//
+			
 			bool wpn_menu = pc_ctr->get_state().is[PlayerController::A_SHOW_WPNS];
 			
 			const vec2i el_size = {60, 60};
@@ -172,13 +204,15 @@ public:
 					if (eqp.infinite_ammo) s += "\nAMMO CHEAT ENABLED";
 					else s += FMT_FORMAT("\nAmmo: {} / {}", ammo->value, ammo->max);
 				}
+				
+				size_t s_len = s.length();
 				if (is_cur)
 				{
 					if (auto& m = wpn->overheat)
 					{
 						if (!m->is_ok()) s += "\nCOOLDOWN";
 						else if (m->value > 0.5) s += "\nOverheat";
-						else s += "\n ";
+						else s += "\n";
 					}
 					if (auto m = wpn->info->def_delay; m && m > TimeSpan::seconds(0.5))
 					{
@@ -191,9 +225,21 @@ public:
 							s += FMT_FORMAT("\nCharge: {:3}%", int_round(*m->charge_t * 100));
 					}
 				}
+				if (wpn_menu && s_len >= s.length() - 1) {
+					if (s.back() != '\n') s.push_back('\n');
+					s += ammo_name(wpn->info->ammo);
+				}
 				
 				vig_label(s);
 				vig_lo_next();
+			}
+			
+			const TimeSpan wmr_max = TimeSpan::seconds(1.5);
+			TimeSpan wmr_passed = TimeSpan::since_start() - wpn_msgrep.time;
+			if (wmr_passed < wmr_max)
+			{
+				uint32_t clr = 0xffffff00 | lerp(0, 255, 1 - wmr_passed / wmr_max);
+				RenImm::get().draw_text(vec2fp(mou_pos.x, mou_pos.y + 30), wpn_msgrep.str, clr, true);
 			}
 			
 			//
@@ -215,7 +261,7 @@ public:
 				
 				if (!eqp.has_ammo(wpn))
 				{
-					float t = fracpart(now.seconds());
+					float t = std::fmod(now.seconds(), 1);
 					if (t > 0.5) t = 1 - t;
 					t *= 2;
 					
@@ -275,10 +321,10 @@ public:
 			
 			if (AppSettings::get().cursor_info_flags & 6)
 			{
-				const int hlen = 12; // half height
-				const int width = 6;
-				const int space = 1;
-				const int frame = 2;
+				const float hlen = 12; // half height
+				const float width = 6;
+				const float space = 1;
+				const float frame = 2;
 				const int alpha = 0xc0;
 				int xoff = std::max(cursor_rings_x + 5, 10);
 				
@@ -351,16 +397,34 @@ public:
 		if (plr_ent)
 		{
 			std::string stat_str;
+			Entity* lookat = nullptr;
 			
-			if (auto res = GameCore::get().get_phy().point_cast(conv( pc_ctr->get_state().tar_pos ), 0.5))
+			GameCore::get().get_phy().query_aabb(
+				Rectfp::from_center(pc_ctr->get_state().tar_pos, vec2fp::one(0.3)),
+			[&](Entity& ent, b2Fixture& fix)
 			{
-				auto s = res->ent->ui_descr();
+				if (typeid(ent) == typeid(EWall)) return true;
+				if (fix.IsSensor())
+				{
+					auto f = ent.get_phobj().body->GetFixtureList();
+					for (; f; f = f->GetNext())
+						if (!f->IsSensor())
+							return true;
+				}
+				lookat = &ent;
+				return false;
+			});
+			
+			if (lookat)
+			{
+				auto s = lookat->ui_descr();
 				if (s.empty()) s = "UNDEFINED";
 				stat_str += FMT_FORMAT("Looking at: {}\n", s);
 				
 				if (pc_ctr->get_state().is[ PlayerController::A_DEBUG_SELECT ])
-					dbg_select = res->ent->index;
+					dbg_select = lookat->index;
 			}
+			else stat_str = "Looking at:\n";
 			
 			auto room = LevelControl::get().get_room(plr_ent->get_pos());
 			stat_str += FMT_FORMAT("Room: {}\n", room? room->name : "Corridor");
@@ -505,8 +569,8 @@ public:
 	std::pair<Rect, Rect> get_ai_rects() override
 	{
 		// halfsizes
-		const vec2i hsz_on  = (vec2fp(30, 25) / LevelControl::get().cell_size).int_round();
-		const vec2i hsz_off = (vec2fp(45, 37) / LevelControl::get().cell_size).int_round();
+		const vec2i hsz_on  = (vec2fp(40, 35) / LevelControl::get().cell_size).int_round();
+		const vec2i hsz_off = (vec2fp(55, 48) / LevelControl::get().cell_size).int_round();
 		
 		if (auto ent = GameCore::get().get_ent(plr_eid))
 			last_plr_pos = (ent->get_pos() / LevelControl::get().cell_size).int_round();
@@ -549,6 +613,8 @@ public:
 			auto fade = TimeSpan::seconds(0.5);
 			msgs.emplace_back("YOU DIED", resp_time - fade, fade);
 			plr_ent = nullptr;
+			
+			wpn_msgrep.str = {};
 		}
 		
 		{	auto lock = pc_ctr->lock();
@@ -582,6 +648,8 @@ public:
 		plr_ent = new PlayerEntity (plr_pos, pc_ctr);
 		plr_eid = plr_ent->index;
 		update_cheats();
+		
+		plr_ent->eqp.msgrep = &wpn_msgrep;
 	}
 	void add_msg(std::string s)
 	{

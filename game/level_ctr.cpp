@@ -717,6 +717,7 @@ void LevelControl::fin_init_normal(LevelTerrain& lt)
 		};
 		f.model = MODEL_TERMINAL_KEY;
 		f.clr   = FColor(1, 0.8, 0.4);
+		f.ui_name = "Security token";
 		
 		auto next_pos = [&](bool check_dec) -> std::optional<vec2i>
 		{

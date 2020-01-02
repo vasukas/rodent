@@ -58,7 +58,7 @@ public:
 	bool          is_in_step()       const noexcept {return step_flag;}
 	bool          is_freeing()       const noexcept {return is_freeing_flag;}
 	
-	void step()
+	void step(TimeSpan now)
 	{
 		++step_cou;
 		step_time_cou += step_len;
@@ -116,7 +116,7 @@ public:
 		
 		if (auto gp = GamePresenter::get()) {
 			try {
-				gp->sync();
+				gp->sync(now);
 			}
 			catch (std::exception& e) {
 				THROW_FMTSTR("Failed to sync presenter - {}", e.what());

@@ -69,4 +69,7 @@ private:
 /// Sleeps current thread (negative-safe)
 void sleep(TimeSpan time);
 
+/// Same as sleep, but with more precise wait time
+void precise_sleep(TimeSpan time);
+
 #endif // TIME_HPP

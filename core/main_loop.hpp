@@ -23,7 +23,7 @@ public:
 	
 	virtual void on_current() {} ///< Called when set current (but not after create())
 	virtual void on_event(const SDL_Event&) {}
-	virtual void render(TimeSpan passed) = 0; ///< Called each frame on unset renderer
+	virtual void render(TimeSpan frame_begin, TimeSpan passed) = 0; ///< Called each frame on unset renderer
 	virtual ~MainLoop();
 	
 private:

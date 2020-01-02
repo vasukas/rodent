@@ -462,22 +462,32 @@ bool Rectfp::contains(vec2fp p, float width) const
 
 vec2fp Transform::apply(vec2fp p) const {return (p + pos).rotate(rot);}
 vec2fp Transform::reverse(vec2fp p) const {return p.get_rotated(-rot) - pos;}
-void Transform::combine(const Transform& t)
+Transform& Transform::combine(const Transform& t)
 {
 	pos += t.pos.get_rotated(rot);
 	rot += t.rot;
+	return *this;
 }
-void Transform::combine_reversed(const Transform& t)
+Transform& Transform::combine_reversed(const Transform& t)
 {
 	rot -= t.rot;
 	pos -= t.pos.get_rotated(rot);
+	return *this;
 }
 Transform Transform::get_combined(const Transform& t) const {Transform r = *this; r.combine(t); return r;}
-void Transform::add(const Transform& t)
+Transform& Transform::add(const Transform& t)
 {
 	pos += t.pos;
 	rot += t.rot;
+	return *this;
 }
 Transform Transform::get_add(const Transform& t) const {Transform r = *this; r.add(t); return r;}
-Transform Transform::operator * (float t) const {return Transform{pos * t, rot * t};}
-void Transform::operator *= (float t) {pos *= t; rot *= t;}
+
+Transform  Transform::operator *  (float t) const {return Transform{pos * t, rot * t};}
+Transform& Transform::operator *= (float t) {pos *= t; rot *= t; return *this;}
+Transform  Transform::operator /  (float t) const {return Transform{pos / t, rot / t};}
+Transform& Transform::operator /= (float t) {pos /= t; rot /= t; return *this;}
+
+Transform Transform::diff(const Transform& t) const {
+	return Transform{pos - t.pos, angle_delta(rot, t.rot)};
+}

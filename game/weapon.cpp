@@ -21,6 +21,21 @@ ModelType ammo_model(AmmoType type)
 	}
 	return MODEL_ERROR;
 }
+const char *ammo_name(AmmoType type)
+{
+	switch (type)
+	{
+	case AmmoType::Bullet:   return "Bullets";
+	case AmmoType::Rocket:   return "Rockets";
+	case AmmoType::Energy:   return "Battery";
+	case AmmoType::FoamCell: return "Foam fuel";
+		
+	case AmmoType::None:     return "Ether";
+	case AmmoType::TOTAL_COUNT:
+		break;
+	}
+	return "ERROR";
+}
 void Weapon::Info::set_origin_from_model()
 {
 	bullet_offset = ResBase::get().get_cpt(model);
@@ -28,10 +43,6 @@ void Weapon::Info::set_origin_from_model()
 
 
 
-bool Weapon::is_ready()
-{
-	return equip->has_ammo(*this);
-}
 std::optional<Weapon::DirectionResult> Weapon::get_direction(const ShootParams& pars, bool ignore_target)
 {
 	auto ent = equip->ent;
@@ -106,7 +117,10 @@ bool EC_Equipment::set_wpn(size_t index)
 	{
 		auto& wpn = wpns[index];
 		if (!infinite_ammo && !get_ammo(wpn->info->ammo).has(*wpn))
+		{
+			if (msgrep) msgrep->jerr(WeaponMsgReport::ERR_SELECT_NOAMMO);
 			return false;
+		}
 	}
 	
 	// check if current can be holstered
@@ -116,6 +130,7 @@ bool EC_Equipment::set_wpn(size_t index)
 		if (wpn.overheat && !wpn.overheat->is_ok())
 		{
 			last_req = index;
+			if (msgrep) msgrep->jerr(WeaponMsgReport::ERR_SELECT_OVERHEAT);
 			return false;
 		}
 	}
@@ -187,12 +202,9 @@ bool EC_Equipment::shoot_internal(Weapon& wpn, Weapon::ShootParams pars)
 }
 bool EC_Equipment::shoot_check(Weapon& wpn)
 {
-	if (!wpn.is_ready()) return false;
-	
 	if (wpn.rof_left.is_positive()) return false;
 	if (!has_ammo(wpn)) return false;
 	if (wpn.overheat && !wpn.overheat->is_ok()) return false;
-	
 	return true;
 }
 void EC_Equipment::step()

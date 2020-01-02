@@ -169,6 +169,14 @@ EPickable::EPickable(vec2fp pos, Value val)
 	phy.add_circle(fd, GameConst::hsz_supply + 0.2, 0);
 	EVS_CONNECT1(phy.ev_contact, on_cnt);
 }
+std::string EPickable::ui_descr() const
+{
+	return std::visit(overloaded{
+		[](const AmmoPack& v) -> std::string {return ammo_name(v.type);},
+		[](const ArmorShard&) -> std::string {return "Armor shard";},
+		[](const Func& v)     -> std::string {return v.ui_name;}
+	}, val);
+}
 void EPickable::on_cnt(const CollisionEvent& ce)
 {
 	if (ce.type != CollisionEvent::T_BEGIN) return;

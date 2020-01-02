@@ -1,3 +1,4 @@
+#include "core/settings.hpp"
 #include "game/game_core.hpp"
 #include "game/level_gen.hpp"
 #include "render/ren_aal.hpp"
@@ -8,6 +9,7 @@
 #include "presenter.hpp"
 
 #include <thread>
+#include "core/vig.hpp"
 #include "render/camera.hpp"
 #include "render/control.hpp"
 #include "render/ren_text.hpp"
@@ -21,7 +23,8 @@ void effects_init(); // defined in effects.cpp
 ECompRender::ECompRender(Entity* ent)
     : EComp(ent)
 {
-	if (ent) _pos = ent->get_phy().get_trans();
+	_pos = ent ? ent->get_phy().get_trans() : Transform{};
+	_vel = {};
 	send(PresCmdCreate{this});
 }
 void ECompRender::parts(ModelType model, ModelEffect effect, const ParticleBatchPars& pars)
@@ -150,11 +153,14 @@ public:
 	std::vector<FloatTextRender> f_texts;
 	
 	SparseArray<ECompRender*> cs;
-	TimeSpan last;
-	float t_last;
+	TimeSpan last_passed;
+	TimeSpan prev_frame;
 	
 	vec2fp vport_offset = {4, 3}; ///< Occlusion rect size offset
 	std::optional<std::pair<int, ImageInfo>> dbg_sshot_img;
+	
+	int max_interp_frames = 0;
+	RAII_Guard menu_g;
 	
 	
 	
@@ -175,9 +181,15 @@ public:
 		RenAAL::get().inst_end();
 		
 		effects_init();
+		
+		menu_g = vig_reg_menu(VigMenu::DebugGame, [this]{
+			vig_label_a("Interp frames (max): {}\n", max_interp_frames);
+		});
 	}
-	void sync()
+	void sync(TimeSpan now)
 	{
+		TimeSpan frame_time = now + GameCore::step_len;
+		
 		dbg_rs.clear();
 		dbg_ls.clear();
 		dbg_ts.clear();
@@ -185,16 +197,37 @@ public:
 		for (auto& c : cmds_queue) std::visit(*this, c);
 		cmds_queue.clear();
 		
+		int interp_dep = AppSettings::get().interp_depth;
+		
 		Rectfp vport = vport_rect();
 		for (auto& c : cs)
 		{
 			auto& phy = c->ent->get_phy();
+			Transform tr = phy.get_trans();
 			
-			c->_in_vport = c->disable_culling || vport.contains( phy.get_pos() );
+			bool was_vp = c->_in_vport;
+			c->_in_vport = c->disable_culling || vport.contains( tr.pos );
 			if (!c->_in_vport) continue;
 			
-			c->_pos = phy.get_trans();
-			c->_vel = phy.get_vel();
+			if (interp_dep)
+			{
+				auto& q = c->_q_pos;
+				if (!was_vp) {
+					c->_pos = tr;
+					q.fn = 0;
+				}
+				else {
+					if (!q.fn) q.fs[q.fn++] = { prev_frame, c->_pos };
+					if (q.fn == interp_dep) --q.fn;
+					q.fs[q.fn++] = { frame_time, tr };
+				}
+			}
+			else
+			{
+				c->_pos = tr;
+				c->_vel = phy.get_vel();
+			}
+			
 			c->sync();
 		}
 		
@@ -211,44 +244,42 @@ public:
 					VLOGI("Saved sshot: {}", s);
 				}
 				, std::move(dbg_sshot_img->second));
+
 				dbg_sshot_img = {};
 				thr.detach();
 			}
 		}
-		
-		t_last = 0;
 	}
 	void del_sync()
 	{
-		for (int i=0; i < int(cmds_queue.size()); )
+		for (size_t i=0; i < cmds_queue.size(); ++i)
 		{
 			if (auto cmd = std::get_if<PresCmdDelete>(&cmds_queue[i]))
 			{
-				auto copy = *cmd;
-				
-				for (int j=0; j < int(cmds_queue.size()); )
+				for (size_t j=0; j < i; ++j)
 				{
-#define CHECK(TYPE)\
-	if (auto cmd = std::get_if<TYPE>(&cmds_queue[j])) {\
-		if (cmd->ptr == copy.ptr) {\
-			(*this)(*cmd);\
-			del = true; }}
-					
-					bool del = false;
-					     CHECK(PresCmdObjEffect)
-					else CHECK(PresCmdEffect)
-#undef CHECK       
-					if (!del) ++j;
-					else {
-						cmds_queue.erase( cmds_queue.begin() + j );
-						if (i > j) --i;
+					auto& c = cmds_queue[j];
+					if		(auto p = std::get_if<PresCmdCreate>(&c)) {
+						if (p->ptr == cmd->ptr)
+							p->ptr = nullptr;
+					}
+					else if (auto p = std::get_if<PresCmdObjEffect>(&c)) {
+						if (p->ptr == cmd->ptr)
+							p->eff = ME_TOTAL_COUNT_INTERNAL;
+					}
+					else if (auto p = std::get_if<PresCmdEffect>(&c)) {
+						if (p->ptr == cmd->ptr)
+							p->eff = FE_TOTAL_COUNT_INTERNAL;
+					}
+					else if (auto p = std::get_if<PresCmdAttach>(&c)) {
+						if (p->ptr == cmd->ptr)
+							p->ptr = nullptr;
 					}
 				}
 				
-				(*this)(copy);
-				cmds_queue.erase( cmds_queue.begin() + i );
+				(*this)(*cmd);
+				cmd->ptr = nullptr;
 			}
-			else ++i;
 		}
 	}
 	void add_cmd(PresCommand c)
@@ -256,7 +287,7 @@ public:
 		reserve_more_block(cmds_queue, 1024);
 		cmds_queue.emplace_back(std::move(c));
 	}
-	void render(TimeSpan passed)
+	void render(TimeSpan now, TimeSpan passed)
 	{
 		for (auto& c : cmds) c.first->proc( std::move(c.second) );
 		cmds.clear();
@@ -264,16 +295,46 @@ public:
 		for (auto& d : part_del) d.gen->draw(d.pars);
 		part_del.clear();
 		
-		last = passed;
-		t_last += passed / GameCore::step_len;
+		last_passed = passed;
+		
+		//
+		
+		int interp_dep = AppSettings::get().interp_depth;
+		if (interp_dep > 2)
+			now -= GameCore::step_len; // +1 interp step (2 steps lag total)
+		
+		prev_frame = now;
+		max_interp_frames = 0;
+		
 		for (auto& c : cs)
 		{
 			if (!c->_in_vport) continue;
+			
+			if (interp_dep)
+			{
+				auto& q = c->_q_pos;
+				while (q.fn >= 2)
+				{
+					float t = (now - q.fs[0].first) / (q.fs[1].first - q.fs[0].first);
+					if (t < 0 || t > 1) {
+						--q.fn;
+						for (int i=0; i<q.fn; ++i) q.fs[i] = q.fs[i+1];
+						continue;
+					}
+					c->_pos = lerp(q.fs[0].second, q.fs[1].second, t);
+					break;
+				}
+				max_interp_frames = std::max(max_interp_frames, q.fn);
+			}
+			
 			c->step();
-			c->_pos.add(c->_vel * passed.seconds());
+			
+			if (!interp_dep)
+				c->_pos.add( c->_vel * passed.seconds() );
 		}
 		
-		RenImm::get().set_context(RenImm::DEFCTX_WORLD);
+		//
+		
 		for (auto& d : dbg_rs) RenImm::get().draw_rect(d.dst, d.clr);
 		for (auto& d : dbg_ls) RenImm::get().draw_line(d.a, d.b, d.clr, d.wid);
 		
@@ -306,14 +367,10 @@ public:
 			else RenderControl::get().img_screenshot = &dbg_sshot_img->second;
 		}
 	}
-	TimeSpan get_passed()
-	{
-		return last;
-	}
-	float get_time_t()
-	{
-		return t_last;
-	}
+	
+	TimeSpan get_passed() {return last_passed;}
+	Rectfp   get_vport()  {return vport_rect();}
+	
 	void dbg_screenshot()
 	{
 		dbg_sshot_img = {0, {}};
@@ -339,6 +396,8 @@ public:
 	
 	void operator()(PresCmdCreate& c)
 	{
+		if (!c.ptr) return; // invalidation check
+		
 		if (c.ptr->ent->is_ok())
 		{
 			c.ptr->_comp_id = cs.emplace_new(c.ptr);
@@ -347,6 +406,8 @@ public:
 	}
 	void operator()(PresCmdDelete& c)
 	{
+		if (!c.ptr) return; // invalidation check
+		
 		if (c.index != size_t_inval)
 			cs.free_and_reset(c.index);
 		
@@ -358,10 +419,12 @@ public:
 	}
 	void operator()(PresCmdObjEffect& c)
 	{
+		if (c.eff == ME_TOTAL_COUNT_INTERNAL) return; // invalidation check
 		add_pd(c, c.ptr, ResBase::get().get_eff(c.model, c.eff));
 	}
 	void operator()(PresCmdEffect& c)
 	{
+		if (c.eff == FE_TOTAL_COUNT_INTERNAL) return; // invalidation check
 		add_pd(c, c.ptr, ResBase::get().get_eff(c.eff));
 	}
 	void operator()(PresCmdDbgRect& c)
@@ -391,6 +454,7 @@ public:
 	}
 	void operator()(PresCmdAttach& c)
 	{
+		if (!c.ptr) return; // invalidation check
 		reserve_more_block(cmds, 128);
 		cmds.emplace_back(c.ptr, std::move(c));
 	}

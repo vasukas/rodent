@@ -17,6 +17,7 @@ enum class AmmoType
 };
 
 ModelType ammo_model(AmmoType type);
+const char *ammo_name(AmmoType type);
 
 
 
@@ -90,10 +91,6 @@ public:
 	/// Called if one or more of fire button flags are set
 	virtual std::optional<ShootResult> shoot(ShootParams pars) = 0;
 	
-	/// Checks internal conditions. 
-	/// Default checks default ammo
-	virtual bool is_ready();
-	
 	virtual std::optional<UI_Info> get_ui_info() {return {};} ///< Should return always, even if no info available
 	std::optional<TimeSpan> get_reload_timeout() const {if (rof_left.is_positive()) return rof_left; return {};}
 	
@@ -108,6 +105,22 @@ public:
 private:
 	friend EC_Equipment;
 	TimeSpan rof_left;
+};
+
+
+
+struct WeaponMsgReport
+{
+	enum JustError
+	{
+		ERR_SELECT_OVERHEAT,
+		ERR_SELECT_NOAMMO,
+		ERR_NO_TARGET
+	};
+	
+	virtual void jerr(JustError err) = 0;
+	virtual void no_ammo(int required) = 0;
+	virtual ~WeaponMsgReport() = default;
 };
 
 
@@ -127,6 +140,9 @@ struct EC_Equipment : EComp
 	
 	/// If true, ammo not consumed for any weapon
 	bool infinite_ammo = true;
+	
+	/// If set, error messages sent to it
+	WeaponMsgReport* msgrep = nullptr;
 	
 	
 	
@@ -154,7 +170,7 @@ private:
 	Weapon::ShootParams pars = {};
 	
 	bool shoot_internal(Weapon& wpn, Weapon::ShootParams pars);
-	bool shoot_check(Weapon& wpn);
+	bool shoot_check(Weapon& wpn); ///< Checks based on default values
 	void step() override;
 };
 

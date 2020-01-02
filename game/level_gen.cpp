@@ -36,7 +36,6 @@ struct Gen1
 		const RoomSizeType* r_szt;
 		const RoomClass* r_class = nullptr; // null at first
 		
-		float far_value = 0; // the bigger, the less room connectivity is
 		int depth; // tmp
 	};
 	struct Cell
@@ -439,6 +438,147 @@ struct Gen1
 		
 		VLOGI("LevelTerrain:: {} rooms, {} corridors", g_rooms.size(), g_cors.size());
 		
+		// increase connectivity (build additional corridors - more loops!)
+		
+		{	const int roomconn_maxlen = 7; // max path length between adjacent rooms, in room count
+			const int corr_maxlen = 14; // max corridor length
+			
+			struct PotCorr { // potential corridor
+				std::vector<Room*> tars;
+				vec2i p0, p1; // ending points, inside room
+			};
+			
+			std::vector<Room*> path_next, path_cur;
+			path_next.reserve( g_rooms.size() );
+			path_cur .reserve( g_rooms.size() );
+			
+			for (auto& r : g_rooms)
+			{
+				std::vector<PotCorr> pcos;
+				pcos.reserve( r.area.size().perimeter() );
+				
+				auto side = [&](vec2i off, vec2i max, vec2i incr, vec2i dir)
+				{
+					auto ok = [&](vec2i add_off) {
+					    auto& c = cref(off + add_off);
+						return !c.room_i && !c.cor_i;
+					};
+					
+					for (; off != max; off += incr)
+					{
+						if (!ok(dir) || !ok(dir + incr) || !ok(dir - incr))
+							continue;
+						
+						PotCorr pc;
+						pc.tars.reserve(16);
+						
+						vec2i p = off + dir;
+						for (int len = 1; len < corr_maxlen; ++len, p += dir)
+						{
+							auto c = getc(p);
+							if (!c) break;
+							if (c->cor_i) {
+								for (auto& e : g_cors[*c->cor_i].ents) {
+									if (e.room_i)
+										pc.tars.push_back(&g_rooms[*e.room_i]);
+								}
+								break;
+							}
+							if (c->room_i) {
+								pc.tars.push_back(&g_rooms[*c->room_i]);
+								break;
+							}
+						}
+						if (pc.tars.empty()) continue;
+						
+						for (auto& ci : r.cor_i)
+						for (auto& e : g_cors[ci].ents)
+						for (auto& tar : pc.tars)
+							if (tar->index == e.room_i)
+								goto roomconn_side_fail;
+									
+						pc.p0 = off;
+						pc.p1 = p;
+						pcos.emplace_back( std::move(pc) );
+						
+						roomconn_side_fail:;
+					}
+				};
+				
+				vec2i ra0 = r.area.lower();
+				vec2i ra1 = r.area.upper() - vec2i::one(1);
+				side( {ra0.x, ra0.y}, {ra1.x, ra0.y}, {1, 0}, {0, -1} ); // x++
+				side( {ra0.x, ra1.y}, {ra1.x, ra1.y}, {1, 0}, {0,  1} );
+				side( {ra0.x, ra0.y}, {ra0.x, ra1.y}, {0, 1}, {-1, 0} ); // y++
+				side( {ra1.x, ra0.y}, {ra1.x, ra1.y}, {0, 1}, { 1, 0} );
+				
+				//
+				
+				std::vector<Room*> all_tars;
+				all_tars.reserve( pcos.size() * 4 ); // chosen by fair dice roll
+				
+				for (auto& pc : pcos) append(all_tars, pc.tars);
+				all_tars.erase( std::unique(all_tars.begin(), all_tars.end()), all_tars.end() );
+				
+				rnd.shuffle(all_tars);
+				for (auto& tar : all_tars)
+				{
+					for (auto& r : g_rooms) r.depth = g_rooms.size() + 1;
+					r.depth = 0;
+					path_cur = {&r};
+					path_next.clear();
+					
+					int depth = 0;
+					for (; depth < roomconn_maxlen; ++depth)
+					{
+						for (auto& r : path_cur)
+						for (auto& ci : r->cor_i)
+						for (auto& ne : g_cors[ci].ents)
+						{
+							if (!ne.room_i) continue;
+							auto& nr = g_rooms[*ne.room_i];
+							
+							if (nr.depth > depth) {
+								if (&nr == tar) goto roomconn_path_found;
+								nr.depth = depth + 1;
+								path_next.push_back(&nr);
+							}
+						}
+						
+						path_cur.swap(path_next);
+						path_next.clear();
+					}
+					// path NOT found
+					
+					{
+						auto tar_cs = std::partition( pcos.begin(), pcos.end(), [&](auto& p) {
+							for (auto& t : p.tars) if (t == tar) return false;
+							return true;
+						});
+						
+						for (auto it = tar_cs; it != pcos.end(); ++it)
+						{
+							vec2i dir = (it->p0.x == it->p1.x)
+							            ? vec2i(0, it->p0.y < it->p1.y ? 1 : -1)
+							            : vec2i(it->p0.x < it->p1.x ? 1 : -1, 0);
+							
+							size_t ci = g_cors.size();
+							auto& cs = g_cors.emplace_back();
+							cs.ents.push_back({ it->p0 + dir, r.index });
+							cs.ents.push_back({ it->p1 - dir, tar->index });
+							
+							for (vec2i p = it->p0; p != it->p1; p += dir)
+								cref(p).cor_i = ci;
+						}
+						
+						pcos.erase( tar_cs, pcos.end() );
+					}
+					
+					roomconn_path_found:;
+				}
+			}
+		}
+		
 		// get shuffled rooms (except first)
 		
 		std::vector<Room*> rnd_rooms;
@@ -573,52 +713,6 @@ struct Gen1
 			}
 			
 			set_room_type(*r, *r_ks[i].second);
-		}
-		
-		// calculate room far_value
-		
-		const int far_value_depth = 6;
-		
-		std::vector<Room*> far_value_next;
-		std::vector<Room*> far_value_cur;
-		
-		for (auto& r_cur : g_rooms)
-		{
-			for (auto& r : g_rooms) r.depth = far_value_depth + 1;
-			far_value_next.push_back(&r_cur);
-			
-			for (int depth = 0; depth <= far_value_depth; ++depth)
-			{
-				far_value_cur.clear();
-				far_value_cur.swap( far_value_next );
-				
-				for (auto r : far_value_cur)
-				{
-					if (r->depth <= depth) continue;
-					r->far_value += depth;
-					
-					if (depth != far_value_depth)
-					{
-						r->depth = depth;
-						
-						for (auto& ci : r->cor_i)
-						for (auto& e : g_cors[ci].ents)
-						{
-							if (!e.room_i || *e.room_i == r->index) continue;
-							far_value_next.push_back( &g_rooms[*e.room_i] );
-						}
-					}
-				}
-			}
-		}
-		
-		{	auto mm = std::minmax_element( g_rooms.begin(), g_rooms.end(),
-			                               [](auto& a, auto& b){return a.far_value < b.far_value;} );
-			float off = -mm.first->far_value;
-			float mul = 1.f / (mm.second->far_value + off);
-			
-			for (auto& r : g_rooms)
-				r.far_value = 1 - (r.far_value + off) * mul;
 		}
 		
 		// set room_was
@@ -1564,7 +1658,6 @@ struct Gen1
 		{
 			auto& nr = t.rooms.emplace_back();
 			nr.area = r.area;
-			nr.far_value = r.far_value;
 			nr.type = r.r_class->lc_type;
 			nr.dbg_color = r.r_class->dbg_color;
 		}
@@ -1904,10 +1997,7 @@ void LevelTerrain::test_save(const char *prefix, bool img_line, bool img_grid) c
 				else v = c.is_wall ? 0 : 0x909090;
 			}
 			else if (c.is_wall) v = 0x404040;
-			else {
-				v = 0xffff00;
-				v |= int_round(lerp<float>(0xff, 0xa0, r->far_value));
-			}
+			else v = 0xffffff;
 		}
 		
 		img.set_pixel_fast({x, y}, v);

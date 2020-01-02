@@ -97,6 +97,8 @@ private:
 class Entity
 {
 public:
+	// WARN: must be created on heap
+	
 	const EntityIndex index;
 	
 	

@@ -48,9 +48,6 @@ typename std::common_type<T1, T2>::type
 lerp (T1 a, T2 b, T3 t) {return a * (1 - t) + b * t;}
 
 template <typename T>
-T fracpart(T x) {return std::fmod(x, 1);}
-
-template <typename T>
 int int_round(T value) {return static_cast<int>(std::round(value));}
 
 
@@ -344,16 +341,22 @@ struct Transform
 	vec2fp apply(vec2fp p) const; ///< Applies transform to point
 	vec2fp reverse(vec2fp p) const; ///< Applies reverse transform to point
 	
-	void combine(const Transform& t);
-	void combine_reversed(const Transform& t);
+	Transform& combine(const Transform& t);
+	Transform& combine_reversed(const Transform& t);
 	Transform get_combined(const Transform& t) const;
 	
-	void add(const Transform& t);
+	Transform& add(const Transform& t);
 	Transform get_add(const Transform& t) const;
 	
 	Transform operator -() const {return Transform{-pos, -rot};}
-	Transform operator * (float t) const;
-	void operator *= (float t);
+	
+	Transform  operator *  (float t) const;
+	Transform& operator *= (float t);
+	
+	Transform  operator /  (float t) const;
+	Transform& operator /= (float t);
+	
+	Transform diff(const Transform& t) const; ///< Returns *this - t
 };
 
 inline Transform lerp (const Transform &a, const Transform &b, float t) {

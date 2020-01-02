@@ -50,6 +50,10 @@ bool RandomGen::load(const std::string& s)
 	ss >> gen;
 	return !ss.fail();
 }
+void RandomGen::set_seed(uint32_t s)
+{
+	gen.seed(s);
+}
 
 
 

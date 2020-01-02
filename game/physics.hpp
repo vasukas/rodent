@@ -194,7 +194,7 @@ public:
 	/// Appends result - all object along ray
 	void raycast_all(std::vector<RaycastResult>& es, b2Vec2 from, b2Vec2 to, CastFilter cf = {});
 	
-	/// Returns nearest object hit
+	/// Returns nearest object hit (central ray is preffered)
 	std::optional<RaycastResult> raycast_nearest(b2Vec2 from, b2Vec2 to, CastFilter cf = {}, std::optional<float> width = {});
 	
 	/// Calls function for all objects inside circle

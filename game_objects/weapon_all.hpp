@@ -107,6 +107,7 @@ class FoamProjectile : public Entity
 public:
 	static bool can_create(vec2fp pos, EntityIndex src_i);
 	FoamProjectile(vec2fp pos, vec2fp vel, size_t team, EntityIndex src_i, bool is_first);
+	std::string ui_descr() const override {return frozen ? "Foam" : "";}
 	
 private:
 	EVS_SUBSCR;
@@ -168,6 +169,7 @@ class ElectroBall : public Entity
 {
 public:
 	ElectroBall(vec2fp pos, vec2fp dir);
+	std::string ui_descr() const override {return "Plasma ball";}
 	
 private:
 	EVS_SUBSCR;

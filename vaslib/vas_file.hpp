@@ -185,6 +185,7 @@ public:
 	void w64D(uint64_t x);
 	
 	// Writes floating-point numbers in platform- and endianess-independent way
+	// Denormalized numbers are zeroed
 	
 	float rpif();
 	void wpif(float x);

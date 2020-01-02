@@ -61,6 +61,7 @@ public:
 		std::function<bool(Entity&)> f;
 		ModelType model;
 		FColor clr = FColor(1, 1, 1);
+		std::string ui_name = {};
 	};
 	
 	using Value = std::variant<AmmoPack, ArmorShard, Func>;
@@ -72,7 +73,7 @@ public:
 	static void death_drop(vec2fp pos, float value);
 	
 	EPickable(vec2fp pos, Value val);
-	std::string ui_descr() const override {return "Pickable";}
+	std::string ui_descr() const override;
 	
 	ECompPhysics& get_phy() override {return  phy;}
 	ECompRender*  get_ren() override {return &ren;}

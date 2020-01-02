@@ -125,7 +125,7 @@ struct PPF_Tint : PP_Filter
 
 struct PPF_Shake : PP_Filter
 {
-	float t = 0, str = 0;
+	float t = 0, str = 0, str_tar = 0;
 	
 	PPF_Shake()
 	{
@@ -133,18 +133,29 @@ struct PPF_Shake : PP_Filter
 	}
 	bool is_ok_int() override
 	{
-		return str > 0 && AppSettings::get().cam_pp_shake_str > 1e-5;
+		return (str > 0 || str_tar > 0) && AppSettings::get().cam_pp_shake_str > 1e-5;
 	}
 	void proc() override
 	{
+		float ps = RenderControl::get().get_passed().seconds();
+		
+		if (str < str_tar)
+		{
+			float dt = (str_tar - str) * ps * 10;
+			if (dt < 0.1)
+			{
+				str = str_tar;
+				str_tar = 0;
+			}
+			else str += dt;
+		}
+		else str -= ps / 0.7;
+		t += ps;
+		
 		vec2i sz = RenderControl::get_size();
 		float k = std::min(str, 2.f) * AppSettings::get().cam_pp_shake_str;
 		float x = cossin_lut(t * 10).y * k / sz.xy_ratio();
 		float y = cossin_lut(t * 15).y * k * 0.7;
-		
-		float ps = RenderControl::get().get_passed().seconds();
-		t += ps;
-		str -= ps / 0.7;
 		
 		sh->bind();
 		sh->set2f("tmod", x, y);
@@ -152,8 +163,8 @@ struct PPF_Shake : PP_Filter
 	}
 	void add(float power)
 	{
-		if (str <= 0) t = 0.01;
-		str = std::min(str + power, 5.f);
+		if (str <= 0) t = 0;
+		str_tar = std::min(str + power, 5.f);
 	}
 };
 

@@ -1,9 +1,33 @@
-#ifdef _WIN32
+#if defined(_WIN32)
+
 #define WIN32_LEAN_AND_MEAN
 #define WIN32_EXTRA_LEAN
 #include <windows.h>
 #include "wincompat.hpp"
 #include "vaslib/vas_log.hpp"
+
+
+
+struct HandleWrapper
+{
+	HANDLE h = INVALID_HANDLE_VALUE;
+	~HandleWrapper() {CloseHandle(h);}
+	void operator=(HANDLE h_) {h = h_;}
+	operator bool() const {return h != INVALID_HANDLE_VALUE;}
+	operator HANDLE() const {return h;}
+};
+
+void winc_sleep(int64_t microseconds)
+{
+	thread_local HandleWrapper timer;
+	
+	LARGE_INTEGER ft;
+	ft.QuadPart = -(microseconds * 10);
+
+	if (!timer) timer = CreateWaitableTimerA(NULL, TRUE, NULL);
+	SetWaitableTimer(timer, &ft, 0, NULL, NULL, 0);
+	WaitForSingleObject(timer, INFINITE);
+}
 
 
 
@@ -116,4 +140,5 @@ int __stdcall WinMain(HINSTANCE, HINSTANCE, char *, int) {
 	LocalFree(w_argv);
 	return main(argc, argv.data());
 }
+
 #endif

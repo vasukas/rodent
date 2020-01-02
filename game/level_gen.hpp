@@ -38,8 +38,6 @@ struct LevelTerrain
 	struct Room
 	{
 		Rect area; ///< Boundaries
-		float far_value; ///< [0, 1], bigger the more remote room is
-		
 		RoomType type;
 		uint32_t dbg_color; ///< 24-bit RGB
 	};

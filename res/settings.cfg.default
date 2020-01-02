@@ -31,6 +31,9 @@ cam_mag_mul 1
 # camera shake effect strength
 cam_pp_shake_str 0.007
 
+# interpolation depth (0, 2 or 3)
+interp_depth 3
+
 # info shown on cursor
 # sum of: 1 weapon status, 2 shield status, 4 more status
 cursor_info_flags 1
