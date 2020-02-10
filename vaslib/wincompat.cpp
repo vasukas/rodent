@@ -92,7 +92,7 @@ bool winc_chdir ( const char *fn )
 {
 	if (!SetCurrentDirectoryW( winc_filename(fn).c_str() ))
 	{
-		VLOGE("SetCurrentDirectoryW failed - ", winc_error());
+		VLOGE("SetCurrentDirectoryW failed - {}", winc_error());
 		return false;
 	}
 	return true;
@@ -105,6 +105,14 @@ bool winc_fexist( const char *fn )
 FILE* winc_fopen( const char *fn, const char *mode )
 {
 	return _wfopen( winc_filename(fn).c_str(), winc_strconv(mode).c_str() );
+}
+bool winc_mkdir( const char *fn )
+{
+	if (CreateDirectoryW( winc_filename(fn).c_str(), NULL )) return true;
+	int err = GetLastError();
+	if (err == ERROR_ALREADY_EXISTS) return true;
+	VLOGE("CreateDirectoryW failed - {}", winc_error(err));
+	return false;
 }
 
 

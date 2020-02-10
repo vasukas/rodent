@@ -13,6 +13,7 @@ class PlayerManager
 public:
 	bool cheat_ammo    = false;
 	bool cheat_godmode = false;
+	bool fastforward = false; ///< see usages
 	
 	static PlayerManager* create(std::shared_ptr<PlayerController> pc_ctr);
 	virtual ~PlayerManager() = default;
@@ -24,7 +25,7 @@ public:
 	virtual void update_cheats() = 0; ///< Call if changed any of cheat flags
 	
 	/// Current AI activation and deactivation rects
-	virtual std::pair<Rect, Rect> get_ai_rects() = 0;
+	virtual std::pair<Rectfp, Rectfp> get_ai_rects() = 0;
 	
 	/// Increments objective count
 	virtual void inc_objective() = 0;

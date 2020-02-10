@@ -36,14 +36,15 @@ public:
 	GameCore_Impl(InitParams pars)
 	{
 		dbg_ai_attack = true;
+		dbg_ai_see_plr = true;
 		spawn_drop = false;
 		
 		ents.block_size = 256;
 		phy.reset(new PhysicsWorld(*this));
 		pmg = std::move(pars.pmg);
 
-		if (!pars.random_init.empty() && !rndg.load(pars.random_init))
-			throw std::runtime_error("GameCore:: failed to init random");
+		if (!pars.random_init.empty())
+			rndg.load(pars.random_init);
 	}
 	~GameCore_Impl() {
 		is_freeing_flag = true;
@@ -135,6 +136,7 @@ public:
 	}
 	Entity* get_ent( EntityIndex ei ) const noexcept
 	{
+		if (is_freeing_flag) return nullptr;
 		size_t i = ei.to_int();
 		return i < ents.size() ? ents[i].get() : nullptr;
 	}
@@ -143,6 +145,11 @@ public:
 		auto ent = get_ent(i);
 		if (!ent) i = {};
 		return ent;
+	}
+	Entity& ent_ref(EntityIndex ei) const
+	{
+		if (auto e = get_ent(ei)) return *e;
+		GAME_THROW("GameCore::ent_ref() failed (eid {})", ei.to_int());
 	}
 	EntityIndex create_ent(Entity* ent) noexcept
 	{

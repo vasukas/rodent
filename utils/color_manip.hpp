@@ -46,4 +46,10 @@ struct FColor
 	static constexpr float H_red1    = 1;
 };
 
+inline FColor lerp (const FColor &a, const FColor &b, float t) {
+	FColor c;
+	for (int i=0; i<4; ++i) c[i] = a[i] * (1.f - t) + b[i] * t;
+	return c;
+}
+
 #endif // COLOR_MANIP_HPP

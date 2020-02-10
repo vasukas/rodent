@@ -3,6 +3,19 @@
 
 
 
+bool starts_with(std::string_view s, std::string_view prefix)
+{
+	if (s.length() < prefix.length()) return false;
+	return !s.compare(0, prefix.length(), prefix);
+}
+bool ends_with(std::string_view s, std::string_view postfix)
+{
+	if (s.length() < postfix.length()) return false;
+	return !s.compare(s.length() - postfix.length(), postfix.length(), postfix);
+}
+
+
+
 char32_t char_8to32(const char *str, int& n, int left) {
 	uint32_t c = uint8_t(*str);
 	if (c >= 0x80) {

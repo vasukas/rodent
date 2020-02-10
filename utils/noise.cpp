@@ -44,11 +44,12 @@ std::string RandomGen::save() const
 	ss << gen;
 	return ss.str();
 }
-bool RandomGen::load(const std::string& s)
+void RandomGen::load(const std::string& s)
 {
 	std::stringstream ss(s);
 	ss >> gen;
-	return !ss.fail();
+	if (ss.fail())
+		throw std::runtime_error("RandomGen::load() failed");
 }
 void RandomGen::set_seed(uint32_t s)
 {

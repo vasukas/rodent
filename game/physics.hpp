@@ -2,7 +2,7 @@
 #define PHYSICS_HPP
 
 #include <vector>
-#include <Box2D/Box2D.h>
+#include <box2d/box2d.h>
 #include "utils/ev_signal.hpp"
 #include "entity.hpp"
 
@@ -104,7 +104,7 @@ private:
 	mutable std::optional<float> b_radius;
 };
 
-inline EC_Physics*  getptr(b2Body* b)    {return static_cast<EC_Physics *>(b->GetUserData());}
+inline EC_Physics&  getptr(b2Body* b)    {return *static_cast<EC_Physics*>(b->GetUserData());}
 inline FixtureInfo* getptr(b2Fixture* f) {return static_cast<FixtureInfo*>(f->GetUserData());}
 
 inline void setptr(b2Fixture* f, FixtureInfo* info) {
@@ -157,12 +157,12 @@ public:
 	
 	struct CastFilter
 	{
-		std::function<bool(Entity*, b2Fixture*)> check;
+		std::function<bool(Entity&, b2Fixture&)> check;
 		std::optional<b2Filter> ft;
 		bool ignore_sensors;
 		
 		CastFilter(
-		        std::function<bool(Entity*, b2Fixture*)> check = {},
+		        std::function<bool(Entity&, b2Fixture&)> check = {},
 		        std::optional<b2Filter> ft = {},
 		        bool ignore_sensors = true)
 			:

@@ -106,6 +106,7 @@ struct EC_RenderSimple : ECompRender
 {
 	ModelType model;
 	FColor clr;
+	bool death_parts = true; // show particles on death
 	
 	EC_RenderSimple(Entity* ent, ModelType model = MODEL_ERROR, FColor clr = FColor(1,1,1,1));
 	
@@ -200,6 +201,8 @@ public:
 		std::shared_ptr<LevelTerrain> lvl; ///< Must be non-null
 	};
 	
+	bool playback_hack = false;
+	
 	static GamePresenter* init(const InitParams& pars); ///< Creates singleton (must be called from render thread)
 	static GamePresenter* get(); ///< Returns singleton
 	virtual ~GamePresenter();
@@ -213,6 +216,7 @@ public:
 	virtual Rectfp get_vport() = 0; ///< Returns world frustum rect
 	
 	void effect(FreeEffect effect, const ParticleBatchPars& pars);
+	void effect(ModelEffect effect, ModelType model, const ParticleBatchPars& pars);
 	
 	// Displayed only for one logic step
 	void dbg_line(vec2fp a, vec2fp b, uint32_t clr, float wid = 0.2f);

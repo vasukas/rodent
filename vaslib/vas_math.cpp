@@ -6,7 +6,7 @@
 
 struct sin_lut_t
 {
-	static const int table_size = 1024;
+	static constexpr int table_size = 1024;
 	static_assert(table_size % 4 == 0);
 	
 	float *table;
@@ -29,6 +29,7 @@ float sine_lut_norm(float x)
 	
 	x *= sin_lut.table_size;
 	int i = static_cast<int>(x);
+	i = clamp(i, 0, sin_lut.table_size - 1);
 	x -= i;
 	
 	i %= sin_lut.table_size;
@@ -282,7 +283,11 @@ std::pair<float, vec2fp> fit_rect(vec2fp size, vec2fp into)
 }
 
 
-
+	
+Rectfp Rect::to_fp(float mul) const
+{
+	return {vec2fp(off) * mul, vec2fp(sz) * mul, true};
+}
 bool Rect::intersects(const Rect& r) const
 {
 	vec2i a1 = upper(), b1 = r.upper();
@@ -326,33 +331,17 @@ bool Rect::map_check(callable_ref<bool(vec2i p)> f) const
 }
 void Rect::map_outer(callable_ref<void(vec2i p)> f) const
 {
-	for (int y = lower().y; y < upper().y; ++y) {
-		f({ lower().x - 1, y });
-		f({ upper().x,     y });
-	}
-	for (int x = lower().x; x < upper().x; ++x) {
-		f({ x, lower().y - 1 });
-		f({ x, upper().y,    });
-	}
-	f({ lower().x - 1, lower().y - 1 });
-	f({ upper().x,     lower().y - 1 });
-	f({ lower().x - 1, upper().y });
-	f({ upper().x,     upper().y });
+	for (int x = lower().x - 1; x < upper().x; ++x) f({ x, lower().y - 1 });
+	for (int y = lower().y - 1; y < upper().y; ++y) f({ upper().x, y });
+	for (int x = upper().x; x > lower().x - 1; --x) f({ x, upper().y });
+	for (int y = upper().y; y > lower().y - 1; --y) f({ lower().x - 1, y });
 }
 void Rect::map_inner(callable_ref<void(vec2i p)> f) const
 {
-	for (int y = lower().y + 1; y < upper().y - 1; ++y) {
-		f({ lower().x,     y });
-		f({ upper().x - 1, y });
-	}
-	for (int x = lower().x + 1; x < upper().x - 1; ++x) {
-		f({ x, lower().y    });
-		f({ x, upper().y - 1, });
-	}
-	f({ lower().x,     lower().y     });
-	f({ upper().x - 1, lower().y     });
-	f({ lower().x,     upper().y - 1 });
-	f({ upper().x - 1, upper().y - 1 });
+	for (int x = lower().x; x < upper().x - 1; ++x) f({ x, lower().y });
+	for (int y = lower().y; y < upper().y - 1; ++y) f({ upper().x - 1, y });
+	for (int x = upper().x - 1; x > lower().x; --x) f({ x, upper().y - 1 });
+	for (int y = upper().y - 1; y > lower().y; --y) f({ lower().x, y });
 }
 Rect calc_intersection(const Rect& A, const Rect& B)
 {

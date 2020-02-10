@@ -91,7 +91,7 @@ PoolAllocator::Pool::~Pool()
 	ALIGN_FREE(mem);
 	delete[] fs;
 }
-void PoolAllocator::Pool::operator=(Pool&& p)
+void PoolAllocator::Pool::operator=(Pool&& p) noexcept
 {
 	std::swap(mem,   p.mem);
 	std::swap(fs,    p.fs);

@@ -27,6 +27,7 @@ inline uint64_t swap64(uint64_t x) {return _byteswap_uint64(x);}
 
 #else
 
+#include <sys/stat.h>
 #include <unistd.h>
 
 inline uint16_t swap16(uint16_t x) {return __bswap_16(x);}
@@ -92,7 +93,7 @@ bool set_current_dir( const char *str )
 #ifndef VAS_WINCOMPAT
 	if (chdir( str ))
 	{
-		VLOGE("set_current_dir() chdir: {} (path: \"{}\")", errno_str(), str);
+		VLOGE("set_current_dir() chdir failed {} (path: \"{}\")", errno_str(), str);
 		return false;
 	}
 #else
@@ -168,6 +169,30 @@ std::string get_file_ext(std::string_view filename)
 	std::string s(filename.substr(i + 1));
 	for (auto& c : s) if (c <= 'Z' && c >= 'A') c = (c - 'A') + 'a';
 	return s;
+}
+bool create_dir(const char *filename)
+{
+#ifndef VAS_WINCOMPAT
+	if (!mkdir(filename, 0775)) return true; // rwxrwxr-x
+	int err = errno;
+	if (err == EEXIST)
+	{
+		struct stat st;
+		if (lstat(filename, &st)) {
+			VLOGE("create_dir() mkdir failed, lstat failed {} (file: \"{}\")", errno_str(), filename);
+			return false;
+		}
+		if (S_ISDIR(st.st_mode))
+			return true;
+		
+		VLOGE("create_dir() mkdir failed - already exists, not a dir (file: \"{}\")", filename);
+		return false;
+	}
+	VLOGE("create_dir() mkdir failed {} (file: \"{}\")", errno_str(err), filename);
+	return false;
+#else
+	return winc_mkdir(filename);
+#endif
 }
 
 
@@ -586,7 +611,7 @@ MemoryFile::~MemoryFile()
 	if (a_expand)
 		free( mem );
 }
-MemoryFile::MemoryFile( MemoryFile&& f )
+MemoryFile::MemoryFile( MemoryFile&& f ) noexcept
 {
 	mem = f.mem;
 	size = f.size;

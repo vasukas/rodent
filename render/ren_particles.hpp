@@ -65,6 +65,8 @@ protected:
 
 class RenParticles {
 public:
+	bool enabled = true; ///< Update is executed anyway
+	
 	static RenParticles& get(); ///< Returns singleton
 	virtual void add(ParticleGroupGenerator& group, const ParticleBatchPars& pars) = 0;
 	

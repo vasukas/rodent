@@ -1,28 +1,33 @@
 # window size
 wnd_size 1024 600
+
+# start maximized
 wnd_size_max 1
 
 # fullscreen mode:
-#  0 windowed
-#  1 fullscreen
-# -1 fullscreen window
+#   0 windowed
+#   1 fullscreen
+#  -1 fullscreen window
 fscreen 0
 
 # frames per second
 target_fps 60
 
-# 0\1 to disable\enable or -1 to ignore
-set_vsync  1
+# vertical synchronization
+#  -1 don't set
+#   0 disable
+#   1 enable
+set_vsync 1
 
-# primary font
-font_fn   Inconsolata-Bold.ttf
-font_pt   16
+# primary font - filename and size
+font_fn  Inconsolata-Bold.ttf
+font_pt  16
 
 # font for debug info etc
 font_dbg_fn  Inconsolata.otf
 font_dbg_pt  16
 
-# upscale of texture atlas on generation
+# font atlas upscale
 font_supersample 2
 
 # camera magnification multiplier
@@ -38,6 +43,9 @@ interp_depth 3
 # sum of: 1 weapon status, 2 shield status, 4 more status
 cursor_info_flags 1
 
-# drop from destroyed eneimes (on/off)
+# animate player UI (on/off)
+plr_status_blink 1
+
+# item drop from destroyed eneimes (on/off)
 spawn_drop 1
 

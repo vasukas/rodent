@@ -25,6 +25,7 @@ public:
 	};
 	
 	bool dbg_ai_attack; ///< Is AI attack enabled
+	bool dbg_ai_see_plr; ///< Is AI seeing player
 	bool spawn_drop; ///< From destroyed enemies
 	
 	static GameCore& get(); ///< Returns singleton
@@ -34,10 +35,10 @@ public:
 	
 	
 	/// Logic step length
-	inline static const TimeSpan step_len = TimeSpan::fps(30);
+	static constexpr TimeSpan step_len = TimeSpan::fps(30);
 	
 	/// For 'per second' -> 'per step' conversions
-	inline static const float time_mul = step_len.seconds();
+	static constexpr float time_mul = step_len.seconds();
 	
 	///
 	virtual PhysicsWorld& get_phy() noexcept = 0;
@@ -73,6 +74,9 @@ public:
 	
 	/// Returns entity if it exists, or returns nullptr and sets uid to 0
 	virtual Entity* valid_ent(EntityIndex& ei) const noexcept = 0;
+	
+	/// Returns entity or throws if it doesn't exist
+	virtual Entity& ent_ref(EntityIndex ei) const = 0;
 	
 	
 protected:

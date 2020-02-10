@@ -1,9 +1,10 @@
-#include "shader.hpp"
+#include "core/hard_paths.hpp"
 #include "vaslib/vas_cpp_utils.hpp"
 #include "vaslib/vas_file.hpp"
 #include "vaslib/vas_log.hpp"
 #include "vaslib/vas_misc.hpp"
 #include "vaslib/vas_string_utils.hpp"
+#include "shader.hpp"
 
 
 
@@ -157,7 +158,7 @@ static std::optional<size_t> get_shd(GLenum type, const std::string& fname)
 	
 	// read file
 	
-	auto file_opt = readfile( (std::string("res/shaders/") + fname).data() );
+	auto file_opt = readfile( (std::string(HARDPATH_SHADER_PREFIX) + fname).data() );
 	if (!file_opt) {
 		VLOGE("Shader:: can't read shader \"{}\"; '{}'", fname, full_name);
 		return {};
@@ -259,7 +260,7 @@ bool Shader::reload()
 	
 	// read file
 	
-	auto file_opt = readfile( (std::string("res/shaders/") + prog_name).data() );
+	auto file_opt = readfile( (std::string(HARDPATH_SHADER_PREFIX) + prog_name).data() );
 	if (!file_opt) {
 		VLOGE("Shader::reload() can't read file; '{}'", prog_name);
 		return false;

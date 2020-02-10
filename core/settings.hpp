@@ -20,7 +20,7 @@ struct AppSettings
 	int set_vsync = 1;
 	
 	// font options
-	std::string font_path = "res/font.ttf";
+	std::string font_path = "font.ttf";
 	std::string font_dbg_path = {};
 	float font_pt = 16;
 	float font_dbg_pt = 16;
@@ -33,6 +33,7 @@ struct AppSettings
 	
 	// game
 	int cursor_info_flags = 1;
+	bool plr_status_blink = false;
 	bool spawn_drop = false;
 	
 	

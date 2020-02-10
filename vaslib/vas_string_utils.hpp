@@ -6,6 +6,14 @@
 
 
 
+/// Returns true if string contains prefix
+bool starts_with(std::string_view s, std::string_view prefix);
+
+/// Returns true if string contains postfix
+bool ends_with(std::string_view s, std::string_view postfix);
+
+
+
 /// Translates single character.
 /// 'n' is number of characters read.
 /// Returns 0 on error (if 'n' set to 0, code is wrong, otherwise not enough data)

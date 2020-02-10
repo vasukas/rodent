@@ -1,7 +1,7 @@
 /.vs/
 /build/
-/build_scripts/
 /external/
-/rodent.*.user
-/rodent*
+/rodent/
+/user/
+/*.*.user
 

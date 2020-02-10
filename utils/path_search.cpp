@@ -1,42 +1,13 @@
-#include <condition_variable>
-#include <mutex>
 #include <queue>
-#include <thread>
-#include "vaslib/vas_containers.hpp"
 #include "vaslib/vas_types.hpp"
 #include "path_search.hpp"
 
 #define USE_DIAG 1
 
-class APS_Astar : public AsyncPathSearch
+class APS_Astar : public PathSearch
 {
 public:
 	static constexpr bool use_diag = USE_DIAG;
-	
-	struct Slot
-	{
-		enum State
-		{
-			ST_NONE,
-			ST_WAITING,
-			ST_COMPUTE,
-			ST_RESULT,
-			ST_COMPUTE_RESET
-		};
-
-		State state = ST_NONE;
-		vec2i pa, pb;
-		AddInfo info;
-		Result res;
-		
-		operator bool() const {return state != ST_NONE;}
-	};
-	
-	bool thr_term = false;
-	std::mutex mux;
-	SparseArray<Slot> ss;
-	std::condition_variable work_cv;
-	std::thread thr;
 	
 	/// Fixed-point, to handle diags
 	using PathCost = uint_fast32_t;
@@ -81,23 +52,17 @@ public:
 	
 	
 	
-	APS_Astar(bool create_thread)
+	PathCost calc_dist(const vec2i& pt, size_t ix)
 	{
-		if (create_thread)
-			thr = std::thread([this]{thr_func();});
+		int dy = std::abs(pt.y - int(ix / f_size.x));
+		int dx = std::abs(pt.x - int(ix % f_size.x));
+		
+		auto mm = std::minmax(dx, dy);
+		return dirs_diff * (mm.second - mm.first) + dirs_diag * mm.first;
 	}
-	~APS_Astar()
-	{
-		{	std::unique_lock lock(mux);
-			thr_term = true;
-		}
-		work_cv.notify_all();
-		if (thr.joinable())
-			thr.join();
-	}
+	
 	void update(vec2i size, std::vector<uint8_t> cost_grid) override
 	{
-		std::unique_lock lock(mux);
 		f_size = size;
 		f_ns.resize (cost_grid.size());
 		
@@ -140,103 +105,6 @@ public:
 		}};
 #endif
 	}
-	size_t add_task(vec2i from, vec2i to, AddInfo info) override
-	{
-		std::unique_lock lock(mux);
-		size_t i = ss.new_index();
-		
-		auto& s = ss[i];
-		s.pa = from;
-		s.pb = to;
-		s.info = info;
-		s.state = Slot::ST_WAITING;
-		
-		work_cv.notify_one();
-		return i;
-	}
-	void rem_task(size_t index) override
-	{
-		std::unique_lock lock(mux);
-		auto& s = ss[index];
-		
-		if (s.state == Slot::ST_COMPUTE)
-			s.state = Slot::ST_COMPUTE_RESET;
-		else {
-			s.state = Slot::ST_NONE;
-			ss.free_index(index);
-		}
-	}
-	std::optional<Result> get_task(size_t index) override
-	{
-		std::unique_lock lock(mux);
-		auto& s = ss[index];
-		
-		if (s.state == Slot::ST_RESULT)
-		{
-			auto res = std::move(s.res);
-			s.state = Slot::ST_NONE;
-			ss.free_index(index);
-			return res;
-		}
-		return {};
-	}
-	void thr_func()
-	{
-		while (true)
-		{
-			std::unique_lock lock(mux);
-			work_cv.wait(lock, [&]
-			{
-				return thr_term || ss.existing_count();
-			});
-			if (thr_term) break;
-			
-			// find waiting slot
-			
-			size_t index = size_t_inval;
-			
-			auto it_end = ss.end();
-			for (auto it = ss.begin(); it != it_end; ++it)
-			{
-				if (it->state == Slot::ST_WAITING)
-				{
-					index = it.index();
-					break;
-				}
-			}
-			
-			if (index == size_t_inval)
-				continue;
-			
-			// prepare
-			
-			Slot* s = &ss[index];
-			vec2i p_src = s->pa;
-			vec2i p_dst = s->pb;
-			s->state = Slot::ST_COMPUTE;
-			
-			// non-blocking calc
-			
-			lock.unlock();
-			auto res = calc_path(p_src, p_dst, s->info);
-			lock.lock();
-			
-			// set result
-			
-			s = &ss[index];
-			if (s->state == Slot::ST_COMPUTE_RESET)
-			{
-				s->state = Slot::ST_NONE;
-				ss.free_index(index);
-				continue;
-			}
-			
-			s->res = std::move(res);
-			s->state = Slot::ST_RESULT;
-		}
-	}
-	
-	
 	Result rebuild_path(size_t i, size_t len)
 	{
 		Result r;
@@ -254,19 +122,19 @@ public:
 			
 		return r;
 	}
-	std::pair<NodeIndex, PathCost> find_path(vec2i p_src, vec2i p_dst, AddInfo info)
+	std::pair<NodeIndex, PathCost> find_path_internal(vec2i p_src, vec2i p_dst, const Args& args)
 	{
 		++closed_cou;
 		
 		size_t i_src = p_src.y * f_size.x + p_src.x;
 		size_t i_dst = p_dst.y * f_size.x + p_dst.x;
-		PathCost maxlen = (info.max_length + 2) << path_cost_bits;
+		PathCost maxlen = (args.max_length + 2) << path_cost_bits;
+		PathCost evadecost = (args.evade_cost) << path_cost_bits;
 		
-		auto hval = [&](size_t ix) -> PathCost
-		{
-			int dy = p_dst.y - (ix / f_size.x);
-			int dx = p_dst.x - (ix % f_size.x);
-			return std::round( std::sqrt(dx*dx + dy*dy) * dirs_diff );
+		auto hval = [&](size_t ix) -> PathCost {
+			const PathCost hval_corr = dirs_diff /2;
+			PathCost c = calc_dist(p_dst, ix);
+			return c < dirs_diff ? c : c - hval_corr;
 		};
 		
 		open_q = decltype(open_q)();
@@ -283,7 +151,8 @@ public:
 			if (qn.index == i_dst)
 				return {i_dst, (qn.cost >> path_cost_bits) + 2};
 			
-			if (qn.cost > maxlen) break;
+			if (qn.cost > maxlen)
+				continue;
 			
 #if USE_DIAG
 			int dir_bit = 1;
@@ -304,34 +173,25 @@ public:
 				n.prev = qn.index;
 				
 				PathCost c = qn.cost + d.diff;
+				if (args.evade && calc_dist(*args.evade, qn.index) <= (unsigned) args.evade_radius) c += evadecost;
 				open_q.push({ static_cast<NodeIndex>(n_ix), c, c + hval(n_ix) });
 			}
 		}
 		return {(NodeIndex) -1, 0};
 	}
-	Result calc_path(vec2i p_src, vec2i p_dst, AddInfo info)
+	Result find_path(Args args) override
 	{
-		auto res = find_path(p_src, p_dst, std::move(info));
+		auto res = find_path_internal(args.src, args.dst, args);
 		if (res.first == (NodeIndex) -1) return {};
 		return rebuild_path(res.first, res.second);
 	}
-	
-	
-	
-	Result sync_task(vec2i from, vec2i to, AddInfo info) override
+	size_t find_length(Args args) override
 	{
-		return calc_path(from, to, std::move(info));
-	}
-	size_t sync_length(vec2i from, vec2i to, AddInfo info) override
-	{
-		auto res = find_path(from, to, std::move(info));
+		auto res = find_path_internal(args.src, args.dst, args);
 		if (res.first == (NodeIndex) -1) return size_t_inval;
 		return res.second;
 	}
 };
-AsyncPathSearch* AsyncPathSearch::create_default() {
-	return new APS_Astar(true);
-}
-AsyncPathSearch* AsyncPathSearch::create_default_nonthread() {
-	return new APS_Astar(false);
+PathSearch* PathSearch::create() {
+	return new APS_Astar;
 }

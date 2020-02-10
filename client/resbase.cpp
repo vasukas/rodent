@@ -1,4 +1,5 @@
 #include <future>
+#include "core/hard_paths.hpp"
 #include "game/common_defs.hpp"
 #include "render/ren_aal.hpp"
 #include "render/ren_particles.hpp"
@@ -15,9 +16,6 @@
 
 // 
 #define WEAPON_LINE_RADIUS 0.03
-
-// will be changed to param later
-#define MODEL_FILENAME "res/models.svg"
 
 //
 using namespace GameConst;
@@ -325,7 +323,7 @@ void ResBase_Impl::init_ren()
 			p.clr = bp.clr;
 			for (int i=0; i<3; ++i) p.clr[i] += 0.1 * rnd_stat().range_n2();
 			
-			p.vel.set(rnd_stat().range(1, 4), 0);
+			p.vel.set(bp.rad * rnd_stat().range(1, 4), 0);
 			p.vel.fastrotate( bp.tr.rot + deg_to_rad(70) * rnd_stat().normal_fixed() );
 		}
 	};
@@ -538,7 +536,7 @@ void ResBase_Impl::init_ren()
 	
 	// load models
 	
-	{	SVG_File svg = svg_read(MODEL_FILENAME);
+	{	SVG_File svg = svg_read(HARDPATH_MODELS);
 		
 		for (auto& p : svg.paths)
 		{
@@ -671,7 +669,7 @@ void ResBase_Impl::init_ren()
 	scale_to(MODEL_BOX_SMALL, hsz_box_small);
 	scale_to(MODEL_DRONE, hsz_drone);
 	scale_to(MODEL_WORKER, hsz_drone_big);
-	scale_to(MODEL_CAMPER, hsz_drone);
+	scale_to(MODEL_CAMPER, hsz_drone_big);
 	scale_to(MODEL_HUNTER, hsz_drone_big);
 	
 	scale_to(MODEL_ARMOR, hsz_supply);
@@ -828,21 +826,29 @@ void ResBase_Impl::init_ren()
 	        FColor clr = FColor(1, 1, 1);
 	        ImageInfo img = {};
 		};
+	    const int wpn_size = 52;
 		Info md_is[] =
 		{
-			{MODEL_WINRAR, 35}
+			{MODEL_WINRAR, 40},
+			{MODEL_MINIGUN, wpn_size, FColor(1.0, 0.7, 0.2)},
+			{MODEL_ROCKET,  wpn_size, FColor(0.6, 1.0, 0.6)},
+			{MODEL_ELECTRO, wpn_size, FColor(0.2, 0.8, 1.0)},
+			{MODEL_GRENADE, wpn_size, FColor(1.0, 0.6, 0.4)},
+			{MODEL_BOLTER,  wpn_size, FColor(0.6, 1.0, 0.2)},
+			{MODEL_UBERGUN, wpn_size, FColor(1.0, 0.2, 1.0)}
 		};
 
 		ImageGlowGen glow;
 		glow.mode = ImageGlowGen::M_NOISY;
-		glow.maxrad = 5;
+		glow.maxrad = 3;
+		glow.glow_k = 0.5;
 	        
 		AtlasBuilder abd;
 		abd.pk.reset( new AtlasPacker );
 		abd.pk->bpp = 4;
 		abd.pk->min_size = 16;
 		abd.pk->max_size = 4096;
-		abd.pk->space_size = 1;
+		abd.pk->space_size = 2;
 		
 		for (size_t i=0; i < std::size(md_is); ++i)
 		{
@@ -850,9 +856,11 @@ void ResBase_Impl::init_ren()
 	        
 	        glow.shs.emplace_back().lines = std::move(mlns[inf.type].ls);
 			glow.shs.back().clr = inf.clr;
-	        
-			vec2i sz = vec2i::one(inf.m_size);
+			
+			vec2i sz = vec2i::one(inf.m_size * 2);
 			inf.img = glow.gen(sz);
+			
+			downscale_2x(inf.img);
 			
 			sz = inf.img.get_size();
 			abd.add_static({i, sz.x, sz.y}, inf.img.raw());

@@ -6,12 +6,12 @@
 #include "game/level_ctr.hpp"
 
 class AI_Drone;
-class AI_Group;
 
 
 
 enum class AI_Speed
 {
+	SlowPrecise,
 	Slow,
 	Normal,
 	Accel,
@@ -23,32 +23,95 @@ enum class AI_Speed
 
 struct AI_DroneParams
 {
-	std::array<float, static_cast<size_t>(AI_Speed::TOTAL_COUNT)> speed = {1, 1, 1};
+	enum HelpCallPrio : uint8_t {
+		HELP_NEVER,  // never selected for help
+		HELP_LOW,    // selected only if nothing better is in range
+		HELP_ALWAYS  // nearest always selected
+	};
 	
+	std::array<float, static_cast<size_t>(AI_Speed::TOTAL_COUNT)> speed = {1, 1, 1, 1};
+	
+	float dist_panic   = 0;  ///< If closer, moves away fast and doesn't shoot
 	float dist_minimal = 5;  ///< If closer, moves away
 	float dist_optimal = 10; ///< If further, moves closer
 	float dist_visible = 20; ///< If further, doesn't post or attack target
 	float dist_suspect = 24; ///< Max visibility distance
+	std::optional<float> dist_battle = {}; ///< Visibility distance while in battle mode
 	
 	bool is_camper = false; ///< If true, pursues only visible targets
+	HelpCallPrio helpcall = HELP_ALWAYS;
+	uint8_t placement_prio = 1; ///< Must be non-zero. Higher gets better placement on attack
+	
+	float rot_speed = M_PI*2; ///< Max rotation delta per second, radians. Can't be zero
+	
+	/// Minimal and maximal field-of-view half-angles, radians
+	std::optional<std::pair<float, float>> fov = std::make_pair(deg_to_rad(30), deg_to_rad(60));
 };
 
 
 
-/// Ai-specific constants
+/// AI-specific constants
 namespace AI_Const
 {
 
+// More constants in:
+//   AI_Movement::calc_avoidance()
+//   AI_Drone::step() - IdleResource state
+
+/// How often online check is performed
+const TimeSpan online_check_timeout = TimeSpan::seconds(0.5);
+
+/// How often group is updated (radio, area-of-sight)
+const TimeSpan group_update_timeout = TimeSpan::seconds(0.5);
+
+/// How often drone can call for help
+const TimeSpan helpcall_timeout = TimeSpan::seconds(5);
+
+/// Max distance between points considered same when using SlowPrecise (squared)
+const float move_slowprecise_dist_squ = 0.5 * 0.5;
+
+/// Timeout before switching rotation types (fix for twitching)
+const TimeSpan fixed_rotation_length = TimeSpan::seconds(0.3);
+
+/// How long AI attacks if hit by target out of range
+const TimeSpan retaliation_length = TimeSpan::seconds(0.3);
+
+
+
+/// Time to wait on patrol point
+const TimeSpan patrol_point_wait = TimeSpan::seconds(8);
+
+// Special patrol check
+const float patrol_raycast_width = 3;
+const float patrol_raycast_length = 5;
+
+
+
 /// Target lock length
-const TimeSpan target_switch_timeout = TimeSpan::seconds(1.5);
+//const TimeSpan target_switch_timeout = TimeSpan::seconds(1.5);
 
 /// If distance between locked and nearest targets is bigger, re-locks to nearest
-const float target_switch_distance = 3;
+//const float target_switch_distance = 3;
+
+/// Range in which target is detected out of FoV (squared)
+const float target_hearing_range_squ = 6*6;
+
+/// Extended range in which target is detected out of FoV (squared)
+const float target_hearing_ext_range_squ = 12*12;
+
+/// Target speed threshold to switch between normal and extended range (squared)
+const float target_hearing_ext_spd_threshold_squ = 15*15;
 
 
+
+/// If target not seen that long, adjustment and first-shot delay are reset
+const TimeSpan attack_reset_timeout = TimeSpan::seconds(1.5);
+
+/// Delay before shooting target when first seen
+const TimeSpan attack_first_shot_delay = TimeSpan::seconds(0.7);
 
 /// Time to fully update target velocity accumulator
-const TimeSpan attack_acc_adjust_time = TimeSpan::seconds(0.5);
+const TimeSpan attack_acc_adjust_time = TimeSpan::seconds(0.3);
 
 // Attack correction TTR deviations - min and max
 const float attack_ttr_dev0 = 0.1;
@@ -59,71 +122,81 @@ const float attack_los_hwidth = 0.3;
 
 
 
-/// Minimal distance for evade raycast
-const float mov_steer_dist = 4;
+/// Neighbour cells checked for crowding
+const vec2i placement_crowd_dirs[] =
+{
+                       {0, -2},
+             {-1, -1}, {0, -1}, {1, -1},
+    {-2, 0}, {-1,  0},          {1,  0}, {2, 0},
+             {-1,  1}, {0,  1}, {1,  1},
+                       {0,  2}
+};
+/// Max offset
+const int placement_crowd_dirs_max = 2;
 
-/// Multiplier for evade velocity calculation
-const float mov_steer_force = 10;
+/// When going to AoS placement - how far away from target should be
+const float placement_follow_evade_radius = 20;
 
-/// Minimal multiplier for evade velocity
-const float mov_steer_min_t = 0.5;
-
-
-
-/// Time to wait before moving due to crowd
-const TimeSpan pos_req_crowd_time = TimeSpan::seconds(0.3);
-
-/// Time to wait before moving due to obstructed fire LoS
-const TimeSpan pos_req_los_time = TimeSpan::seconds(0.5);
-
-/// Time to remember previous moving direction
-const TimeSpan pos_req_mem_time = TimeSpan::seconds(1);
-
-/// Delay before resetting moving
-const TimeSpan pos_req_reset_delay = TimeSpan::seconds(0.3);
-
-/// Drones should have more distance between each other
-const float crowd_distance = 3.5;
+/// When going to AoS placement - how much cost added in pathfinding
+const float placement_follow_evade_cost = 20;
 
 
-
-/// Time before chasing
-const TimeSpan chase_camp_time = TimeSpan::seconds(1.5);
-
-/// How fast chasing time decreases then target is visible
-const float chase_camp_decr = 0.05;
 
 /// Additional distance to target, to move bit more forward
 const float chase_ahead_dist = 7;
 
+/// Chase delay increase time, 0 to 1
+const TimeSpan chase_wait_incr = TimeSpan::seconds(5);
 
+/// Max chase delay (decrease time, 1 to 0)
+const TimeSpan chase_wait_decr = TimeSpan::seconds(1.5);
 
-/// Time to wait on point when searching
-const TimeSpan search_point_wait = TimeSpan::seconds(2);
-
-/// How long to wait on suspect's position
-const TimeSpan suspect_wait = TimeSpan::seconds(3);
-
-
-
-/// Time to wait before another inspect can begin
-const TimeSpan proxy_inspect_timeout = TimeSpan::seconds(2);
-
-/// Time to wait before going idle after all drones arrived at final points
-const TimeSpan group_search_time = TimeSpan::seconds(10);
+/// Delay before starting search on unsuccessful chase
+const TimeSpan chase_search_delay = TimeSpan::seconds(2);
 
 
 
-/// If target no visible for that time, it's considered lost
-const TimeSpan grouptarget_lost_time = TimeSpan::seconds(0.5);
+/// Suspicion increase time, 0 to 1, if outside visible range
+const TimeSpan suspect_incr = TimeSpan::seconds(3);
 
-/// How often AoS can be updated
-const TimeSpan aos_update_timeout = TimeSpan::seconds(0.3);
+/// Suspicion increase time, 0 to 1, if inside visible range
+const TimeSpan suspect_incr_close = TimeSpan::seconds(1.5);
 
-/// After that time without LoS to target drone considered left AoS
-const TimeSpan aos_leave_timeout = TimeSpan::seconds(0.2);
+/// Suspicion decrease time, 1 to 0
+const TimeSpan suspect_decr = TimeSpan::seconds(6);
 
-/// Default search rings
+/// Suspicion threshold above which start chase
+const float suspect_chase_thr = TimeSpan::seconds(1) / suspect_incr;
+
+/// Suspicion set after losing engagement target
+const float suspect_max_level = 1.5;
+
+/// Initial level (set on seen)
+const float suspect_initial = TimeSpan::seconds(1) / suspect_decr;
+
+/// Minimal level after receiving damage
+const float suspect_on_damage = suspect_chase_thr;
+
+
+
+// Message distances (in rooms)
+const int msg_engage_dist = 3;
+const int msg_engage_relay_dist = 0;
+const int msg_helpcall_dist = 3;
+const int msg_helpcall_highprio_dist = 4;
+
+/// Engage message sent only if group has less bots
+const int msg_engage_max_bots = 16;
+
+
+
+/// Time to wait on intermediate points when searching
+const TimeSpan search_point_wait = TimeSpan::seconds(4);
+
+/// Time to wait on last point when searching
+const TimeSpan search_point_wait_last = TimeSpan::seconds(8);
+
+/// Search rings distances
 const std::array<int, 2> search_ring_dist = {7, 20};
 }
 

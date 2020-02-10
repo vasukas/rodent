@@ -5,6 +5,7 @@
 #include "render/ren_imm.hpp"
 #include "render/ren_text.hpp"
 #include "render/texture.hpp"
+#include "vaslib/vas_log.hpp"
 #include "vaslib/vas_string_utils.hpp"
 #include "vaslib/vas_time.hpp"
 #include "vig.hpp"
@@ -50,45 +51,6 @@ const uint vig_ScrollbarWidth = 10;
 
 /// How much normalized value is changed by mouse scroll
 const float vig_SliderScroll = 0.05;
-
-
-
-/* Palette */
-
-/// Palette index
-enum vig_ColorIndex
-{
-	vig_Color_Back,			///< Widget background
-	vig_Color_BackHover,	///< ...when hovered
-	vig_Color_Active,		///< ...when active
-	vig_Color_ActiveHover,	///< ...and hovered
-
-	vig_Color_Frame,		///< Widget frame
-	vig_Color_Text,			///< In-widget text
-	vig_Color_Incorrect,	///< Special textbox background
-	vig_Color_TooltipBack,	///< Tooltip background
-	
-	vig_Color_MsgBack,		///< Message background
-	
-	vig_Color_Count ///< Total number of colors
-};
-
-#define vig_CLR(x) vig_Colors[vig_Color_##x]
-
-/// Palette (0xRRGGBBAA)
-const uint32_t vig_Colors[vig_Color_Count] = {
-    0x404050ff,
-    0x4040f0ff,
-    0xf08040ff,
-    0xffc060ff,
-    
-    0xe0e0e0ff,
-    0xffffffff,
-    0x682020ff,
-    0x000000e0,
-    
-    0xa00000e0
-};
 
 
 
@@ -158,6 +120,20 @@ static std::vector<vigWarnbox> warnboxes; ///< Stack
 static bool input_locked = false; ///< True if all input functions should return {}
 
 static bool draw(vigWarnbox& box);
+
+
+
+static std::vector<std::array<uint32_t, vig_Color_Count>> palette_stack;
+
+void vig_push_palette() {
+	auto& b = palette_stack.emplace_back();
+	for (int i=0; i<vig_Color_Count; ++i) b[i] = vig_Colors[i];
+}
+void vig_pop_palette() {
+	auto& b = palette_stack.back();
+	for (int i=0; i<vig_Color_Count; ++i) vig_Colors[i] = b[i];
+	palette_stack.pop_back();
+}
 
 
 

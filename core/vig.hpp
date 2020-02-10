@@ -4,13 +4,56 @@
 #define VIG_HPP
 
 #include <functional>
+#include <fmt/format.h>
 #include "vaslib/vas_cpp_utils.hpp"
-#include "vaslib/vas_log.hpp"
 #include "vaslib/vas_math.hpp"
 
 class  Texture;
 struct TextureReg;
 union  SDL_Event;
+
+
+
+/* Palette */
+
+/// Palette index
+enum vig_ColorIndex
+{
+	vig_Color_Back,			///< Widget background
+	vig_Color_BackHover,	///< ...when hovered
+	vig_Color_Active,		///< ...when active
+	vig_Color_ActiveHover,	///< ...and hovered
+
+	vig_Color_Frame,		///< Widget frame
+	vig_Color_Text,			///< In-widget text
+	vig_Color_Incorrect,	///< Special textbox background
+	vig_Color_TooltipBack,	///< Tooltip background
+	
+	vig_Color_MsgBack,		///< Message background
+	
+	vig_Color_Count ///< Total number of colors
+};
+
+/// Palette (0xRRGGBBAA)
+inline uint32_t vig_Colors[vig_Color_Count] =
+{
+    0x404050ff, // Backgr
+    0x4040f0ff, // BackgrHover
+    0xf08040ff, // Active
+    0xffc060ff, // ActiveHover
+    
+    0xe0e0e0ff, // Frame
+    0xffffffff, // Text
+    0x682020ff, // IncorrectInput
+    0x000000e0, // TooltipBackgr
+    
+    0xa00000e0  // MsgBackgr
+};
+
+#define vig_CLR(x) vig_Colors[vig_Color_##x]
+
+void vig_push_palette(); ///< Saves palette
+void vig_pop_palette(); ///< Restores palette
 
 
 

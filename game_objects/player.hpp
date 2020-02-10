@@ -7,6 +7,7 @@
 #include "game/physics.hpp"
 #include "game/weapon.hpp"
 
+struct LaserDesigRay;
 class PlayerController;
 
 
@@ -22,19 +23,12 @@ struct PlayerRender : ECompRender
 	std::array<Attach, ATT_TOTAL_COUNT> atts;
 	
 	float angle = 0.f; // override
-	
-	bool show_ray = false; // laser
 	std::string dbg_info;
 	
 	
 	PlayerRender(Entity* ent);
-	void set_ray_tar(vec2fp new_tar);
 	
 private:
-	vec2fp tar_ray = {};
-	std::optional<std::pair<vec2fp, vec2fp>> tar_next;
-	float tar_next_t;
-	
 	std::string dbg_info_real;
 	
 	void on_destroy() override;
@@ -56,8 +50,8 @@ struct PlayerMovement : EComp
 	std::pair<bool, float> get_t_accel() const {return {acc_flag, clampf_n(acc_val)};}
 	
 private:
-	const float spd_shld = 7; // with shield
-	const float spd_norm = 10; // default
+	const float spd_shld = 8; // with shield; 7
+	const float spd_norm = 12; // default; 10
 	const float spd_accel = 20;
 	const float max_mov_speed = spd_accel;
 	
@@ -80,6 +74,8 @@ private:
 
 struct ShieldControl
 {
+	static constexpr TimeSpan dead_regen_time = TimeSpan::seconds(5);
+	
 	ShieldControl(Entity& root);
 	void enable();
 	void disable();
@@ -138,6 +134,8 @@ private:
 class PlayerEntity final : public Entity
 {
 public:
+	static bool is_superman;
+	
 	EC_Physics     phy;
 	PlayerRender   ren;
 	PlayerMovement mov;
@@ -149,7 +147,10 @@ public:
 	std::shared_ptr<DmgShield> pers_shld;
 	std::shared_ptr<DmgArmor> armor;
 	
+	LaserDesigRay* laser;
+	
 	PlayerEntity(vec2fp pos, std::shared_ptr<PlayerController> ctr);
+	~PlayerEntity();
 	std::string ui_descr() const override {return "Player";}
 	ECompPhysics& get_phy() override {return  phy;}
 	ECompRender*  get_ren() override {return &ren;}

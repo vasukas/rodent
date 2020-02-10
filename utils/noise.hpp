@@ -22,7 +22,7 @@ struct RandomGen
 	double normal_fixed(); ///< (almost) normal distribution (strictly [-1; 1])
 	
 	std::string save() const;
-	bool load(const std::string& s);
+	void load(const std::string& s); ///< Throws on error
 	void set_seed(uint32_t s);
 	
 	template <typename T>

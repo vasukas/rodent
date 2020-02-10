@@ -34,11 +34,6 @@ TimeSpan TimeSpan::diff( const TimeSpan& t ) const
 	auto d = mks_value - t.mks_value;
 	return TimeSpan( mks_value > t.mks_value ? d : -d );
 }
-double TimeSpan::operator / ( const TimeSpan& t ) const
-{
-	if (!t.mks_value) return 0;
-	return double(mks_value) / t.mks_value;
-}
 void sleep(TimeSpan time)
 {
 	auto mk = time.micro();

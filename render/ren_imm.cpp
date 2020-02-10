@@ -492,7 +492,7 @@ public:
 		tri.build();
 		draw_text( at, tri, clr, center, size_k );
 	}
-	void draw_text (vec2fp at, std::vector<std::pair<std::string, FColor>> strs)
+	void draw_text (vec2fp at, std::vector<std::pair<FColor, std::string>> strs)
 	{
 		if (!can_add(true) || strs.empty()) return;
 		const float size_k = 1.f;
@@ -501,7 +501,7 @@ public:
 		tmp.reserve(4096);
 		for (size_t si = 0; si < strs.size(); )
 		{
-			auto& s = strs[si].first;
+			auto& s = strs[si].second;
 			tmp += s;
 			
 			size_t i = 0;
@@ -527,12 +527,12 @@ public:
 		reserve( tri.cs.size() );
 		for (auto &c : tri.cs)
 		{
-			if (prev != c.tex.tex || c_cou == strs[clr_i].first.length())
+			if (prev != c.tex.tex || c_cou == strs[clr_i].second.length())
 			{
-				add_obj( prev->get_obj(), strs[clr_i].second.to_px(), true );
+				add_obj( prev->get_obj(), strs[clr_i].first.to_px(), true );
 				prev = c.tex.tex;
 				
-				if (c_cou == strs[clr_i].first.length() && clr_i != strs.size() - 1) {
+				if (c_cou == strs[clr_i].second.length() && clr_i != strs.size() - 1) {
 					++clr_i;
 					c_cou = 0;
 				}
@@ -542,7 +542,7 @@ public:
 			add_rect({ p * size_k + at, c.pos.size() * size_k, true }, c.tex.tc);
 			++c_cou;
 		}
-		add_obj( prev->get_obj(), strs[clr_i].second.to_px(), true );
+		add_obj( prev->get_obj(), strs[clr_i].first.to_px(), true );
 	}
 	void draw_vertices(const std::vector<vec2fp>& vs)
 	{

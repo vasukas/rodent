@@ -1,5 +1,34 @@
+#include <memory>
 #include "image_utils.hpp"
 #include "noise.hpp"
+
+
+
+void downscale_2x(ImageInfo& img)
+{
+	vec2i sz = img.get_size() /2;
+	int bpp = img.get_bpp();
+	
+	for (int y=0; y < sz.y; ++y)
+	for (int x=0; x < sz.x; ++x)
+	{
+		uint8_t out[ImageInfo::max_bpp_value] = {};
+		
+		for (int i=0; i<2; ++i)
+		for (int j=0; j<2; ++j)
+		{
+			uint8_t* src = img.get_pixel_ptr_fast({ x*2 + i, y*2 + j });
+			for (int k=0; k < bpp; ++k)
+				out[k] += src[k] / 4;
+		}
+		
+		uint8_t* dst = img.raw() + (y * sz.x + x) * bpp;
+		for (int k=0; k < bpp; ++k)
+			dst[k] = out[k];
+	}
+	
+	img.reset(sz, {}, true);
+}
 
 
 
@@ -47,6 +76,7 @@ ImageInfo ImageGlowGen::gen(vec2i size_limit, bool reset_shapes)
 			}
 		}
 	}
+	m1 += vec2fp::one(0.1);
 	
 	// calc sizes and init
 	
@@ -113,7 +143,7 @@ void ImageGlowGen::glowify(ImageInfo& res)
 		virtual void rad_calc() {}
 		virtual float fact(float dist) = 0;
 	};
-	Calc* c = nullptr;
+	std::unique_ptr<Calc> c;
 	
 	switch (mode)
 	{
@@ -126,8 +156,7 @@ void ImageGlowGen::glowify(ImageInfo& res)
 					return (1. - dist / (tr->maxrad * tr->maxrad) / 2.5);
 				}
 			};
-			static CalcImpl cc;
-			c = &cc;
+			c.reset(new CalcImpl);
 		}
 		break;
 		
@@ -141,14 +170,11 @@ void ImageGlowGen::glowify(ImageInfo& res)
 					dt_r = tr->maxrad * (.9 + rnd_stat().range(-1, 1) * 0.05);
 				}
 				float fact(float dist) {
-					return dist < 0.5 ? 1 : 0;
-// TODO: fix entire algorithm
 					float r = dt_r * (1. + rnd_stat().range(-1, 1) * 0.02);
 					return (1. - dist / (r*r)) / 3.5;
 				}
 			};
-			static CalcImpl cc;
-			c = &cc;
+			c.reset(new CalcImpl);
 		}
 		break;
 	}
@@ -184,9 +210,13 @@ void ImageGlowGen::glowify(ImageInfo& res)
 		for (int cy = z0.y; cy <= z1.y; cy++)
 		for (int cx = z0.x; cx <= z1.x; cx++)
 		{
+			float dy = (cy - at.y) * 0.85; // yet another magic value
+			float dx = cx - at.x;
+			
 			// calculate glow factor based on distance
-			double f = c->fact (at.dist ({cx, cy}));
+			double f = c->fact (std::sqrt(dx*dx + dy*dy));
 			if (f <= 0.) continue;
+			f *= glow_k;
 			
 			uint8_t *dst = res.get_pixel_ptr_fast({cx, cy});
 			
@@ -194,6 +224,7 @@ void ImageGlowGen::glowify(ImageInfo& res)
 			for (int i=0; i<3; i++)
 			{
 				uint16_t clr = src[i] * f;
+				clr += dst[i];
 				dst[i] = clr < 0xff? clr : 0xff;
 				
 				// overflow makes adjacent colors more bright

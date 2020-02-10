@@ -4,6 +4,8 @@
 #include "color_manip.hpp"
 #include "res_image.hpp"
 
+void downscale_2x(ImageInfo& img);
+
 
 
 struct ImageBrush
@@ -43,6 +45,8 @@ struct ImageGlowGen
 	
 	int maxrad = 6; ///< Max glow radius (pixels)
 	Mode mode = M_EVEN;
+	float glow_k = 1; ///< Glow brightness
+	
 	std::vector<Shape> shs;
 	
 	/// Generates RGBA image fitted to specified size

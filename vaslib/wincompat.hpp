@@ -18,3 +18,5 @@ std::wstring winc_filename( const char *name );
 bool winc_chdir ( const char *fn );
 bool winc_fexist( const char *fn );
 FILE* winc_fopen( const char *fn, const char *mode );
+
+bool winc_mkdir( const char *fn );

@@ -1,5 +1,6 @@
 #include <SDL2/SDL.h>
 #include "client/gamepad.hpp"
+#include "core/hard_paths.hpp"
 #include "core/vig.hpp"
 #include "render/control.hpp"
 #include "render/gl_utils.hpp" // debug stats
@@ -36,7 +37,7 @@ static void set_wnd_pars()
 	SDL_SetWindowTitle(wnd, "RAT");
 	
 	ImageInfo img;
-	if (img.load("res/icon.png", ImageInfo::FMT_RGBA))
+	if (img.load(HARDPATH_APP_ICON, ImageInfo::FMT_RGBA))
 	{
 		auto icon = img.proxy();
 		SDL_SetWindowIcon( wnd, icon );
@@ -60,33 +61,7 @@ static void platform_info()
 		  sv_comp.major, sv_comp.minor, sv_comp.patch,
 		  sv_link.major, sv_link.minor, sv_link.patch);
 	
-#ifdef __clang__
-	VLOGI("Compiled with clang {}.{}.{}", __clang_major__, __clang_minor__, __clang_patchlevel__);
-#elif defined(__GNUC__)
-	VLOGI("Compiled with GCC {}.{}.{}", __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__);
-#elif defined(_MSC_VER)
-	VLOGI("Compiled with MSVC {}", _MSC_VER);
-#else
-	VLOGI("Compiled with unknown");
-#endif
-	
-#if defined(__linux__)
-	auto ps = "Linux";
-#elif defined(__unix__)
-	auto ps = "UNIX-like";
-#elif defined(_WIN32)
-	auto ps = "Windows";
-#endif
-	
-#if INTPTR_MAX == INT64_MAX
-	int bs = 64;
-#elif INTPTR_MAX == INT32_MAX
-	int bs = 32;
-#else
-	int bs = 0;
-#endif
-	
-	VLOGI("Platform - {} ({} bits)", ps, bs);
+	VLOGI("Platform: {}", get_full_platform_version());
 }
 
 
@@ -135,7 +110,18 @@ Mode options (--game):
   --cheats    allows cheats
   --rndseed   use random level seed
   --seed <N>  use specified level seed
+  --no-ffwd   disable fast-forwarding world on init
+  --superman  enable enhanced godmode for player
+
+  --no-demo-record     disables record-by-default ("user/last.ratdemo")
+  --demo-record        record replay to "user/replay_DATETIME.ratdemo"
+  --demo-write <FILE>  record replay to specified file (adds extension)
+  --demo-read  <FILE>  playback replay from file
+
+  --demo-net       <ADDR> <PORT> <IS_SERVER>  write replay to network
+  --demo-net-play  <ADDR> <PORT> <IS_SERVER>  playback replay from network
 )");
+				return 1;
 			}
 			else if (arg.is("--log")) log_filename = arg.str();
 			else if (arg.is("--logclr")) cli_logclr = arg.flag();
@@ -156,8 +142,10 @@ Mode options (--game):
 				}
 				MainLoop::create(MainLoop::INIT_GAME);
 			}
-			else if (MainLoop::current && MainLoop::current->parse_arg(arg)) continue;
 			else {
+				if (!MainLoop::current) MainLoop::create(MainLoop::INIT_DEFAULT);
+				if (MainLoop::current->parse_arg(arg)) continue;
+				
 				printf("Invalid option: %s\n", arg.cur().c_str());
 				return 1;
 			}
@@ -173,11 +161,15 @@ Mode options (--game):
 	
 	set_signals();
 	
-	if (!log_filename.empty())
+	if (!create_dir(HARDPATH_USR_PREFIX))
+		VLOGE("Can't create user directory");
+	
+	if (log_filename.empty()) VLOGW("Log not written to file! (no name set)");
+	else
     {
 		LoggerSettings lsets = LoggerSettings::current();
 		lsets.file.reset( File::open( log_filename.c_str(), File::OpenCreate | File::OpenDisableBuffer ) );
-		if (!lsets.file) log_write_str(LogLevel::Warning, "Log not written to file!");
+		if (!lsets.file) log_write_str(LogLevel::Warning, "Log not written to file! (error)");
 		
 		if (cli_verb) lsets.level = *cli_verb;
 		if (cli_logclr) lsets.use_clr = *cli_logclr;
@@ -211,20 +203,22 @@ Mode options (--game):
 		if (cfg_override)
 		{
 			if (!AppSettings::get_mut().load()) {
-				VLOGE("Can't load overriden settings, using default path");
+				VLOGE("Settings: cmd override - FAILED, ignoring");
 				cfg_override = false;
 			}
-			else VLOGI("Override (cmd) settings loaded");
+			else VLOGI("Settings: cmd override - loaded");
 		}
+		else VLOGI("Settings: cmd override - not present");
+		
 		if (!cfg_override)
 		{
-			AppSettings::get_mut().path_settings = "res/settings.cfg.default";
-			if (!AppSettings::get_mut().load())
-				VLOGW("Can't load default (base) settings");
+			AppSettings::get_mut().path_settings = HARDPATH_SETTINGS_DEFAULT;
+			if (AppSettings::get_mut().load()) VLOGI("Settings: defaults - loaded");
+			else VLOGW("Settings: defaults - FAILED");
 			
-			AppSettings::get_mut().path_settings = "res/settings.cfg";
-			if (AppSettings::get_mut().load())
-				VLOGI("User (override) settings loaded");
+			AppSettings::get_mut().path_settings = HARDPATH_SETTINGS_USER;
+			if (AppSettings::get_mut().load()) VLOGI("Settings: user override - loaded");
+			else VLOGW("Settings: user override - FAILED");
 		}
 	};
 	cfg_load();
@@ -346,6 +340,8 @@ Mode options (--game):
 	size_t avg_total_n = 0;
 	size_t overmax_count = 0;
 	
+	int passed_hack_n = 0;
+	
 	
 	
 	bool log_shown = false;
@@ -422,6 +418,9 @@ Mode options (--game):
 		vig_draw_start();
 		vig_draw_menues();
 		
+		if (passed < TimeSpan::seconds(0.1)) passed_hack_n = 0; // thread lag hack
+		else if (++passed_hack_n < 3) passed = loop_length;
+		
 		try {MainLoop::current->render( loop_0, passed );}
 		catch (std::exception& e) {
 			VLOGE("MainLoop::render() exception: {}", e.what());
@@ -476,7 +475,6 @@ Mode options (--game):
 		{
 			passed = loop_length;
 			precise_sleep(loop_length - loop_total);
-			if (loop_length < loop_total) ++overmax_count;
 		}
 		else {
 			passed = loop_total;
@@ -490,6 +488,11 @@ Mode options (--game):
 		
 		++avg_total_n;
 		avg_total += (loop_total.seconds() * 1000 - avg_total) / avg_total_n;
+		
+		if (loop_total > loop_length + TimeSpan::ms(2)) {
+			++overmax_count;
+			VLOGD("Render lag: {:.3f} seconds on step {}", loop_total.seconds(), avg_total_n);
+		}
 	}
 	
 	VLOGI("Total run time: {:.3f} seconds", (TimeSpan::since_start() - time_init).seconds());
@@ -501,7 +504,7 @@ Mode options (--game):
 	loglines_g.trigger();
 	avg_passed.reset();
 	
-	delete MainLoop::current;
+	while (MainLoop::current) delete MainLoop::current;
 	delete &RenderControl::get();
 	SDL_Quit();
 	

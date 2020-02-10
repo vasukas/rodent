@@ -1,12 +1,11 @@
 #include "client/effects.hpp"
+#include "game/level_ctr.hpp"
+#include "game/game_core.hpp"
+#include "game/player_mgr.hpp"
 #include "render/ren_aal.hpp"
 #include "utils/noise.hpp"
 #include "vaslib/vas_log.hpp"
-#include "game/game_core.hpp"
-#include "game/player_mgr.hpp"
-#include "game_ai/ai_group.hpp"
-#include "s_objs.hpp"
-#include "weapon_all.hpp"
+#include "objs_basic.hpp"
 
 
 
@@ -104,15 +103,13 @@ static FColor get_color(const EPickable::Value& val)
 }
 EPickable::AmmoPack EPickable::rnd_ammo()
 {
-	auto type = GameCore::get().get_random().random_el(
-		normalize_chances<AmmoType, 4>({{
-			{AmmoType::Bullet,   1.3},
-			{AmmoType::Rocket,   1.0},
-			{AmmoType::Energy,   0.8},
-	        {AmmoType::FoamCell, 0.4}
-		}})
-	);
-	return std_ammo(type);
+	static const auto cs = normalize_chances<AmmoType, 4>({{
+		{AmmoType::Bullet,   1.3},
+		{AmmoType::Rocket,   1.0},
+		{AmmoType::Energy,   0.8},
+		{AmmoType::FoamCell, 0.4}
+	}});
+	return std_ammo(GameCore::get().get_random().random_el(cs));
 }
 EPickable::AmmoPack EPickable::std_ammo(AmmoType type)
 {
@@ -219,79 +216,6 @@ void EPickable::on_cnt(const CollisionEvent& ce)
 	}, val);
 	
 	if (del) destroy();
-}
-
-
-
-static std::shared_ptr<AI_Drone::State> idle_noop()
-{
-	static auto p = std::make_shared<AI_Drone::State>( AI_Drone::IdleNoop{} );
-	return p;
-}
-static std::shared_ptr<AI_DroneParams> pars_turret()
-{
-	static std::shared_ptr<AI_DroneParams> pars;
-	if (!pars) {
-		pars = std::make_shared<AI_DroneParams>();
-		pars->dist_suspect = pars->dist_visible = 20;
-	}
-	return pars;
-}
-ETurret::ETurret(vec2fp at, std::shared_ptr<AI_Group> grp, size_t team)
-	:
-	phy(this, [&]{
-		b2BodyDef bd;
-		bd.position = conv(at);
-		bd.fixedRotation = true;
-		return bd;
-	}()),
-    ren(this, MODEL_BOX_SMALL, FColor(1, 0, 1, 1)),
-    hlc(this, 400),
-    eqp(this),
-    logic(this, pars_turret(), std::move(grp), idle_noop()),
-    l_tar(&logic),
-    team(team)
-{
-	b2FixtureDef fd;
-	phy.add_circle(fd, GameConst::hsz_box_small, 1);
-	
-	eqp.add_wpn(new WpnMinigunTurret);
-}
-
-
-
-EEnemyDrone::EEnemyDrone(vec2fp at, const Init& init)
-	:
-	phy(this, [&]{
-        b2BodyDef def;
-		def.position = conv(at);
-		def.type = b2_dynamicBody;
-		return def;
-	}()),
-	ren(this, init.model, FColor(1, 0, 0, 1)),
-	hlc(this, 70),
-	eqp(this),
-	logic(this, init.pars, init.grp, std::make_shared<AI_Drone::State>(AI_Drone::IdlePoint{at})),
-	l_tar(&logic),
-	mov(&logic),
-	drop_value(init.drop_value)
-{
-	b2FixtureDef fd;
-	fd.friction = 0.8;
-	fd.restitution = 0.4;
-	phy.add_circle(fd, GameConst::hsz_drone * 1.4, 25); // sqrt2 - diagonal
-	
-	hlc.add_filter(std::make_shared<DmgShield>(100, 20, TimeSpan::seconds(5)));
-//	hlc.ph_thr = 100;
-//	hlc.ph_k = 0.2;
-//	hlc.hook(phy);
-	
-	eqp.add_wpn(new WpnRocket);
-}
-EEnemyDrone::~EEnemyDrone()
-{
-	if (!GameCore::get().is_freeing() && GameCore::get().spawn_drop)
-		EPickable::death_drop(get_pos(), drop_value);
 }
 
 
@@ -491,8 +415,8 @@ EDoor::EDoor(vec2i TL_origin, vec2i door_ext, vec2i room_dir, bool plr_only)
 	
 	float cz = LevelControl::get().cell_size;
 	vec2fp sens_he;
-	if (is_x_ext) sens_he.set( door_ext.x * cz /2, cz );
-	else          sens_he.set( cz, door_ext.y * cz /2 );
+	if (is_x_ext) sens_he.set( door_ext.x * cz /2, cz * sens_width );
+	else          sens_he.set( cz * sens_width, door_ext.y * cz /2 );
 	
 	b2FixtureDef fd;
 	fd.friction = 0.15;

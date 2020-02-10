@@ -9,12 +9,13 @@ class MainLoop
 {
 public:
 	static MainLoop* current; ///< If becames nullptr, main exits
-
+	
 	enum InitWhich
 	{
 		INIT_DEFAULT,
 		INIT_GAME,
-		INIT_SETTINGS
+		INIT_SETTINGS,
+		INIT_HELP
 	};
 	
 	static void create(InitWhich which); ///< Makes it current

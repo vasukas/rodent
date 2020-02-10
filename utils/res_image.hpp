@@ -19,6 +19,9 @@ struct ImageInfo
 		FMT_RGBA   ///< TrueColor with alpha (32-bit)
 	};
 	
+	/// Max bytes per pixel possible
+	static constexpr int max_bpp_value = 4;
+	
 	/// Default is 3
 	static int png_compression_level;
 	
@@ -44,7 +47,7 @@ struct ImageInfo
 	
 	
 	/// Clears image (optionally changing format)
-	void reset( vec2i new_size, std::optional<Format> new_fmt = {} );
+	void reset( vec2i new_size, std::optional<Format> new_fmt = {}, bool keep_data = false );
 	
 	/// Clears image (sets pixels to zero)
 	void clear();
@@ -100,7 +103,7 @@ struct ImageInfo
 	
 	
 	
-	/// Resizes image keeping contents
+	/// Resizes image keeping contents (crops)
 	void resize( vec2i new_size );
 	
 	/// Copies contents from image of same format. Performs bound check

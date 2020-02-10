@@ -49,6 +49,13 @@ struct LevelTerrain
 		bool decor_used = false; ///< Not used here
 		StructureIndex structure = STR_NONE; ///< Index for room-specific objects
 		Room* room = nullptr; ///< To which room belongs (if any)
+		
+		int tmp; ///< May be used for various algorithms
+	};
+	struct Corridor
+	{
+		std::vector<size_t> rs; ///< Room indices
+		std::vector<vec2i> cs; ///< Cell positions
 	};
 	
 	vec2i grid_size;
@@ -56,6 +63,7 @@ struct LevelTerrain
 	
 	std::vector<Cell> cs;
 	std::vector<Room> rooms; ///< [0] is always initial room
+	std::vector<Corridor> corrs;
 	
 	std::vector<std::vector<vec2fp>> ls_wall; ///< Line segment loops representing walls
 	std::vector<std::pair<vec2fp, vec2fp>> ls_grid; ///< Line segments representing background grid
@@ -89,6 +97,7 @@ struct LevelTerrain
 	void test_save(const char *prefix = "level_test", bool img_line = true, bool img_grid = true) const;
 	
 private:
+	void find_corridors();
 	std::vector<std::vector<vec2fp>> vectorize() const;
 	std::vector<std::pair<vec2fp, vec2fp>> gen_grid() const;
 };

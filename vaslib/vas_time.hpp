@@ -28,9 +28,9 @@ struct TimeSpan
 	[[nodiscard]] static constexpr TimeSpan ms     ( int     t ) { return TimeSpan( t * 1000 ); }
 	[[nodiscard]] static constexpr TimeSpan micro  ( int64_t t ) { return TimeSpan( t ); }
 	
-	double  seconds() const { return mks_value / (1000.f * 1000.f); }
-	int     ms()      const { return mks_value / 1000; }
-	int64_t micro()   const { return mks_value; }
+	constexpr double  seconds() const { return mks_value / (1000.f * 1000.f); }
+	constexpr int     ms()      const { return mks_value / 1000; }
+	constexpr int64_t micro()   const { return mks_value; }
 	
 	void set_seconds( double  t ) { mks_value = t * 1000 * 1000; }
 	void set_ms     ( int     t ) { mks_value = t * 1000; }
@@ -49,8 +49,10 @@ struct TimeSpan
 	
 	TimeSpan operator -() const { return TimeSpan(-mks_value); }
 	
-	/// Returns 0 if t is 0
-	double operator / ( const TimeSpan& t ) const;
+	constexpr double operator / ( const TimeSpan& t ) const {
+		if (!t.mks_value) return 0;
+		return double(mks_value) / t.mks_value;
+	}
 	
 	bool operator < ( const TimeSpan& t ) const { return mks_value <  t.mks_value; }
 	bool operator > ( const TimeSpan& t ) const { return mks_value >  t.mks_value; }

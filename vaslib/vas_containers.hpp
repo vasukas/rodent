@@ -195,16 +195,16 @@ public:
 		Param(size_t obj_size, size_t obj_align, size_t pool_size = 128)
 			: obj_size(obj_size), obj_align(obj_align), pool_size(pool_size)
 		{}
-		
-		template <typename... Ts>
-		static Param autoset(size_t pool_size) {
-			return {
-				PoolAllocator_AutoParam<Ts...>::size,
-				PoolAllocator_AutoParam<Ts...>::align,
-				pool_size
-			};
-		}
 	};
+	
+	template <typename... Ts>
+	static Param genparams(size_t pool_size) {
+		return {
+			PoolAllocator_AutoParam<Ts...>::size,
+			PoolAllocator_AutoParam<Ts...>::align,
+			pool_size
+		};
+	}
 	
 	PoolAllocator(Param new_par = {0, 1});
 	
@@ -240,9 +240,9 @@ private:
 		
 		Pool(PoolAllocator* pa, size_t self_index);
 		Pool(const Pool&) = delete;
-		Pool(Pool&& p) {*this = std::move(p);}
+		Pool(Pool&& p) noexcept {*this = std::move(p);}
 		~Pool();
-		void operator=(Pool&& p);
+		void operator=(Pool&& p) noexcept;
 	};
 	
 	std::vector<Pool> ps;
@@ -258,7 +258,7 @@ class TypedPoolAllocator
 public:
 	
 	TypedPoolAllocator(size_t pool_size = 128)
-		: pa( PoolAllocator::Param::autoset<T>(pool_size) )
+		: pa( PoolAllocator::genparams<T>(pool_size) )
 	{}
 	
 	void* alloc() {return pa.alloc();}
@@ -276,7 +276,7 @@ public:
 	}
 	
 	void set_pool_size(size_t pool_size) {
-		pa.set_params( PoolAllocator::Param::autoset<T>(pool_size) );
+		pa.set_params( PoolAllocator::genparams<T>(pool_size) );
 	}
 	size_t get_pool_size() const {
 		return pa.get_params().pool_size;

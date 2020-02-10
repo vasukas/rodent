@@ -56,10 +56,11 @@ struct PPF_Tint : PP_Filter
 	struct Step
 	{
 		float t, tps;
-		FColor mul, add;
+		FColor m0, m1;
+		FColor a0, a1;
 	};
 	std::deque<Step> steps;
-	FColor p_mul = FColor(1,1,1,1);
+	FColor p_mul = FColor(1,1,1,1); // current
 	FColor p_add = FColor(0,0,0,0);
 	
 	PPF_Tint()
@@ -68,56 +69,60 @@ struct PPF_Tint : PP_Filter
 	}
 	bool is_ok_int() override
 	{
-		return !steps.empty();
+		if (!steps.empty()) return true;
+		for (int i=0; i<4; ++i) if (!aequ(p_mul[i], 1.f, 1/256.f)) return true;
+		for (int i=0; i<4; ++i) if (!aequ(p_add[i], 0.f, 1/256.f)) return true;
+		return false;
 	}
 	void proc() override
 	{
-		TimeSpan time = get_passed();
+		float time = get_passed().seconds();
 		while (!steps.empty())
 		{
 			auto& s = steps.front();
-			float incr = s.tps * time.seconds();
 			
-			float left = 1 - s.t;
-			if (incr < left)
+			s.t += s.tps * time;
+			if (s.t < 1.f)
 			{
-				s.t += incr;
+				p_mul = lerp(s.m0, s.m1, s.t);
+				p_add = lerp(s.a0, s.a1, s.t);
 				break;
 			}
+			time -= (s.t - 1.f) / s.tps;
 			
-			float used = left / incr;
-			time *= 1 - used;
-			
-			p_mul = s.mul;
-			p_add = s.add;
+			p_mul = s.m1;
+			p_add = s.a1;
 			steps.pop_front();
 		}
 		
 		sh->bind();
-		auto [mul, add] = calc_state();
-		sh->set_clr("mul", mul);
-		sh->set_clr("add", add);
+		sh->set_clr("mul", p_mul);
+		sh->set_clr("add", p_add);
 		draw(true);
 	}
 	void reset()
 	{
-		std::tie(p_mul, p_add) = calc_state();
 		steps.clear();
 	}
 	void add_step(TimeSpan ttr, FColor tar_mul, FColor tar_add)
 	{
+		FColor m0, a0;
+		if (steps.empty()) {
+			m0 = p_mul;
+			a0 = p_add;
+		}
+		else {
+			m0 = steps.back().m1;
+			a0 = steps.back().a1;
+		}
+			
 		auto& ns = steps.emplace_back();
 		ns.t = 0;
-		ns.tps = 1.f / std::max(ttr, TimeSpan::fps(10000)).seconds();
-		ns.mul = tar_mul;
-		ns.add = tar_add;
-	}
-	std::pair<FColor, FColor> calc_state()
-	{
-		if (steps.empty()) return {p_mul, p_add};
-		auto& s = steps.back();
-		float t = std::min(1.f, s.t);
-		return {lerp(p_mul, s.mul, t), lerp(p_add, s.add, t)};
+		ns.tps = 1.f / std::max(ttr, TimeSpan::micro(1)).seconds();
+		ns.m0 = m0;
+		ns.a0 = a0;
+		ns.m1 = tar_mul;
+		ns.a1 = tar_add;
 	}
 };
 

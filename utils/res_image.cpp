@@ -7,10 +7,10 @@
 #define STBI_NO_HDR
 #define STBI_FAILURE_USERMSG
 #define STB_IMAGE_IMPLEMENTATION
-#include "external/stb_image.h"
+#include "stb_image.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "external/stb_image_write.h"
+#include "stb_image_write.h"
 
 int ImageInfo::png_compression_level = 3;
 
@@ -124,11 +124,11 @@ SDL_Surface* ImageInfo::proxy() const
 	if (!sur) VLOGE("ImageInfo::proxy() SDL_CreateRGBSurfaceWithFormatFrom failed - {}", SDL_GetError());
 	return sur;
 }
-void ImageInfo::reset( vec2i new_size, std::optional<Format> new_fmt )
+void ImageInfo::reset(vec2i new_size, std::optional<Format> new_fmt, bool keep_data)
 {
 	if (new_fmt) fmt = *new_fmt;
 	size = new_size;
-	px.clear();
+	if (!keep_data) px.clear();
 	px.resize( size.area() * get_bpp() );
 }
 void ImageInfo::clear()

@@ -11,11 +11,14 @@
 PhysicsWorld::CastFilter StdProjectile::make_cf(EntityIndex)
 {
 	return PhysicsWorld::CastFilter(
-		[](auto, b2Fixture* f)
+		[](Entity& ent, b2Fixture& f)
 		{
-			if (f->IsSensor())
+			if (!ent.is_ok())
+				return false;
+			
+			if (f.IsSensor())
 			{
-				if (auto fi = getptr(f); fi && fi->get_armor_index()) return true;
+				if (auto fi = getptr(&f); fi && fi->get_armor_index()) return true;
 				return false;
 			}
 			return true;
@@ -181,6 +184,7 @@ void StdProjectile::step()
 	auto hit = GameCore::get().get_phy().raycast_nearest(conv(ray0), conv(ray0 + rayd), make_cf(src), pars.size);
 	if (hit) {
 		explode(ent->get_team(), src, conv(k_vel), *hit, pars);
+		hit_location = conv(hit->poi);
 		ent->destroy();
 	}
 }
@@ -192,10 +196,20 @@ ProjectileEntity::ProjectileEntity(vec2fp pos, vec2fp vel, std::optional<vec2fp>
     proj(this, pars, src? src->index : EntityIndex{}, target),
     team(src? src->get_team() : TEAM_ENVIRON)
 {
-	// Projectile created by (StepLogic -> EC_Equip -> Weapon) chain,
-	// so first logic step happens after first position step.
-	// This corrects position, so it'll be correct on first logic step
+	// This prevents projectiles from going through walls at point-blank range.
+	// Projectile is created by chain of: StepLogic -> EC_Equip -> Weapon,
+	// so it is moved one step before logic (and collision check) is executed. 
 	phy.pos.pos -= vel * GameCore::time_mul;
+	
+	// otherwise would be displayed at incorrect pos
+	ren.death_parts = false;
+}
+ProjectileEntity::~ProjectileEntity()
+{
+	vec2fp sz = ResBase::get().get_size(ren.model).size();
+	Transform at{proj.hit_location, ren.get_pos().rot};
+	at.combine(Transform{ -sz/2 });
+	GamePresenter::get()->effect(ME_DEATH, ren.model, {at, 1, ren.clr});
 }
 
 
@@ -352,11 +366,11 @@ bool ElectroCharge::SrcParams::ignore(Entity* ent)
 bool ElectroCharge::generate(vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim)
 {
 	PhysicsWorld::CastFilter check(
-		[](auto, b2Fixture* f)
+		[](auto&, b2Fixture& f)
 		{
-			if (f->IsSensor())
+			if (f.IsSensor())
 			{
-				if (auto fi = getptr(f); fi && fi->get_armor_index()) return true;
+				if (auto fi = getptr(&f); fi && fi->get_armor_index()) return true;
 				return false;
 			}
 			return true;
@@ -391,9 +405,9 @@ bool ElectroCharge::generate(vec2fp pos, SrcParams src, std::optional<vec2fp> di
 		if (!hc) continue;
 		
 		auto rc = GameCore::get().get_phy().raycast_nearest(conv(pos), conv(r.ent->get_pos()),
-			{[&](auto ent, auto fix){
-		         FixtureInfo* f = getptr(fix);
-		         return ent == r.ent || (f && (f->typeflags & FixtureInfo::TYPEFLAG_WALL));}});
+			{[&](auto& ent, auto& fix){
+		         FixtureInfo* f = getptr(&fix);
+		         return &ent == r.ent || (f && (f->typeflags & FixtureInfo::TYPEFLAG_WALL));}});
 		vec2fp r_poi = rc? conv(rc->poi) : r.ent->get_pos();
 		if (dir_lim && dot(*dir_lim, (pos - r_poi).norm()) > -angle_lim) continue;
 		
@@ -406,7 +420,7 @@ bool ElectroCharge::generate(vec2fp pos, SrcParams src, std::optional<vec2fp> di
 	if (rs_o.size() > max_tars)
 	{
 		for (size_t i=0; i<rs_o.size(); ++i)
-			std::swap(rs_o[i], rnd_stat().random_el(rs_o));
+			std::swap(rs_o[i], GameCore::get().get_random().random_el(rs_o));
 	}
 	
 	for (size_t i=0; i < std::min(max_tars, rs_o.size()); ++i)
@@ -456,7 +470,49 @@ void ElectroCharge::step()
 
 
 
-WpnElectro::WpnElectro()
+struct WpnElectro_Pars
+{
+	TimeSpan alt_delay = TimeSpan::seconds(0.3); ///< Cooldown for alt fire
+	float ai_alt_distance = -1; ///< Squared. If distance to target is smaller, primary replace with alt
+	
+	// primary fire
+	TimeSpan charge_time = TimeSpan::seconds(2.2);
+	TimeSpan wait_time = TimeSpan::seconds(3); ///< Wait before auto-discharge when fully charged
+	int max_ammo = 10; ///< At max charge
+	float max_damage = 300;
+	TimeSpan max_cd = TimeSpan::seconds(1); ///< Cooldown at max charge
+};
+static const WpnElectro_Pars& get_wpr(WpnElectro::Type type)
+{
+	static std::array<WpnElectro_Pars, WpnElectro::T_TOTAL_COUNT_INTERNAL> ts;
+	static bool inited = false;
+	if (!inited)
+	{
+		{	auto& t = ts[WpnElectro::T_ONESHOT];
+			t.max_damage = 16000;
+		}
+		{	auto& t = ts[WpnElectro::T_WORKER];
+			//
+			t.alt_delay = TimeSpan::seconds(1);
+			t.ai_alt_distance = 4;
+			//
+			t.charge_time = TimeSpan::seconds(1.5);
+			t.wait_time = {};
+			t.max_damage = 50;
+			t.max_cd = TimeSpan::seconds(1);
+		}
+		{	auto& t = ts[WpnElectro::T_CAMPER];
+			//
+			t.charge_time = TimeSpan::seconds(3);
+			t.wait_time = TimeSpan::seconds(0.7);
+			t.max_damage = 200;
+			t.max_cd = TimeSpan::seconds(3);
+		}
+	}
+	return ts[type];
+}
+
+WpnElectro::WpnElectro(Type type)
     : Weapon([]{
 		static std::optional<Info> info;
 		if (!info) {
@@ -466,33 +522,51 @@ WpnElectro::WpnElectro()
 			info->hand = 0;
 			info->ammo = AmmoType::Energy;
 			info->def_ammo = 1;
-			info->def_delay = TimeSpan::seconds(0.3);
+			info->def_delay = TimeSpan::seconds(0.4); // minimal primary cooldown
+			info->angle_limit = deg_to_rad(10);
 			info->set_origin_from_model();
 		}
 		return &*info;
-	}())
+	}()),
+	wpr(get_wpr(type))
 {}
 std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 {
 	auto dirs_tuple = get_direction(pars);
 	if (!dirs_tuple) return {};
 	auto [p, v] = *dirs_tuple;
+	        
+	if (wpr.ai_alt_distance > 0)
+	{
+		if (pars.main)
+		{
+			if (!pars.main_was && wpr.ai_alt_distance > dirs_tuple->origin.dist_squ( pars.target ))
+				ai_alt = true;
+			
+			if (ai_alt) {
+				pars.main = pars.main_was = false;
+				pars.alt = true;
+			}
+		}
+		else if (pars.main_was && ai_alt)
+		{
+			pars.main = pars.main_was = false;
+			pars.alt = true;
+			ai_alt = false;
+		}
+	}
 
 	auto ent = equip->ent;
 	if (pars.main || pars.main_was)
 	{
-		const TimeSpan charge_time = TimeSpan::seconds(2.2);
-		const TimeSpan wait_time = TimeSpan::seconds(3);
-		const int max_ammo = 10;
-		const float max_damage = 250;
-		const TimeSpan max_cd = TimeSpan::seconds(1);
+		const float min_charge_lvl = 0.51f / wpr.max_ammo;
 		const float ray_width = 2; // full-width
 		
 		if (pars.main)
 		{
-			if (charge_lvl < 1.f && equip->has_ammo(*this, max_ammo * charge_lvl))
+			if (charge_lvl < 1.f && equip->has_ammo(*this, wpr.max_ammo * charge_lvl))
 			{
-				charge_lvl += GameCore::time_mul * (1.f / charge_time.seconds());
+				charge_lvl += GameCore::time_mul * (1.f / wpr.charge_time.seconds());
 				if (charge_lvl >= 1.f) charge_lvl = 1.f;
 				GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform{p, v.angle()}, charge_lvl * 2, FColor(0, 1, 1)});
 			}
@@ -501,8 +575,10 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 				GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform{p, v.angle()}, charge_lvl * 2.5f, FColor(1, 1, 1)});
 			}
 			
-			if (charge_tmo < wait_time) return {};
+			if (charge_tmo < wpr.wait_time)
+				return {};
 		}
+		charge_lvl = std::max(charge_lvl, min_charge_lvl);
 		
 		//
 		
@@ -513,25 +589,42 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 		skew.Normalize();
 		skew *= ray_width / 2;
 		
-		PhysicsWorld::RaycastResult r_hits[3];
-		int n_hits = 0;
-		
-		b2Vec2 r_offs[3] = {{0,0}, skew, -skew};
-		auto cf = StdProjectile::make_cf(ent->index);
-		//
-		for (int i=0; i<3; ++i) {
-			if (auto hit = GameCore::get().get_phy().raycast_nearest(r_from + r_offs[i], r_to + r_offs[i], cf))
-				r_hits[n_hits++] = *hit;
-		}
-		if (!n_hits) return {}; // unlikely (impossible)
-		
-		PhysicsWorld::RaycastResult hit = r_hits[0];
-		for (int i=1; i < n_hits; ++i)
+		PhysicsWorld::RaycastResult hit;
+		auto proc_hit = [&](vec2fp v, float k_dmg)
 		{
-			auto& h = r_hits[i];
-			if (h.ent->get_eqp() && (!hit.ent->get_eqp() || h.distance < hit.distance))
-				hit = h;
-		}
+			PhysicsWorld::RaycastResult r_hits[3];
+			int n_hits = 0;
+			
+			b2Vec2 r_offs[3] = {{0,0}, skew, -skew};
+			auto cf = StdProjectile::make_cf(ent->index);
+			//
+			for (int i=0; i<3; ++i) {
+				if (auto hit = GameCore::get().get_phy().raycast_nearest(r_from + r_offs[i], r_to + r_offs[i], cf))
+					r_hits[n_hits++] = *hit;
+			}
+			if (!n_hits) return false; // unlikely (impossible)
+			
+			hit = r_hits[0];
+			for (int i=1; i < n_hits; ++i)
+			{
+				auto& h = r_hits[i];
+				if (h.ent->get_eqp() && (!hit.ent->get_eqp() || h.distance < hit.distance))
+					hit = h;
+			}
+			
+			//
+			
+			StdProjectile::Params pp;
+			pp.dq.amount = wpr.max_damage * charge_lvl * k_dmg;
+			pp.imp = 400 * charge_lvl;
+			StdProjectile::explode(ent->get_team(), ent->index, conv(v), hit, pp);
+			
+			return true;
+		};
+		
+		if (!proc_hit(v, 1)) return {}; // unlikely (impossible)
+		for (int i=0, k = 2; i < shoot_through; ++i, k *= 2)
+			proc_hit(v, 1.f / k);
 		
 		//
 		
@@ -540,12 +633,7 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 		GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform(conv(hit.poi), v.angle() + M_PI),
 		                                             charge_lvl * 20, FColor(0.6, 0.85, 1, 1.2)});
 		
-		StdProjectile::Params pp;
-		pp.dq.amount = max_damage * charge_lvl;
-		pp.imp = 400 * charge_lvl;
-		StdProjectile::explode(ent->get_team(), ent->index, conv(v), hit, pp);
-		
-		ShootResult res = {std::max(1, int_round(max_ammo * charge_lvl)), max_cd * charge_lvl};
+		ShootResult res = {int_round(wpr.max_ammo * charge_lvl), std::max(wpr.max_cd * charge_lvl, *info->def_delay)};
 		charge_lvl = 0.f;
 		charge_tmo = {};
 		return res;
@@ -554,7 +642,7 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 	if (pars.alt)
 	{
 		bool ok = ElectroCharge::generate(p, {ent->get_team(), ent->index}, v);
-		if (ok) return ShootResult{};
+		if (ok) return ShootResult{{}, wpr.alt_delay};
 		else if (auto m = equip->msgrep) m->jerr(WeaponMsgReport::ERR_NO_TARGET);
 	}
 	
@@ -746,11 +834,10 @@ std::optional<Weapon::ShootResult> WpnFoam::shoot(ShootParams pars)
 					if (e.fix) q.armor = e.fix->get_armor_index();
 					if (dynamic_cast<FoamProjectile*>(e.ent)) q.amount = foam_dmg;
 					
-					GamePresenter::get()->effect(FE_EXPLOSION, {Transform(*q.wpos), 0.2f * k});
-
 					q.amount *= k;
 					hc->apply(q);
 				}
+				GamePresenter::get()->effect(FE_EXPLOSION, {Transform(conv(e.poi)), 0.1f * k});
 				k /= 2;
 			}
 			
@@ -901,6 +988,44 @@ std::optional<Weapon::ShootResult> WpnRifle::shoot(ShootParams pars)
 		return ShootResult{ammo, TimeSpan::seconds(0.7)};
 	}
 	
+	return {};
+}
+
+
+
+WpnRifleBot::WpnRifleBot()
+    : Weapon([]{
+		static std::optional<Info> info;
+		if (!info) {
+			info = Info{};
+			info->name = "Rifle BOT";
+			info->model = MODEL_BOLTER;
+			info->ammo = AmmoType::Bullet;
+			info->def_ammo = 1;
+			info->def_delay = TimeSpan::seconds(0.2);
+			info->bullet_speed = 18;
+			info->set_origin_from_model();
+		}
+		return &*info;
+	}())
+{
+	pp.dq.amount = 15.f;
+	pp.imp = 20.f;
+}
+std::optional<Weapon::ShootResult> WpnRifleBot::shoot(ShootParams pars)
+{
+	auto dirs_tuple = get_direction(pars);
+	if (!dirs_tuple) return {};
+	auto [p, v] = *dirs_tuple;
+
+	if (pars.main)
+	{
+		v *= info->bullet_speed;
+		v.rotate( GameCore::get().get_random().range(-1, 1) * deg_to_rad(5) );
+	
+		new ProjectileEntity(p, v, {}, equip->ent, pp, MODEL_MINIGUN_PROJ, FColor(0.6, 0.8, 1, 1.5));
+		return ShootResult{};
+	}
 	return {};
 }
 
@@ -1147,7 +1272,7 @@ std::optional<Weapon::ShootResult> WpnUber::shoot(ShootParams pars)
 		float dist = conv(hit->poi).dist(p) / max_dist;
 		
 		StdProjectile::Params pp;
-		pp.dq.amount = lerp(380, 50, dist) * GameCore::time_mul;
+		pp.dq.amount = lerp(450, 50, dist) * GameCore::time_mul;
 		pp.imp = lerp(30, -5, dist);
 		StdProjectile::explode(ent->get_team(), ent->index, conv(v), *hit, pp);
 		

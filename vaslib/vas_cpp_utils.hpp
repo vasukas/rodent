@@ -2,8 +2,8 @@
 #define VAS_CPP_UTILS_HPP
 
 #include <algorithm>
-#include <optional>
 #include <functional>
+#include <optional>
 #include <vector>
 #include "vaslib/vas_types.hpp"
 
@@ -13,8 +13,8 @@ template <typename T>
 struct ptr_range
 {
 	typedef T value_type;
-	typedef std::remove_const_t<T> mut_t;
-	typedef const mut_t const_t;
+	typedef T mut_t;
+	typedef const T const_t;
 	
 	ptr_range(T* p, size_t n): p(p), n(n) {}
 	
@@ -32,6 +32,9 @@ struct ptr_range
 	
 	mut_t&   operator[] (size_t i)       {return p[i];}
 	const_t& operator[] (size_t i) const {return p[i];}
+	
+	mut_t*   data()       {return p;}
+	const_t* data() const {return p;}
 	
 private:
 	T* p;
@@ -60,8 +63,8 @@ struct RAII_Guard
 	RAII_Guard( const RAII_Guard& ) = delete;
 	void operator =( const RAII_Guard& ) = delete;
 	
-	RAII_Guard( RAII_Guard&& g ) { foo = std::move(g.foo); g.foo = {}; }
-	void operator =( RAII_Guard&& g ) { foo = std::move(g.foo); g.foo = {}; }
+	RAII_Guard( RAII_Guard&& g ) noexcept { foo = std::move(g.foo); g.foo = {}; }
+	void operator =( RAII_Guard&& g ) noexcept { foo = std::move(g.foo); g.foo = {}; }
 	
 	operator bool() {return foo.operator bool();}
 	std::function <void()> copy_func() { return foo; }
@@ -108,6 +111,12 @@ class callable_ref_base<AllowOptional, Ret(Args...)>
 	// P0792R0 (open-std.org)
 	void* _ptr;
 	Ret(*_erased_fn)(void*, Args...);
+	
+	template<bool, typename>
+	friend class callable_ref_base;
+	
+	callable_ref_base(void* _ptr, Ret(*_erased_fn)(void*, Args...))
+		: _ptr(_ptr), _erased_fn(_erased_fn) {}
 
 public:
 	template <typename T, std::enable_if_t<
@@ -121,9 +130,15 @@ public:
 			return (*reinterpret_cast<std::add_pointer_t<T>>(ptr))(std::forward<Args>(xs)...);
 		};
 	}
+	
+	template <typename T, std::enable_if_t<
+		std::is_same_v<std::decay_t<T>, callable_ref_base<false, Ret(Args...)>>, int> = 0>
+	callable_ref_base(T&& f) noexcept {
+		_ptr = f._ptr;
+		_erased_fn = f._erased_fn;
+	}
 
-	template <typename T, std::enable_if_t<std::is_null_pointer_v<T>, int> = 0>
-	callable_ref_base(T) noexcept {
+	callable_ref_base(std::nullptr_t) noexcept {
 		static_assert(AllowOptional, "non-opt callable_ref can't be initialized with nullptr");
 		_ptr = nullptr;
 		_erased_fn = nullptr;
@@ -133,8 +148,13 @@ public:
 		return AllowOptional ? _ptr != nullptr : true;
 	}
 	auto operator()(Args... xs) {
-		if (AllowOptional && !(*this)) throw std::logic_error("null opt_callable_ref invoked");
+		if (!(*this)) throw std::logic_error("null opt_callable_ref invoked");
 		return _erased_fn(_ptr, std::forward<Args>(xs)...);
+	}
+	
+	callable_ref_base<false, Ret(Args...)> to_nonopt() const {
+		if (!(*this)) throw std::logic_error("null opt_callable_ref conversion");
+		return callable_ref_base<false, Ret(Args...)>(_ptr, _erased_fn);
 	}
 };
 

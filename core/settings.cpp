@@ -1,6 +1,7 @@
 #include <SDL2/SDL_filesystem.h>
-#include "vaslib/vas_log.hpp"
+#include "core/hard_paths.hpp"
 #include "utils/block_cfg.hpp"
+#include "vaslib/vas_log.hpp"
 #include "settings.hpp"
 
 const AppSettings& AppSettings::get() { return get_mut(); }
@@ -14,9 +15,9 @@ AppSettings& AppSettings::get_mut()
 AppSettings::AppSettings()
 {
 #if !USE_RELEASE_PATHS
-	path_log = "rodent.log";
+	path_log = HARDPATH_LOGFILE;
 	path_resources = "";
-	path_settings = "res/settings.cfg";
+	path_settings = HARDPATH_SETTINGS_USER;
 	
 #else
 #warning Not tested
@@ -93,7 +94,7 @@ bool AppSettings::load()
 	P_TERN(set_vsync);
 	
 #define FONT(NM) \
-	c = &cs.emplace_back( true, true, "font_" #NM "fn", [&](){ font_##NM##path = s; font_##NM##path.insert( 0, "res/" ); return true; }); \
+	c = &cs.emplace_back( true, true, "font_" #NM "fn", [&](){ font_##NM##path = s; font_##NM##path.insert(0, HARDPATH_DATA_PREFIX); return true; }); \
 	c->val(s); \
 	c = &cs.emplace_back( true, true, "font_" #NM "pt", [&](){ font_##NM##pt = i; return true; }); \
 	c->val(i) \
@@ -107,6 +108,7 @@ bool AppSettings::load()
 	P_INT(interp_depth, interp_depth == 0 || interp_depth == 2 || interp_depth == 3);
 	
 	P_INT(cursor_info_flags, i >= 0 && i <= 1);
+	P_BOOL(plr_status_blink);
 	P_BOOL(spawn_drop);
 	
 	return bc_parsefile( path_settings.c_str(), std::move(cs), 2, BC_Block::F_IGNORE_UNKNOWN );

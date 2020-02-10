@@ -102,7 +102,7 @@ public:
 	virtual void draw_text (vec2fp at, std::string_view str, uint32_t clr = White, bool centered = false, float size_k = 1.f, FontIndex font = static_cast<FontIndex>(0)) = 0;
 	
 	/// Draw ASCII string, with separately colored characters (count, color)
-	virtual void draw_text (vec2fp at, std::vector<std::pair<std::string, FColor>> strs) = 0;
+	virtual void draw_text (vec2fp at, std::vector<std::pair<FColor, std::string>> strs) = 0;
 	
 	/// Returns size of non-null ASCII string
 	static vec2i text_size (std::string_view str);

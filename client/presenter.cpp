@@ -61,7 +61,8 @@ EC_RenderSimple::EC_RenderSimple(Entity* ent, ModelType model, FColor clr)
 {}
 void EC_RenderSimple::on_destroy()
 {
-	parts(model, ME_DEATH, {{}, 1, clr});
+	if (death_parts)
+		parts(model, ME_DEATH, {{}, 1, clr});
 }
 void EC_RenderSimple::step()
 {
@@ -123,7 +124,7 @@ public:
 		int base_a;
 		float t, tps;
 		
-		FloatTextRender(FloatText&& ft)
+		FloatTextRender(FloatText&& ft) noexcept
 		{
 			at = ft.at;
 			tri.str_a = ft.str.data();
@@ -203,7 +204,7 @@ public:
 		for (auto& c : cs)
 		{
 			auto& phy = c->ent->get_phy();
-			Transform tr = phy.get_trans();
+			Transform tr{ phy.get_pos(), c->ent->get_face_rot() };
 			
 			bool was_vp = c->_in_vport;
 			c->_in_vport = c->disable_culling || vport.contains( tr.pos );
@@ -212,7 +213,7 @@ public:
 			if (interp_dep)
 			{
 				auto& q = c->_q_pos;
-				if (!was_vp) {
+				if (!was_vp || playback_hack) {
 					c->_pos = tr;
 					q.fn = 0;
 				}
@@ -462,6 +463,10 @@ public:
 void GamePresenter::effect(FreeEffect effect, const ParticleBatchPars &pars)
 {
 	add_cmd(PresCmdEffect{nullptr, effect, pars});
+}
+void GamePresenter::effect(ModelEffect effect, ModelType model, const ParticleBatchPars& pars)
+{
+	add_cmd(PresCmdObjEffect{nullptr, model, effect, pars});
 }
 void GamePresenter::dbg_line(vec2fp a, vec2fp b, uint32_t clr, float wid)
 {

@@ -3,6 +3,15 @@
 #include "vaslib/vas_log.hpp"
 #include "plr_control.hpp"
 
+/*
+=====================================================
+	!!! WHEN CHANGING CONTROLS !!!
+	
+	client/replay.cpp  - increase version 
+	core/main_loop.cpp - update F1 help menu
+=====================================================
+*/
+
 bool PlayerController::allow_cheats = true;
 
 
@@ -134,16 +143,6 @@ PlayerController::PlayerController()
 		b.type = BT_ONESHOT;
 		b.key = SDL_SCANCODE_E;
 	}{
-		Bind& b = binds[A_DEBUG_SELECT];
-		b.name = "<BLANK>";
-		b.descr = "This appears to do nothing";
-		b.type = BT_HELD;
-		b.key = SDL_SCANCODE_LSHIFT;
-	}{
-		Bind& b = binds[A_DEBUG_TELEPORT];
-		b.name = "<BLANK>";
-		b.descr = "Ph'nglui mglw'nafh Cthulhu R'lyeh wgah'nagl fhtagn";
-	}{
 		Bind& b = binds[A_CAM_FOLLOW];
 		b.name = "Camera track";
 		b.descr = "Enables camera tracking when held";
@@ -159,7 +158,7 @@ PlayerController::PlayerController()
 		Bind& b = binds[A_LASER_DESIG];
 		b.name = "Laser";
 		b.descr = "Toggles laser designator";
-		b.type = BT_ONESHOT;
+		b.type = BT_SWITCH;
 		b.key = SDL_SCANCODE_R;
 		b.but = Gamepad::B_RC_RIGHT;
 	}{
@@ -169,13 +168,6 @@ PlayerController::PlayerController()
 		b.type = BT_SWITCH;
 		b.key = SDL_SCANCODE_M;
 		b.but = Gamepad::B_RC_UP;
-	}{
-		Bind& b = binds[A_SHOW_WPNS];
-		b.name = "Show weapons";
-		b.descr = "Shows all obtained weapons";
-		b.type = BT_SWITCH;
-		b.key = SDL_SCANCODE_I;
-		b.but = Gamepad::B_UP;
 	}{
 		Bind& b = binds[A_WPN_PREV];
 		b.name = "Previous weapon";
@@ -368,22 +360,10 @@ void PlayerController::update()
 			else if (s == K_JUST) s = K_HELD;
 		}
 	}
-	
-	if (state.is[A_DEBUG_SELECT])
-	{
-		state.is[A_DEBUG_SELECT] = false;
-		if (allow_cheats)
-		{
-			if (state.is[A_SHOOT]) {
-				state.is[A_SHOOT] = false;
-				state.is[A_DEBUG_SELECT] = true;
-			}
-			if (state.is[A_SHOOT_ALT]) {
-				state.is[A_SHOOT_ALT] = false;
-				state.is[A_DEBUG_TELEPORT] = true;
-			}
-		}
-	}
+}
+void PlayerController::force_state(State st)
+{
+	state = std::move(st);
 }
 void PlayerController::set_switch(Action act, bool value)
 {

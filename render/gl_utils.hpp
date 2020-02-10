@@ -42,8 +42,8 @@ struct GLA_Buffer
 	GLA_Buffer( const GLA_Buffer& ) = delete;
 	void operator =( const GLA_Buffer& ) = delete;
 	
-	GLA_Buffer( GLA_Buffer&& );
-	void operator =( GLA_Buffer&& );
+	GLA_Buffer( GLA_Buffer&& ) noexcept;
+	void operator =( GLA_Buffer&& ) noexcept;
 	
 	void swap(GLA_Buffer& obj);
 	
@@ -72,8 +72,8 @@ struct GLA_VertexArray
 	GLA_VertexArray( const GLA_VertexArray& ) = delete;
 	void operator =( const GLA_VertexArray& ) = delete;
 	
-	GLA_VertexArray( GLA_VertexArray&& );
-	void operator =( GLA_VertexArray&& );
+	GLA_VertexArray( GLA_VertexArray&& ) noexcept;
+	void operator =( GLA_VertexArray&& ) noexcept;
 	
 	void swap(GLA_VertexArray& obj);
 	
@@ -110,8 +110,8 @@ struct GLA_Texture
 	GLA_Texture( const GLA_Texture& ) = delete;
 	void operator =( const GLA_Texture& ) = delete;
 	
-	GLA_Texture( GLA_Texture&& );
-	void operator =( GLA_Texture&& );
+	GLA_Texture( GLA_Texture&& ) noexcept;
+	void operator =( GLA_Texture&& ) noexcept;
 	
 	void swap(GLA_Texture& obj);
 	
@@ -149,8 +149,8 @@ struct GLA_Framebuffer
 	GLA_Framebuffer( const GLA_Framebuffer& ) = delete;
 	void operator =( const GLA_Framebuffer& ) = delete;
 	
-	GLA_Framebuffer( GLA_Framebuffer&& obj ) {swap(obj);}
-	void operator =( GLA_Framebuffer&& obj ) {swap(obj);}
+	GLA_Framebuffer( GLA_Framebuffer&& obj ) noexcept {swap(obj);}
+	void operator =( GLA_Framebuffer&& obj ) noexcept {swap(obj);}
 	
 	void swap(GLA_Framebuffer& obj) {
 		std::swap(fbo, obj.fbo);

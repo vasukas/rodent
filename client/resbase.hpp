@@ -51,7 +51,7 @@ enum ModelType
 	
 	MODEL_BAT,
 	MODEL_HANDGUN,
-	MODEL_BOLTER,
+	MODEL_BOLTER, // rifle
 	MODEL_GRENADE,
 	MODEL_MINIGUN,
 	MODEL_ROCKET,
@@ -117,7 +117,7 @@ public:
 	
 	virtual vec2fp get_cpt(ModelType type) = 0; ///< Some special control/center point. Default is (0,0)
 	virtual Rectfp get_size(ModelType type) = 0; ///< Without scalebox transform
-	virtual TextureReg get_image(ModelType type) = 0; ///< May change
+	virtual TextureReg get_image(ModelType type) = 0; ///< Returned value may change (async load)
 	
 protected:
 	friend class GamePresenter_Impl;

@@ -39,6 +39,8 @@ struct StdProjectile : EComp
 	
 	StdProjectile(Entity* ent, const Params& pars, EntityIndex src, std::optional<vec2fp> target);
 	
+	vec2fp hit_location = {}; ///< Set before destroy
+	
 private:
 	Params pars;
 	EntityIndex src;
@@ -54,6 +56,8 @@ class ProjectileEntity : public Entity
 public:
 	ProjectileEntity(vec2fp pos, vec2fp vel, std::optional<vec2fp> target, Entity* src,
 	                 const StdProjectile::Params& pars, ModelType model, FColor clr);
+	~ProjectileEntity();
+	
 private:
 	EC_VirtualBody phy;
 	EC_RenderSimple ren;
@@ -237,12 +241,27 @@ private:
 
 
 
+struct WpnElectro_Pars;
+
 class WpnElectro : public Weapon
 {
 public:
-	WpnElectro();
+	static constexpr int shoot_through = 2; // each next weaker by 2
+	
+	enum Type
+	{
+		T_PLAYER,
+		T_ONESHOT,
+		T_WORKER,
+		T_CAMPER,
+		
+		T_TOTAL_COUNT_INTERNAL
+	};
+	WpnElectro(Type type);
 	
 private:
+	const WpnElectro_Pars& wpr;
+	bool ai_alt = false;
 	float charge_lvl = 0;
 	TimeSpan charge_tmo;
 	
@@ -268,6 +287,18 @@ class WpnRifle : public Weapon
 {
 public:
 	WpnRifle();
+	
+private:
+	StdProjectile::Params pp;
+	std::optional<ShootResult> shoot(ShootParams pars) override;
+};
+
+
+
+class WpnRifleBot : public Weapon
+{
+public:
+	WpnRifleBot();
 	
 private:
 	StdProjectile::Params pp;

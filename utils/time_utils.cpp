@@ -1,5 +1,8 @@
+#include "core/settings.hpp"
+#include "render/control.hpp"
 #include "vaslib/vas_math.hpp"
 #include "time_utils.hpp"
+
 
 SmoothSwitch::SmoothSwitch(TimeSpan tmo, std::optional<TimeSpan> tmo_out) {reset(tmo, tmo_out);}
 void SmoothSwitch::reset(TimeSpan tmo, std::optional<TimeSpan> tmo_out_new)
@@ -86,4 +89,45 @@ void SmoothSwitch::set_v(float v)
 {
 	if		(stage == S_UP)   tcou = tmo_in  * v;
 	else if (stage == S_DOWN) tcou = tmo_out * v;
+}
+
+
+
+float SmoothBlink::get_sine(bool enabled)
+{
+	return t_base(enabled, 1, [](float t)
+	{
+		const float t_min = 0.3, t_max = 2.2; // sine
+		t = sine_lut_norm(t);
+		return t >= 0 ? lerp(1, t_max, t) : lerp(1, t_min, -t);
+	});
+}
+float SmoothBlink::get_blink(bool enabled)
+{
+	return t_base(enabled, 0, [](float t){
+		return float(t < 0.5 ? t*2 : 2 - t*2);
+	});
+}
+void SmoothBlink::trigger()
+{
+	time = std::max(time, TimeSpan::ms(1));
+}
+void SmoothBlink::force_reset()
+{
+	time = {};
+}
+float SmoothBlink::t_base(bool enabled, float def, callable_ref<float(float)> proc)
+{
+	if (!AppSettings::get().plr_status_blink) return def;
+	if (time.is_positive() || enabled)
+	{
+		if (enabled) time += RenderControl::get().get_passed();
+		else {
+			time = full_period * std::fmod(time / full_period, 1);
+			time += RenderControl::get().get_passed();
+			if (time > full_period) time = {};
+		}
+		return proc(std::fmod(time / full_period, 1));
+	}
+	return def;
 }

@@ -1,10 +1,6 @@
 #ifndef VAS_MATH_HPP
 #define VAS_MATH_HPP
 
-#ifdef __unix__
-#define _USE_MATH_DEFINES // on Windows it should be defined in project parameters
-#endif
-
 #include <algorithm>
 #include <array>
 #include <cinttypes>
@@ -44,11 +40,22 @@ inline float clampf_n(float x) {return clampf(x, 0, 1);}
 template <typename T> T clamp(T x, T min, T max) {return std::max(min, std::min(max, x));}
 
 template <typename T1, typename T2, typename T3>
-typename std::common_type<T1, T2>::type
+typename std::common_type_t<T1, T2>
 lerp (T1 a, T2 b, T3 t) {return a * (1 - t) + b * t;}
+
+template <typename T1, typename T2>
+T1 inv_lerp(T2 a, T2 b, T2 v) {return (v - a) / (b - a);}
 
 template <typename T>
 int int_round(T value) {return static_cast<int>(std::round(value));}
+
+/// Absolute difference in ring of numbers modulo n; a,b ∈ [0, n)
+template <typename T>
+typename std::enable_if_t<std::is_signed_v<T>, T>
+modulo_dist(T a, T b, T n) {
+	T d1 = std::abs(a - b);
+	return std::min(d1, n - d1);
+}
 
 
 
@@ -65,9 +72,9 @@ inline float abs_angle_diff(float a1, float a2) {return std::fabs(wrap_angle( a1
 
 /// Linear interpolation between two angles, expressed in radians. Handles all cases
 template <typename T1, typename T2, typename T3>
-typename std::enable_if <
-	std::is_floating_point<typename std::common_type<T1, T2, T3>::type>::value,
-	typename std::common_type<T1, T2, T3>::type >::type
+typename std::enable_if_t <
+	std::is_floating_point_v<typename std::common_type_t<T1, T2, T3>>,
+	typename std::common_type_t<T1, T2, T3> >
 lerp_angle (T1 a, T2 b, T3 t) {return a + t * std::remainder(b - a, M_PI*2);}
 
 
@@ -112,8 +119,8 @@ struct vec2i {
 	uint ndg_dist(const vec2i& v) const {return std::abs(x - v.x) + std::abs(y - v.y);} ///< Manhattan distance
 	uint int_dist(const vec2i& v) const {return (*this - v).ilen();} ///< Straight integer distance (approximate)
 	
-	void rot90cw()  {int t = x; x = y; y = -t;}
-	void rot90ccw() {int t = x; x = -y; y = t;}
+	vec2i& rot90cw()  {int t = x; x = y; y = -t; return *this;}
+	vec2i& rot90ccw() {int t = x; x = -y; y = t; return *this;}
 	
 	vec2fp rotate (double angle) const; ///< Rotation by angle (radians)
 	vec2fp fastrotate (float angle) const; ///< Rotation by angle (radians) using table lookup
@@ -183,8 +190,8 @@ struct vec2fp {
 	float ndg_dist(const vec2fp& v) const {return std::fabs(x - v.x) + std::fabs(y - v.y);} ///< Manhattan distance
 	float dist_squ(const vec2fp& v) const {return (*this - v).len_squ();} ///< Squared distance
 	
-	void rot90cw()  {float t = x; x = y; y = -t;}
-	void rot90ccw() {float t = x; x = -y; y = t;}
+	vec2fp& rot90cw()  {float t = x; x = y; y = -t; return *this;}
+	vec2fp& rot90ccw() {float t = x; x = -y; y = t; return *this;}
 	
 	vec2fp& rotate(double angle); ///< Rotation by angle (radians)
 	vec2fp& fastrotate(float angle); ///< Rotation by angle (radians) using table lookup
@@ -255,6 +262,9 @@ struct Rect {
 	void upper(vec2i v) {sz = v - off;}
 	void size (vec2i v) {sz = v;}
 	
+	static Rect from_center_le(vec2i ctr, vec2i half_size) {return {ctr - half_size, ctr + half_size + vec2i::one(1), false};}
+	Rectfp to_fp(float mul) const;
+	
 	void shift(vec2i v) {off += v;}
 	void enclose(vec2i v) {off = min(v, off); upper(max(upper(), v + vec2i::one(1)));}
 	vec2i maxpt() const {return off + sz - vec2i::one(1);} ///< Maximum enclosed point
@@ -278,10 +288,12 @@ struct Rect {
 	/// Same as map, but returns false as soon as 'f' does
 	bool map_check(callable_ref<bool(vec2i p)> f) const;
 	
-	/// Maps function over outer border (-1 from lower and ON upper)
+	/// Maps function over outer border (-1 from lower and ON upper). 
+	/// Clockwise, from lower corner
 	void map_outer(callable_ref<void(vec2i p)> f) const;
 	
-	/// Maps function over inner border (on lower and -1 from upper)
+	/// Maps function over inner border (on lower and -1 from upper). 
+	/// Clockwise, from lower corner
 	void map_inner(callable_ref<void(vec2i p)> f) const;
 };
 

@@ -50,11 +50,11 @@ GLA_Buffer::~GLA_Buffer()
 	glDeleteBuffers( 1, &vbo );
 	dbg_size_now -= size_bytes();
 }
-GLA_Buffer::GLA_Buffer( GLA_Buffer&& obj )
+GLA_Buffer::GLA_Buffer( GLA_Buffer&& obj ) noexcept
 {
 	std::swap( vbo, obj.vbo );
 }
-void GLA_Buffer::operator =( GLA_Buffer&& obj )
+void GLA_Buffer::operator =( GLA_Buffer&& obj ) noexcept
 {
 	std::swap( vbo, obj.vbo );
 }
@@ -112,12 +112,12 @@ GLA_VertexArray::~GLA_VertexArray()
 {
 	glDeleteVertexArrays( 1, &vao );
 }
-GLA_VertexArray::GLA_VertexArray( GLA_VertexArray&& obj )
+GLA_VertexArray::GLA_VertexArray( GLA_VertexArray&& obj ) noexcept
 {
 	std::swap(vao, obj.vao);
 	bufs.swap(obj.bufs);
 }
-void GLA_VertexArray::operator =( GLA_VertexArray&& obj )
+void GLA_VertexArray::operator =( GLA_VertexArray&& obj ) noexcept
 {
 	std::swap(vao, obj.vao);
 	bufs.swap(obj.bufs);
@@ -215,11 +215,11 @@ GLA_Texture::~GLA_Texture()
 	glDeleteTextures(1, &tex);
 	set_byte_size(0);
 }
-GLA_Texture::GLA_Texture( GLA_Texture&& obj )
+GLA_Texture::GLA_Texture( GLA_Texture&& obj ) noexcept
 {
 	std::swap(tex, obj.tex);
 }
-void GLA_Texture::operator =( GLA_Texture&& obj )
+void GLA_Texture::operator =( GLA_Texture&& obj ) noexcept
 {
 	std::swap(tex, obj.tex);
 }

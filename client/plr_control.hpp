@@ -88,15 +88,11 @@ public:
 		A_SHIELD_SW,
 		A_INTERACT,
 		
-		A_DEBUG_SELECT,
-		A_DEBUG_TELEPORT,
-		
 		A_CAM_FOLLOW,
 		A_CAM_CLOSE_SW,
 		
 		A_LASER_DESIG,
 		A_SHOW_MAP,
-		A_SHOW_WPNS,
 		
 		A_WPN_PREV,
 		A_WPN_NEXT,
@@ -134,6 +130,8 @@ public:
 	
 	void on_event(const SDL_Event& ev);
 	void update(); ///< Must be called after getting all events
+	void force_state(State st); ///< Forcefully sets state
+	
 	const State& get_state() const {return state;} ///< Last updated state
 	
 	[[nodiscard]] auto lock() {return std::unique_lock(mutex);} ///< Not used internally

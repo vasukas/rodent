@@ -34,6 +34,9 @@ void* open_stdio_file( const char *filename, const char *mode );
 /// Returns filename extension
 std::string get_file_ext(std::string_view filename);
 
+/// Returns true if succeeds or directory already exists
+bool create_dir(const char *filename);
+
 
 
 /// Abstract file interface with endianess and bit support
@@ -217,7 +220,7 @@ public:
 	/// Allocates own memory, which can be written and expanded
 	MemoryFile( size_t reserve );
 	
-	MemoryFile( MemoryFile&& f );
+	MemoryFile( MemoryFile&& f ) noexcept;
 	MemoryFile( const MemoryFile& f ) = delete;
 	
 	size_t read( void *buf, size_t buf_size ) override;

@@ -20,4 +20,7 @@ using uint = unsigned int;
 using ssize_t = std::make_signed<size_t>::type;
 #endif
 
+template <typename T> struct always_false : std::false_type {};
+template <typename T> inline constexpr bool always_false_v = always_false<T>::value;
+
 #endif // VAS_TYPES_HPP

@@ -1,31 +1,33 @@
 #ifndef AI_COMPONENTS_HPP
 #define AI_COMPONENTS_HPP
 
-#include "game/physics.hpp"
+#include "game/damage.hpp"
 #include "ai_common.hpp"
 
-struct DamageQuant;
-
-// Note: by default components are NOT registered
+// Note: components are NOT registered on initialization
 
 
 
 struct AI_Movement final : EComp
 {
-	vec2fp steering = {}; ///< Additional velocity, reset each step
+	bool locked = false;
 	
-	AI_Movement(AI_Drone* drone); ///< Adds self!
+	AI_Movement(AI_Drone& drone); ///< Adds self!
 	
 	/// Returns true if already reached
-	bool set_target(std::optional<vec2fp> new_tar, AI_Speed speed = AI_Speed::Normal);
+	bool set_target(std::optional<vec2fp> new_tar, AI_Speed speed = AI_Speed::Normal, std::optional<PathRequest::Evade> evade = {});
 	bool has_target() const {return path || preq;}
 	
 	std::optional<vec2fp> get_next_point() const;
-	float get_current_speed() const {return spd_k[cur_spd];} ///< Current *set* speed, not actual one
+	float get_current_speed() const; ///< Returns current *set* speed, not actual one
+	bool has_failed() const; ///< Returns true if target is unreachable
+	
+	bool is_same(vec2fp a, vec2fp b) const; ///< Checks if two coordinates refer to (roughly) same position
+	std::optional<vec2fp> get_target() const; ///< Returns current target, if any
 	
 private:
-	const float* spd_k;
-	const float inert_k[static_cast<size_t>(AI_Speed::TOTAL_COUNT)] = {6, 4, 8};
+	AI_Drone& drone;
+	static constexpr float inert_k[static_cast<size_t>(AI_Speed::TOTAL_COUNT)] = {50, 6, 4, 8};
 	
 	struct Preq {
 		vec2fp target;
@@ -38,67 +40,74 @@ private:
 	
 	std::optional<Preq> preq;
 	std::optional<Path> path;
-	size_t cur_spd = 1;
+	size_t cur_spd = 1; // index
+	bool preq_failed = false;
 	
 	
+	std::optional<vec2fp> calc_avoidance(); // collision avoidance vector
 	vec2fp step_path();
 	void step() override;
 };
 
 
 
+struct AI_AttackPattern
+{
+	virtual void shoot(Entity& target, float distance, Entity& self) = 0;
+	virtual void idle (Entity& self) {(void) self;} ///< Called on each step while in battle, after shooting
+	virtual void reset(Entity& self) {(void) self;} ///< Called when dropping out of battle mode
+	virtual ~AI_AttackPattern() = default;
+};
+
 struct AI_Attack
 {
-	bool shoot(Entity* target, float distance, Entity* self); ///< Returns false if fire LoS is obstructed
-	void shoot(vec2fp at, Entity* self);
+	std::unique_ptr<AI_AttackPattern> atkpat;
+	
+	AI_Attack(std::unique_ptr<AI_AttackPattern> atkpat): atkpat(std::move(atkpat)) {}
+	bool shoot(Entity& target, float distance, Entity& self); ///< Returns false if fire LoS is obstructed
+	void reset_target() {prev_tar = {};}
 	
 private:
 	EntityIndex prev_tar;
 	vec2fp vel_acc = {};
 	
-	vec2fp correction(float distance, float bullet_speed, Entity* target);
-	Entity* check_los(vec2fp pos, Entity* target, Entity* self); ///< Returns obstructing entity, if any
+	vec2fp correction(float distance, float bullet_speed, Entity& target);
+	Entity* check_los(vec2fp pos, Entity& target, Entity& self); ///< Returns obstructing entity, if any
 };
 
 
 
-struct AI_TargetProvider : EComp
+struct AI_TargetProvider final : EComp
 {
 	struct Target
 	{
 		EntityIndex eid;
-		bool is_suspect; ///< True if may not be target
-		float dist = 0;
-	};
-	struct ProjTarget
-	{
-		EntityIndex eid;
-		float dist = 0;
+		bool is_suspect; ///< True if may not be target (out of main visibility range)
+		bool is_damaging; ///< True if just inflicted damage
+		float dist;
 	};
 	
-	AI_TargetProvider(AI_Drone* drone); ///< Adds self!
+	std::optional<float> fov_t = 0.f; ///< [0-1] FoV width (min -> max). If not set, FoV check ignored
+	bool is_battle = false;
+	
+	AI_TargetProvider(AI_Drone& drone); ///< Adds self!
 	
 	/// Returns visible primary or suspect target (also returns distance)
 	std::optional<Target> get_target() const;
 	
-	/// Returns "dangerous projectile" target
-	std::optional<ProjTarget> get_projectile() const;
+	/// Returns true if was damaged last step
+	bool was_damaged() const {return was_damaged_flag;}
 	
 protected:
 	EVS_SUBSCR;
-	const AI_DroneParams& pars;
-	std::vector<Target> tars; ///< All non-null non-projectile targets available
-	std::vector<ProjTarget> proj_tars; ///< All non-null PROJECTILE targets available
+	AI_Drone& drone;
 	
-	virtual void step_internal() = 0; ///< Updates available targets
-	bool is_primary(Entity* ent) const {return ent->get_eqp();}
+	bool is_primary(Entity& ent) const {return ent.get_eqp();}
 	
 private:
 	std::optional<Target> tar_sel;
-	std::optional<ProjTarget> tar_proj;
-	TimeSpan sw_timeout; ///< Target switch
-	EntityIndex prev_tar;
-	EntityIndex damage_by;
+	std::optional<EntityIndex> damage_by;
+	bool was_damaged_flag = false;
 	
 	void step() override;
 	void on_dmg(const DamageQuant& q);
@@ -106,43 +115,24 @@ private:
 
 
 
-struct AI_TargetPlayer : AI_TargetProvider
-{
-	AI_TargetPlayer(AI_Drone* drone);
-	
-private:
-	void step_internal() override;
-};
-
-
-
-struct AI_TargetSensor : AI_TargetProvider
-{
-	struct FI_Sensor : FixtureInfo {};
-	
-	AI_TargetSensor(AI_Drone* drone);
-	~AI_TargetSensor();
-	
-private:
-	b2Fixture* fix;
-	
-	void step_internal() override;
-	void on_cnt(const CollisionEvent& ev);
-};
-
-
-
 struct AI_RenRotation
 {
-	AI_RenRotation();
-	void update(AI_Drone* ent, std::optional<vec2fp> target_pos, std::optional<vec2fp> move_pos);
+	bool locked = false;
+	
+	void update(AI_Drone& ent, std::optional<vec2fp> view_target, std::optional<vec2fp> mov_target);
 	
 private:
-	enum State {RR_NONE, RR_STOP, RR_ADD};
-	float rot;
+	enum State {
+		ST_WAIT,
+		ST_RANDOM,
+		ST_TAR_VIEW,
+		ST_TAR_MOV,
+		ST_WAIT_VIEW,
+		ST_WAIT_MOV
+	};
 	float add; // radians/step
-	float left = 0; // seconds
-	State st = RR_NONE;
+	TimeSpan tmo;
+	State state = ST_WAIT;
 };
 
 #endif // AI_COMPONENTS_HPP

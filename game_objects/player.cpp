@@ -1,3 +1,4 @@
+#include "client/effects.hpp"
 #include "client/plr_control.hpp"
 #include "vaslib/vas_log.hpp"
 #include "game/game_core.hpp"
@@ -31,28 +32,6 @@ void PlayerRender::step()
 			RenAAL::get().draw_inst(fixed.get_combined(a.at), a.clr, a.model);
 	}
 	
-	if (show_ray)
-	{
-		vec2fp src = get_pos().pos;
-		
-		vec2fp dt = tar_ray - src;
-		dt.norm_to( ent->get_phy().get_radius() );
-		
-		RenAAL::get().draw_line(src + dt, tar_ray, FColor(1, 0, 0, 0.6).to_px(), 0.07, 1.5f);
-		
-		if (tar_next) {
-			float d = GamePresenter::get()->get_passed().seconds() / GameCore::get().step_len.seconds();
-			tar_next_t += d;
-			if (tar_next_t < 1) {
-				tar_ray = lerp(tar_next->first, tar_next->second, tar_next_t);
-			}
-			else {
-				tar_ray = tar_next->second;
-				tar_next.reset();
-			}
-		}
-	}
-	
 	if (true)
 	{
 		float k = 1.f / RenderControl::get().get_world_camera().get_state().mag;
@@ -73,21 +52,6 @@ void PlayerRender::proc(PresCommand ac)
 void PlayerRender::sync()
 {
 	dbg_info_real = std::move(dbg_info);
-}
-void PlayerRender::set_ray_tar(vec2fp new_tar)
-{
-	auto cur = get_pos().pos;
-	float ad = (new_tar - cur).angle() - (tar_ray - cur).angle();
-	
-	if (std::fabs(wrap_angle(ad)) < deg_to_rad(25))
-	{
-		tar_next = {tar_ray, new_tar};
-		tar_next_t = 0;
-	}
-	else {
-		tar_next.reset();
-		tar_ray = new_tar;
-	}
 }
 
 
@@ -286,7 +250,7 @@ bool ShieldControl::step(bool sw_state)
 			if (!sh->get_hp().is_alive())
 			{
 				disable();
-				tmo = TimeSpan::seconds(5);
+				tmo = dead_regen_time;
 			}
 			else if (!sw_state) disable();
 		}
@@ -335,9 +299,6 @@ void PlayerLogic::step()
 	auto self = static_cast<PlayerEntity*>(ent);
 	auto& eqp = self->eqp;
 	
-	auto ctr_lock = ctr->lock();
-	ctr->update();
-	
 	auto& cst = ctr->get_state();
 	
 	// shield
@@ -382,8 +343,6 @@ void PlayerLogic::step()
 		else if (a == PlayerController::A_WPN_4) eqp.set_wpn(3);
 		else if (a == PlayerController::A_WPN_5) eqp.set_wpn(4);
 		else if (a == PlayerController::A_WPN_6) eqp.set_wpn(5);
-		else if (a == PlayerController::A_LASER_DESIG)
-			self->ren.show_ray = !self->ren.show_ray;
 	}
 	
 	// move & shoot
@@ -409,24 +368,15 @@ void PlayerLogic::step()
 	
 	// calc laser
 	
-	if (self->ren.show_ray)
-	{
-		tar -= spos;
-		tar.norm();
-		
-		b2Filter ft;
-		ft.maskBits = ~(EC_Physics::CF_BULLET);
-		
-		if (auto r = GameCore::get().get_phy().raycast_nearest(conv(spos), conv(spos + 1000.f * tar), {{}, ft}))
-			tar = conv(r->poi);
-		else
-			tar = spos + tar * 1.5f;
-		
-		self->ren.set_ray_tar(tar);
-	}
+	tar -= spos;
+	self->laser->is_enabled = cst.is[PlayerController::A_LASER_DESIG] && tar.len_squ() > 0.1;
+	if (self->laser->is_enabled)
+		self->laser->find_target( tar.norm() );
 }
 
 
+
+bool PlayerEntity::is_superman = false;
 
 PlayerEntity::PlayerEntity(vec2fp pos, std::shared_ptr<PlayerController> ctr)
 	:
@@ -445,7 +395,7 @@ PlayerEntity::PlayerEntity(vec2fp pos, std::shared_ptr<PlayerController> ctr)
 	b2FixtureDef fd;
 	fd.friction = 0.3;
 	fd.restitution = 0.5;
-	phy.add_circle(fd, GameConst::hsz_rat, 15);
+	phy.add_circle(fd, GameConst::hsz_rat, is_superman ? 1500 : 15);
 	
 	//
 	
@@ -473,9 +423,17 @@ PlayerEntity::PlayerEntity(vec2fp pos, std::shared_ptr<PlayerController> ctr)
 	
 	eqp.add_wpn(new WpnMinigun);
 	eqp.add_wpn(new WpnRocket);
-	eqp.add_wpn(new WpnElectro);
+	eqp.add_wpn(new WpnElectro(is_superman ? WpnElectro::T_ONESHOT : WpnElectro::T_PLAYER));
 	eqp.add_wpn(new WpnFoam);
 	eqp.add_wpn(new WpnRifle);
 	eqp.add_wpn(new WpnUber);
 	eqp.set_wpn(1);
+	
+	//
+	
+	laser = LaserDesigRay::create();
+	laser->src_eid = index;
+}
+PlayerEntity::~PlayerEntity() {
+	laser->destroy();
 }

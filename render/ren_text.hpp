@@ -30,6 +30,8 @@ struct TextRenderInfo
 	bool cs_clear = true; ///< If set to true, cs cleared on each build. Otherwise it's extended
 	int max_width = std::numeric_limits<int>::max(); ///< Maximum rendering width
 	
+	std::optional<int> tab_width = {}; ///< Use this instead of RenText::tab_width
+	
 	// output
 	
 	struct GlyphInfo
@@ -51,6 +53,8 @@ struct TextRenderInfo
 class RenText
 {
 public:
+	int tab_width = 4; ///< Tabs are replaced by spaces
+	
 	static RenText& get(); ///< Returns singleton
 	
 	virtual void build( TextRenderInfo& info ) = 0;

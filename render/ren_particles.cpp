@@ -142,6 +142,7 @@ public:
 		
 		update(passed);
 		if (!gs_off_max) return;
+		if (!enabled) return;
 		
 		sh_draw->bind();
 		sh_draw->set4mx("proj", RenderControl::get().get_world_camera().get_full_matrix());

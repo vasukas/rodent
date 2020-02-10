@@ -1,4 +1,4 @@
-External dependecies:
+Libraries:
 
 * Box2D
   www.box2d.org
@@ -29,4 +29,18 @@ External dependecies:
 * stb_image, stb_image_write
   https://github.com/nothings/stb
   Public Domain
+
+
+
+Resources:
+
+* Inconsolata font
+  https://www.levien.com/type/myfonts/inconsolata.html
+  https://github.com/google/fonts/tree/master/ofl/inconsolata
+  SIL Open Font License
+
+* crosshair.png
+  Crosshair Pack by Kenney Vleugels (Kenney.nl)
+  Creative Commons Zero, CC0
+  PNG/Outline/crosshair159.png
 

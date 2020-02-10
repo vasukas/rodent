@@ -49,14 +49,12 @@ std::optional<Weapon::DirectionResult> Weapon::get_direction(const ShootParams& 
 	vec2fp orig = ent->get_pos();
 	float rot = ent->get_face_rot();
 	
-/*
 	if (!ignore_target)
 	{
 		float ta = (pars.target - orig).fastangle();
 		if (std::fabs(wrap_angle( ta - rot )) > info->angle_limit)
 			return {};
 	}
-*/
 	
 	vec2fp offset = {ent->get_phy().get_radius(), 0};
 	offset.fastrotate(rot);
@@ -209,6 +207,7 @@ bool EC_Equipment::shoot_check(Weapon& wpn)
 }
 void EC_Equipment::step()
 {
+	did_shot_flag = false;
 	if (wpns.empty()) return;
 	
 	if (last_req)
@@ -229,6 +228,7 @@ void EC_Equipment::step()
 	pars.main_was = pars.main;
 	pars.alt_was = pars.alt;
 	pars.main = pars.alt = false;
+	did_shot_flag = has_shot;
 	
 	for (size_t i=0; i < wpns.size(); ++i)
 	{

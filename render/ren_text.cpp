@@ -106,6 +106,7 @@ public:
 		
 		vec2fp pos = {}, max = {};
 		vec2fp a_size = {};
+		int tab_count = 0; // n of chars in current line
 		
 		if (!b.info_only)
 			b.cs.reserve( b.cs.size() + len );
@@ -117,7 +118,10 @@ public:
 			a_size.x = std::max( a_size.x, pos.x );
 			pos.x = 0;
 			pos.y += ft.line_ht;
+			tab_count = 0;
 		};
+		
+		const int n_tab = b.tab_width ? *b.tab_width : tab_width;
 		
 		for (int i = 0; i < len; ++i)
 		{
@@ -126,6 +130,17 @@ public:
 			if (ch == '\n')
 			{
 				newline();
+				continue;
+			}
+			if (ch == '\t')
+			{
+				float w = ft.glyphs.at(' ').xadv * (n_tab - tab_count % n_tab);
+				if (pos.x + w > b.max_width) newline();
+				else {
+					pos.x += w;
+					max.x = std::max(max.x, pos.x);
+					tab_count = 0;
+				}
 				continue;
 			}
 			a_size.y = pos.y + ft.line_ht;
@@ -150,6 +165,7 @@ public:
 			
 			max = ::max(max, p1);
 			pos.x += g.xadv;
+			++tab_count;
 		}
 		
 		a_size.x = std::max( a_size.x, pos.x );
@@ -332,6 +348,15 @@ public:
 		{
 			for (auto& g : fd->glyphs) g.second.xadv = fd->w_mode;
 			fd->miss.xadv = fd->w_mode;
+		}
+		
+		// generate space glyph if needed
+		auto wsp = fd->glyphs.find(' ');
+		if (wsp == fd->glyphs.end() || wsp->second.xadv < 1)
+		{
+		    Glyph g = fd->white;
+			g.xadv = fd->w_mode;
+			fd->glyphs[' '] = g;
 		}
 		
 		VLOGV("RenText::load_font() OK");

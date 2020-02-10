@@ -37,7 +37,7 @@ public:
 		
 		float bullet_speed = 1.f; ///< Average, meters per second. For AI prediction only
 		vec2fp bullet_offset = {}; ///< For projectile generation, from weapon origin
-		float angle_limit = deg_to_rad(30); ///< Max angle between target and facing direction (DISABLED)
+		float angle_limit = deg_to_rad(30); ///< Max angle between target and facing direction
 		
 		void set_origin_from_model(); ///< Sets bullet_offset
 	};
@@ -151,6 +151,9 @@ struct EC_Equipment : EComp
 	/// Sets with which weapon shoot at the end of the step
 	void shoot(vec2fp target, bool main, bool alt);
 	
+	/// Returns true if shot on previous step
+	bool did_shot() {return did_shot_flag;}
+	
 	bool set_wpn(size_t index); ///< Returns false if can't be set
 	size_t wpn_index();
 	
@@ -168,6 +171,7 @@ private:
 	std::optional<size_t> last_req; ///< change request
 	std::optional<size_t> w_prev;
 	Weapon::ShootParams pars = {};
+	bool did_shot_flag = false;
 	
 	bool shoot_internal(Weapon& wpn, Weapon::ShootParams pars);
 	bool shoot_check(Weapon& wpn); ///< Checks based on default values

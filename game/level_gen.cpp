@@ -736,8 +736,8 @@ struct Gen1
 		
 		// init path search
 		
-		std::unique_ptr<AsyncPathSearch> aps;
-		aps.reset( AsyncPathSearch::create_default_nonthread() );
+		std::unique_ptr<PathSearch> aps;
+		aps.reset( PathSearch::create() );
 		{
 			std::vector<uint8_t> g( l_size.area() );
 			for (size_t i=0; i < cs.size(); ++i)
@@ -807,7 +807,7 @@ struct Gen1
 				};
 				
 				auto gc = [&](size_t ix) {return g_cors[ r.cor_i[ix] ].cells.front();};
-				auto res = aps->sync_task( gc(i), gc(j), {} );
+				auto res = aps->find_path({ gc(i), gc(j) });
 				
 				for (auto& p : res.ps)
 					set(p);
@@ -1687,6 +1687,7 @@ LevelTerrain* LevelTerrain::generate(const GenParams& pars)
 	
 	TimeSpan t0 = TimeSpan::since_start();
 	Gen1( pars.rnd, pars.grid_size ).convert( lt );
+	lt.find_corridors();
 	lt.cell_size = pars.cell_size;
 	
 	TimeSpan t1 = TimeSpan::since_start();
@@ -1763,6 +1764,65 @@ LevelTerrain* LevelTerrain::load_test(const char *filename, float cell_size)
 
 
 
+void LevelTerrain::find_corridors()
+{
+	const std::array<vec2i, 4> sg_dirs{{{-1,0}, {1,0}, {0,-1}, {0,1}}};
+	std::vector<vec2i> open, next;
+	
+	auto ce = [&](vec2i at) -> Cell*
+	{
+		if (Rect{{}, grid_size, true}.contains_le(at))
+			return &cs[at.x + at.y * grid_size.x];
+		return nullptr;
+	};
+	
+	for (auto& c : cs)
+		c.tmp = -1;
+	
+	for (size_t i=0; i < cs.size(); ++i)
+	{
+		{	auto& c = cs[i];
+			if (c.is_wall || c.room)
+				continue;
+		}
+		auto& corr = corrs.emplace_back();
+		
+		{	int x = i % grid_size.x;
+			int y = i / grid_size.x;
+			open.push_back({ x, y });
+		}
+		cs[i].tmp = i;
+		
+		while (!open.empty())
+		{
+			for (auto& p : open)
+			{
+				corr.cs.push_back(p);
+				
+				for (auto& d : sg_dirs)
+				{
+					auto c = ce(p + d);
+					if (!c) continue;
+					
+					if (c->tmp == int(i)) continue;
+					c->tmp = i;
+					
+					if (!c->is_wall) {
+						if (c->room) corr.rs.push_back(std::distance( rooms.data(), c->room ));
+						else next.push_back(p + d);
+					}
+				}
+			}
+			
+			open.swap(next);
+			next.clear();
+		}
+		
+		auto& rs = corr.rs;
+		auto it = std::unique( rs.begin(), rs.end() );
+		rs.erase( it, rs.end() );
+	}
+}
 std::vector<std::vector<vec2fp>> LevelTerrain::vectorize() const
 {
 	// generate (straight) segments

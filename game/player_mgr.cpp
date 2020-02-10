@@ -2,14 +2,15 @@
 #include "client/plr_control.hpp"
 #include "core/settings.hpp"
 #include "core/vig.hpp"
+#include "game_objects/objs_creature.hpp"
+#include "game_objects/player.hpp"
 #include "render/camera.hpp"
 #include "render/control.hpp"
 #include "render/ren_imm.hpp"
+#include "vaslib/vas_log.hpp"
 #include "game_core.hpp"
 #include "level_ctr.hpp"
 #include "player_mgr.hpp"
-#include "game_objects/player.hpp"
-#include "game_objects/s_objs.hpp"
 
 
 
@@ -22,7 +23,7 @@ public:
 	
 	std::shared_ptr<PlayerController> pc_ctr;
 	TimeSpan plr_resp; // respawn timeout
-	vec2i last_plr_pos = {}; // level coords
+	vec2fp last_plr_pos = {}; // for AI rects
 	
 	// objective
 	
@@ -52,7 +53,6 @@ public:
 	std::vector<Message> msgs;
 	
 	TimeSpan interact_after;
-	EntityIndex dbg_select;
 	
 	// interface - weapons
 	
@@ -87,6 +87,181 @@ public:
 	
 	WpnMsgRep wpn_msgrep;
 	
+	// indicator array
+	
+	struct StatusIndicator
+	{
+		SmoothBlink blink;
+		FColor clr, alt_clr;
+		float thr = 0.5;
+		
+		void draw(std::string_view label, float value, bool use_alt_clr = false)
+		{
+			vig_push_palette();
+			float t = blink.get_sine(value < thr && !use_alt_clr);
+			
+			vig_CLR(Back)  = (((use_alt_clr ? alt_clr : clr) * 0.7 + -0.2) * t).to_px();
+			vig_CLR(Active) = ((use_alt_clr ? alt_clr : clr) * t).to_px();
+			
+			vig_progress(label, value);
+			vig_pop_palette();
+		}
+	};
+	struct WeaponIndicator
+	{
+		SmoothBlink blink;
+		TimeSpan t_label;
+		int ammo_value = -1;
+		bool is_cur = false;
+		
+		void draw(Weapon& wpn, EC_Equipment& eqp, size_t index)
+		{
+			const TimeSpan label_period = TimeSpan::seconds(2);
+			const vec2i el_size = {60, 60};
+			const vec2i el_off = vec2i::one(4);
+			const int el_y_space = 4;
+			
+			const int frame_width = 2;
+			const int strip_ht = 12;
+			
+			vec2i pos, size = el_size;
+			vig_lo_place(pos, size);
+			
+			// prepare stats
+			
+			bool is_cur_now = (index == eqp.wpn_index());
+			if (is_cur_now && !is_cur) t_label = label_period;
+			is_cur = is_cur_now;
+			
+			auto& ri = *wpn.info;
+			EC_Equipment::Ammo* ammo;
+			if (wpn.info->ammo == AmmoType::None) ammo = nullptr;
+			else ammo = &eqp.get_ammo(ri.ammo);
+			
+			// draw helpers
+			
+			uint32_t frame_clr = [&]
+			{
+				if (is_cur) {
+					if (ammo && !eqp.has_ammo(wpn)) return 0xff0000ffu;
+					return 0x00ff00ffu;
+				}
+				else if (ammo && !eqp.has_ammo(wpn)) return 0xff0000ffu;
+				return 0xff8000ffu;
+			}();
+			uint32_t bg_clr = [&]
+			{
+				const float a = 0.7;
+				if (ammo) {
+					if (!ammo->value) {
+		// hack to hide strip
+						ammo = nullptr;
+						blink.force_reset();
+						return FColor(0.7, 0, 0, a).to_px();
+					}
+					bool chx = ammo_value < ammo->value;
+					ammo_value = ammo->value;
+					return (FColor(1, 1, 0, a) * blink.get_blink(chx)).to_px();
+				}
+				return uint32_t(a * 255);
+			}();
+			auto draw_strip = [&](float t, uint32_t clr1, uint32_t clr2, int yn)
+			{
+				t = clampf_n(t);
+				
+				vec2i p (frame_width, 0);
+				vec2i z ((el_size.x - frame_width*2) * t, strip_ht);
+				
+				if (yn < 0) p.y = el_size.y - strip_ht*-yn - frame_width;
+				else p.y = frame_width + strip_ht*yn;
+				
+				RenImm::get().draw_rect(Rectfp(pos + p, z, true), clr1);
+				p.x += z.x;
+				z.x = (el_size.x - frame_width*2) - z.x;
+				RenImm::get().draw_rect(Rectfp(pos + p, z, true), clr2);
+			};
+			std::vector<std::pair<FColor, std::string>> ss;
+			
+			// draw background
+			
+			RenImm::get().draw_rect(Rectfp{pos, el_size, true}, bg_clr);
+			
+			{	vec2fp img_size = ResBase::get().get_size(ri.model).size();
+				float img_k = img_size.x / img_size.y;
+				
+				if (img_k > 1) img_size = {1, 1 / img_k};
+				else           img_size = {img_k, 1};
+				img_size *= el_size/2 - el_off;
+			
+				RenImm::get().draw_image(Rectfp::from_center( pos + el_size/2, img_size ),
+				                         ResBase::get().get_image(ri.model));
+			}
+			
+			// status
+			
+			if (t_label.is_positive())
+			{
+				float a = t_label / label_period;
+				ss.emplace_back(FColor(1,1,1,a).to_px(), ri.name);
+				t_label -= RenderControl::get().get_passed();
+			}
+			ss.emplace_back(FColor{}, "\n");
+			
+			if (ammo && !eqp.infinite_ammo)
+			{
+				if (!ammo->value) draw_strip(1, 0xff0000ff, 0, -1);
+				else draw_strip(float(ammo->value)/ammo->max, 0x8080ffff, 0, -1);
+			}
+			
+			if (auto& m = wpn.overheat)
+			{
+				if (!m->is_ok()) {
+					ss.emplace_back(FColor(1, 0.8, 0.5), "COOLDOWN");
+					draw_strip(m->value, 0xff4040ff, 0, 0);
+				}
+				else {
+					if (m->value > 0.5) ss.emplace_back(FColor(1, 1, 0), "Overheat");
+					draw_strip(m->value, 0xc0c000ff, 0, 0);
+				}
+				ss.emplace_back(FColor{}, "\n");
+			}
+			if (auto m = wpn.info->def_delay; m && m > TimeSpan::seconds(0.5))
+			{
+				if (wpn.get_reload_timeout())
+					ss.emplace_back(FColor(0,1,0), "Reload");
+			}
+			if (auto m = wpn.get_ui_info())
+			{
+				if (m->charge_t) {
+					ss.emplace_back(FColor(0.5, 1, 1), FMT_FORMAT("Charge: {:3}%", int_round(*m->charge_t * 100)));
+					draw_strip(*m->charge_t, 0xc0c0ffff, 0xff000080, wpn.overheat ? 1 : 0);
+				}
+			}
+			
+			//
+			
+			RenImm::get().draw_frame(Rectfp{pos, el_size, true}, frame_clr, frame_width);
+			RenImm::get().draw_text(pos + el_off, std::to_string(index + 1));
+			RenImm::get().draw_text(pos + el_off + vec2i(el_size.x, 0), std::move(ss));
+			vig_space_line(el_y_space);
+		}
+	};
+	
+	std::vector<StatusIndicator> ind_stat;
+	std::vector<WeaponIndicator> ind_wpns;
+	
+	enum IndStat {
+		INDST_HEALTH,
+		INDST_ACCEL,
+		INDST_ARMOR,
+		INDST_PERS_SHIELD,
+		INDST_PROJ_SHIELD,
+		INDST_PROJ_SHIELD_REGEN,
+		INDST_TOTAL_COUNT_INTERNAL
+	};
+	
+	bool proj_shld_was_dead = false;
+	
 	
 	
 	PlayerManager_Impl(std::shared_ptr<PlayerController> pc_ctr_in)
@@ -96,6 +271,26 @@ public:
 		std::string s = "Press ESCAPE to see controls";
 		if (pc_ctr->get_gpad()) {st *= 2; s += "\nPress START to enable gamepad";}
 		msgs.emplace_back(std::move(s), st, TimeSpan::seconds(1.5));
+		
+		if (PlayerEntity::is_superman)
+			cheat_godmode = true;
+		
+		ind_stat.resize(INDST_TOTAL_COUNT_INTERNAL);
+		//
+		ind_stat[INDST_HEALTH].clr = FColor(0x10c060ff);
+		ind_stat[INDST_ACCEL].clr     = FColor(0xd07010ff);
+		ind_stat[INDST_ACCEL].alt_clr = FColor(0x706060ff);
+		//
+		ind_stat[INDST_ARMOR].clr = FColor(0x10c000ff);
+		ind_stat[INDST_ARMOR].thr = 0;
+		ind_stat[INDST_PERS_SHIELD].clr = FColor(0x4040d0ff);
+		//
+		ind_stat[INDST_PROJ_SHIELD].clr     = FColor(0x40d0d0ff);
+		ind_stat[INDST_PROJ_SHIELD].alt_clr = FColor(0x30a0a0ff);
+		ind_stat[INDST_PROJ_SHIELD].thr = 0.33;
+		//
+		ind_stat[INDST_PROJ_SHIELD_REGEN].clr = FColor(0xa02020ff);
+		ind_stat[INDST_PROJ_SHIELD_REGEN].thr = 1;
 	}
 	Entity* get_ent() override
 	{
@@ -114,40 +309,58 @@ public:
 	
 	void render(TimeSpan passed, vec2i mou_pos) override
 	{
+		if (!plr_ent)
+		{
+			for (auto& i : ind_stat) i.blink.force_reset();
+			ind_wpns.clear();
+		}
+		
 		if (plr_ent)
 		{
 			if (cheat_godmode) vig_label("!!! GOD MODE ENABLED !!!\n");
 			
 			auto plr = static_cast<PlayerEntity*>(plr_ent);
 			
-			auto& hp = plr_ent->get_hlc()->get_hp();
-			vig_progress(FMT_FORMAT("Health {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
+			{	auto& hp = plr_ent->get_hlc()->get_hp();
+				ind_stat[INDST_HEALTH].draw(FMT_FORMAT("Health {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
+			}
 			vig_lo_next();
 			
-			vig_progress(FMT_FORMAT("Accel {}", plr->mov.get_t_accel().first? "OK     " : "charge "), 
-			             plr->mov.get_t_accel().second);
+			{	auto acc_st = plr->mov.get_t_accel();
+				ind_stat[INDST_ACCEL].draw(FMT_FORMAT("Accel {}", acc_st.first? "OK     " : "charge "),
+									       acc_st.second, !acc_st.first); }
 			vig_lo_next();
 			
 			{	auto& hp = plr->armor->get_hp();
-				vig_progress(FMT_FORMAT("Armor {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
+				ind_stat[INDST_ARMOR].draw(FMT_FORMAT("Armor {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
 			}
 			vig_lo_next();
 			
 			{	auto& hp = plr->pers_shld->get_hp();
-				vig_progress(FMT_FORMAT("P.shld {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
+				ind_stat[INDST_PERS_SHIELD].draw(FMT_FORMAT("P.shld {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
 			}
 			vig_lo_next();
 			
-			auto& sh = plr->log.shlc;
-			if (sh.is_enabled())
-			{
-				auto& hp = sh.get_ft()->get_hp();
-				vig_progress(FMT_FORMAT("Shield {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
-			}
-			else
-			{
-				if (auto t = sh.get_dead_tmo()) vig_label_a("Ready in {:.3f}", t->seconds());
-				else vig_label("Shield disabled");
+			{	auto& sh = plr->log.shlc;
+				if (sh.is_enabled())
+				{
+					auto& hp = sh.get_ft()->get_hp();
+					ind_stat[INDST_PROJ_SHIELD].draw(FMT_FORMAT("Shield {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
+				}
+				else
+				{
+					if (auto t = sh.get_dead_tmo()) {
+						proj_shld_was_dead = true;
+						ind_stat[INDST_PROJ_SHIELD_REGEN].draw("Regenerating...", *t / sh.dead_regen_time);
+					}
+					else {
+						if (std::exchange(proj_shld_was_dead, false)) {
+							ind_stat[INDST_PROJ_SHIELD].blink.force_reset();
+							ind_stat[INDST_PROJ_SHIELD].blink.trigger();
+						}
+						ind_stat[INDST_PROJ_SHIELD].draw("Shield - ready", 0, true);
+					}
+				}
 			}
 			vig_lo_next();
 			
@@ -156,82 +369,18 @@ public:
 			
 			//
 			
-			bool wpn_menu = pc_ctr->get_state().is[PlayerController::A_SHOW_WPNS];
-			
-			const vec2i el_size = {60, 60};
-			const vec2i el_off = vec2i::one(4);
-			
 			auto& eqp = plr_ent->eqp;
-			size_t i=0;
 			
-			for (auto& wpn : eqp.raw_wpns())
-			{
-				bool is_cur = (i == eqp.wpn_index());
-				++i;
-				if (!is_cur && !wpn_menu) continue;
+			{	auto& wpns = eqp.raw_wpns();
+				ind_wpns.resize( wpns.size() );
 				
-				auto& ri = *wpn->info;
-				
-				vec2i pos, size = el_size;
-				vig_lo_place(pos, size);
-				
-//				auto mpars = fit_rect( ResBase::get().get_size(ri.model), el_size - el_off );
-//				RenAAL::get().draw_inst(Transform{pos + mpars.second}, FColor(), ri.model);
-				
-				EC_Equipment::Ammo* ammo;
-				if (wpn->info->ammo == AmmoType::None) ammo = nullptr;
-				else ammo = &eqp.get_ammo(wpn->info->ammo);
-				
-				uint32_t clr;
-				if (is_cur)
-				{
-					if (ammo && !eqp.has_ammo(*wpn)) clr = 0xff0000ff;
-					else clr = 0x00ff00ff;
-				}
-				else if (ammo && !eqp.has_ammo(*wpn)) clr = 0xff0000ff;
-				else clr = 0xff8000ff;
-				
-				RenImm::get().draw_frame(Rectfp{pos, el_size, true}, clr, 2);
-				RenImm::get().draw_text( pos + el_off, std::to_string(i) );
-				
-				std::string s;
-				s.reserve(40);
-				
-				s += ri.name;
-				
-				if (ammo)
-				{
-					if (eqp.infinite_ammo) s += "\nAMMO CHEAT ENABLED";
-					else s += FMT_FORMAT("\nAmmo: {} / {}", ammo->value, ammo->max);
-				}
-				
-				size_t s_len = s.length();
-				if (is_cur)
-				{
-					if (auto& m = wpn->overheat)
-					{
-						if (!m->is_ok()) s += "\nCOOLDOWN";
-						else if (m->value > 0.5) s += "\nOverheat";
-						else s += "\n";
-					}
-					if (auto m = wpn->info->def_delay; m && m > TimeSpan::seconds(0.5))
-					{
-						if (wpn->get_reload_timeout())
-							s += "\nReload";
-					}
-					if (auto m = wpn->get_ui_info())
-					{
-						if (m->charge_t)
-							s += FMT_FORMAT("\nCharge: {:3}%", int_round(*m->charge_t * 100));
-					}
-				}
-				if (wpn_menu && s_len >= s.length() - 1) {
-					if (s.back() != '\n') s.push_back('\n');
-					s += ammo_name(wpn->info->ammo);
-				}
-				
-				vig_label(s);
-				vig_lo_next();
+				for (size_t i=0; i < wpns.size(); ++i)
+					ind_wpns[i].draw( *wpns[i], eqp, i );
+			}
+			
+			{	auto& wpn = eqp.get_wpn();
+				auto& ammo = eqp.get_ammo(wpn.info->ammo);
+				vig_label_a("\n{}\nAmmo: {} / {}\n", wpn.info->name, ammo.value, ammo.max);
 			}
 			
 			const TimeSpan wmr_max = TimeSpan::seconds(1.5);
@@ -420,13 +569,10 @@ public:
 				auto s = lookat->ui_descr();
 				if (s.empty()) s = "UNDEFINED";
 				stat_str += FMT_FORMAT("Looking at: {}\n", s);
-				
-				if (pc_ctr->get_state().is[ PlayerController::A_DEBUG_SELECT ])
-					dbg_select = lookat->index;
 			}
 			else stat_str = "Looking at:\n";
 			
-			auto room = LevelControl::get().get_room(plr_ent->get_pos());
+			auto room = LevelControl::get().ref_room(plr_ent->get_pos());
 			stat_str += FMT_FORMAT("Room: {}\n", room? room->name : "Corridor");
 			if (!lct_found && room && room->is_final_term)
 			{
@@ -497,21 +643,18 @@ public:
 			draw_text_hud({0, -1}, FMT_FORMAT("Rematerialization in {:.1f} seconds", plr_resp.seconds()));
 		}
 		
-		if (auto ent = GameCore::get().valid_ent(dbg_select))
-		{
-			std::string s;
-			if (AI_Drone* d = ent->get_ai_drone()) s = d->get_dbg_state();
-			else s = "NO DEBUG STATS";
-			draw_text_hud({0, RenderControl::get_size().y / 2.f}, s);
-			
-			auto& cam = RenderControl::get().get_world_camera();
-			auto pos  = cam.direct_cast( ent->get_pos() );
-			auto size = cam.direct_cast( ent->get_pos() + vec2fp::one(ent->get_phy().get_radius()) );
-			RenImm::get().draw_frame( Rectfp::from_center(pos, size - pos), 0x00ff00ff, 3 );
-		}
+		// shouldn't be visible by player
+		RenImm::get().set_context(RenImm::DEFCTX_WORLD);
+		auto [ai_on, ai_off] = get_ai_rects();
+		RenImm::get().draw_frame(ai_on,  0x00ff0060, 0.5);
+		RenImm::get().draw_frame(ai_off, 0xff000060, 0.5);
+		RenImm::get().set_context(RenImm::DEFCTX_UI);
 	}
 	void update_cheats() override
 	{
+		if (PlayerEntity::is_superman)
+			cheat_godmode = true;
+
 		if (cheat_godmode)
 		{
 			if (!plr_ent) plr_resp = {};
@@ -541,14 +684,6 @@ public:
 	}
 	void step() override
 	{
-		if (plr_ent && pc_ctr->get_state().is[ PlayerController::A_DEBUG_TELEPORT ])
-		{
-			auto p = pc_ctr->get_state().tar_pos;
-			vec2i gp = LevelControl::get().to_cell_coord(p);
-			if (Rect({1,1}, LevelControl::get().get_size() - vec2i::one(2), false).contains_le( gp ))
-				plr_ent->get_phobj().body->SetTransform( conv(p), 0 );
-		}
-		
 		if (!obj_term)
 		{
 			GameCore::get().get_phy().post_step([this]
@@ -566,16 +701,22 @@ public:
 			add_msg("Terminal is ready");
 		}
 	}
-	std::pair<Rect, Rect> get_ai_rects() override
+	std::pair<Rectfp, Rectfp> get_ai_rects() override
 	{
+		if (fastforward) {
+			auto& lc = LevelControl::get();
+			Rectfp r {{}, vec2fp(lc.get_size()) * lc.cell_size, false};
+			return {r, r};
+		}
+		
 		// halfsizes
-		const vec2i hsz_on  = (vec2fp(40, 35) / LevelControl::get().cell_size).int_round();
-		const vec2i hsz_off = (vec2fp(55, 48) / LevelControl::get().cell_size).int_round();
+		const vec2fp hsz_on  = {65, 50};
+		const vec2fp hsz_off = {80, 65};
 		
 		if (auto ent = GameCore::get().get_ent(plr_eid))
-			last_plr_pos = (ent->get_pos() / LevelControl::get().cell_size).int_round();
+			last_plr_pos = ent->get_pos();
 		
-		vec2i ctr = last_plr_pos;
+		vec2fp ctr = last_plr_pos;
 		return {
 			{ctr - hsz_on,  ctr + hsz_on,  false},
 			{ctr - hsz_off, ctr + hsz_off, false}
@@ -615,10 +756,6 @@ public:
 			plr_ent = nullptr;
 			
 			wpn_msgrep.str = {};
-		}
-		
-		{	auto lock = pc_ctr->lock();
-			pc_ctr->update();
 		}
 		
 		if (plr_resp.is_positive())
