@@ -12,6 +12,8 @@ struct LaserDesigRay;
 
 struct AtkPat_Sniper : AI_AttackPattern
 {
+	float rotation_k = 0.1; // rotation speed multiplier when charged and targeted
+	
 	AtkPat_Sniper();
 	~AtkPat_Sniper();
 	void shoot(Entity& target, float distance, Entity& self) override;

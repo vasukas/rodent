@@ -669,7 +669,7 @@ void level_spawn(LevelTerrain& lt)
 	TimeSpan time_enemies = TimeSpan::since_start();
 	
 	auto pars_workr = std::make_shared<AI_DroneParams>();
-	pars_workr->speed = {2, 2, 3, 4};
+	pars_workr->set_speed(2, 3, 4);
 	pars_workr->dist_minimal = 3;
 	pars_workr->dist_optimal = 10;
 	pars_workr->dist_visible = 14;
@@ -678,7 +678,7 @@ void level_spawn(LevelTerrain& lt)
 	pars_workr->helpcall = AI_DroneParams::HELP_LOW;
 	
 	auto pars_drone = std::make_shared<AI_DroneParams>();
-	pars_drone->speed = {2, 4, 7, 9};
+	pars_drone->set_speed(4, 7, 9);
 	pars_drone->dist_minimal = 8;
 	pars_drone->dist_optimal = 14;
 	pars_drone->dist_visible = 20;
@@ -688,7 +688,7 @@ void level_spawn(LevelTerrain& lt)
 	pars_drone->placement_prio = 5;
 	
 	auto pars_campr = std::make_shared<AI_DroneParams>();
-	pars_campr->speed = {5, 5, 6, 8};
+	pars_campr->set_speed(5, 6, 8);
 	pars_campr->dist_panic   = 6;
 	pars_campr->dist_minimal = 12;
 	pars_campr->dist_optimal = 18;
@@ -699,7 +699,8 @@ void level_spawn(LevelTerrain& lt)
 	pars_campr->is_camper = true;
 	pars_campr->fov = {};
 	pars_campr->helpcall = AI_DroneParams::HELP_NEVER;
-	pars_campr->placement_prio = 10;
+	pars_campr->placement_prio = 30;
+	pars_campr->placement_freerad = 1;
 	
 	// random enemy spawn
 	

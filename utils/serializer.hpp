@@ -178,4 +178,19 @@ template<> struct SerialFunc<SerialType_Void, SerialTag_None> {
 		static void read(TYPE& p, File& f) {ser.read(&p, f);}\
 	};
 
+#define SER_SERIALFUNC_ALLOC_1(TYPE, ...)\
+	template<> struct SerialFunc<TYPE*, SerialTag_None> {\
+		static constexpr auto ser = SER_BEGIN_NO_INDEX(TYPE) __VA_ARGS__ SER_END;\
+		static void write(const TYPE* p, File& f) {ser.write(p, f);}\
+		static void read(TYPE*& p, File& f) {p = static_cast<TYPE*>(ser.read(f));}\
+		[[nodiscard]] static TYPE* read_new(File& f) {return static_cast<TYPE*>(ser.read(f));}\
+	};
+
+#define SER_SERIALFUNC_PLACEMENT_1(TYPE, ...)\
+	template<> struct SerialFunc<TYPE, SerialTag_None> {\
+		static constexpr auto ser = SER_BEGIN_NO_INDEX(TYPE) __VA_ARGS__ SER_END;\
+		static void write(const TYPE& p, File& f) {ser.write(&p, f);}\
+		static void read(TYPE& p, File& f) {ser.read(&p, f);}\
+	};
+
 #endif // SERIALIZER_DSL

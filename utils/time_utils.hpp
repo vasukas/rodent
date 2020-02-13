@@ -17,6 +17,7 @@ struct SmoothSwitch
 	
 	TimeSpan tmo_in, tmo_out;
 	TimeSpan min_sus = {}; ///< Minimal time value is sustained at 1
+	bool blink_mode = false; ///< If true, continues to increase value even if enabled is false
 	
 	SmoothSwitch(TimeSpan tmo = {}, std::optional<TimeSpan> tmo_out = {});
 	void reset(TimeSpan tmo, std::optional<TimeSpan> tmo_out = {});
@@ -24,7 +25,10 @@ struct SmoothSwitch
 	void step(TimeSpan passed, bool enabled);
 	
 	float value() const; ///< [0-1]
-	bool is_zero() const;
+	bool is_zero() const {return get_state() == OUT_ZERO;}
+	
+	enum OutputState {OUT_ZERO, OUT_RISING, OUT_ONE, OUT_FADING};
+	OutputState get_state() const;
 	
 private:
 	enum Stage {S_ZERO, S_UP, S_ENAB, S_SUST, S_DOWN};
@@ -48,7 +52,7 @@ struct SmoothBlink
 	float get_sine(bool enabled);
 	
 	/// Returns [0, 1], changing linearly
-	float get_blink(bool enabled);
+	float get_blink(bool enabled = false);
 	
 	void trigger();
 	void force_reset();

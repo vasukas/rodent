@@ -147,8 +147,8 @@ void EPickable::death_drop(vec2fp pos, float value)
 	}
 	else {
 		v = ArmorShard{rnd.int_range(
-			lerp(20, 80,  m0),
-			lerp(80, 100, m1))};
+			lerp(5, 20,  m0),
+			lerp(20, 40, m1))};
 	}
 	new EPickable(pos, std::move(v));
 }
@@ -282,32 +282,15 @@ void EDoor::RenDoor::step()
 void EDoor::on_cnt(const CollisionEvent& ce)
 {
 	if (!dynamic_cast<FI_Sensor*>(ce.fix_this)) return;
-	if (!plr_only)
-	{
-		if (!ce.other->get_eqp()) return;
-		if (ce.type == CollisionEvent::T_BEGIN) {
-			++num_cnt;
-			open();
-		}
-		else if (ce.type == CollisionEvent::T_END) --num_cnt;
-	}
-	else if (GameCore::get().get_pmg().is_player( ce.other ))
-	{
-		if (ce.type == CollisionEvent::T_BEGIN) {
-			++num_cnt;
-			open();
-		}
-		else if (ce.type == CollisionEvent::T_END)
-		{
-			--num_cnt;
-			if (state == ST_TO_OPEN) tm_left = anim_time - tm_left;
-			else if (state == ST_OPEN) tm_left = anim_time;
-			else return;
+	
+	if (!plr_only) {if (!ce.other->get_eqp()) return;}
+	else if (!GameCore::get().get_pmg().is_player( ce.other )) return;
 
-			state = ST_TO_CLOSE;
-			upd_fix();
-		}
+	if (ce.type == CollisionEvent::T_BEGIN) {
+		++num_cnt;
+		open();
 	}
+	else if (ce.type == CollisionEvent::T_END) --num_cnt;
 }
 void EDoor::open()
 {
@@ -333,7 +316,7 @@ void EDoor::step()
 		if (tm_left.is_negative())
 		{
 			state = ST_OPEN;
-			tm_left = keep_time;
+			tm_left = plr_only ? keep_time_plr : keep_time;
 		}
 	}
 	else if (state == ST_TO_CLOSE)

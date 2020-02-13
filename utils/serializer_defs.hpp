@@ -10,6 +10,36 @@
 
 
 
+template <typename T> struct remove_const_ptr : std::remove_const<T> {};
+template <typename T> using remove_const_ptr_t = typename remove_const_ptr<T>::type;
+
+template <typename T> struct remove_const_ptr<T*> {
+	typedef remove_const_ptr_t<T>* type;
+};
+template <typename T> struct remove_const_ptr<T* const> {
+	typedef remove_const_ptr_t<T>* type;
+};
+
+#define SER_REMOVE_CONSTREF(TYPE)\
+	remove_const_ptr_t <std::remove_reference_t <TYPE>>
+
+#define SERIALFUNC_WRITE(VAR, FILE)\
+	SerialFunc <SER_REMOVE_CONSTREF(decltype(VAR))> ::write(VAR, FILE)
+
+#define SERIALFUNC_READ(VAR, FILE)\
+	SerialFunc <SER_REMOVE_CONSTREF(decltype(VAR))> ::read(VAR, FILE)
+
+#define SERIALFUNC_WRITE_T(VAR, FILE, ...)\
+	SerialFunc <SER_REMOVE_CONSTREF(decltype(VAR))>, SerialTag_##__VA_ARGS__> ::write(VAR, FILE)
+
+#define SERIALFUNC_READ_T(VAR, FILE, ...)\
+	SerialFunc <SER_REMOVE_CONSTREF(decltype(VAR))>, SerialTag_##__VA_ARGS__> ::read(VAR, FILE)
+
+#define SERIALFUNC_READ_NEW(TYPE, FILE)\
+	SerialFunc <TYPE*>::read_new(FILE)
+
+
+
 template<> struct SerialFunc<bool, SerialTag_None> {
 	static void write(bool p, File& f) {f.w8(p);}
 	static void read(bool& p, File& f) {p = f.r8();}
@@ -48,7 +78,7 @@ struct SerialTag_FixedArray {};
 
 /// Stores size as 32-bit value
 template <typename Tag = SerialTag_None>
-struct SerialTag_VectorLike32 {};
+struct SerialTag_Array32 {};
 
 template <size_t N>
 struct SerialTag_Enum {};
@@ -66,7 +96,7 @@ struct SerialFunc<T, SerialTag_FixedArray<N, Base, Tag>> {
 };
 
 template <typename T, typename Tag>
-struct SerialFunc<T, SerialTag_VectorLike32<Tag>> {
+struct SerialFunc<T, SerialTag_Array32<Tag>> {
 	static void write(const T& p, File& f) {
 		auto size = p.size();
 		f.w32L(size);
@@ -122,12 +152,12 @@ struct SerialFunc<std::variant<Ts...>, SerialTag_None>
 		if (p.valueless_by_exception()) throw std::runtime_error("Variant is valueless-by-exception");
 		f.w8(p.index());
 		std::visit([&](auto& v){
-			SerialFunc<typename std::remove_cv_t<typename std::remove_reference_t<decltype(v)>>, SerialTag_None>::write(v, f); }, p);
+			SerialFunc<SER_REMOVE_CONSTREF(decltype(v)), SerialTag_None>::write(v, f); }, p);
 	}
 	static void read(Var& p, File& f) {
 		init_by_id(p, f.r8());
 		std::visit([&](auto& v){
-			SerialFunc<typename std::remove_reference_t<decltype(v)>, SerialTag_None>::read(v, f); }, p);
+			SerialFunc<SER_REMOVE_CONSTREF(decltype(v)), SerialTag_None>::read(v, f); }, p);
 	}
 };
 
@@ -154,7 +184,7 @@ template<> struct SerialFunc<float, SerialTag_fp_16_8> {
 
 template <typename Tag>
 struct SerialFunc<vec2fp, Tag> {
-	static void write(vec2fp p, File& f) {
+	static void write(const vec2fp& p, File& f) {
 		SerialFunc<float, Tag>::write(p.x, f);
 		SerialFunc<float, Tag>::write(p.y, f);
 	}

@@ -25,11 +25,14 @@ struct PlayerRender : ECompRender
 	float angle = 0.f; // override
 	std::string dbg_info;
 	
+	bool show_mov_regen = false;
+	
 	
 	PlayerRender(Entity* ent);
 	
 private:
 	std::string dbg_info_real;
+	TimeSpan particles_after;
 	
 	void on_destroy() override;
 	void step() override;
@@ -41,7 +44,7 @@ private:
 
 struct PlayerMovement : EComp
 {
-	bool accel_inf = false; ///< Hack - if true, acceleration is always available
+	bool cheat_infinite = false; ///< Hack - if true, acceleration is always available
 	
 	PlayerMovement(Entity* ent);
 	void upd_vel(vec2fp dir, bool is_accel, vec2fp look_pos); ///< Must be called exactly once per step
@@ -49,20 +52,28 @@ struct PlayerMovement : EComp
 	/// Returns if acceleration can be enabled and current charge value
 	std::pair<bool, float> get_t_accel() const {return {acc_flag, clampf_n(acc_val)};}
 	
+	/// Resets speed gain
+	void shoot_trigger() {peace_tmo = TimeSpan::seconds(18);}
+	
+	bool is_infinite_accel() const {return cheat_infinite || !peace_tmo.is_positive();}
+	
 private:
-	const float spd_shld = 8; // with shield; 7
-	const float spd_norm = 12; // default; 10
-	const float spd_accel = 20;
+	const float spd_shld = 8; // with shield
+	const float spd_norm = 12; // default (base)
+	const float spd_accel = 24;
 	const float max_mov_speed = spd_accel;
 	
 	vec2fp prev_dir = {}; // last used move direction
 	SmoothSwitch accel_ss;
 	
+	TimeSpan peace_tmo;
+	bool peace_tmo_was_zero = true;
+	
 	bool acc_flag = true;
 	float acc_val = 1;
-	const float acc_incr = 0.1; // per second
-	const float acc_decr = 0.4;
-	const float acc_on_thr = 0.6;
+	const float acc_incr = 0.15; // per second
+	const float acc_decr = 0.7;
+	const float acc_on_thr = 0.4;
 	
 	vec2fp tar_dir = {};
 	float inert_t = 0;
@@ -126,6 +137,7 @@ private:
 	float shld_restore_rate = 100; // per second
 	
 	void on_cnt(const CollisionEvent& ev);
+	void on_dmg(const DamageQuant& dq);
 	void step() override;
 };
 

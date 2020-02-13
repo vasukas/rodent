@@ -11,9 +11,10 @@ class AI_Drone;
 
 enum class AI_Speed
 {
-	SlowPrecise,
+	SlowPrecise, ///< Zero inertia
 	Slow,
 	Normal,
+	Patrol, ///< Imprecise target point
 	Accel,
 	
 	TOTAL_COUNT
@@ -29,7 +30,7 @@ struct AI_DroneParams
 		HELP_ALWAYS  // nearest always selected
 	};
 	
-	std::array<float, static_cast<size_t>(AI_Speed::TOTAL_COUNT)> speed = {1, 1, 1, 1};
+	std::array<float, static_cast<size_t>(AI_Speed::TOTAL_COUNT)> speed = {};
 	
 	float dist_panic   = 0;  ///< If closer, moves away fast and doesn't shoot
 	float dist_minimal = 5;  ///< If closer, moves away
@@ -40,12 +41,25 @@ struct AI_DroneParams
 	
 	bool is_camper = false; ///< If true, pursues only visible targets
 	HelpCallPrio helpcall = HELP_ALWAYS;
-	uint8_t placement_prio = 1; ///< Must be non-zero. Higher gets better placement on attack
+	uint8_t placement_prio    = 1; ///< Must be non-zero. Higher gets better placement on attack
+	uint8_t placement_freerad = 0; ///< Cells in that radius (square, not circle) are marked as used by this drone (but not rays)
 	
-	float rot_speed = M_PI*2; ///< Max rotation delta per second, radians. Can't be zero
+	float rot_speed = M_PI*2; ///< Max rotation delta per second, radians. May be zero
 	
 	/// Minimal and maximal field-of-view half-angles, radians
 	std::optional<std::pair<float, float>> fov = std::make_pair(deg_to_rad(30), deg_to_rad(60));
+	
+	
+	///
+	void set_speed(float slow, float normal, float high)
+	{
+		speed[static_cast<size_t>(AI_Speed::Slow)] = slow;
+		speed[static_cast<size_t>(AI_Speed::SlowPrecise)] = slow;
+		speed[static_cast<size_t>(AI_Speed::Normal)] = normal;
+		speed[static_cast<size_t>(AI_Speed::Patrol)] = lerp(slow, normal, 0.5);
+		speed[static_cast<size_t>(AI_Speed::Accel)] = high;
+	}
+	float get_speed(AI_Speed i) const {return speed.at(static_cast<size_t>(i));}
 };
 
 
@@ -67,14 +81,16 @@ const TimeSpan group_update_timeout = TimeSpan::seconds(0.5);
 /// How often drone can call for help
 const TimeSpan helpcall_timeout = TimeSpan::seconds(5);
 
+
+
 /// Max distance between points considered same when using SlowPrecise (squared)
 const float move_slowprecise_dist_squ = 0.5 * 0.5;
 
+/// Distance to target at which it can be reset in Patrol speed mode (squared)
+const float move_patrol_reset_distance_squ = 7 * 7;
+
 /// Timeout before switching rotation types (fix for twitching)
 const TimeSpan fixed_rotation_length = TimeSpan::seconds(0.3);
-
-/// How long AI attacks if hit by target out of range
-const TimeSpan retaliation_length = TimeSpan::seconds(0.3);
 
 
 
@@ -94,7 +110,7 @@ const float patrol_raycast_length = 5;
 //const float target_switch_distance = 3;
 
 /// Range in which target is detected out of FoV (squared)
-const float target_hearing_range_squ = 6*6;
+const float target_hearing_range_squ = 4*4;
 
 /// Extended range in which target is detected out of FoV (squared)
 const float target_hearing_ext_range_squ = 12*12;
@@ -120,6 +136,9 @@ const float attack_ttr_dev1 = 0.25;
 /// Fire LoS raycast width
 const float attack_los_hwidth = 0.3;
 
+/// How long AI attacks if hit by target out of range
+const TimeSpan retaliation_length = TimeSpan::seconds(0.3);
+
 
 
 /// Neighbour cells checked for crowding
@@ -131,14 +150,15 @@ const vec2i placement_crowd_dirs[] =
              {-1,  1}, {0,  1}, {1,  1},
                        {0,  2}
 };
-/// Max offset
-const int placement_crowd_dirs_max = 2;
 
 /// When going to AoS placement - how far away from target should be
 const float placement_follow_evade_radius = 20;
 
 /// When going to AoS placement - how much cost added in pathfinding
 const float placement_follow_evade_cost = 20;
+
+/// Partially closed cells with higher priority difference are ignored
+const int placement_max_prio_diff = 20;
 
 
 
@@ -149,10 +169,10 @@ const float chase_ahead_dist = 7;
 const TimeSpan chase_wait_incr = TimeSpan::seconds(5);
 
 /// Max chase delay (decrease time, 1 to 0)
-const TimeSpan chase_wait_decr = TimeSpan::seconds(1.5);
+const TimeSpan chase_wait_decr = TimeSpan::seconds(1);
 
 /// Delay before starting search on unsuccessful chase
-const TimeSpan chase_search_delay = TimeSpan::seconds(2);
+const TimeSpan chase_search_delay = TimeSpan::seconds(1);
 
 
 
@@ -180,13 +200,13 @@ const float suspect_on_damage = suspect_chase_thr;
 
 
 // Message distances (in rooms)
-const int msg_engage_dist = 3;
+const int msg_engage_dist = 4;
 const int msg_engage_relay_dist = 0;
-const int msg_helpcall_dist = 3;
-const int msg_helpcall_highprio_dist = 4;
+const int msg_helpcall_dist = 5;
+const int msg_helpcall_highprio_dist = 8;
 
 /// Engage message sent only if group has less bots
-const int msg_engage_max_bots = 16;
+const int msg_engage_max_bots = 18;
 
 
 
@@ -197,7 +217,7 @@ const TimeSpan search_point_wait = TimeSpan::seconds(4);
 const TimeSpan search_point_wait_last = TimeSpan::seconds(8);
 
 /// Search rings distances
-const std::array<int, 2> search_ring_dist = {7, 20};
+const std::array<int, 2> search_ring_dist = {8, 24};
 }
 
 #endif // AI_COMMON_HPP

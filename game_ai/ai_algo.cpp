@@ -447,10 +447,12 @@ public:
 				float rpr_higher = 0;
 				float rpr_lower = 0; // occupied, but priority lower
 				
-				for_rays(c, [&](auto& r){
+				if (!for_rays(c, [&](auto& r){
 					if (r.prio >= pprio) ++rpr_higher;
 					else if (r.prio) ++rpr_lower;
-				});
+					return r.prio - pprio < AI_Const::placement_max_prio_diff;
+				}))
+					continue;
 				
 				rpr_higher /= c.n_rays();
 				rpr_lower /= c.n_rays();
@@ -488,6 +490,15 @@ public:
 			{
 				for_rays(*best, [&](auto& r){ r.mark(*d); });
 				best->occupied = true;
+				
+				int freerad = d->par.dpar->placement_freerad;
+				if (freerad) {
+					for (auto& c : cells) {
+						auto d = abs(c.pos - best->pos);
+						if (d.x <= freerad || d.y <= freerad)
+							c.occupied = true;
+					}
+				}
 				
 				d->result.tar = lc.to_center_coord(best->pos);
 			}

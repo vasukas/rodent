@@ -52,6 +52,21 @@ void fill_rect(ImageInfo& img, Rect r, ImageBrush& brush)
 {
 	r.map([&](vec2i p){ brush.apply(img, p); });
 }
+void draw_circle(ImageInfo& img, vec2i c, int r, ImageBrush& brush)
+{
+	BresenhamCircle g(c, r);
+	while (auto ps = g.step())
+		for (auto& p : *ps)
+			brush.apply(img, p);
+}
+void fill_circle(ImageInfo& img, vec2i c, int r, ImageBrush& brush)
+{
+	BresenhamCircle g(c, r);
+	while (auto p = g.step_offset()) {
+		for (int x = c.x + p->x; x <= c.x - p->x; ++x) brush.apply(img, {x, c.y - p->y});
+		for (int x = c.x + p->x; x <= c.x - p->x; ++x) brush.apply(img, {x, c.y + p->y});
+	}
+}
 
 
 
@@ -278,6 +293,46 @@ std::optional<vec2i> BresenhamLine::step()
 			c0.y += s.y;
 		}
 	}
+	
+	return ret;
+}
+
+
+
+BresenhamCircle::BresenhamCircle(vec2i c, int r)
+{
+	init(c, r);
+}
+void BresenhamCircle::init(vec2i c, int r)
+{
+	offset = c;
+	x = -r;
+	y = 0;
+	err = 2-2*r;
+	this->r = r;
+	fin = false;
+}
+std::optional<std::array<vec2i,4>> BresenhamCircle::step()
+{
+	auto p = step_offset();
+	if (!p) return {};
+	
+	std::array<vec2i,4> ret;
+	ret[0] = offset + vec2i{-p->x, +p->y};
+	ret[1] = offset + vec2i{-p->y, -p->x};
+	ret[2] = offset + vec2i{+p->x, -p->y};
+	ret[3] = offset + vec2i{+p->y, +p->x};
+	return ret;
+}
+std::optional<vec2i> BresenhamCircle::step_offset()
+{
+	if (fin) return {};
+	vec2i ret = {x, y};
+	
+    r = err;
+    if (r <= y) err += (++y)*2 + 1;
+    if (r > x || err > y) err += (++x)*2 + 1;
+	fin = !(x < 0);
 	
 	return ret;
 }

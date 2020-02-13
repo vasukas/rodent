@@ -154,7 +154,7 @@ struct EC_Equipment : EComp
 	/// Returns true if shot on previous step
 	bool did_shot() {return did_shot_flag;}
 	
-	bool set_wpn(size_t index); ///< Returns false if can't be set
+	bool set_wpn(size_t index, bool even_if_no_ammo = false); ///< Returns false if can't be set
 	size_t wpn_index();
 	
 	Weapon& get_wpn(); ///< Returns current weapon

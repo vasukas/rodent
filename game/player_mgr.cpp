@@ -60,6 +60,7 @@ public:
 	{
 		TimeSpan time; // since start
 		std::string str;
+		SmoothBlink no_ammo_tcou;
 		
 		void jerr(JustError err) {
 			time = TimeSpan::since_start();
@@ -70,6 +71,7 @@ public:
 				break;
 			case ERR_SELECT_NOAMMO:
 				str = "Can't switch: No ammo";
+				no_ammo_tcou.trigger();
 				break;
 			case ERR_NO_TARGET:
 				str = "No target";
@@ -91,17 +93,23 @@ public:
 	
 	struct StatusIndicator
 	{
-		SmoothBlink blink;
+		SmoothBlink blink, blink_upd;
 		FColor clr, alt_clr;
-		float thr = 0.5;
+		float thr = 0.5; // blink below this value
+		float prev_value = 0; // for info only
 		
 		void draw(std::string_view label, float value, bool use_alt_clr = false)
 		{
+			prev_value = value;
+			
 			vig_push_palette();
 			float t = blink.get_sine(value < thr && !use_alt_clr);
 			
-			vig_CLR(Back)  = (((use_alt_clr ? alt_clr : clr) * 0.7 + -0.2) * t).to_px();
-			vig_CLR(Active) = ((use_alt_clr ? alt_clr : clr) * t).to_px();
+			FColor blc = FColor(1,1,0);
+			blc *= 0.7 * blink_upd.get_blink();
+			
+			vig_CLR(Back)  = (((use_alt_clr ? alt_clr : clr) * 0.7 + -0.2 + blc) * t).to_px();
+			vig_CLR(Active) = ((use_alt_clr ? alt_clr : clr) * t + blc).to_px();
 			
 			vig_progress(label, value);
 			vig_pop_palette();
@@ -140,14 +148,8 @@ public:
 			
 			// draw helpers
 			
-			uint32_t frame_clr = [&]
-			{
-				if (is_cur) {
-					if (ammo && !eqp.has_ammo(wpn)) return 0xff0000ffu;
-					return 0x00ff00ffu;
-				}
-				else if (ammo && !eqp.has_ammo(wpn)) return 0xff0000ffu;
-				return 0xff8000ffu;
+			uint32_t frame_clr = [&]{
+				return is_cur ? 0x00ff00ffu : 0xff0000ffu;
 			}();
 			uint32_t bg_clr = [&]
 			{
@@ -159,9 +161,9 @@ public:
 						blink.force_reset();
 						return FColor(0.7, 0, 0, a).to_px();
 					}
-					bool chx = ammo_value < ammo->value;
+					if (ammo_value < ammo->value) blink.trigger();
 					ammo_value = ammo->value;
-					return (FColor(1, 1, 0, a) * blink.get_blink(chx)).to_px();
+					return (FColor(1, 1, 0, a) * blink.get_blink()).to_px();
 				}
 				return uint32_t(a * 255);
 			}();
@@ -210,7 +212,7 @@ public:
 			if (ammo && !eqp.infinite_ammo)
 			{
 				if (!ammo->value) draw_strip(1, 0xff0000ff, 0, -1);
-				else draw_strip(float(ammo->value)/ammo->max, 0x8080ffff, 0, -1);
+				else draw_strip(float(ammo->value)/ammo->max, 0xc0e0e0ff, 0, -1);
 			}
 			
 			if (auto& m = wpn.overheat)
@@ -267,8 +269,8 @@ public:
 	PlayerManager_Impl(std::shared_ptr<PlayerController> pc_ctr_in)
 		: pc_ctr(std::move(pc_ctr_in))
 	{
-		TimeSpan st = TimeSpan::seconds(1.5);
-		std::string s = "Press ESCAPE to see controls";
+		TimeSpan st = TimeSpan::seconds(1);
+		std::string s = "The First and Only Level";
 		if (pc_ctr->get_gpad()) {st *= 2; s += "\nPress START to enable gamepad";}
 		msgs.emplace_back(std::move(s), st, TimeSpan::seconds(1.5));
 		
@@ -311,7 +313,10 @@ public:
 	{
 		if (!plr_ent)
 		{
-			for (auto& i : ind_stat) i.blink.force_reset();
+			for (auto& i : ind_stat) {
+				i.blink.force_reset();
+				i.blink_upd.force_reset();
+			}
 			ind_wpns.clear();
 		}
 		
@@ -321,31 +326,44 @@ public:
 			
 			auto plr = static_cast<PlayerEntity*>(plr_ent);
 			
+			// Health
 			{	auto& hp = plr_ent->get_hlc()->get_hp();
 				ind_stat[INDST_HEALTH].draw(FMT_FORMAT("Health {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
 			}
 			vig_lo_next();
 			
-			{	auto acc_st = plr->mov.get_t_accel();
+			// Accelartion
+			if (plr->mov.is_infinite_accel()) {
+				ind_stat[INDST_ACCEL].draw("Accel INFINIT", 1, true);
+			}
+			else {
+				auto acc_st = plr->mov.get_t_accel();
 				ind_stat[INDST_ACCEL].draw(FMT_FORMAT("Accel {}", acc_st.first? "OK     " : "charge "),
-									       acc_st.second, !acc_st.first); }
-			vig_lo_next();
-			
-			{	auto& hp = plr->armor->get_hp();
-				ind_stat[INDST_ARMOR].draw(FMT_FORMAT("Armor {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
+									       acc_st.second, !acc_st.first);
 			}
 			vig_lo_next();
 			
+			// Armor
+			{	auto& hp = plr->armor->get_hp();
+				auto& ind = ind_stat[INDST_ARMOR];
+				if (hp.t_state() > ind.prev_value) ind.blink_upd.trigger();
+				ind.draw(FMT_FORMAT("Armor {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
+			}
+			vig_lo_next();
+			
+			// Shield
 			{	auto& hp = plr->pers_shld->get_hp();
 				ind_stat[INDST_PERS_SHIELD].draw(FMT_FORMAT("P.shld {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
 			}
 			vig_lo_next();
 			
+			// Projected shield
 			{	auto& sh = plr->log.shlc;
+				auto& ind = ind_stat[INDST_PROJ_SHIELD];
 				if (sh.is_enabled())
 				{
 					auto& hp = sh.get_ft()->get_hp();
-					ind_stat[INDST_PROJ_SHIELD].draw(FMT_FORMAT("Shield {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
+					ind.draw(FMT_FORMAT("Shield {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
 				}
 				else
 				{
@@ -355,10 +373,10 @@ public:
 					}
 					else {
 						if (std::exchange(proj_shld_was_dead, false)) {
-							ind_stat[INDST_PROJ_SHIELD].blink.force_reset();
-							ind_stat[INDST_PROJ_SHIELD].blink.trigger();
+							ind.blink.force_reset();
+							ind.blink.trigger();
 						}
-						ind_stat[INDST_PROJ_SHIELD].draw("Shield - ready", 0, true);
+						ind.draw("Shield - ready", 0, true);
 					}
 				}
 			}
@@ -367,20 +385,19 @@ public:
 //			vec2fp pos = plr_ent->get_phy().get_pos();
 //			vig_label_a("X {:3.3f} Y {:3.3f}\n", pos.x, pos.y);
 			
-			//
+			// Weapons
 			
 			auto& eqp = plr_ent->eqp;
 			
+			{	auto& wpn = eqp.get_wpn();
+				auto& ammo = eqp.get_ammo(wpn.info->ammo);
+				vig_label_a("{}\nAmmo: {} / {}\n", wpn.info->name, ammo.value, ammo.max);
+			}
 			{	auto& wpns = eqp.raw_wpns();
 				ind_wpns.resize( wpns.size() );
 				
 				for (size_t i=0; i < wpns.size(); ++i)
 					ind_wpns[i].draw( *wpns[i], eqp, i );
-			}
-			
-			{	auto& wpn = eqp.get_wpn();
-				auto& ammo = eqp.get_ammo(wpn.info->ammo);
-				vig_label_a("\n{}\nAmmo: {} / {}\n", wpn.info->name, ammo.value, ammo.max);
 			}
 			
 			const TimeSpan wmr_max = TimeSpan::seconds(1.5);
@@ -391,7 +408,7 @@ public:
 				RenImm::get().draw_text(vec2fp(mou_pos.x, mou_pos.y + 30), wpn_msgrep.str, clr, true);
 			}
 			
-			//
+			// Cursor
 			
 			int cursor_rings_x = 0;
 			if (AppSettings::get().cursor_info_flags & 1)
@@ -408,13 +425,17 @@ public:
 				
 				auto& wpn = eqp.get_wpn();
 				
-				if (!eqp.has_ammo(wpn))
+				auto& ammo_tcou = wpn_msgrep.no_ammo_tcou;
+				if (!eqp.has_ammo(wpn)) ammo_tcou.trigger();
+				float ammo_t = ammo_tcou.get_blink();
+				
+				if (ammo_t > 0.01)
 				{
 					float t = std::fmod(now.seconds(), 1);
 					if (t > 0.5) t = 1 - t;
 					t *= 2;
 					
-					uint32_t clr = 0xff000000 | alpha;
+					uint32_t clr = 0xff000000 | int(alpha * ammo_t);
 					clr += lerp<int>(64, 220, t) << 16;
 					clr += lerp<int>(64, 220, t) << 8;
 					
@@ -679,7 +700,7 @@ public:
 		{
 			auto plr = static_cast<PlayerEntity*>(plr_ent);
 			plr->eqp.infinite_ammo = cheat_ammo || cheat_godmode;
-			plr->mov.accel_inf = cheat_godmode;
+			plr->mov.cheat_infinite = cheat_godmode;
 		}
 	}
 	void step() override
@@ -710,8 +731,8 @@ public:
 		}
 		
 		// halfsizes
-		const vec2fp hsz_on  = {65, 50};
-		const vec2fp hsz_off = {80, 65};
+		const vec2fp hsz_on  = {80, 65};
+		const vec2fp hsz_off = hsz_on * 1.25;
 		
 		if (auto ent = GameCore::get().get_ent(plr_eid))
 			last_plr_pos = ent->get_pos();

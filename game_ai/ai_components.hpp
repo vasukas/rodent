@@ -19,7 +19,7 @@ struct AI_Movement final : EComp
 	bool has_target() const {return path || preq;}
 	
 	std::optional<vec2fp> get_next_point() const;
-	float get_current_speed() const; ///< Returns current *set* speed, not actual one
+	float get_set_speed() const; ///< Returns current *set* speed, not actual one
 	bool has_failed() const; ///< Returns true if target is unreachable
 	
 	bool is_same(vec2fp a, vec2fp b) const; ///< Checks if two coordinates refer to (roughly) same position
@@ -27,7 +27,6 @@ struct AI_Movement final : EComp
 	
 private:
 	AI_Drone& drone;
-	static constexpr float inert_k[static_cast<size_t>(AI_Speed::TOTAL_COUNT)] = {50, 6, 4, 8};
 	
 	struct Preq {
 		vec2fp target;
@@ -40,13 +39,16 @@ private:
 	
 	std::optional<Preq> preq;
 	std::optional<Path> path;
-	size_t cur_spd = 1; // index
+	AI_Speed cur_spd = AI_Speed::Slow;
 	bool preq_failed = false;
+	std::optional<vec2fp> patrol_reset;
 	
 	
 	std::optional<vec2fp> calc_avoidance(); // collision avoidance vector
 	vec2fp step_path();
 	void step() override;
+	
+	static float inert_k(AI_Speed speed);
 };
 
 
@@ -117,7 +119,7 @@ private:
 
 struct AI_RenRotation
 {
-	bool locked = false;
+	std::optional<float> speed_override; ///< May be zero
 	
 	void update(AI_Drone& ent, std::optional<vec2fp> view_target, std::optional<vec2fp> mov_target);
 	

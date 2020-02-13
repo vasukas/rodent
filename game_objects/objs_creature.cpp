@@ -42,7 +42,10 @@ void AtkPat_Sniper::idle(Entity& self)
 	//
 	
 	if (auto mov = self.get_ai_drone()->mov) mov->locked = charged;
-	self.get_ai_drone()->get_ren_rot().locked = charged && visible;
+	
+	auto& rotover = self.get_ai_drone()->get_ren_rot().speed_override;
+	if (charged && visible) rotover = self.get_ai_drone()->get_pars().rot_speed * rotation_k;
+	else rotover.reset();
 	
 	if (shooting) {
 		self.get_eqp()->shoot(p_tar, true, false);
@@ -69,7 +72,7 @@ void AtkPat_Sniper::idle(Entity& self)
 void AtkPat_Sniper::reset(Entity& self)
 {
 	laser->src_eid = {};
-	self.get_ai_drone()->get_ren_rot().locked = false;
+	self.get_ai_drone()->get_ren_rot().speed_override.reset();
 }
 
 

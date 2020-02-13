@@ -125,14 +125,14 @@ void ResBase_Impl::init_ren()
 		vec2fp ctr;
 		float rad;
 		float t, dt;
-		float len_offset = -0.5; // effect length offset
+		bool is_quick = false;
 		
 		size_t begin(const ParticleBatchPars& pars, ParticleParams& p)
 		{
 			p.size = 1;
 			
 			ctr = pars.tr.pos;
-			rad = pars.power;
+			rad = is_quick ? std::min(2.5f, pars.power) : pars.power;
 			t = 0;
 			
 			size_t num = (2 * M_PI * rad) / (p.size * 0.5);
@@ -142,9 +142,9 @@ void ResBase_Impl::init_ren()
 		}
 		void gen(ParticleParams& p)
 		{
-			float total_len = rnd_stat().range(1, 2) + len_offset;
-			p.lt = total_len * 0.2;
-			p.ft = total_len * 0.8;
+			float total_len = rnd_stat().range(1, 2) + (is_quick ? -0.5 : 0);
+			p.lt = total_len * 0.5;
+			p.ft = total_len * 0.5;
 			p.clr = clr;
 			
 			for (int i=0; i<3; ++i) {
@@ -166,6 +166,12 @@ void ResBase_Impl::init_ren()
 			{
 				p.pos = ctr + r;
 				p.vel = r / vt * -2;
+			}
+			
+			if (is_quick)
+			{
+				p.decel_to_zero();
+				p.vel *= 1.5;
 			}
 			
 			t += dt;
@@ -426,9 +432,10 @@ void ResBase_Impl::init_ren()
 		auto g = new WpnExplosion;
 		ld_es[FE_WPN_EXPLOSION].reset(g);
 		
-		g->clr   = FColor(1, 0.3, 0.1, 0.8);
-		g->clr_n = FColor(0, 0.2, 0.1);
-		g->clr_p = FColor(0.2, 0.8, 0.3);
+		g->clr   = FColor(1,   0.3, 0.1, 0.7);
+		g->clr_n = FColor(0,   0.2, 0.1, 0.2);
+		g->clr_p = FColor(0.2, 0.8, 0.3, 0.1);
+		g->is_quick = true;
 	}{
 		auto g = new Explosion;
 		ld_es[FE_SHOT_DUST].reset(g);
@@ -453,7 +460,6 @@ void ResBase_Impl::init_ren()
 		auto g = new WpnExplosion;
 		ld_es[FE_SPAWN].reset(g);
 		g->implode = true;
-		g->len_offset = 0;
 	}{
 		auto g = new WpnCharge;
 		ld_es[FE_WPN_CHARGE].reset(g);

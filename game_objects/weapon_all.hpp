@@ -111,6 +111,7 @@ class FoamProjectile : public Entity
 public:
 	static bool can_create(vec2fp pos, EntityIndex src_i);
 	FoamProjectile(vec2fp pos, vec2fp vel, size_t team, EntityIndex src_i, bool is_first);
+	~FoamProjectile();
 	std::string ui_descr() const override {return frozen ? "Foam" : "";}
 	
 private:
@@ -136,7 +137,7 @@ private:
 	
 	void step() override;
 	void on_event(const CollisionEvent& ev);
-	void freeze();
+	void freeze(bool is_normal = true);
 };
 
 

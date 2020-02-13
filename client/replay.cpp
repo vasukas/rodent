@@ -14,24 +14,18 @@ const uint32_t stream_version = 4;
 
 
 
-SER_SERIALFUNC_PLACEMENT(PlayerController::State,
-SER_BEGIN_NO_INDEX(PlayerController::State)
+SER_SERIALFUNC_PLACEMENT_1(PlayerController::State,
 	SER_FDT(is, FixedArray< std::tuple_size_v<decltype(PlayerController::State::is)>, bool >),
-	SER_FDT(acts, VectorLike32<SerialTag_Enum< PlayerController::ACTION_TOTAL_COUNT_INTERNAL >>),
+	SER_FDT(acts, Array32<SerialTag_Enum< PlayerController::ACTION_TOTAL_COUNT_INTERNAL >>),
 	SER_FD(mov),
-	SER_FD(tar_pos)
-SER_END)
+	SER_FD(tar_pos))
 
-SER_SERIALFUNC_PLACEMENT(ReplayInitData,
-SER_BEGIN_NO_INDEX(ReplayInitData)
-	SER_FDT(rnd_init, VectorLike32),
-	SER_FD(fastforward)
-SER_END)
+SER_SERIALFUNC_PLACEMENT_1(ReplayInitData,
+	SER_FDT(rnd_init, Array32),
+	SER_FD(fastforward))
 
-SER_SERIALFUNC_PLACEMENT(Replay_DebugTeleport,
-SER_BEGIN_NO_INDEX(Replay_DebugTeleport)
-	SER_FD(target)
-SER_END)
+SER_SERIALFUNC_PLACEMENT_1(Replay_DebugTeleport,
+	SER_FD(target))
 
 static void write_header(File& f)
 {
@@ -102,10 +96,10 @@ static bool read(Frame& frm, File& f)
 			int i = f.r8();
 			if (i == 1) {
 				auto& ev = frm.evs.emplace_back();
-				SerialFunc<ReplayEvent>::read( ev, f );
+				SERIALFUNC_READ(ev, f);
 			}
 			else {
-				SerialFunc<PlayerController::State>::read( frm.st, f );
+				SERIALFUNC_READ(frm.st, f);
 				return true;
 			}
 		}
@@ -280,7 +274,7 @@ ReplayReader* ReplayReader::read_net(ReplayInitData& dat, const char *addr, cons
 	auto f = net_init(addr, port, is_server);
 	check_header(*f);
 	
-	SerialFunc<ReplayInitData>::read(dat, *f);
+	SERIALFUNC_READ(dat, *f);
 	return new Replay_NetReader(std::move(f));
 }
 
@@ -303,7 +297,7 @@ ReplayWriter* ReplayWriter::write_net(ReplayInitData dat, const char *addr, cons
 	auto f = net_init(addr, port, is_server);
 	write_header(*f);
 	
-	SerialFunc<ReplayInitData>::write(dat, *f);
+	SERIALFUNC_WRITE(dat, *f);
 	return new Replay_NetWriter(std::move(f));
 }
 
@@ -335,7 +329,7 @@ ReplayWriter* ReplayWriter::write_file(ReplayInitData dat, const char *filename)
 	auto f = File::open_ptr(filename, File::OpenCreate);
 	write_header(*f);
 	
-	SerialFunc<ReplayInitData>::write(dat, *f);
+	SERIALFUNC_WRITE(dat, *f);
 	return new Replay_File(std::move(f));
 }
 ReplayReader* ReplayReader::read_file(ReplayInitData& dat, const char *filename)
@@ -343,6 +337,6 @@ ReplayReader* ReplayReader::read_file(ReplayInitData& dat, const char *filename)
 	auto f = File::open_ptr(filename);
 	check_header(*f);
 	
-	SerialFunc<ReplayInitData>::read(dat, *f);
+	SERIALFUNC_READ(dat, *f);
 	return new Replay_File(std::move(f));
 }

@@ -23,7 +23,7 @@ void SmoothSwitch::step(TimeSpan passed, bool enabled)
 		[[fallthrough]];
 		
 	case S_UP:
-		if (!enabled) {
+		if (!enabled && !blink_mode) {
 			float v = value();
 			stage = S_DOWN;
 			set_v(v);
@@ -79,11 +79,19 @@ float SmoothSwitch::value() const
 	case S_SUST: return 1;
 	case S_DOWN: return tcou / tmo_out;
 	}
-	return 0; // to silence warning
+	return 0; // silence warning
 }
-bool SmoothSwitch::is_zero() const
+SmoothSwitch::OutputState SmoothSwitch::get_state() const
 {
-	return stage == S_ZERO;
+	switch (stage)
+	{
+	case S_ZERO: return OUT_ZERO;
+	case S_UP:   return OUT_RISING;
+	case S_ENAB: return OUT_ONE;
+	case S_SUST: return OUT_ONE;
+	case S_DOWN: return OUT_FADING;
+	}
+	return OUT_ZERO; // silence warning
 }
 void SmoothSwitch::set_v(float v)
 {
@@ -110,7 +118,13 @@ float SmoothBlink::get_blink(bool enabled)
 }
 void SmoothBlink::trigger()
 {
-	time = std::max(time, TimeSpan::ms(1));
+	if (time.is_positive())
+	{
+		float t = std::fmod(time / full_period, 1);
+		if (t > 0.5) t = 1 - t;
+		time = full_period * t;
+	}
+	else time = TimeSpan::micro(1);
 }
 void SmoothBlink::force_reset()
 {

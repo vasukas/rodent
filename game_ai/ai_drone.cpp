@@ -394,7 +394,7 @@ void AI_Drone::step()
 				if (last) set_idle_state();
 			}
 		}
-		else if (mov->set_target( st->pts[st->at], AI_Speed::Slow ))
+		else if (mov->set_target( st->pts[st->at], AI_Speed::Patrol ))
 		{
 			bool last = st->at == st->pts.size() - 1;
 			st->tmo = last ? AI_Const::search_point_wait_last : AI_Const::search_point_wait;
@@ -417,7 +417,7 @@ void AI_Drone::step()
 		if (!mov) {}
 		else if (std::holds_alternative<IdlePoint>(gst.ist))
 		{
-			mov->set_target(home_point, AI_Speed::Slow);
+			mov->set_target(home_point, AI_Speed::Patrol);
 		}
 		else if (auto st = std::get_if<IdleResource>(&gst.ist))
 		{

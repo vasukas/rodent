@@ -112,12 +112,14 @@ LevelControl::LevelControl(const LevelTerrain& lt)
 		else if (typenm) nr.name = FMT_FORMAT("{}-{}", typenm, ++rm_cou[lr.type]);
 		else nr.name = FMT_FORMAT("Unknown [{}{}]", int('A' + lr.type), ++rm_cou[lr.type]);
 		
-// 3 = AI_Const::msg_engage_dist
+// see AI_Const
 		if (lr.type == LevelTerrain::RM_FACTORY || lr.type == LevelTerrain::RM_LAB || lr.type == LevelTerrain::RM_STORAGE)
+			nr.ai_radio_cost = 4;
+		else if (lr.area.size().area() > 20*18)
+			nr.ai_radio_cost = 4;
+		else if (lr.area.size().area() > 16*14)
 			nr.ai_radio_cost = 3;
-		else if (lr.area.size().area() > 14*18)
-			nr.ai_radio_cost = 3;
-		else if (lr.area.size().area() > 10*12)
+		else if (lr.area.size().area() > 12*10)
 			nr.ai_radio_cost = 2;
 		
 		nr.area = lr.area;

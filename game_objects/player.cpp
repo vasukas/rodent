@@ -37,6 +37,12 @@ void PlayerRender::step()
 		float k = 1.f / RenderControl::get().get_world_camera().get_state().mag;
 		RenImm::get().draw_text( get_pos().pos, dbg_info_real, RenImm::White, false, k );
 	}
+	
+	if (show_mov_regen && particles_after < TimeSpan::since_start())
+	{
+		parts(MODEL_PC_RAT, ME_AURA, {{}, 1, FColor(1, 0.4, 0.2, 0.2)});
+		particles_after = TimeSpan::since_start() + TimeSpan::seconds(0.3);
+	}
 }
 void PlayerRender::proc(PresCommand ac)
 {
@@ -67,6 +73,8 @@ void PlayerMovement::upd_vel(vec2fp dir, bool is_accel, vec2fp look_pos)
 	const float zero_thr = 0.001;
 	const float slide_k = 0.2;
 	
+	auto& self = dynamic_cast<PlayerEntity&>(*ent);
+	
 	// get sidecol
 	
 	const float off = GameConst::hsz_rat - 0.05;
@@ -93,7 +101,7 @@ void PlayerMovement::upd_vel(vec2fp dir, bool is_accel, vec2fp look_pos)
 	
 	// prepare
 	
-	if (accel_inf) {
+	if (is_infinite_accel()) {
 		acc_flag = true;
 		acc_val = 1;
 	}
@@ -102,14 +110,15 @@ void PlayerMovement::upd_vel(vec2fp dir, bool is_accel, vec2fp look_pos)
 	is_accel = !accel_ss.is_zero();
 	
 	std::optional<float> spd;
-	if (dynamic_cast<PlayerEntity&>(*ent).log.shlc.is_enabled())
+	if (self.log.shlc.is_enabled())
 	{
 		is_accel = false;
 		spd = spd_shld;
 	}
 	
 	if (is_accel) {
-		acc_val -= acc_decr * GameCore::time_mul;
+		if (ent->get_phy().get_vel().pos.len_squ() > spd_norm*spd_norm)
+			acc_val -= acc_decr * GameCore::time_mul;
 		if (acc_val < 0) acc_flag = false;
 	}
 	else {
@@ -119,6 +128,21 @@ void PlayerMovement::upd_vel(vec2fp dir, bool is_accel, vec2fp look_pos)
 	
 	if (!spd) spd = is_accel ? spd_accel : spd_norm;
 	if (is_accel && dir.len_squ() < zero_thr) dir = prev_dir;
+	
+	// pgain
+	
+	if (peace_tmo_was_zero && peace_tmo.is_positive()) {
+		peace_tmo_was_zero = false;
+		self.ren.parts(MODEL_PC_RAT, ME_AURA, {{}, 2, FColor(0.2, 0.8, 1, 1)});
+	}
+	if (peace_tmo.is_positive()) {
+		peace_tmo -= GameCore::step_len;
+		if (!peace_tmo.is_positive()) {
+			peace_tmo_was_zero = true;
+			self.ren.show_mov_regen = false;
+		}
+		else if (peace_tmo < TimeSpan::seconds(2)) self.ren.show_mov_regen = true;
+	}
 	
 	// check & slide
 	
@@ -274,6 +298,7 @@ PlayerLogic::PlayerLogic(Entity* ent, std::shared_ptr<PlayerController> ctr_in)
 	ent->get_phobj().add_circle(fd, GameConst::hsz_rat + col_dmg_radius, 0, new FI_Sensor);
 	
 	EVS_CONNECT1(ent->get_phobj().ev_contact, on_cnt);
+	EVS_CONNECT1(ent->get_hlc()->on_damage, on_dmg);
 }
 void PlayerLogic::on_cnt(const CollisionEvent& ev)
 {
@@ -294,10 +319,15 @@ void PlayerLogic::on_cnt(const CollisionEvent& ev)
 		}
 	}
 }
+void PlayerLogic::on_dmg(const DamageQuant&)
+{
+	auto& self = static_cast<PlayerEntity&>(*ent);
+	self.mov.shoot_trigger();
+}
 void PlayerLogic::step()
 {
-	auto self = static_cast<PlayerEntity*>(ent);
-	auto& eqp = self->eqp;
+	auto& self = static_cast<PlayerEntity&>(*ent);
+	auto& eqp = self.eqp;
 	
 	auto& cst = ctr->get_state();
 	
@@ -322,9 +352,9 @@ void PlayerLogic::step()
 			for (; j != i; --j)
 			{
 				if (j >= wpns.size()) j = wpns.size() - 1;
-				if (eqp.set_wpn(j)) break;
+				if (eqp.set_wpn(j, true)) break;
 			}
-			if (i == j) eqp.set_wpn(i);
+			if (i == j) eqp.set_wpn(i, true);
 		}
 		else if (a == PlayerController::A_WPN_NEXT)
 		{
@@ -333,9 +363,9 @@ void PlayerLogic::step()
 			for (; j != i; ++j)
 			{
 				if (j >= wpns.size()) j = 0;
-				if (eqp.set_wpn(j)) break;
+				if (eqp.set_wpn(j, true)) break;
 			}
-			if (i == j) eqp.set_wpn(i);
+			if (i == j) eqp.set_wpn(i, true);
 		}
 		else if (a == PlayerController::A_WPN_1) eqp.set_wpn(0);
 		else if (a == PlayerController::A_WPN_2) eqp.set_wpn(1);
@@ -347,31 +377,34 @@ void PlayerLogic::step()
 	
 	// move & shoot
 	
-	auto spos = self->phy.get_pos();
+	auto spos = self.phy.get_pos();
 	auto tar = cst.tar_pos;
 	
 	if (spos.dist(tar) < min_tar_dist)
 		tar = prev_tar;
 	prev_tar = tar;
 	
-	self->mov.upd_vel(cst.mov, accel, prev_tar);
+	self.mov.upd_vel(cst.mov, accel, prev_tar);
 	eqp.shoot(tar, cst.is[PlayerController::A_SHOOT], cst.is[PlayerController::A_SHOOT_ALT] );
+	
+	if (cst.is[PlayerController::A_SHOOT] || cst.is[PlayerController::A_SHOOT_ALT])
+		self.mov.shoot_trigger();
 	
 	// set rotation
 	
-	self->ren.angle = (tar - spos).angle();
+	self.ren.angle = (tar - spos).angle();
 	
-	auto& body = self->phy.body;
+	auto& body = self.phy.body;
 	float nextAngle = body->GetAngle() + body->GetAngularVelocity() * GameCore::time_mul;
-	float tar_torq = angle_delta(self->ren.angle, nextAngle);
+	float tar_torq = angle_delta(self.ren.angle, nextAngle);
 	body->ApplyAngularImpulse( body->GetInertia() * tar_torq / GameCore::time_mul, true );
 	
 	// calc laser
 	
 	tar -= spos;
-	self->laser->is_enabled = cst.is[PlayerController::A_LASER_DESIG] && tar.len_squ() > 0.1;
-	if (self->laser->is_enabled)
-		self->laser->find_target( tar.norm() );
+	self.laser->is_enabled = cst.is[PlayerController::A_LASER_DESIG] && tar.len_squ() > 0.1;
+	if (self.laser->is_enabled)
+		self.laser->find_target( tar.norm() );
 }
 
 

@@ -694,10 +694,15 @@ FoamProjectile::FoamProjectile(vec2fp pos, vec2fp vel, size_t team, EntityIndex 
 	b2FixtureDef fd;
 	fd.friction = 0;
 	fd.restitution = 1;
-	phy.add_circle(fd, GameConst::hsz_proj_big, 1);
+	phy.add_circle(fd, 0.6, 1);
 	
 	if (is_first) EVS_CONNECT1(phy.ev_contact, on_event);
 	reg_this();
+}
+FoamProjectile::~FoamProjectile()
+{
+	if (!GameCore::get().is_freeing())
+		freeze(false);
 }
 void FoamProjectile::step()
 {
@@ -720,27 +725,29 @@ void FoamProjectile::step()
 }
 void FoamProjectile::on_event(const CollisionEvent& ev)
 {
-	if (ev.type == CollisionEvent::T_RESOLVE && ev.other->get_team() != team)
+	if (ev.type == CollisionEvent::T_RESOLVE
+	    && (ev.other->get_team() != team || typeid(*ev.other) == typeid(FoamProjectile))
+	)
 		freeze();
 }
-void FoamProjectile::freeze()
+void FoamProjectile::freeze(bool is_normal)
 {
 	if (!can_create(phy.get_pos(), src_i)) {
-		destroy();
+		if (is_normal) destroy();
 		return;
 	}
 	
-	left = TimeSpan::seconds(10);
+	left = TimeSpan::seconds(12);
 	frozen = true;
 	
 	auto& phw = GameCore::get().get_phy();
 	
 	if (is_first)
 	{
-		vel_initial.norm_to(5);
-		for (int i=0; i<3; ++i)
+		vel_initial.norm_to(8);
+		for (int i=0; i < (is_normal ? 12 : 4); ++i)
 		{
-			vec2fp dir = {phy.get_radius() - 0.1f, 0};
+			vec2fp dir = {phy.get_radius() - 0.2f, 0};
 			dir.fastrotate( GameCore::get().get_random().range_n2() * M_PI );
 			
 			phw.post_step([p = phy.get_pos(), v = dir, team = team, src_i = src_i, vel = vel_initial]{
@@ -748,6 +755,8 @@ void FoamProjectile::freeze()
 			});
 		}
 	}
+	if (!is_normal)
+		return;
 	
 	hlc.get_hp().renew(80);
 	

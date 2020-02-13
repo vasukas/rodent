@@ -137,6 +137,8 @@ struct vec2i {
 	vec2fp get_norm() const;
 };
 
+inline vec2i abs(const vec2i& p) {return {std::abs(p.x), std::abs(p.y)};}
+
 inline vec2i operator * (double f, const vec2i& v) {return vec2i(std::floor(v.x * f), std::floor(v.y * f));}
 
 inline vec2i min(const vec2i& a, const vec2i& b) {return {std::min(a.x, b.x), std::min(a.y, b.y)};}
@@ -213,6 +215,8 @@ struct vec2fp {
 	template <typename T> int& operator() (T) = delete;
 	float& operator() (bool is_x) {return is_x? x : y;}
 };
+
+inline vec2fp abs(const vec2fp& p) {return {std::abs(p.x), std::abs(p.y)};}
 
 inline float dot  (const vec2fp& a, const vec2fp& b) {return a.x * b.x + a.y * b.y;}
 inline float cross(const vec2fp& a, const vec2fp& b) {return a.x * b.y - a.y * b.x;}

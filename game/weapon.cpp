@@ -106,12 +106,13 @@ void EC_Equipment::shoot(vec2fp target, bool main, bool alt)
 	pars.main = main;
 	pars.alt = alt;
 }
-bool EC_Equipment::set_wpn(size_t index)
+bool EC_Equipment::set_wpn(size_t index, bool even_if_no_ammo)
 {
 	if (index == wpn_cur) return true;
 	if (index >= wpns.size()) return false;
 	
 	// check if can be equipped
+	if (!even_if_no_ammo)
 	{
 		auto& wpn = wpns[index];
 		if (!infinite_ammo && !get_ammo(wpn->info->ammo).has(*wpn))

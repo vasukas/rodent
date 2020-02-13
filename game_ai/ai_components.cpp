@@ -15,13 +15,14 @@ AI_Movement::AI_Movement(AI_Drone& drone)
 }
 bool AI_Movement::set_target(std::optional<vec2fp> new_tar, AI_Speed speed, std::optional<PathRequest::Evade> evade)
 {
-	cur_spd = static_cast<size_t>(speed);
+	cur_spd = speed;
 	
 	if (!new_tar)
 	{
 		preq.reset();
 		path.reset();
 		preq_failed = false;
+		patrol_reset = {};
 		return true;
 	}
 	else
@@ -32,8 +33,10 @@ bool AI_Movement::set_target(std::optional<vec2fp> new_tar, AI_Speed speed, std:
 			preq.reset();
 			path.reset();
 			preq_failed = false;
+			patrol_reset = {};
 			return true;
 		}
+		if (patrol_reset && same(*patrol_reset)) return true;
 		if (path && same(path->ps.back())) return false;
 		if (preq && same(preq->target)) return false;
 		
@@ -57,6 +60,7 @@ bool AI_Movement::set_target(std::optional<vec2fp> new_tar, AI_Speed speed, std:
 			p.next = 0;
 		}
 		preq_failed = false;
+		patrol_reset = {};
 	}
 	return false;
 }
@@ -65,10 +69,9 @@ std::optional<vec2fp> AI_Movement::get_next_point() const
 	if (!path) return {};
 	return path->ps[path->next];
 }
-float AI_Movement::get_current_speed() const
+float AI_Movement::get_set_speed() const
 {
-	const float *spd_k = drone.get_pars().speed.data();
-	return spd_k[cur_spd];
+	return drone.get_pars().get_speed(cur_spd);
 }
 bool AI_Movement::has_failed() const
 {
@@ -76,7 +79,7 @@ bool AI_Movement::has_failed() const
 }
 bool AI_Movement::is_same(vec2fp a, vec2fp b) const
 {
-	if (cur_spd == static_cast<size_t>(AI_Speed::SlowPrecise))
+	if (cur_spd == AI_Speed::SlowPrecise)
 		return a.dist_squ(b) < AI_Const::move_slowprecise_dist_squ;
 	return LevelControl::get().is_same_coord(a, b);
 }
@@ -109,22 +112,46 @@ std::optional<vec2fp> AI_Movement::calc_avoidance()
 	auto rc = GameCore::get().get_phy().raycast_nearest( conv(self), conv(self + dir * ray_dist), {}, ray_width );
 	if (!rc) return {};
 	
+	bool is_patrol = (cur_spd == AI_Speed::Patrol) && path
+	                 && path->ps.back().dist_squ( ent->get_pos() ) < AI_Const::move_patrol_reset_distance_squ;
+	
 	// ignore drone moving in same direction
 	if (auto drone = rc->ent->get_ai_drone();
 		drone && drone->mov)
 	{
-		if (auto next = drone->mov->get_next_point())
+		auto& drmov = *drone->mov;
+		
+		if ([&]{
+			if (is_patrol && drmov.cur_spd == AI_Speed::Patrol)
+			{
+				if (drmov.path) {
+					if (is_same( path->ps.back(), drmov.path->ps.back()) )
+					    return true;
+				}
+				else if (is_same( path->ps.back(), drone->ent->get_pos() ))
+					return true;
+				else if (drmov.patrol_reset && is_same( path->ps.back(), *drmov.patrol_reset ))
+					return true;
+			}
+			return false;
+		}()) {
+			patrol_reset = path->ps.back();
+			path = {};
+			return {};
+		}
+		
+		if (auto next = drmov.get_next_point())
 		{
 			vec2fp d_dir = *next - drone->ent->get_pos();
 			d_dir.norm();
 			
 			float cmp = dot(d_dir, dir);
-			if (cmp > 0 && drone->mov->get_current_speed() > get_current_speed() - 0.5)
+			if (cmp > 0 && drmov.get_set_speed() > get_set_speed() - 0.5)
 				return {};
 		}
 	}
 	
-	// statics should be already ignored in path
+	// path search should already go around static drones and other obstacles
 	if (rc->ent->get_phobj().body->GetType() == b2_staticBody)
 		return {};
 	
@@ -146,7 +173,7 @@ std::optional<vec2fp> AI_Movement::calc_avoidance()
 	//
 	
 	float t = 1 - rc->distance / ray_dist;
-	float spd = get_current_speed() * clampf_n(t);
+	float spd = get_set_speed() * clampf_n(t);
 	
 	dir.rot90ccw();
 	dir *= spd;
@@ -157,24 +184,25 @@ std::optional<vec2fp> AI_Movement::calc_avoidance()
 }
 vec2fp AI_Movement::step_path()
 {
-	const float *spd_k = drone.get_pars().speed.data();
-	
 	if (is_same( path->ps[path->next], ent->get_pos() ))
 	{
 		if (++path->next == path->ps.size())
 		{
+			if (cur_spd == AI_Speed::Patrol) patrol_reset = path->ps.back();
 			path.reset();
 			return {};
 		}
 		return step_path();
 	}
 	
+	const float speed = get_set_speed();
+	
 	vec2fp dt = path->ps[path->next] - ent->get_pos();
 	float dt_n = dt.len_squ();
-	if (dt_n < spd_k[cur_spd] * spd_k[cur_spd])
+	if (dt_n < speed * speed)
 	{
 		if (path->next + 1 != path->ps.size() && dt_n > 0.1)
-			dt *= spd_k[cur_spd] / std::sqrt(dt_n);
+			dt *= speed / std::sqrt(dt_n);
 	}
 	
 	return dt;
@@ -182,7 +210,6 @@ vec2fp AI_Movement::step_path()
 void AI_Movement::step()
 {
 	vec2fp fvel = {};
-	const float *spd_k = drone.get_pars().speed.data();
 	
 	if (preq)
 	{
@@ -204,15 +231,35 @@ void AI_Movement::step()
 	if (auto s = calc_avoidance())
 		fvel += *s;
 	
-	fvel.limit_to( spd_k[cur_spd] );
+	fvel.limit_to( get_set_speed() );
 	b2Vec2 f = conv(fvel);
 	if (locked) f = {0,0};
 	
 	auto& body = ent->get_phobj().body;
 	f -= body->GetLinearVelocity();
 	f *= body->GetMass();
-	f *= inert_k[cur_spd];
+	f *= inert_k(cur_spd);
 	body->ApplyForceToCenter(f, f.LengthSquared() > 0.01);
+}
+float AI_Movement::inert_k(AI_Speed speed)
+{
+	switch (speed)
+	{
+	case AI_Speed::SlowPrecise:
+		return 50;
+		
+	case AI_Speed::Slow:
+	case AI_Speed::Patrol:
+		return 6;
+		
+	case AI_Speed::Normal:
+		return 4;
+		
+	case AI_Speed::Accel:
+	case AI_Speed::TOTAL_COUNT: // silence warning
+		return 8;
+	}
+	return 1; // silence warning
 }
 
 
@@ -313,6 +360,8 @@ void AI_TargetProvider::step()
 			if (!d) return;
 			
 			float range = is_battle && pars.dist_battle ? *pars.dist_battle : pars.dist_visible;
+			if (*d > std::max(range, pars.dist_suspect)) return;
+			
 			tar_sel = Target{ tar_e->index, *d > range, damage_by == tar_e->index, *d };
 		}();
 	}
@@ -347,7 +396,8 @@ void AI_TargetProvider::on_dmg(const DamageQuant& q)
 
 void AI_RenRotation::update(AI_Drone& dr, std::optional<vec2fp> view_target, std::optional<vec2fp> mov_target)
 {
-	if (locked) {
+	float rot_spd = speed_override ? *speed_override : dr.get_pars().rot_speed;
+	if (rot_spd < 1e-5) {
 		tmo = {};
 		return;
 	}
@@ -355,7 +405,7 @@ void AI_RenRotation::update(AI_Drone& dr, std::optional<vec2fp> view_target, std
 	auto set_tar = [&](float tar, TimeSpan time)
 	{
 		float d = angle_delta(tar, dr.face_rot);
-		tmo = std::max(time, TimeSpan::seconds(d / dr.get_pars().rot_speed));
+		tmo = std::max(time, TimeSpan::seconds(d / rot_spd));
 		
 		if (tmo > GameCore::step_len) {
 			add = d / (tmo / GameCore::step_len);

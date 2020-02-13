@@ -108,6 +108,7 @@ class EDoor final : public Entity
 	static constexpr TimeSpan wait_time = TimeSpan::seconds(0.3); // before opening
 	static constexpr TimeSpan anim_time = TimeSpan::seconds(0.5); // opening/closing time
 	static constexpr TimeSpan keep_time = TimeSpan::seconds(7); // kept open
+	static constexpr TimeSpan keep_time_plr = TimeSpan::seconds(1); // kept open, plr_only
 	// graphics
 	static constexpr float width = 0.5; // relative to cell size
 	static constexpr float offset = 0.1; // relative to cell size
