@@ -12,7 +12,6 @@ class LevelMap_Impl : public LevelMap
 {
 public:
 	std::unique_ptr<Texture> tex;
-	std::optional<ImageInfo> img;
 	vec2fp coord_k;
 	
 	SmoothSwitch e_sw;
@@ -27,9 +26,9 @@ public:
 		e_sw.reset(TimeSpan::seconds(0.15));
 		coord_k = vec2fp::one(1) / (vec2fp(lt.grid_size) * lt.cell_size);
 		
-		img = lt.draw_grid(false);
-		img->convert(ImageInfo::FMT_RGBA);
-		img->map_pixel([](auto px)
+		ImageInfo img = lt.draw_grid(false);
+		img.convert(ImageInfo::FMT_RGBA);
+		img.map_pixel([](auto px)
 		{
 			if (px[0])
 			{
@@ -52,11 +51,10 @@ public:
 				break;
 			}
 		}
-	}
-	void ren_init()
-	{
-		tex.reset( Texture::create_from(*img, Texture::FIL_LINEAR_MIPMAP) );
-		img.reset();
+		
+		RenderControl::get().exec_task([this, img = std::move(img)]{
+			tex.reset( Texture::create_from(img, Texture::FIL_LINEAR_MIPMAP) );
+		});
 	}
 	void draw(TimeSpan passed, std::optional<vec2fp> plr_p, bool enabled)
 	{

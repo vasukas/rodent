@@ -2,9 +2,8 @@
 #define VAS_CPP_UTILS_HPP
 
 #include <algorithm>
-#include <functional>
 #include <optional>
-#include <vector>
+#include <functional>
 #include "vaslib/vas_types.hpp"
 
 
@@ -98,6 +97,19 @@ void append( T& target, const T& from )
 	target.insert( target.end(), from.begin(), from.end() );
 }
 
+/// Combines std::find_if with c.erase. Returns true if erased
+template <typename Cont, typename F>
+bool erase_if(Cont& c, F f)
+{
+	auto end = std::end(c);
+	auto it = std::find_if( std::begin(c), end, f );
+	if (it != end) {
+		c.erase(it);
+		return true;
+	}
+	return false;
+}
+
 
 
 /// Non-owning reference to callable object
@@ -168,5 +180,70 @@ using opt_callable_ref = callable_ref_base<true, F>;
 
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
+
+
+
+template <typename Subres, typename Root>
+struct SubresRoot;
+
+template <typename This, typename Root>
+struct SubresRef
+{
+	SubresRef(SubresRef&& h) noexcept {*this = std::move(h);}
+	~SubresRef() {remove();}
+
+	void operator=(SubresRef&& h) noexcept {
+		remove();
+		_root_ptr = h._root_ptr;
+		_root_i = h._root_i;
+		h._root_ptr = {};
+	}
+	
+protected:
+	SubresRef() = default;
+	Root* get_root() const {
+		return _root_ptr ? _root_ptr->root : nullptr;
+	}
+
+private:
+	using RT = SubresRoot<This, Root>;
+	friend RT;
+
+	RT* _root_ptr = {};
+	size_t _root_i;
+
+	void remove() {
+		if (_root_ptr)
+			_root_ptr->hns[_root_i] = {};
+	}
+};
+
+template <typename Subres, typename Root>
+struct SubresRoot
+{
+	Root* root = {};
+	std::vector<Subres*> hns;
+
+	SubresRoot(Root* root): root(root) {}
+	~SubresRoot()
+	{
+		for (auto& h : hns)
+			if (h) h->_root_ptr = {};
+	}
+	Subres* new_ref()
+	{
+		size_t i=0;
+		for (; i < hns.size(); ++i) if (!hns[i]) break;
+		if (i == hns.size()) hns.emplace_back();
+		
+		auto h = new Subres;
+		h->_root_ptr = this;
+		h->_root_i = i;
+		return hns[i] = h;
+	}
+	
+	auto begin() {return hns.begin();}
+	auto end()   {return hns.end();}
+};
 
 #endif // VAS_CPP_UTILS_HPP

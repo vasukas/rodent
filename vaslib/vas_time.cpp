@@ -4,6 +4,8 @@
 #include <thread>
 #include "vaslib/vas_time.hpp"
 
+const TimeSpan TimeSpan::nearinfinity = TimeSpan::seconds( 60*60*24 );
+
 std::string date_time_str()
 {
 	auto now = std::chrono::system_clock::now();

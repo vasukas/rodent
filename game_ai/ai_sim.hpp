@@ -5,6 +5,8 @@
 #include "vaslib/vas_math.hpp"
 #include "vaslib/vas_time.hpp"
 
+class GameCore;
+
 
 
 class AI_SimResource
@@ -70,16 +72,17 @@ public:
 	
 	
 	/// Calls reg for nearest suitable resource, if any
-	static WorkerReg find(vec2fp origin, float radius, Type type, int rate, flags_t find_type = FIND_NEAREST_RANDOM);
+	static WorkerReg find(GameCore& core, vec2fp origin, float radius, Type type, int rate, flags_t find_type = FIND_NEAREST_RANDOM);
 	
 	/// Registers self in AI_Controller
-	AI_SimResource(Value val, vec2fp worker_pos, vec2fp view_tar);
+	AI_SimResource(GameCore& core, Value val, vec2fp worker_pos, vec2fp view_tar);
 	
 	/// Returns null if can't be, otherwise returns new reg. 
 	/// Rate (amount per second) is positive for producer-worker and negative for consumer-worker
 	WorkerReg reg(int rate);
 	
 private:
+	GameCore& core;
 	Value val;
 	vec2fp pos, vtar;
 	bool is_used = false;

@@ -116,7 +116,8 @@ Mode options (--game):
   --no-demo-record     disables record-by-default ("user/last.ratdemo")
   --demo-record        record replay to "user/replay_DATETIME.ratdemo"
   --demo-write <FILE>  record replay to specified file (adds extension)
-  --demo-read  <FILE>  playback replay from file
+  --demo-play  <FILE>  playback replay from file
+  --demo-last          same as '--demo-play user/last.ratdemo'
 
   --demo-net       <ADDR> <PORT> <IS_SERVER>  write replay to network
   --demo-net-play  <ADDR> <PORT> <IS_SERVER>  playback replay from network

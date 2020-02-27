@@ -43,10 +43,10 @@ void HealthPool::step()
 
 
 
-EC_Health::EC_Health(Entity* ent, int hp)
+EC_Health::EC_Health(Entity& ent, int hp)
 	: EComp(ent), hp(hp)
 {}
-void EC_Health::apply(DamageQuant q)
+bool EC_Health::apply(DamageQuant q)
 {
 	DamageType orig_type = q.type;
 	last_damaged = GameCore::step_len;
@@ -54,18 +54,11 @@ void EC_Health::apply(DamageQuant q)
 	if (q.amount < 0) hp.apply(-q.amount); // heal
 	else
 	{
-		// convert
-		
-		if (q.type == DamageType::Physical)
-			q.amount = (q.amount - ph_thr) * ph_k;
-		
-		if (q.amount <= 0) goto zero_damage;
-		
 		// armor
 		
-		if (q.armor && pr_area[*q.armor])
+		if (q.armor && phys[*q.armor])
 		{
-			pr_area[*q.armor]->proc(*this, q);
+			phys[*q.armor]->proc(*this, q);
 			if (q.amount <= 0) goto zero_damage;
 		}
 		
@@ -86,8 +79,8 @@ void EC_Health::apply(DamageQuant q)
 		hp.apply(-q.amount);
 		if (!hp.is_alive())
 		{
-			ent->destroy();
-			return;
+			ent.destroy();
+			return false;
 		}
 zero_damage:
 		
@@ -96,79 +89,84 @@ zero_damage:
 		if (ev.amount < 0) ev.amount = 0;
 		on_damage.signal(ev);
 	}
+	return true;
 }
-void EC_Health::upd_hp()
+TimeSpan EC_Health::since_damaged() const
+{
+	return ent.core.get_step_time() - last_damaged;
+}
+void EC_Health::add_phys(std::unique_ptr<DamageFilter> f)
+{
+	size_t i=0;
+	for (; i < phys.size(); ++i) if (!phys[i]) break;
+	if (i == phys.size()) phys.emplace_back();
+	phys[i] = std::move(f);
+	
+	upd_reg();
+}
+void EC_Health::add_filter(std::unique_ptr<DamageFilter> f)
+{
+	fils.insert(fils.begin(), std::move(f));
+	upd_reg();
+}
+void EC_Health::rem_phys(DamageFilter* f) noexcept
+{
+	if (erase_if(phys, [&](auto& v){ return v.get() == f; }))
+		upd_reg();
+}
+void EC_Health::rem_filter(DamageFilter* f) noexcept
+{
+	if (erase_if(fils, [&](auto& v){ return v.get() == f; }))
+		upd_reg();
+}
+size_t EC_Health::get_phys_index(DamageFilter* f) const
+{
+	for (size_t i=0; i < phys.size(); ++i) if (phys[i].get() == f) return i;
+	THROW_FMTSTR("EC_Health::get_phys_index() not found - {}", ent.dbg_id());
+}
+void EC_Health::foreach_filter(callable_ref<void(DamageFilter&)> f)
+{
+	for (auto& p : phys) if (p) f(*p);
+	for (auto& p : fils) f(*p);
+}
+void EC_Health::upd_reg()
 {
 	bool hs = hp.has_regen();
-	if (!hs) {
-		for (auto& f : pr_area)
-			if (f && f->has_step())
-				{hs = true; break;}
-	}
+	foreach_filter([&](auto& f){ hs |= f.has_step(); });
 	
 	if (hs) reg(ECompType::StepPostUtil);
 	else  unreg(ECompType::StepPostUtil);
 }
-void EC_Health::hook(EC_Physics& ph)
-{
-	EVS_CONNECT1(ph.ev_contact, on_event);
-}
-void EC_Health::on_event(const CollisionEvent& ev)
-{
-	if (ev.type == CollisionEvent::T_RESOLVE)
-		apply({ DamageType::Physical, static_cast<int>(ev.imp) });
-}
-size_t EC_Health::add_filter(std::shared_ptr<DamageFilter> f)
-{
-	return add(fils, std::move(f));
-}
-void EC_Health::rem_filter(size_t i)
-{
-	rem(fils, i);
-}
-size_t EC_Health::add_prot(std::shared_ptr<DamageFilter> f)
-{
-	return add(pr_area, std::move(f));
-}
-void EC_Health::rem_prot(size_t i)
-{
-	rem(pr_area, i);
-}
-size_t EC_Health::add(std::vector<std::shared_ptr<DamageFilter>>& fs, std::shared_ptr<DamageFilter> f)
-{
-	bool hs = f->has_step();
-	
-	size_t i = 0;
-	for (; i < fs.size(); ++i) if (!fs[i]) break;
-	if (i == fs.size()) fs.emplace_back();
-	fs[i] = std::move(f);
-	
-	if (hs && !hp.has_regen()) reg(ECompType::StepPostUtil);
-	return i;
-}
-void EC_Health::rem(std::vector<std::shared_ptr<DamageFilter>>& fs, size_t i)
-{
-	if (i >= fs.size() || !fs[i]) return;
-	
-	bool hs = fs[i]->has_step();
-	fs[i].reset();
-	
-	if (hs && !hp.has_regen()) upd_hp();
-}
 void EC_Health::step()
 {
-	for (auto& f : pr_area) if (f) f->step(*this);
-	for (auto& f : fils)    if (f) f->step(*this);
+	foreach_filter([&](auto& f){ f.step(*this); });
 	hp.step();
 }
 
 
 
-DmgShield::DmgShield(int capacity, int regen_per_second, TimeSpan regen_wait)
+DmgShield::DmgShield(int capacity, int regen_per_second, TimeSpan regen_wait, std::optional<FixtureCreate> fc)
 	: hp(capacity)
 {
 	hp.set_hps(regen_per_second);
 	hp.regen_wait = regen_wait;
+	
+	if (fc) {
+		if (!fc->info) fc->info = FixtureInfo{};
+		fix.emplace(std::move(*fc));
+	}
+	enabled = is_phys() ? false : true;
+}
+void DmgShield::set_enabled(Entity& ent, bool on)
+{
+	if (enabled == on) return;
+	enabled = on;
+	
+	if (is_phys())
+	{
+		if (enabled) fix->get_fc().info->armor_index = ent.ref_hlc().get_phys_index(this);
+		fix->set_enabled(ent, enabled);
+	}
 }
 void DmgShield::proc(EC_Health& hlc, DamageQuant& q)
 {
@@ -187,8 +185,8 @@ void DmgShield::proc(EC_Health& hlc, DamageQuant& q)
 	hp.apply(-q.amount);
 	q.amount = am_left - absorb;
 	
-	if (is_filter) {
-		auto& phy = hlc.ent->get_phy();
+	if (!is_phys()) {
+		auto& phy = hlc.ent.ref_pc();
 		
 		ParticleBatchPars bp;
 		int times = 1;
@@ -206,7 +204,7 @@ void DmgShield::proc(EC_Health& hlc, DamageQuant& q)
 			times = 3;
 		}
 		
-		bp.tr = Transform{phy.get_pos()};
+		bp.tr = phy.get_trans();
 		bp.rad = phy.get_radius() + 0.5f;
 		
 		for (int i=0; i<times; ++i)
@@ -224,7 +222,7 @@ void DmgShield::step(EC_Health& hlc)
 	hp.step();
 	if (hit_ren_tmo.is_positive()) hit_ren_tmo -= GameCore::step_len;
 	
-	if (is_filter && enabled)
+	if (!is_phys() && enabled)
 	{
 		int hp_now = hp.exact().first;
 		if (hp_has == hp_now)
@@ -242,8 +240,8 @@ void DmgShield::step(EC_Health& hlc)
 			bp.clr.a = 0.4;
 		}
 		
-		auto& phy = hlc.ent->get_phy();
-		bp.tr = Transform{phy.get_pos()};
+		auto& phy = hlc.ent.ref_pc();
+		bp.tr = phy.get_trans();
 		bp.rad = phy.get_radius() + 0.5f;
 		GamePresenter::get()->effect(FE_CIRCLE_AURA, bp);
 	}

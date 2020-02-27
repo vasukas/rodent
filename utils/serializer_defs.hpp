@@ -1,42 +1,14 @@
 #ifndef SERIALIZER_DEFS_HPP
 #define SERIALIZER_DEFS_HPP
 
-#define SERIALIZER_DSL
+#include "serializer_dsl.hpp"
 
+#include <bitset>
 #include <variant>
+#include "utils/color_manip.hpp"
+#include "vaslib/vas_file.hpp"
 #include "vaslib/vas_math.hpp"
 #include "vaslib/vas_time.hpp"
-#include "serializer.hpp"
-
-
-
-template <typename T> struct remove_const_ptr : std::remove_const<T> {};
-template <typename T> using remove_const_ptr_t = typename remove_const_ptr<T>::type;
-
-template <typename T> struct remove_const_ptr<T*> {
-	typedef remove_const_ptr_t<T>* type;
-};
-template <typename T> struct remove_const_ptr<T* const> {
-	typedef remove_const_ptr_t<T>* type;
-};
-
-#define SER_REMOVE_CONSTREF(TYPE)\
-	remove_const_ptr_t <std::remove_reference_t <TYPE>>
-
-#define SERIALFUNC_WRITE(VAR, FILE)\
-	SerialFunc <SER_REMOVE_CONSTREF(decltype(VAR))> ::write(VAR, FILE)
-
-#define SERIALFUNC_READ(VAR, FILE)\
-	SerialFunc <SER_REMOVE_CONSTREF(decltype(VAR))> ::read(VAR, FILE)
-
-#define SERIALFUNC_WRITE_T(VAR, FILE, ...)\
-	SerialFunc <SER_REMOVE_CONSTREF(decltype(VAR))>, SerialTag_##__VA_ARGS__> ::write(VAR, FILE)
-
-#define SERIALFUNC_READ_T(VAR, FILE, ...)\
-	SerialFunc <SER_REMOVE_CONSTREF(decltype(VAR))>, SerialTag_##__VA_ARGS__> ::read(VAR, FILE)
-
-#define SERIALFUNC_READ_NEW(TYPE, FILE)\
-	SerialFunc <TYPE*>::read_new(FILE)
 
 
 
@@ -83,7 +55,82 @@ struct SerialTag_Array32 {};
 template <size_t N>
 struct SerialTag_Enum {};
 
+template <int Bits>
+struct SerialTag_Int {};
 
+template <typename Tag = SerialTag_None>
+struct SerialTag_Optional {};
+
+
+
+template<> struct SerialFunc<std::string, SerialTag_None> {
+	static void write(const std::string& p, File& f) {
+		if (p.size() >= (1<<16)) throw std::runtime_error("String is too long");
+		f.w16L(p.size());
+		f.write(p.data(), p.size());
+	}
+	static void read(std::string& p, File& f) {
+		p.resize(f.r16L());
+		f.read(p.data(), p.size());
+	}
+};
+
+template <typename T, std::size_t N, typename Tag>
+struct SerialFunc<std::array<T, N>, Tag> {
+	static void write(const T& p, File& f) {
+		for (size_t i=0; i<N; ++i) SerialFunc<T, Tag>::write(p[i], f);
+	}
+	static void read(T& p, File& f) {
+		for (size_t i=0; i<N; ++i) SerialFunc<T, Tag>::read(p[i], f);
+	}
+};
+
+template <std::size_t N>
+struct SerialFunc<std::bitset<N>, SerialTag_None>
+{
+	static constexpr auto bytes = N % 8 ? (N/8 + 1) : N/8;
+	static void write(const std::bitset<N>& p, File& f) {
+		for (size_t b=0; b<bytes; ++b) {
+			uint8_t x = 0;
+			for (size_t i=b*8; i<std::min(N,(b+1)*8); ++i) {
+				x <<= 1;
+				x |= p[i];
+			}
+			SERIALFUNC_WRITE(x, f);
+		}
+	}
+	static void read(std::bitset<N>& p, File& f) {
+		for (size_t b=0; b<bytes; ++b) {
+			uint8_t x;
+			SERIALFUNC_READ(x, f);
+			for (int i=int(std::min(N, (b+1)*8)) - 1; i>=int(b*8); --i) {
+				p[i] = x&1;
+				x >>= 1;
+			}
+		}
+	}
+};
+
+
+
+template <typename T, typename Tag>
+struct SerialFunc<T, SerialTag_Optional<Tag>> {
+	using ValT = typename T::value_type;
+	static void write(const T& p, File& f) {
+		if (p.has_value()) {
+			f.w8(1);
+			SerialFunc<ValT, Tag>::write(*p, f);
+		}
+		else f.w8(0);
+	}
+	static void read(T& p, File& f) {
+		if (f.r8()) {
+			p = ValT{};
+			SerialFunc<ValT, Tag>::read(*p, f);
+		}
+		else p.reset();
+	}
+};
 
 template <typename T, size_t N, typename Base, typename Tag>
 struct SerialFunc<T, SerialTag_FixedArray<N, Base, Tag>> {
@@ -113,6 +160,8 @@ template <typename T, size_t N>
 struct SerialFunc<T, SerialTag_Enum<N>> {
 	static_assert(std::is_integral_v<T> || std::is_enum_v<T>);
 	static void write(T p, File& f) {
+		if (static_cast<size_t>(p) >= N)
+			throw std::runtime_error("Invalid enum value");
 		if      constexpr (N < (1ULL << 8))  f.w8  (static_cast<uint8_t >(p));
 		else if constexpr (N < (1ULL << 16)) f.w16L(static_cast<uint16_t>(p));
 		else if constexpr (N < (1ULL << 32)) f.w32L(static_cast<uint32_t>(p));
@@ -152,12 +201,65 @@ struct SerialFunc<std::variant<Ts...>, SerialTag_None>
 		if (p.valueless_by_exception()) throw std::runtime_error("Variant is valueless-by-exception");
 		f.w8(p.index());
 		std::visit([&](auto& v){
-			SerialFunc<SER_REMOVE_CONSTREF(decltype(v)), SerialTag_None>::write(v, f); }, p);
+			SerialFunc<std::remove_const_t<std::remove_reference_t<decltype(v)>>, SerialTag_None>::write(v, f); }, p);
 	}
 	static void read(Var& p, File& f) {
 		init_by_id(p, f.r8());
 		std::visit([&](auto& v){
-			SerialFunc<SER_REMOVE_CONSTREF(decltype(v)), SerialTag_None>::read(v, f); }, p);
+			SerialFunc<std::remove_reference_t<decltype(v)>, SerialTag_None>::read(v, f); }, p);
+	}
+};
+
+template <typename T, int N>
+struct SerialFunc<T, SerialTag_Int<N>> {
+	static_assert(std::is_integral_v<T>);
+	static constexpr auto bound = 1ULL << N;
+	
+	template <typename U = T, std::enable_if_t<std::is_unsigned_v<U>, int> = 0>
+	static void write(U p, File& f) {
+		if constexpr (N > 32 && N <= 64) f.w64L(p);
+		else {
+			if (p >= bound) throw std::runtime_error("Value is out of range");
+			if      constexpr (N <= 8)  f.w8  (p);
+			else if constexpr (N <= 16) f.w16L(p);
+			else if constexpr (N <= 32) f.w32L(p);
+			else static_assert(always_false_v<U>);
+		}
+	}
+	
+	template <typename U = T, std::enable_if_t<std::is_unsigned_v<U>, int> = 0>
+	static void read(U& p, File& f) {
+		if      constexpr (N <= 8)  p = f.r8  ();
+		else if constexpr (N <= 16) p = f.r16L();
+		else if constexpr (N <= 32) p = f.r32L();
+		else if constexpr (N <= 64) p = f.r64L();
+		else static_assert(always_false_v<U>);
+	}
+	
+	template <typename U = T, std::enable_if_t<std::is_signed_v<U>, int> = 0>
+	static void write(U signd, File& f) {
+		auto p = std::make_unsigned_t<U>(std::abs(signd));
+		if (p >= bound) throw std::runtime_error("Value is out of range");
+		if (signd < 0) p |= bound;
+		
+		if      constexpr (N < 8)  f.w8(p);
+		else if constexpr (N < 16) f.w16L(p);
+		else if constexpr (N < 32) f.w32L(p);
+		else if constexpr (N < 64) f.w64L(p);
+		else static_assert(always_false_v<U>);
+	}
+	
+	template <typename U = T, std::enable_if_t<std::is_signed_v<U>, int> = 0>
+	static void read(U& signd, File& f) {
+		std::make_unsigned_t<U> p;
+		if      constexpr (N < 8)  p = f.r8  ();
+		else if constexpr (N < 16) p = f.r16L();
+		else if constexpr (N < 32) p = f.r32L();
+		else if constexpr (N < 64) p = f.r64L();
+		else static_assert(always_false_v<U>);
+		
+		signd = U(p & (bound - 1));
+		if (p & bound) signd = -signd;
 	}
 };
 
@@ -194,9 +296,48 @@ struct SerialFunc<vec2fp, Tag> {
 	}
 };
 
+template<> struct SerialFunc<Transform, SerialTag_None> {
+	static void write(const Transform& p, File& f) {
+		SERIALFUNC_WRITE(p.pos, f);
+		SERIALFUNC_WRITE(p.rot, f);
+	}
+	static void read(Transform& p, File& f) {
+		SERIALFUNC_READ(p.pos, f);
+		SERIALFUNC_READ(p.rot, f);
+	}
+};
+
+template<> struct SerialFunc<vec2i, SerialTag_None> {
+	static void write(const vec2i& p, File& f) {
+		SerialFunc<int, SerialTag_Int<15>>::write(p.x, f);
+		SerialFunc<int, SerialTag_Int<15>>::write(p.y, f);
+	}
+	static void read(vec2i& p, File& f) {
+		SerialFunc<int, SerialTag_Int<15>>::read(p.x, f);
+		SerialFunc<int, SerialTag_Int<15>>::read(p.y, f);
+	}
+};
+
+template<> struct SerialFunc<Rect, SerialTag_None> {
+	static void write(const Rect& p, File& f) {
+		SerialFunc<vec2i, SerialTag_None>::write(p.off, f);
+		SerialFunc<vec2i, SerialTag_None>::write(p.sz,  f);
+	}
+	static void read(Rect& p, File& f) {
+		SerialFunc<vec2i, SerialTag_None>::read(p.off, f);
+		SerialFunc<vec2i, SerialTag_None>::read(p.sz,  f);
+	}
+};
+
 template<> struct SerialFunc<TimeSpan, SerialTag_None> {
 	static void write(TimeSpan p, File& f) {f.w64L(p.micro());}
 	static void read(TimeSpan& p, File& f) {p.set_micro(f.r64L());}
+};
+
+template<> struct SerialFunc<FColor, SerialTag_None> {
+	using Ser = SerialFunc<FColor, SerialTag_FixedArray<4, float, SerialTag_fp_8_8>>;
+	static void write(const FColor& p, File& f) {Ser::write(p, f);}
+	static void read (      FColor& p, File& f) {Ser::read (p, f);}
 };
 
 #endif // SERIALIZER_DEFS_HPP

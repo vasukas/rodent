@@ -10,6 +10,16 @@ const float raycast_zero_dist = 0.05; ///< Square of distance at which raycast n
 
 
 
+/// Won't return null (atm, may in the future)
+static EC_Physics* getptr(b2Body* b) {
+	return static_cast<EC_Physics*>(b->GetUserData());
+}
+static FixtureInfo* get_info(b2Fixture* f) {
+	return get_info(*f);
+}
+
+
+
 bool should_collide(const b2Filter& filterA, const b2Filter& filterB)
 {
 	if (filterA.groupIndex == filterB.groupIndex && filterA.groupIndex != 0)
@@ -23,54 +33,29 @@ bool should_collide(const b2Filter& filterA, const b2Filter& filterB)
 
 
 
-FixtureInfo::~FixtureInfo()
-{
-	if (fix) fix->SetUserData(nullptr);
-}
-void FixtureInfo::destroy_fixture()
-{
-	if (fix) fix->GetBody()->DestroyFixture(fix);
-	fix = nullptr;
-	delete this;
-}
-
-
-
-EC_Physics::EC_Physics(Entity* ent, const b2BodyDef& def)
-    : ECompPhysics(ent)
-{
-	auto& ph = GameCore::get().get_phy();
-	body = ph.world.CreateBody(&def);
-	body->SetUserData(this);
-}
-EC_Physics::~EC_Physics()
-{
-	for (auto f = body->GetFixtureList(); f; f = f->GetNext())
-		delete static_cast<FixtureInfo*>(f->GetUserData());
-	
-	body->GetWorld()->DestroyBody(body);
-}
-b2Fixture* EC_Physics::add_circle(b2FixtureDef& fd, float radius, float mass, FixtureInfo* info)
+FixtureCreate FixtureCreate::circle(b2FixtureDef fd, float radius, float mass, std::optional<FixtureInfo> info)
 {
 	b2CircleShape shp;
 	shp.m_radius = radius;
 	
-	fd.density = mass / (M_PI * shp.m_radius * shp.m_radius);
-	return add(fd, &shp, info);
+	float area = M_PI * shp.m_radius * shp.m_radius;
+	fd.density = mass / area;
+	return {fd, std::make_shared<b2CircleShape>(shp), info};
 }
-b2Fixture* EC_Physics::add_box(b2FixtureDef& fd, vec2fp half_extents, float mass, FixtureInfo* info)
+FixtureCreate FixtureCreate::box(b2FixtureDef fd, vec2fp half_extents, float mass, std::optional<FixtureInfo> info)
 {
 	b2PolygonShape shp;
 	b2Vec2 v = conv(half_extents);
 	shp.SetAsBox(v.x, v.y);
 	
-	fd.density = mass / (v.x * v.y * 4);
-	return add(fd, &shp, info);
+	float area = half_extents.area() * 4;
+	fd.density = mass / area;
+	return {fd, std::make_shared<b2PolygonShape>(shp), info};
 }
-b2Fixture* EC_Physics::add_box(b2FixtureDef& fd, vec2fp half_extents, float mass, Transform tr, FixtureInfo* info)
+FixtureCreate FixtureCreate::box(b2FixtureDef fd, vec2fp half_extents, Transform offset, float mass, std::optional<FixtureInfo> info)
 {
 	auto app = [&](vec2fp k){
-		return conv (tr.apply (half_extents * k));
+		return conv (offset.apply (half_extents * k));
 	};
 	
 	b2Vec2 ps[4];
@@ -82,8 +67,65 @@ b2Fixture* EC_Physics::add_box(b2FixtureDef& fd, vec2fp half_extents, float mass
 	b2PolygonShape shp;
 	shp.Set(ps, 4);
 	
-	fd.density = mass / (half_extents.area() * 4);
-	return add(fd, &shp, info);
+	float area = half_extents.area() * 4;
+	fd.density = mass / area;
+	return {fd, std::make_shared<b2PolygonShape>(shp), info};
+}
+
+
+
+FixtureInfo* get_info(b2Fixture& f) {
+	return static_cast<FixtureInfo*>(f.GetUserData());
+}
+void set_info(b2Fixture& f, std::optional<FixtureInfo> info)
+{
+	delete get_info(&f);
+	if (info) {
+		info->fix = &f;
+		f.SetUserData(new FixtureInfo(*info));
+	}
+	else f.SetUserData(nullptr);
+}
+
+
+
+EC_Physics::EC_Physics(Entity& ent, const b2BodyDef& def)
+    : EC_Position(ent), body(*ent.core.get_phy().world.CreateBody(&def))
+{
+	body.SetUserData(this);
+}
+EC_Physics::~EC_Physics()
+{
+	for (auto f = body.GetFixtureList(); f; f = f->GetNext())
+		delete get_info(f);
+	
+	body.GetWorld()->DestroyBody(&body);
+}
+b2Fixture& EC_Physics::add(FixtureCreate& c)
+{
+	return add(c.fd, *c.shp, c.info);
+}
+b2Fixture& EC_Physics::add(FixtureCreate&& c)
+{
+	return add(c);
+}
+b2Fixture& EC_Physics::add(b2FixtureDef& fd, const b2Shape& shp, std::optional<FixtureInfo> info)
+{
+	fd.shape = &shp;
+	fd.userData = nullptr;
+	
+	auto& f = *body.CreateFixture(&fd);
+	set_info(f, info);
+	
+	b_radius.reset();
+	return f;
+}
+void EC_Physics::destroy(b2Fixture* f)
+{
+	if (!f) return;
+	if (auto p = get_info(f)) delete p;
+	body.DestroyFixture(f);
+	b_radius = {};
 }
 float EC_Physics::get_radius() const
 {
@@ -91,7 +133,7 @@ float EC_Physics::get_radius() const
 	{
 		b_radius = 0.f;
 		
-		for (auto f = body->GetFixtureList(); f; f = f->GetNext())
+		for (auto f = body.GetFixtureList(); f; f = f->GetNext())
 		{
 			if (f->IsSensor()) continue;
 			
@@ -112,43 +154,61 @@ float EC_Physics::get_radius() const
 	}
 	return *b_radius;
 }
-void EC_Physics::destroy(b2Fixture* f)
+bool EC_Physics::is_material() const
 {
-	delete static_cast<FixtureInfo*>(f->GetUserData());
-	body->DestroyFixture(f);
-}
-b2Fixture* EC_Physics::add(b2FixtureDef& fd, const b2Shape *shp, FixtureInfo* info)
-{
-	fd.shape = shp;
-	fd.userData = nullptr;
-	
-	auto f = body->CreateFixture(&fd);
-	if (info) setptr(f, info);
-	
-	b_radius.reset();
-	return f;
+	auto f = body.GetFixtureList();
+	for (; f; f = f->GetNext()) {
+		if (!f->IsSensor())
+			return true;
+	}
+	return false;
 }
 
 
 
-EC_VirtualBody::EC_VirtualBody(Entity *ent, Transform pos, std::optional<Transform> vel)
-    : ECompPhysics(ent), pos(pos), vel(vel)
+SwitchableFixture::SwitchableFixture(FixtureCreate fc)
+	: fc(std::move(fc))
+{}
+SwitchableFixture::~SwitchableFixture()
 {
-	if (vel) reg(ECompType::StepPostUtil);
+	if (fix) {
+		if (auto pc = getptr(fix->GetBody()))
+			pc->destroy(fix);
+	}
+}
+void SwitchableFixture::set_enabled(Entity& ent, bool on)
+{
+	if (on == is_enabled()) return;
+	if (fix) {
+		if (auto pc = getptr(fix->GetBody())) pc->destroy(fix);
+		fix = {};
+	}
+	else {
+		fix = &ent.ref_phobj().add(fc);
+	}
+}
+
+
+
+EC_VirtualBody::EC_VirtualBody(Entity& ent, Transform pos, std::optional<Transform> vel)
+	: EC_Position(ent), pos(pos)
+{
+	set_vel(vel);
 }
 void EC_VirtualBody::set_vel(std::optional<Transform> new_vel)
 {
-	bool had = !!vel;
-	vel = new_vel;
-	if (had != !!vel)
-	{
-		if (vel) reg(ECompType::StepPostUtil);
-		else   unreg(ECompType::StepPostUtil);
+	if (vel) {
+		vel = new_vel;
+		if (!vel) unreg(ECompType::StepPreUtil);
+	}
+	else {
+		vel = new_vel;
+		if (vel) reg(ECompType::StepPreUtil);
 	}
 }
 void EC_VirtualBody::step()
 {
-	pos.add(*vel * GameCore::time_mul);
+	pos.add(*vel * ent.core.time_mul);
 }
 
 
@@ -274,6 +334,9 @@ public:
 class PHW_Lstr : public b2ContactListener
 {
 public:
+	PhysicsWorld& phw;
+	
+	PHW_Lstr(PhysicsWorld& phw): phw(phw) {}
 	vec2fp avg_point(b2Contact* ct)
 	{
 		int pc = ct->GetManifold()->pointCount;
@@ -286,25 +349,23 @@ public:
 	}
 	void report(CollisionEvent::Type type, b2Contact* ct, float imp)
 	{
-		auto& ea = getptr(ct->GetFixtureA()->GetBody());
-		auto& eb = getptr(ct->GetFixtureB()->GetBody());
-		if (!ea.ev_contact.has_conn() && !eb.ev_contact.has_conn()) return;
+		auto ea = getptr(ct->GetFixtureA()->GetBody());
+		auto eb = getptr(ct->GetFixtureB()->GetBody());
+		if (!ea->ev_contact.has_conn() && !eb->ev_contact.has_conn()) return;
 		
-		CollisionEvent ce;
+		reserve_more_block(phw.col_evs, 256);
+		auto& ev = phw.col_evs.emplace_back();
+		
+		ev.ia = ea->ent.index;
+		ev.ib = eb->ent.index;
+		
+		CollisionEvent& ce = ev.ce;
 		ce.type = type;
 		ce.imp = imp;
-		ce.contact = ct;
-		
 		ce.point = avg_point(ct);
-		ce.fix_this  = getptr(ct->GetFixtureA());
-		ce.fix_other = getptr(ct->GetFixtureB());
 		
-		ce.other = eb.ent;
-		ea.ev_contact.signal(ce);
-
-		std::swap(ce.fix_this, ce.fix_other);
-		ce.other = ea.ent;
-		eb.ev_contact.signal(ce);
+		ce.fix_phy = ct->GetFixtureA();
+		ev.fb = ct->GetFixtureB();
 	}
 	void BeginContact(b2Contact* ct) {
 		report(CollisionEvent::T_BEGIN, ct, 0.f);
@@ -332,8 +393,8 @@ bool PhysicsWorld::CastFilter::is_ok(b2Fixture& f)
 	if (ignore_sensors && f.IsSensor()) return false;
 	if (ft && !should_collide(*ft, f.GetFilterData())) return false;
 	if (check) {
-		auto& p = getptr(f.GetBody());
-		if (!check(*p.ent, f)) return false;
+		if (auto p = getptr(f.GetBody());
+		    p && !check(p->ent, f)) return false;
 	}
 	return true;
 }
@@ -343,7 +404,7 @@ PhysicsWorld::PhysicsWorld(GameCore& core)
 {
 	VLOGI("Box2D version: {}.{}.{}", b2_version.major, b2_version.minor, b2_version.revision);
 	
-	c_lstr.reset( new PHW_Lstr );
+	c_lstr.reset( new PHW_Lstr(*this) );
 	world.SetContactListener( c_lstr.get() );
 	
 	c_draw.reset( new PHW_Draw );
@@ -354,15 +415,30 @@ void PhysicsWorld::step()
 {
 	world.Step(core.step_len.seconds(), 8, 3);
 	
-	for (auto& c : post_cbs) c();
-	post_cbs.clear();
+	for (auto& ev : col_evs)
+	{
+		auto ea = core.get_ent(ev.ia);
+		auto eb = core.get_ent(ev.ib);
+		if (!ea || !eb) continue;
+		
+		ev.ce.other = eb;
+		ev.ce.fix_this  = get_info(ev.ce.fix_phy);
+		ev.ce.fix_other = get_info(ev.fb);
+		ea->ref_phobj().ev_contact.signal(ev.ce);
+		
+		ev.ce.other = ea;
+		ev.ce.fix_phy = ev.fb;
+		std::swap(ev.ce.fix_this, ev.ce.fix_other);
+		eb->ref_phobj().ev_contact.signal(ev.ce);
+	}
+	col_evs.clear();
 }
-std::optional<float> PhysicsWorld::los_check(vec2fp from, Entity* target, std::optional<float> width, bool is_bullet)
+std::optional<float> PhysicsWorld::los_check(vec2fp from, Entity& target, std::optional<float> width, bool is_bullet)
 {
 	CastFilter cf{
-	[i = target->index](Entity& e, b2Fixture& f) {
+	[i = target.index](Entity& e, b2Fixture& f) {
 		if (e.index == i) return true;
-		auto fi = getptr(&f);
+		 auto fi = get_info(&f);
 		return fi && (fi->typeflags & FixtureInfo::TYPEFLAG_OPAQUE);
 	}};
 	if (is_bullet) {
@@ -372,12 +448,12 @@ std::optional<float> PhysicsWorld::los_check(vec2fp from, Entity* target, std::o
 	
 	if (!width)
 	{
-		auto rc = raycast_nearest(conv(from), target->get_phobj().body->GetWorldCenter(), std::move(cf));
-		if (rc && rc->ent == target) return rc->distance;
+		auto rc = raycast_nearest(conv(from), target.ref_phobj().body.GetWorldCenter(), std::move(cf));
+		if (rc && rc->ent == &target) return rc->distance;
 	}
 	else
 	{
-		vec2fp to = target->get_phy().get_pos();
+		vec2fp to = target.get_pos();
 		
 		vec2fp t = to;
 		t.norm_to(*width);
@@ -388,7 +464,7 @@ std::optional<float> PhysicsWorld::los_check(vec2fp from, Entity* target, std::o
 			vec2fp pos = to + t * (i / 2.f);
 			
 			auto rc = raycast_nearest(conv(from), conv(pos), std::move(cf));
-			if (rc && rc->ent == target) return rc->distance;
+			if (rc && rc->ent == &target) return rc->distance;
 		}
 	}
 	return {};
@@ -407,9 +483,11 @@ void PhysicsWorld::raycast_all(std::vector<RaycastResult>& es, b2Vec2 from, b2Ve
 		float_t ReportFixture(b2Fixture* fix, const b2Vec2& point, const b2Vec2&, float_t frac)
 		{
 			if (!cf.is_ok(*fix)) return -1;
+			auto pc = getptr(fix->GetBody());
+			if (!pc) return 1;
 			
 			reserve_more_block(es, 256);
-			es.push_back({ {getptr(fix->GetBody()).ent, getptr(fix), frac * len}, point });
+			es.push_back({ {&pc->ent, get_info(fix), frac * len}, point });
 			return 1;
 		}
 	};
@@ -431,10 +509,14 @@ std::optional<PhysicsWorld::RaycastResult> PhysicsWorld::raycast_nearest(b2Vec2 
 		{
 			if (!cf.is_ok(*fix)) return -1;
 			if (res && res->distance < frac) return res->distance;
+			
+			auto pc = getptr(fix->GetBody());
+			if (!pc) return res ? res->distance : 1;
+			
 			res = RaycastResult
 			{
-				getptr(fix->GetBody()).ent,
-				getptr(fix),
+				&pc->ent,
+				get_info(fix),
 				frac,
 			    point
 			};
@@ -472,14 +554,17 @@ void PhysicsWorld::query_circle_all(b2Vec2 ctr, float radius, QueryCbRet narrow,
 		Cb(float rad, b2Vec2 ctr, QueryCbRet& fn, OptQueryCbRet& fw) : rad(rad), ctr(ctr), fn(fn), fw(fw) {}
 		bool ReportFixture(b2Fixture* fix)
 		{
-			auto ent = getptr(fix->GetBody()).ent;
-			if (fw && !fw(*ent, *fix)) return true;
+			auto pc = getptr(fix->GetBody());
+			if (!pc) return false;
+			
+			auto& ent = pc->ent;
+			if (fw && !fw(ent, *fix)) return true;
 			float d = (fix->GetBody()->GetWorldCenter() - ctr).LengthSquared();
 			
-			float z = getptr(fix->GetBody()).get_radius();
+			float z = pc->get_radius();
 			d -= z*z;
 			
-			if (d < rad*rad) return fn(*ent, *fix);
+			if (d < rad*rad) return fn(ent, *fix);
 			return true;
 		}
 	};
@@ -509,13 +594,16 @@ void PhysicsWorld::circle_cast_all(std::vector<CastResult>& es, b2Vec2 ctr, floa
 			if (!cf.is_ok(*fix)) return true;
 			float d = (fix->GetBody()->GetWorldCenter() - ctr).LengthSquared();
 			
-			float z = getptr(fix->GetBody()).get_radius();
+			auto pc = getptr(fix->GetBody());
+			if (!pc) return true;
+			
+			float z = pc->get_radius();
 			d -= z*z;
 			
 			if (d < rad*rad)
 			{
 				reserve_more_block(es, 256);
-				es.push_back({ getptr(fix->GetBody()).ent, getptr(fix), d > 0 ? std::sqrt(d) : 0 });
+				es.push_back({ &pc->ent, get_info(fix), d > 0 ? std::sqrt(d) : 0 });
 			}
 			return true;
 		}
@@ -535,8 +623,8 @@ void PhysicsWorld::circle_cast_nearest(std::vector<RaycastResult>& es, b2Vec2 ct
 	reserve_more(es, fc.size());
 	for (auto& f : fc)
 	{
-		auto& eb = f.ent->get_phobj();
-		auto p = eb.body->GetWorldCenter();
+		auto& eb = f.ent->ref_phobj();
+		auto p = eb.body.GetWorldCenter();
 		float dist = 0;
 		
 		bool ok = (ctr - p).LengthSquared() <= eb.get_radius() * eb.get_radius() + raycast_zero_dist;
@@ -565,9 +653,12 @@ std::optional<PhysicsWorld::PointResult> PhysicsWorld::point_cast(b2Vec2 ctr, fl
 			if (!cf.is_ok(*fix)) return true;
 			if (!fix->TestPoint(ctr)) return true;
 			
+			auto pc = getptr(fix->GetBody());
+			if (!pc) return true;
+			
 			res.emplace();
-			res->ent = getptr(fix->GetBody()).ent;
-			res->fix = getptr(fix);
+			res->ent = &pc->ent;
+			res->fix = get_info(fix);
 			return false;
 		}
 	};
@@ -587,7 +678,9 @@ void PhysicsWorld::query_aabb(Rectfp area, QueryCbRet f)
 		
 		Cb(QueryCbRet& f): f(f) {}
 		bool ReportFixture(b2Fixture* fix) {
-			return f(*getptr(fix->GetBody()).ent, *fix);
+			auto pc = getptr(fix->GetBody());
+			if (!pc) return false;
+			return f(pc->ent, *fix);
 		}
 	};
 	Cb cb(f);
@@ -600,12 +693,4 @@ void PhysicsWorld::query_aabb(Rectfp area, QueryCbRet f)
 void PhysicsWorld::query_aabb(Rectfp area, QueryCb f)
 {
 	query_aabb(area, [&](auto& a, auto& b) {f(a, b); return true;});
-}
-void PhysicsWorld::post_step(std::function<void()> f)
-{
-	if (!world.IsLocked()) f();
-	else {
-		reserve_more_block(post_cbs, 32);
-		post_cbs.emplace_back( std::move(f) );
-	}
 }

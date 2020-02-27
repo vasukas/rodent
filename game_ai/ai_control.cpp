@@ -9,10 +9,10 @@
 
 
 
-AI_Group::AI_Group(EntityIndex tar_eid)
-	: tar_eid(tar_eid)
+AI_Group::AI_Group(GameCore& core, EntityIndex tar_eid)
+	: core(core), tar_eid(tar_eid)
 {
-	aos.reset(AI_AOS::create());
+	aos.reset(AI_AOS::create(core));
 	report_seen();
 }
 void AI_Group::forall(callable_ref<void(AI_Drone&)> f, AI_Drone* except)
@@ -23,22 +23,22 @@ void AI_Group::forall(callable_ref<void(AI_Drone&)> f, AI_Drone* except)
 }
 void AI_Group::report_seen()
 {
-	last_seen = GameCore::get().get_step_time();
-	last_pos = GameCore::get().ent_ref(tar_eid).get_pos();
+	last_seen = core.get_step_time();
+	last_pos = core.ent_ref(tar_eid).get_pos();
 }
-bool AI_Group::init_search(const std::vector<AI_Drone*>& drones, vec2fp target_pos, bool was_in_battle)
+bool AI_Group::init_search(GameCore& core, const std::vector<AI_Drone*>& drones, vec2fp target_pos, bool was_in_battle)
 {
 	size_t num = 0;
 	for (auto& d : drones) {if (!d->is_camper()) ++num;}
 	if (!num)
 		return false;
 	
-	auto rings = calc_search_rings(target_pos);
+	auto rings = calc_search_rings(core, target_pos);
 	if (rings.empty())
 		return false;
 	
 	float a_diff = 2*M_PI / num;
-	float a_cur = GameCore::get().get_random().range_n2() * a_diff;
+	float a_cur = core.get_random().range_n2() * a_diff;
 	
 	std::vector<uint8_t> used;
 	used.resize(num);
@@ -54,7 +54,7 @@ bool AI_Group::init_search(const std::vector<AI_Drone*>& drones, vec2fp target_p
 		}
 		else
 		{
-			vec2fp pos = d->ent->get_pos();
+			vec2fp pos = d->ent.get_pos();
 			float rot = (pos - target_pos).fastangle();
 			
 			size_t opt_slot = int_round((M_PI + rot - a_cur) / a_diff);
@@ -82,7 +82,7 @@ bool AI_Group::init_search(const std::vector<AI_Drone*>& drones, vec2fp target_p
 			
 			for (auto& r : rings)
 			{
-				rot += 0.5 * a_diff * GameCore::get().get_random().range_n2();
+				rot += 0.5 * a_diff * core.get_random().range_n2();
 				
 				vec2fp sel = r.front();
 				float sd = std::fabs(angle_delta(rot, (sel - pos).fastangle()));
@@ -111,7 +111,7 @@ bool AI_Group::init_search(const std::vector<AI_Drone*>& drones, vec2fp target_p
 }
 void AI_Group::init_search()
 {
-	if (!init_search(drones, last_pos, true))
+	if (!init_search(core, drones, last_pos, true))
 	{
 		while (!drones.empty())
 			drones.back()->set_idle_state();
@@ -123,7 +123,7 @@ bool AI_Group::is_visible() const
 }
 TimeSpan AI_Group::passed_since_seen() const
 {
-	return GameCore::get().get_step_time() - last_seen;
+	return core.get_step_time() - last_seen;
 }
 void AI_Group::update()
 {
@@ -131,12 +131,12 @@ void AI_Group::update()
 	
 	if (drones.size() < AI_Const::msg_engage_max_bots)
 	{
-		auto& lc = LevelControl::get();
+		auto& lc = core.get_lc();
 		std::vector<std::pair<const LevelControl::Room*, int>> rooms;
 		
 		for (auto& d : drones)
 		{
-			auto r = &lc.get().ref_room( lc.cref( lc.to_cell_coord(d->ent->get_pos()) ).room_nearest );
+			auto r = &lc.ref_room( lc.cref( lc.to_cell_coord(d->ent.get_pos()) ).room_nearest );
 			if (rooms.end() == std::find_if( rooms.begin(), rooms.end(), [&](auto& v){return v.first == r;} ))
 			{
 				int dist = std::get<AI_Drone::Battle>(d->get_state()) .not_visible.is_positive()
@@ -148,10 +148,10 @@ void AI_Group::update()
 		
 		for (auto& rp : rooms)
 		{
-			room_flood( rp.first->area.center(), rp.second + msg_range_extend, false,
+			room_flood( core, rp.first->area.center(), rp.second + msg_range_extend, false,
 			[&](auto& rm, auto)
 			{	
-				room_query(rm, 
+				room_query(core, rm, 
 				[&](AI_Drone& d)
 				{
 					if (!std::holds_alternative<AI_Drone::Battle>( d.get_state() ))
@@ -178,7 +178,7 @@ void AI_Group::update()
 		{
 			if (d.is_camper() && d.mov) return false;
 			float r = d.get_pars().dist_visible;
-			return r*r < d.ent->get_pos().dist_squ(last_pos);
+			return r*r < d.ent.get_pos().dist_squ(last_pos);
 		};
 		
 		float rad = 0;
@@ -191,7 +191,7 @@ void AI_Group::update()
 		{
 			if (is_ignored(*d)) continue;
 			AI_AOS::PlaceParam p;
-			p.at = d->ent->get_pos();
+			p.at = d->ent.get_pos();
 			p.dpar = &d->get_pars();
 			p.is_static = !d->mov;
 			p.is_visible = !std::get<AI_Drone::Battle>(d->get_state()).not_visible.is_positive();
@@ -230,7 +230,7 @@ AI_GroupPtr::~AI_GroupPtr()
 	if (it != vs.end()) vs.erase(it);
 	
 	if (grp->drones.empty())
-		AI_Controller::get().free_group(grp);
+		grp->core.get_aic().free_group(grp);
 }
 AI_GroupPtr& AI_GroupPtr::operator= (AI_GroupPtr&& p) noexcept
 {
@@ -244,6 +244,8 @@ AI_GroupPtr& AI_GroupPtr::operator= (AI_GroupPtr&& p) noexcept
 class AI_Controller_Impl : public AI_Controller
 {
 public:
+	GameCore& core;
+	
 	std::vector<AI_Drone*> drs;
 	TimeSpan check_tmo; // online area check
 	
@@ -254,6 +256,7 @@ public:
 	
 	
 	
+	AI_Controller_Impl(GameCore& core): core(core) {}
 	void step() override
 	{
 		if (group_check_tmo.is_positive()) group_check_tmo -= GameCore::step_len;
@@ -269,13 +272,13 @@ public:
 		else {
 			check_tmo = AI_Const::online_check_timeout;
 			
-			auto [r_on, r_off] = GameCore::get().get_pmg().get_ai_rects();
+			auto [r_on, r_off] = core.get_pmg().get_ai_rects();
 
-			GameCore::get().get_phy().query_aabb(r_off, [](Entity& ent, auto&){
+			core.get_phy().query_aabb(r_off, [](Entity& ent, auto&){
 				if (auto d = ent.get_ai_drone())
 					d->is_online |= 2;
 			});
-			GameCore::get().get_phy().query_aabb(r_on, [](Entity& ent, auto&){
+			core.get_phy().query_aabb(r_on, [](Entity& ent, auto&){
 				if (auto d = ent.get_ai_drone())
 					d->is_online |= 4;
 			});
@@ -299,21 +302,21 @@ public:
 	}
 	AI_GroupPtr get_group(AI_Drone& drone) override
 	{
-		if (!the_only_group) the_only_group.emplace( GameCore::get().get_pmg().get_ent()->index );
+		if (!the_only_group) the_only_group.emplace( core, core.get_pmg().ref_ent().index );
 		return {&*the_only_group, &drone};
 	}
 	void help_call(AI_Drone& drone, std::optional<vec2fp> target, bool high_prio) override
 	{
 		int dist = high_prio ? AI_Const::msg_helpcall_highprio_dist : AI_Const::msg_helpcall_dist;
-		vec2fp pos = target ? *target : drone.ent->get_pos();
+		vec2fp pos = target ? *target : drone.ent.get_pos();
 		
-		room_flood_p(pos, dist, true,
+		room_flood_p(core, pos, dist, true,
 		[&](auto& room, int)
 		{
 			bool ret = true;
 			std::optional<std::pair<AI_Drone*, float>> best;
 			
-			room_query(room,
+			room_query(core, room,
 			[&](AI_Drone& d)
 			{
 				if (&d == &drone || d.is_camper() || d.get_pars().helpcall == AI_DroneParams::HELP_NEVER)
@@ -329,7 +332,7 @@ public:
 				
 				if (std::holds_alternative<AI_Drone::Idle>( d.get_state() ))
 				{
-					float dist = d.ent->get_pos().dist_squ( pos );
+					float dist = d.ent.get_pos().dist_squ( pos );
 					
 					if (!best) best = {&d, dist};
 					else
@@ -388,8 +391,6 @@ public:
 		res_tree.Query(&cb, {conv(p.lower()), conv(p.upper())});
 	}
 };
-
-static AI_Controller* ai_ctr_ptr;
-AI_Controller& AI_Controller::get() {return *ai_ctr_ptr;}
-AI_Controller* AI_Controller::init() {return ai_ctr_ptr = new AI_Controller_Impl;}
-AI_Controller::~AI_Controller() {ai_ctr_ptr = nullptr;}
+AI_Controller* AI_Controller::create(GameCore& core) {
+	return new AI_Controller_Impl(core);
+}

@@ -19,6 +19,7 @@ struct TimeSpan
 {
 	TimeSpan() { mks_value = 0; }
 	
+	static const TimeSpan nearinfinity; ///< Huge value (for rendering) which can be added without overflow
 	static TimeSpan since_start(); ///< Returns amount of time passed since program start using steady clock
 	
 	[[nodiscard]] static constexpr TimeSpan fps(int t) {return seconds( 1.f / t );}

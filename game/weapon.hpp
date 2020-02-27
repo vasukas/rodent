@@ -5,6 +5,8 @@
 #include "vaslib/vas_time.hpp"
 #include "damage.hpp"
 
+struct EC_Equipment;
+
 enum class AmmoType
 {
 	None,
@@ -78,6 +80,7 @@ public:
 		vec2fp target; ///< World coords
 		bool main, main_was; ///< Main fire button state (current and previous)
 		bool alt, alt_was; ///< Alt fire button state (current and previous)
+		bool is_ok; ///< Set if weapon can shoot (check only if previous button states are used)
 	};
 	
 	struct ShootResult
@@ -99,8 +102,13 @@ public:
 		vec2fp origin; ///< Calculated bullet origin
 		vec2fp dir; ///< Normalized
 	};
-	/// If 'ignore_target' is true, always returns (as it ignores angle limitation)
-	std::optional<DirectionResult> get_direction(const ShootParams& pars, bool ignore_target = false);
+	enum DirectionType
+	{
+		DIRTYPE_TARGET,
+		DIRTYPE_IGNORE_ANGLE, ///< Ignore angle limitation (always succeeds)
+		DIRTYPE_FORWARD_FAIL ///< Use target if in limits, otherwise returns forward direction (always succeeds)
+	};
+	std::optional<DirectionResult> get_direction(const ShootParams& pars, DirectionType dtype = DIRTYPE_TARGET);
 	
 private:
 	friend EC_Equipment;
@@ -120,6 +128,7 @@ struct WeaponMsgReport
 	
 	virtual void jerr(JustError err) = 0;
 	virtual void no_ammo(int required) = 0;
+	virtual void reset() {}
 	virtual ~WeaponMsgReport() = default;
 };
 
@@ -146,7 +155,7 @@ struct EC_Equipment : EComp
 	
 	
 	
-	EC_Equipment(Entity* ent);
+	EC_Equipment(Entity& ent);
 	
 	/// Sets with which weapon shoot at the end of the step
 	void shoot(vec2fp target, bool main, bool alt);
@@ -158,7 +167,7 @@ struct EC_Equipment : EComp
 	size_t wpn_index();
 	
 	Weapon& get_wpn(); ///< Returns current weapon
-	void add_wpn(Weapon* wpn); ///< Assumes ownership
+	void add_wpn(std::unique_ptr<Weapon> wpn);
 	auto& raw_wpns() {return wpns;} ///< Do NOT erase anything
 	
 	Ammo& get_ammo(AmmoType type) {return ammos[static_cast<size_t>(type)];}
@@ -174,8 +183,10 @@ private:
 	bool did_shot_flag = false;
 	
 	bool shoot_internal(Weapon& wpn, Weapon::ShootParams pars);
-	bool shoot_check(Weapon& wpn); ///< Checks based on default values
-	void step() override;
+	int shoot_check(Weapon& wpn); ///< Checks based on default values
+	
+	friend class GameCore_Impl;
+	void step();
 };
 
 #endif // WEAPON_HPP

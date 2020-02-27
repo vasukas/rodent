@@ -166,6 +166,7 @@ public:
 	GLA_VertexArray inst_vao;
 	std::vector<std::pair<size_t, size_t>> inst_objs;
 	std::vector<InstObj> inst_q;
+	bool inst_locked = false; // prevent render while building in process
 	
 	// for grid
 	GLA_Framebuffer fbo;
@@ -336,6 +337,8 @@ public:
 	}
 	void render()
 	{
+		if (inst_locked) return;
+		
 		const float *mx = RenderControl::get().get_world_camera().get_full_matrix();
 		const float scrmul = 1.f;//cam->get_state().mag;
 		
@@ -449,11 +452,13 @@ public:
 		inst_objs.clear();
 		
 		fbo_noi.generate(grid_cell_size);
+		inst_locked = true;
 	}
 	void inst_end()
 	{
 		inst_vao.bufs[0]->update( data_f.size(), data_f.data() );
 		data_f.clear(); data_f.shrink_to_fit();
+		inst_locked = false;
 	}
 	void inst_add(const std::vector<vec2fp>& ps, bool loop, float width, float aa_width)
 	{

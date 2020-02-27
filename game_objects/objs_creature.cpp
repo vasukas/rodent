@@ -1,25 +1,17 @@
-#include "client/effects.hpp"
+#include "client/ec_render.hpp"
 #include "game/game_core.hpp"
 #include "game_ai/ai_algo.hpp"
 #include "utils/noise.hpp"
+#include "objs_basic.hpp"
 #include "objs_creature.hpp"
 #include "weapon_all.hpp"
 
 
 
-AtkPat_Sniper::AtkPat_Sniper()
-{
-	laser = LaserDesigRay::create();
-	laser->is_enabled = true;
-}
-AtkPat_Sniper::~AtkPat_Sniper()
-{
-	laser->destroy();
-}
 void AtkPat_Sniper::shoot(Entity& target, float, Entity& self)
 {
 	float t = 0;
-	if (auto ui = self.get_eqp()->get_wpn().get_ui_info())
+	if (auto ui = self.ref_eqp().get_wpn().get_ui_info())
 		t = ui->charge_t.value_or(0.f);
 	
 	bool charged  = t > 0.99;
@@ -30,8 +22,11 @@ void AtkPat_Sniper::shoot(Entity& target, float, Entity& self)
 }
 void AtkPat_Sniper::idle(Entity& self)
 {
+	AI_Drone& drone = self.ref_ai_drone();
+	EC_Equipment& eqp = self.ref_eqp();
+	
 	float t = 0;
-	if (auto ui = self.get_eqp()->get_wpn().get_ui_info())
+	if (auto ui = eqp.get_wpn().get_ui_info())
 		t = ui->charge_t.value_or(0.f);
 	
 	bool charged  = t > 0.99;
@@ -41,38 +36,41 @@ void AtkPat_Sniper::idle(Entity& self)
 
 	//
 	
-	if (auto mov = self.get_ai_drone()->mov) mov->locked = charged;
+	if (auto mov = drone.mov)
+		mov->locked = charged;
 	
-	auto& rotover = self.get_ai_drone()->get_ren_rot().speed_override;
-	if (charged && visible) rotover = self.get_ai_drone()->get_pars().rot_speed * rotation_k;
+	auto& rotover = drone.get_rot_ctl().speed_override;
+	if (charged && visible) rotover = rot_speed;
 	else rotover.reset();
 	
 	if (shooting) {
-		self.get_eqp()->shoot(p_tar, true, false);
-		if (self.get_eqp()->get_wpn().get_reload_timeout())
+		eqp.shoot(p_tar, true, false);
+		if (eqp.get_wpn().get_reload_timeout())
 			shooting = false;
 	}
 	
 	//
 	
-	laser->is_enabled = shooting;
-	if (laser->is_enabled) 
+	auto laser = &self.ensure<EC_LaserDesigRay>();
+	laser->enabled = shooting;
+	if (laser->enabled) 
 	{
-		laser->src_eid = self.index;
 		if (visible) {
 			laser->clr = charged ? 0xffffffff : 0xffff00ff;
-			laser->find_target( p_tar - self.get_pos() );
+//			laser->find_target( p_tar - self.get_pos() );
 		}
 		else {
 			laser->clr = charged ? 0xffffffff : 0x00ff00ff;
-			laser->find_target( vec2fp{1,0}.fastrotate(self.get_face_rot()) );
+//			laser->find_target( self.ref_pc().get_norm_dir() );
 		}
+		laser->find_target( self.ref_pc().get_norm_dir() );
 	}
 }
 void AtkPat_Sniper::reset(Entity& self)
 {
-	laser->src_eid = {};
-	self.get_ai_drone()->get_ren_rot().speed_override.reset();
+	auto laser = &self.ensure<EC_LaserDesigRay>();
+	laser->enabled = false;
+	self.ref_ai_drone().get_rot_ctl().speed_override.reset();
 }
 
 
@@ -80,7 +78,7 @@ void AtkPat_Sniper::reset(Entity& self)
 void AtkPat_Burst::shoot(Entity& target, float, Entity& self)
 {
 	if (shooting)
-		self.get_eqp()->shoot(target.get_pos(), true, false);
+		self.ref_eqp().shoot(target.get_pos(), true, false);
 }
 void AtkPat_Burst::idle(Entity& self)
 {
@@ -89,7 +87,7 @@ void AtkPat_Burst::idle(Entity& self)
 		if (crowd_tmo.is_positive()) crowd_tmo -= GameCore::step_len;
 		else {
 			crowd_bots = -1; // exclude this
-			area_query(self.get_pos(), crowd->radius, [&](auto&){ ++crowd_bots; return true; });
+			area_query(self.core, self.get_pos(), crowd->radius, [&](auto&){ ++crowd_bots; return true; });
 		}
 	}
 	
@@ -103,7 +101,7 @@ void AtkPat_Burst::idle(Entity& self)
 			float t = clampf_n(float(crowd_bots) / crowd->max_bots);
 			tmo = lerp(wait, crowd->max_wait, t);
 		}
-		tmo += TimeSpan::seconds( GameCore::get().get_random().range(0, 0.2) );
+		tmo += TimeSpan::seconds( self.core.get_random().range(0, 0.2) );
 	}
 }
 void AtkPat_Burst::reset(Entity&)
@@ -124,24 +122,19 @@ static std::shared_ptr<AI_DroneParams> pars_turret()
 	}
 	return pars;
 }
-ETurret::ETurret(vec2fp at, size_t team)
+ETurret::ETurret(GameCore& core, vec2fp at, size_t team)
 	:
-	phy(this, [&]{
-		b2BodyDef bd;
-		bd.position = conv(at);
-		bd.fixedRotation = true;
-		return bd;
-	}()),
-    ren(this, MODEL_BOX_SMALL, FColor(1, 0, 1, 1)),
-    hlc(this, 400),
-    eqp(this),
-    logic(this, pars_turret(), {}, {}),
+	Entity(core),
+	phy(*this, bodydef(at, false)),
+	hlc(*this, 400),
+    eqp(*this),
+    logic(*this, pars_turret(), {}, {}),
     team(team)
 {
-	b2FixtureDef fd;
-	phy.add_circle(fd, GameConst::hsz_box_small, 1);
-	
-	eqp.add_wpn(new WpnMinigunTurret);
+	ui_descr = "Turret";
+	add_new<EC_RenderModel>(MODEL_BOX_SMALL, FColor(1, 0, 1, 1), EC_RenderModel::DEATH_AND_EXPLOSION);
+	phy.add(FixtureCreate::circle( fixtdef(0.2, 0), GameConst::hsz_box_small, 0 ));
+	eqp.add_wpn(std::make_unique<WpnMinigunTurret>());
 }
 
 
@@ -152,35 +145,29 @@ static AI_Drone::IdleState init_idle(EEnemyDrone::Init& init)
 	if (init.patrol.size() > 1) return AI_Drone::IdlePatrol{ std::move(init.patrol) };
 	return {};
 }
-EEnemyDrone::EEnemyDrone(vec2fp at, Init init)
+EEnemyDrone::EEnemyDrone(GameCore& core, vec2fp at, Init init)
 	:
-	phy(this, [&]{
-        b2BodyDef def;
-		def.position = conv(at);
-		def.type = b2_dynamicBody;
-		return def;
-	}()),
-	ren(this, init.model, FColor(1, 0, 0, 1)),
-	hlc(this, 70),
-	eqp(this),
-    logic(this, init.pars, init_idle(init), std::unique_ptr<AI_AttackPattern>(init.atk_pat)),
+	Entity(core),
+	phy(*this, bodydef(at, true)),
+	hlc(*this, 70),
+	eqp(*this),
+	logic(*this, init.pars, init_idle(init), std::unique_ptr<AI_AttackPattern>(init.atk_pat)),
 	mov(logic),
 	drop_value(init.drop_value)
 {
-	b2FixtureDef fd;
-	fd.friction = 0.3;
-	fd.restitution = 0.4;
-	phy.add_circle(fd, GameConst::hsz_drone * 1.4, 25); // sqrt2 - diagonal
+	ui_descr = "Drone";
+	add_new<EC_RenderModel>(init.model, FColor(1, 0, 0, 1), EC_RenderModel::DEATH_AND_EXPLOSION);
+	phy.add(FixtureCreate::circle( fixtdef(0.3, 0.4), GameConst::hsz_drone * 1.4, 25 ));  // sqrt2 - diagonal
 	
-	hlc.add_filter(std::make_shared<DmgShield>(100, 20, TimeSpan::seconds(5)));
+	hlc.add_filter(std::make_unique<DmgShield>(100, 20, TimeSpan::seconds(5)));
 //	hlc.ph_thr = 100;
 //	hlc.ph_k = 0.2;
 //	hlc.hook(phy);
 	
-	eqp.add_wpn( init.wpn );
+	eqp.add_wpn( std::unique_ptr<Weapon>(init.wpn) );
 }
 EEnemyDrone::~EEnemyDrone()
 {
-	if (!GameCore::get().is_freeing() && GameCore::get().spawn_drop)
-		EPickable::death_drop(get_pos(), drop_value);
+	if (!core.is_freeing() && core.spawn_drop)
+		EPickable::create_death_drop(core, get_pos(), drop_value);
 }

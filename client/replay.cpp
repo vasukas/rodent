@@ -14,18 +14,18 @@ const uint32_t stream_version = 4;
 
 
 
-SER_SERIALFUNC_PLACEMENT_1(PlayerController::State,
-	SER_FDT(is, FixedArray< std::tuple_size_v<decltype(PlayerController::State::is)>, bool >),
+SERIALFUNC_PLACEMENT_1(PlayerController::State,
+	SER_FD(is),
 	SER_FDT(acts, Array32<SerialTag_Enum< PlayerController::ACTION_TOTAL_COUNT_INTERNAL >>),
 	SER_FD(mov),
-	SER_FD(tar_pos))
+	SER_FD(tar_pos));
 
-SER_SERIALFUNC_PLACEMENT_1(ReplayInitData,
+SERIALFUNC_PLACEMENT_1(ReplayInitData,
 	SER_FDT(rnd_init, Array32),
-	SER_FD(fastforward))
+	SER_FD(fastforward));
 
-SER_SERIALFUNC_PLACEMENT_1(Replay_DebugTeleport,
-	SER_FD(target))
+SERIALFUNC_PLACEMENT_1(Replay_DebugTeleport,
+	SER_FD(target));
 
 static void write_header(File& f)
 {
@@ -168,7 +168,7 @@ struct ReplayThread
 			}
 		});
 	}
-	ReplayThread(ReplayThread&& t)
+	ReplayThread(ReplayThread&& t) noexcept
 	{
 		thr = std::move(t.thr);
 		q = std::move(t.q);

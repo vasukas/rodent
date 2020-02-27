@@ -1,13 +1,14 @@
 #include "utils/path_search.hpp"
 #include "vaslib/vas_log.hpp"
+#include "game_core.hpp"
 #include "level_ctr.hpp"
 #include "level_gen.hpp"
 
 
 
-PathRequest::PathRequest(vec2fp from, vec2fp to, std::optional<float> max_length, std::optional<Evade> evade)
+PathRequest::PathRequest(GameCore& core, vec2fp from, vec2fp to, std::optional<float> max_length, std::optional<Evade> evade)
 {
-	auto& lc = LevelControl::get();
+	auto& lc = core.get_lc();
 	vec2i pa = lc.to_nonwall_coord(from);
 	vec2i pb = lc.to_nonwall_coord(to);
 	
@@ -29,7 +30,7 @@ PathRequest::PathRequest(vec2fp from, vec2fp to, std::optional<float> max_length
 		args.evade_cost = evade->added_cost;
 	}
 	
-	auto r = LevelControl::get().get_aps().find_path(args);
+	auto r = lc.get_aps().find_path(args);
 	res = Result{};
 	
 	if (r.ps.empty())
@@ -188,6 +189,7 @@ LevelControl::LevelControl(const LevelTerrain& lt)
 			c0.room_nearest = 0;
 	}
 }
+LevelControl::~LevelControl() = default;
 void LevelControl::fin_init(const LevelTerrain& lt)
 {
 	for (size_t i=0; i < cells.size(); ++i)
@@ -294,10 +296,6 @@ void LevelControl::set_wall(vec2i pos, bool is_wall)
 		update_aps();
 	}
 }
-
-
-
-static LevelControl* rni;
-LevelControl* LevelControl::init(const LevelTerrain& lt) {return rni = new LevelControl (lt);}
-LevelControl& LevelControl::get() {return *rni;}
-LevelControl::~LevelControl() {rni = nullptr;}
+LevelControl* LevelControl::create(const LevelTerrain& lt) {
+	return new LevelControl(lt);
+}

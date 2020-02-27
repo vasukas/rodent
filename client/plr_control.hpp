@@ -1,6 +1,7 @@
 #ifndef PLR_CONTROL_HPP
 #define PLR_CONTROL_HPP
 
+#include <bitset>
 #include <optional>
 #include <memory>
 #include <mutex>
@@ -115,7 +116,7 @@ public:
 	
 	struct State
 	{
-		std::array<bool, ACTION_TOTAL_COUNT_INTERNAL> is = {}; ///< Is enabled/triggered
+		std::bitset<ACTION_TOTAL_COUNT_INTERNAL> is = {}; ///< Is enabled/triggered
 		std::vector<Action> acts; ///< Oneshot actions triggered
 		
 		vec2fp mov = {}; ///< Movement delta [-1; 1]

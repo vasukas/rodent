@@ -1,8 +1,10 @@
 #include "client/presenter.hpp"
+#include "game_ai/ai_control.hpp"
 #include "utils/noise.hpp"
 #include "vaslib/vas_containers.hpp"
 #include "vaslib/vas_log.hpp"
 #include "game_core.hpp"
+#include "level_ctr.hpp"
 #include "player_mgr.hpp"
 #include "physics.hpp"
 
@@ -13,8 +15,10 @@ class GameCore_Impl : public GameCore
 public:
 	struct Del_Entity { void operator()( Entity* p ) { delete p; } };
 	
+	std::unique_ptr<LevelControl> lc;
 	std::unique_ptr<PhysicsWorld> phy;
 	std::unique_ptr<PlayerManager> pmg;
+	std::unique_ptr<AI_Controller> aic;
 	
 	std::array<SparseArray<EComp*>, static_cast<size_t>(ECompType::TOTAL_COUNT)> cs_list;
 	SparseArray<Entity*> es_list;
@@ -22,7 +26,7 @@ public:
 	SparseArray<std::unique_ptr <Entity, Del_Entity>> ents;
 	std::vector<size_t> e_next1; // stack of indices which would be free on cycle after the next
 	std::vector<size_t> e_next2; // stack of indices which would be free on the next cycle
-	std::vector<std::unique_ptr <Entity, Del_Entity>> e_todel; // freed at the end of step
+	std::vector<Entity*> e_todel;
 	
 	uint32_t step_cou = 0;
 	TimeSpan step_time_cou = {};
@@ -40,9 +44,13 @@ public:
 		spawn_drop = false;
 		
 		ents.block_size = 256;
+		
 		phy.reset(new PhysicsWorld(*this));
-		pmg = std::move(pars.pmg);
-
+		lc = std::move(pars.lc);
+		
+		pmg.reset(PlayerManager::create(*this));
+		aic.reset(AI_Controller::create(*this));
+		
 		if (!pars.random_init.empty())
 			rndg.load(pars.random_init);
 	}
@@ -50,6 +58,8 @@ public:
 		is_freeing_flag = true;
 	}
 	
+	AI_Controller& get_aic()    noexcept {return *aic;}
+	LevelControl&  get_lc()     noexcept {return *lc ;}
 	PhysicsWorld&  get_phy()    noexcept {return *phy;}
 	PlayerManager& get_pmg()    noexcept {return *pmg;}
 	RandomGen&     get_random() noexcept {return rndg;}
@@ -80,7 +90,7 @@ public:
 			Entity* ent = nullptr;
 			try {
 				for (auto& c : cs_list[static_cast<size_t>(type)]) {
-					ent = c->ent;
+					ent = &c->ent;
 					c->step();
 				}
 			}
@@ -108,17 +118,21 @@ public:
 		
 		// tick systems
 		
-		try {
-			phy->step();
-		}
-		catch (std::exception& e) {
-			THROW_FMTSTR("Failed to step physics - {}", e.what());
-		}
+		auto step_sys = [](auto& s, const char *name)
+		{
+			try {
+				s.step();
+			}
+			catch (std::exception& e) {
+				THROW_FMTSTR("Failed to step {} - {}", name, e.what());
+			}
+		};
+		step_sys(*phy, "physics");
+		step_sys(*pmg, "plr_mgr");
+		step_sys(*aic, "ai_ctr");
 		
 		if (auto gp = GamePresenter::get()) {
-			try {
-				gp->sync(now);
-			}
+			try {gp->sync(now);}
 			catch (std::exception& e) {
 				THROW_FMTSTR("Failed to sync presenter - {}", e.what());
 			}
@@ -126,19 +140,20 @@ public:
 		
 		// finish
 		
-		step_flag = false;
+		for (auto e : e_todel) delete e;
 		e_todel.clear();
 		
-		if (auto gp = GamePresenter::get())
-			gp->del_sync();
-		
-		pmg->step();
+		step_flag = false;
 	}
 	Entity* get_ent( EntityIndex ei ) const noexcept
 	{
 		if (is_freeing_flag) return nullptr;
 		size_t i = ei.to_int();
-		return i < ents.size() ? ents[i].get() : nullptr;
+		if (i < ents.size()) {
+			auto e = ents[i].get();
+			if (e && e->is_ok()) return e;
+		}
+		return nullptr;
 	}
 	Entity* valid_ent( EntityIndex& i ) const noexcept
 	{
@@ -151,24 +166,29 @@ public:
 		if (auto e = get_ent(ei)) return *e;
 		GAME_THROW("GameCore::ent_ref() failed (eid {})", ei.to_int());
 	}
-	EntityIndex create_ent(Entity* ent) noexcept
+	void foreach(callable_ref<void(Entity&)> f)
 	{
-		size_t i = ents.emplace_new(ent);
+		for (auto& e : ents)
+			f(*e);
+	}
+	EntityIndex on_ent_create(Entity* e) noexcept
+	{
+		size_t i = ents.emplace_new(e);
 		return EntityIndex::from_int(i);
 	}
-	void mark_deleted(Entity* e) noexcept
+	void on_ent_destroy(Entity* e) noexcept
 	{
-		if (auto ren = e->get_ren())
-			ren->on_destroy_ent();
-		
 		size_t ix = e->index.to_int();
 		ents[ix].release();
 		
 		reserve_more_block( e_next1, 256 );
 		e_next1.push_back( ix );
 		
-		if (!is_in_step()) delete e;
-		else e_todel.emplace_back(e);
+		if (!is_in_step()) delete this;
+		else {
+			reserve_more_block( e_todel, 128 );
+			e_todel.push_back(e);
+		}
 	}
 	size_t reg_ent(Entity* e) noexcept
 	{
@@ -187,10 +207,6 @@ public:
 		cs_list[static_cast<size_t>(type)].free_and_reset(i);
 	}
 };
-
-
-
-static GameCore* core;
-GameCore& GameCore::get() {return *core;}
-GameCore* GameCore::create(InitParams pars) {return core = new GameCore_Impl (std::move(pars));}
-GameCore::~GameCore() {core = nullptr;}
+GameCore* GameCore::create(InitParams pars) {
+	return new GameCore_Impl (std::move(pars));
+}

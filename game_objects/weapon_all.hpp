@@ -1,7 +1,7 @@
 #ifndef WEAPON_ALL_HPP
 #define WEAPON_ALL_HPP
 
-#include "client/presenter.hpp"
+#include "client/ec_render.hpp"
 #include "game/physics.hpp"
 #include "game/weapon.hpp"
 
@@ -32,13 +32,16 @@ struct StdProjectile : EComp
 		bool friendly_fire = false;
 	};
 	
-	static PhysicsWorld::CastFilter make_cf(EntityIndex src); ///< Note: 'src' currently ignored
+	/// Note: 'src' currently ignored
+	static PhysicsWorld::CastFilter make_cf(EntityIndex src);
 	
 	/// Velocity can be zero. Hit must contain only valid pos, everything else can be null/zero
-	static void explode(size_t src_team, EntityIndex src_eid, b2Vec2 self_vel, PhysicsWorld::RaycastResult hit, const Params& pars);
+	static void explode(GameCore& core, size_t src_team, EntityIndex src_eid,
+	                    b2Vec2 self_vel, PhysicsWorld::RaycastResult hit, const Params& pars);
 	
-	StdProjectile(Entity* ent, const Params& pars, EntityIndex src, std::optional<vec2fp> target);
 	
+	
+	StdProjectile(Entity& ent, const Params& pars, EntityIndex src, std::optional<vec2fp> target);
 	vec2fp hit_location = {}; ///< Set before destroy
 	
 private:
@@ -54,18 +57,16 @@ private:
 class ProjectileEntity : public Entity
 {
 public:
-	ProjectileEntity(vec2fp pos, vec2fp vel, std::optional<vec2fp> target, Entity* src,
-	                 const StdProjectile::Params& pars, ModelType model, FColor clr);
+	ProjectileEntity(GameCore& core, vec2fp pos, vec2fp vel, std::optional<vec2fp> target,
+	                 Entity* src, const StdProjectile::Params& pars, ModelType model, FColor clr);
 	~ProjectileEntity();
 	
 private:
 	EC_VirtualBody phy;
-	EC_RenderSimple ren;
 	StdProjectile proj;
 	size_t team;
 	
-	ECompPhysics& get_phy() override {return phy;}
-	ECompRender* get_ren()  override {return &ren;}
+	EC_Position& ref_pc() override {return phy;}
 	size_t get_team() const override {return team;}
 };
 
@@ -89,7 +90,7 @@ public:
 		bool ignore(Entity* ent);
 	};
 	
-	static bool generate(vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim);
+	static bool generate(GameCore& core, vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim);
 	
 private:
 	static constexpr int last_generation = 2; // 3 gens
@@ -99,8 +100,8 @@ private:
 	SrcParams src;
 	std::optional<vec2fp> dir_lim;
 	
-	ElectroCharge(vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim);
-	ECompPhysics& get_phy() override {return phy;}
+	ElectroCharge(GameCore& core, vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim);
+	EC_Position& ref_pc() override {return phy;}
 	void step() override;
 };
 
@@ -109,15 +110,13 @@ private:
 class FoamProjectile : public Entity
 {
 public:
-	static bool can_create(vec2fp pos, EntityIndex src_i);
-	FoamProjectile(vec2fp pos, vec2fp vel, size_t team, EntityIndex src_i, bool is_first);
+	static bool can_create(GameCore& core, vec2fp pos, EntityIndex src_i);
+	FoamProjectile(GameCore& core, vec2fp pos, vec2fp vel, size_t team, EntityIndex src_i, bool is_first);
 	~FoamProjectile();
-	std::string ui_descr() const override {return frozen ? "Foam" : "";}
 	
 private:
 	EVS_SUBSCR;
 	EC_Physics phy;
-	EC_RenderSimple ren;
 	EC_Health hlc;
 	size_t team;
 	
@@ -130,8 +129,7 @@ private:
 	EntityIndex src_i;
 	vec2fp vel_initial;
 	
-	ECompPhysics& get_phy() override {return phy;}
-	ECompRender*  get_ren() override {return &ren;}
+	EC_Position&  ref_pc()  override {return phy;}
 	EC_Health*    get_hlc() override {return &hlc;}
 	size_t get_team() const override {return team;}
 	
@@ -145,12 +143,11 @@ private:
 class GrenadeProjectile : public Entity
 {
 public:
-	GrenadeProjectile(vec2fp pos, vec2fp dir, EntityIndex src_eid);
+	GrenadeProjectile(GameCore& core, vec2fp pos, vec2fp dir, EntityIndex src_eid);
 	
 private:
 	EVS_SUBSCR;
 	EC_Physics phy;
-	EC_RenderSimple ren;
 	EC_Health hlc;
 	
 	EntityIndex src_eid;
@@ -158,8 +155,7 @@ private:
 	TimeSpan left;
 	float clr_t = 0;
 	
-	ECompPhysics& get_phy() override {return phy;}
-	ECompRender*  get_ren() override {return &ren;}
+	EC_Position&  ref_pc()  override {return phy;}
 	EC_Health*    get_hlc() override {return &hlc;}
 	size_t get_team() const override {return TEAM_ENVIRON;}
 	
@@ -173,13 +169,11 @@ private:
 class ElectroBall : public Entity
 {
 public:
-	ElectroBall(vec2fp pos, vec2fp dir);
-	std::string ui_descr() const override {return "Plasma ball";}
+	ElectroBall(GameCore& core, vec2fp pos, vec2fp dir);
 	
 private:
 	EVS_SUBSCR;
 	EC_Physics phy;
-	EC_RenderSimple ren;
 	
 	EntityIndex target_id;
 	TimeSpan tmo_target;
@@ -195,8 +189,7 @@ private:
 	static constexpr float speed_min = 7;
 	static constexpr float speed_max = 40;
 	
-	ECompPhysics& get_phy() override {return  phy;}
-	ECompRender*  get_ren() override {return &ren;}
+	EC_Position& ref_pc() override {return phy;}
 	size_t get_team() const override {return TEAM_ENVIRON;}
 	
 	void on_cnt(const CollisionEvent& ev);
@@ -308,32 +301,6 @@ private:
 
 
 
-class WpnUber;
-class WpnUber_Ray : public Entity
-{
-public:
-	struct Render : ECompRender {
-		TimeSpan left;
-		Render(Entity* ent): ECompRender(ent) {}
-		void step();
-	};
-	struct ProxyPos : ECompPhysics {
-		ProxyPos(Entity* ent): ECompPhysics(ent) {}
-		Transform get_trans() const;
-		float get_radius() const {return 1;}
-	};
-	
-	WpnUber& wpn;
-	ProxyPos phy;
-	Render ren;
-	vec2fp b_last = {};
-	bool show = false;
-	
-	WpnUber_Ray(WpnUber& wpn);
-	ECompPhysics& get_phy() override {return  phy;}
-	ECompRender*  get_ren() override {return &ren;}
-};
-
 class WpnUber : public Weapon
 {
 public:
@@ -342,7 +309,6 @@ public:
 	
 private:
 	int ammo_skip_count = 0;
-	WpnUber_Ray* ray_ren;
 	std::optional<ShootResult> shoot(ShootParams pars) override;
 };
 

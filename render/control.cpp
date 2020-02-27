@@ -1,3 +1,6 @@
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 #include <SDL2/SDL.h>
 #include "core/settings.hpp"
 #include "utils/res_image.hpp"
@@ -60,6 +63,7 @@ class RenderControl_Impl : public RenderControl
 public:
 	bool crit_error = false;
 	
+	std::thread::id mainthr_id;
 	SDL_Window* wnd = nullptr;
 	SDL_GLContext glctx = nullptr;
 	bool visib = true;
@@ -83,6 +87,8 @@ public:
 	
 	RenderControl_Impl(bool& ok)
 	{
+		mainthr_id = std::this_thread::get_id();
+		
 		if (SDL_InitSubSystem(SDL_INIT_VIDEO))
 		{
 			VLOGE("SDL_InitSubSystem failed - {}", SDL_GetError());
@@ -241,6 +247,8 @@ public:
 	
 	bool render( TimeSpan passed )
 	{
+		proc_tasks();
+		
 		last_passed = passed;
 		if (crit_error) return false;
 		if (!visib) return true;
@@ -378,6 +386,7 @@ public:
 	}
 	void reload_shaders()
 	{
+		VLOGW("RenderControl::reload_shaders() called");
 		for (auto& s : Shader::get_all_ptrs())
 			s->reload();
 	}
@@ -398,6 +407,59 @@ public:
 			if (!rct) return;
 			static_cast<RenderControl_Impl*>(rct)->cb_resize[i] = {};
 		});
+	}
+	
+	
+	
+	std::vector<std::pair<bool, std::function<void()>>> tasks;
+	std::condition_variable task_cv;
+	std::mutex task_m;
+	
+	Task exec_task(std::function<void()> f)
+	{
+		if (mainthr_id == std::this_thread::get_id()) {
+			f();
+			return {};
+		}
+		std::unique_lock lock(task_m);
+		
+		size_t i=0;
+		for (; i < tasks.size(); ++i) if (!tasks[i].second) break;
+		if (i == tasks.size()) tasks.emplace_back();
+		
+		tasks[i] = std::make_pair(false, std::move(f));
+		return i;
+	}
+	bool task_check(size_t i, bool do_lock)
+	{
+		std::unique_lock<std::mutex> lock;
+		if (do_lock) lock = std::unique_lock(task_m);
+		
+		if (tasks[i].first) {
+			tasks[i] = {};
+			
+			for (auto& t : tasks) if (t.second) return true;
+			tasks.clear();
+			return true;
+		}
+		return false;
+	}
+	void task_wait(size_t i)
+	{
+		std::unique_lock lock(task_m);
+		task_cv.wait(lock, [&]{ return task_check(i, false); });
+	}
+	void proc_tasks()
+	{
+		std::unique_lock lock(task_m);
+		for (auto& t : tasks)
+		{
+			if (t.second && !t.first) {
+				t.second();
+				t.first = true;
+			}
+		}
+		task_cv.notify_all();
 	}
 };
 bool RenderControl::init()
@@ -433,4 +495,29 @@ vec2i RenderControl::get_size()
 	int w, h;
 	SDL_GetWindowSize(rct->wnd, &w, &h);
 	return {w, h};
+}
+
+
+
+bool RenderControl::Task::is_ready()
+{
+	if (!i) return true;
+	if (RenderControl::get().task_check(*i)) {
+		i.reset();
+		return true;
+	}
+	return false;
+}
+void RenderControl::Task::wait()
+{
+	if (i) RenderControl::get().task_wait(*i);
+}
+RenderControl::Task::Task(Task&& t)
+{
+	i = t.i;
+	t.i.reset();
+}
+RenderControl::Task::~Task()
+{
+	wait();
 }

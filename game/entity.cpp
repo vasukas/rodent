@@ -2,8 +2,6 @@
 #include "game_core.hpp"
 #include "physics.hpp"
 
-void EntityDeleter::operator()(Entity* p) {p->destroy();}
-
 
 
 const char *enum_name(ECompType type)
@@ -22,72 +20,104 @@ const char *enum_name(ECompType type)
 
 EComp::~EComp()
 {
-	for (auto& r : _regs)
-		GameCore::get().unreg_c( r.type, r.index );
+	if (_reg)
+		ent.core.unreg_c( _reg->type, _reg->index );
 }
-void EComp::reg(ECompType type) noexcept
+void EComp::reg(ECompType type)
 {
-	for (auto& r : _regs) if (r.type == type) return;
-	_regs.push_back({ type, GameCore::get().reg_c(type, this) });
+	if (_reg)
+	{
+		if (_reg->type == type) return;
+		THROW_FMTSTR("EComp::reg() already - {}", ent.dbg_id());
+	}
+	_reg = ComponentRegistration{ type, ent.core.reg_c(type, this) };
 }
-void EComp::unreg(ECompType type) noexcept
+void EComp::unreg(ECompType type)
 {
-	auto it = std::find_if( _regs.begin(), _regs.end(), [type](auto& v){return v.type == type;} );
-	if (it != _regs.end()) {
-		GameCore::get().unreg_c( it->type, it->index );
-		_regs.erase(it);
+	if (_reg && _reg->type == type)
+	{
+		ent.core.unreg_c( _reg->type, _reg->index );
+		_reg.reset();
 	}
 }
 
 
 
-vec2fp ECompPhysics::get_norm_dir() const
+AI_Drone& Entity::ref_ai_drone()
 {
-	vec2fp p{1, 0};
-	p.rotate( get_trans().rot );
-	return p;
+	if (auto p = get_ai_drone()) return *p;
+	THROW_FMTSTR("Entity::ref_ai_drone() failed - {}", dbg_id());
+}
+EC_Equipment& Entity::ref_eqp()
+{
+	if (auto p = get_eqp()) return *p;
+	THROW_FMTSTR("Entity::ref_eqp() failed - {}", dbg_id());
+}
+EC_Health& Entity::ref_hlc()
+{
+	if (auto p = get_hlc()) return *p;
+	THROW_FMTSTR("Entity::ref_hlc() failed - {}", dbg_id());
+}
+EC_Physics& Entity::ref_phobj()
+{
+	if (auto p = dynamic_cast<EC_Physics*>(&ref_pc())) return *p;
+	THROW_FMTSTR("Entity::ref_phobj() failed - {}", dbg_id());
 }
 
 
 
-EC_Physics& Entity::get_phobj()
-{
-	return dynamic_cast<EC_Physics&>(get_phy());
-}
-ECompPhysics& Entity::get_phy()
-{
-	THROW_FMTSTR("Entity::get_phy() null ({})", dbg_id());
-}
 std::string Entity::dbg_id() const
 {
-	return FMT_FORMAT("eid {}, descr \"{}\"", index.to_int(), ui_descr());
-}
-bool Entity::is_ok() const
-{
-	return !was_destroyed;
+	return FMT_FORMAT("eid {}, descr \"{}\"", index.to_int(), ui_descr);
 }
 void Entity::destroy()
 {
 	if (was_destroyed) return;
+	core.on_ent_destroy(this);
 	was_destroyed = true;
-	GameCore::get().mark_deleted(this);
-}
-Entity::Entity()
-    : index(GameCore::get().create_ent(this))
-{}
-Entity::~Entity()
-{
-	unreg_this();
 }
 void Entity::reg_this() noexcept
 {
 	if (!reglist_index)
-		reglist_index = GameCore::get().reg_ent(this);
+		reglist_index = core.reg_ent(this);
 }
 void Entity::unreg_this() noexcept
 {
 	if (reglist_index) {
-		GameCore::get().unreg_ent(*reglist_index);
+		core.unreg_ent(*reglist_index);
 		reglist_index.reset();
 	}
+}
+Entity::Entity(GameCore& core)
+    : core(core), index(core.on_ent_create(this))
+{}
+Entity::~Entity()
+{
+	iterate_reverse([&](auto& c){ delete c; c = {}; });
+	unreg_this();
+}
+
+
+
+void Entity::throw_type_error(const char *func, const std::type_info& t) const
+{
+	THROW_FMTSTR("Entity::{} for type '{}' failed", func, human_readable(t));
+}
+void Entity::iterate_direct (callable_ref<void(EComp*&)> f)
+{
+	for (int i = 0; i != n_dyn_comps(); ++i)
+		for (auto& c : dyn_comps)
+			if (c.second.order == i) {
+				f(c.second.c);
+				break;
+			}
+}
+void Entity::iterate_reverse(callable_ref<void(EComp*&)> f)
+{
+	for (int i = n_dyn_comps() - 1; i != -1; --i)
+		for (auto& c : dyn_comps)
+			if (c.second.order == i) {
+				f(c.second.c);
+				break;
+			}
 }

@@ -1,7 +1,7 @@
 #ifndef OBJS_CREATURE_HPP
 #define OBJS_CREATURE_HPP
 
-#include "client/presenter.hpp"
+#include "client/ec_render.hpp"
 #include "game/physics.hpp"
 #include "game/weapon.hpp"
 #include "game_ai/ai_drone.hpp"
@@ -12,16 +12,13 @@ struct LaserDesigRay;
 
 struct AtkPat_Sniper : AI_AttackPattern
 {
-	float rotation_k = 0.1; // rotation speed multiplier when charged and targeted
+	float rot_speed = deg_to_rad(10); // rotation speed (per second) when charged and targeted
 	
-	AtkPat_Sniper();
-	~AtkPat_Sniper();
 	void shoot(Entity& target, float distance, Entity& self) override;
 	void idle(Entity& self) override;
 	void reset(Entity& self) override;
 	
 private:
-	LaserDesigRay* laser;
 	vec2fp p_tar;
 	bool has_tar = false;
 };
@@ -52,23 +49,19 @@ private:
 class ETurret final : public Entity
 {
 	EC_Physics phy;
-	EC_RenderBot ren;
 	EC_Health hlc;
 	EC_Equipment eqp;
 	AI_Drone logic;
 	size_t team;
 	
 public:
-	ETurret(vec2fp at, size_t team);
-	std::string ui_descr() const override {return "Turret";}
-	float get_face_rot() override {return logic.face_rot;}
+	ETurret(GameCore& core, vec2fp at, size_t team);
 	
-	ECompPhysics& get_phy() override {return  phy;}
-	ECompRender*  get_ren() override {return &ren;}
-	EC_Health*    get_hlc() override {return &hlc;}
-	EC_Equipment* get_eqp() override {return &eqp;}
-	size_t get_team() const override {return team;}
+	EC_Position&   ref_pc() override  {return  phy;}
+	EC_Health*     get_hlc() override {return &hlc;}
+	EC_Equipment*  get_eqp() override {return &eqp;}
 	AI_Drone* get_ai_drone() override {return &logic;}
+	size_t        get_team() const override {return team;}
 };
 
 
@@ -76,7 +69,6 @@ public:
 class EEnemyDrone final : public Entity
 {
 	EC_Physics phy;
-	EC_RenderBot ren;
 	EC_Health hlc;
 	EC_Equipment eqp;
 	AI_Drone logic;
@@ -95,17 +87,14 @@ public:
 		std::vector<vec2fp> patrol = {};
 	};
 	
-	EEnemyDrone(vec2fp at, Init init);
+	EEnemyDrone(GameCore& core, vec2fp at, Init init);
 	~EEnemyDrone();
-	std::string ui_descr() const override {return "Drone";}
-	float get_face_rot() override {return logic.face_rot;}
 	
-	ECompPhysics& get_phy() override {return  phy;}
-	ECompRender*  get_ren() override {return &ren;}
-	EC_Health*    get_hlc() override {return &hlc;}
-	EC_Equipment* get_eqp() override {return &eqp;}
-	size_t get_team() const override {return TEAM_BOTS;}
+	EC_Position&   ref_pc() override  {return  phy;}
+	EC_Health*     get_hlc() override {return &hlc;}
+	EC_Equipment*  get_eqp() override {return &eqp;}
 	AI_Drone* get_ai_drone() override {return &logic;}
+	size_t        get_team() const override {return TEAM_BOTS;}
 };
 
 #endif // OBJS_CREATURE_HPP

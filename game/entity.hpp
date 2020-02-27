@@ -2,25 +2,18 @@
 #define ENTITY_HPP
 
 #include <memory>
-#include <vector>
-#include "vaslib/vas_math.hpp"
-#include "vaslib/vas_types.hpp"
+#include <unordered_map>
+#include <typeindex>
 #include "common_defs.hpp"
 
 class Entity;
 class GameCore;
 
-class AI_Drone;
-struct ECompRender;
+class  AI_Drone;
 struct EC_Equipment;
 struct EC_Health;
 struct EC_Physics;
-
-/// Custom deleter (calls destroy)
-struct EntityDeleter {void operator()(Entity*);};
-
-/// Unique entity pointer
-using EntityPtr = std::unique_ptr<Entity, EntityDeleter>;
+struct EC_Position;
 
 
 
@@ -42,36 +35,48 @@ const char *enum_name(ECompType type);
 /// Entity component
 struct EComp
 {
-	Entity* ent;
-	
+	Entity& ent;
 	
 	EComp(const EComp&) = delete;
-	virtual void step() {} // unused by some
 	virtual ~EComp(); ///< Removes component from all lists
 	
-	void   reg(ECompType type) noexcept; ///< Adds component to list (safe)
-	void unreg(ECompType type) noexcept; ///< Removes component from list (safe)
+	// Note: only one list allowed for now
+	void   reg(ECompType type); ///< Adds component to list (safe)
+	void unreg(ECompType type); ///< Removes component from list (safe)
 	
 protected:
-	EComp(Entity* ent): ent(ent) {}
+	friend class GameCore_Impl;
+	EComp(Entity& ent): ent(ent) {}
+	
+	/// Called each step if registered in one of Step* lists
+	virtual void step() {}
 	
 private:
 	struct ComponentRegistration {ECompType type; size_t index;};
-	std::vector<ComponentRegistration> _regs;
+	std::optional<ComponentRegistration> _reg;
+};
+
+struct EDynComp : EComp {
+protected:
+	EDynComp(Entity& ent): EComp(ent) {}
 };
 
 
 
-/// Entity component with physics world properties
-struct ECompPhysics : EComp
+struct EC_Position : EComp
 {
-	ECompPhysics(Entity* ent): EComp(ent) {}
-	virtual ~ECompPhysics() = default;
-	virtual Transform get_trans() const = 0; 
-	virtual vec2fp    get_pos() const {return get_trans().pos;}
-	virtual Transform get_vel() const {return {};}
-	virtual float get_radius() const = 0; ///< Returns approximate radius of object
-	vec2fp get_norm_dir() const; ///< Returns normalized face direction
+	std::optional<float> rot_override; ///< Rotation override
+	
+	EC_Position(Entity& ent): EComp(ent) {}
+	
+	virtual vec2fp    get_pos()    const = 0;
+	virtual vec2fp    get_vel()    const = 0; ///< Per second
+	virtual float     get_radius() const = 0; ///< Approximate size
+	virtual float get_real_angle() const = 0;
+	
+	Transform get_trans() const {return Transform{get_pos(), get_angle()};}
+	float     get_angle() const {return rot_override ? *rot_override : get_real_angle();}
+	vec2fp get_norm_dir() const {return vec2fp(1,0).rotate(get_angle());} ///< Normalized face direction
 };
 
 
@@ -97,50 +102,146 @@ private:
 class Entity
 {
 public:
-	// WARN: must be created on heap
-	
+	GameCore& core;
 	const EntityIndex index;
+	const char* ui_descr = nullptr;
 	
 	
-	virtual EC_Physics&   get_phobj(); ///< Throws if wrong type
-	virtual ECompPhysics& get_phy();   ///< Throws if doesn't exist
-	virtual ECompRender*  get_ren() {return nullptr;}
-	virtual EC_Health*    get_hlc() {return nullptr;}
+	
+	virtual AI_Drone*     get_ai_drone() {return nullptr;}
 	virtual EC_Equipment* get_eqp() {return nullptr;}
+	virtual EC_Health*    get_hlc() {return nullptr;}
+	
+	virtual AI_Drone&     ref_ai_drone();
+	virtual EC_Equipment& ref_eqp();
+	virtual EC_Health&    ref_hlc();
+	
+	virtual EC_Physics&   ref_phobj();
+	virtual EC_Position&  ref_pc() = 0;
 	
 	virtual size_t get_team() const {return TEAM_ENVIRON;}
-	virtual AI_Drone* get_ai_drone() {return nullptr;}
-	
-	virtual std::string ui_descr() const {return {};}
-	virtual float get_face_rot() {return get_phy().get_trans().rot;}
-	vec2fp get_pos() {return get_phy().get_pos();}
+	vec2fp get_pos() {return ref_pc().get_pos();}
 
 	
-	/// Deletes entity immediatly or at the end of the step. Index garanteed to be not used in next step
-	void destroy();
-	
-	/// Returns true if entity is not destroyed
-	bool is_ok() const;
 	
 	/// Returns ID string
 	std::string dbg_id() const;
 	
+	/// Deletes entity immediatly or at the end of the step. Index won't be used in next step
+	void destroy();
 	
-	/// Called only if in step list (just after ECompType::StepLogic) 
+	/// Returns true if wasn't deleted
+	bool is_ok() const {return !was_destroyed;}
+	
+	
+	
+	// Dynamic components
+	
+	template <typename T, std::enable_if_t<std::is_base_of_v<EDynComp, T>, int> = 0>
+	bool has() const noexcept {
+		return dyn_comps.find(typeid(T)) != dyn_comps.end();
+	}
+	
+	template <typename T, std::enable_if_t<std::is_base_of_v<EDynComp, T>, int> = 0>
+	T& ref() {
+		return const_cast<T&>(const_cast<const Entity&>(*this).ref<T>());
+	}
+	
+	template <typename T, std::enable_if_t<std::is_base_of_v<EDynComp, T>, int> = 0>
+	const T& ref() const {
+		if (auto t = get<T>()) return *t;
+		throw_type_error("ref", typeid(T));
+	}
+	
+	template <typename T, std::enable_if_t<std::is_base_of_v<EDynComp, T>, int> = 0>
+	T* get() noexcept {
+		return const_cast<T*>(const_cast<const Entity&>(*this).get<T>());
+	}
+	
+	template <typename T, std::enable_if_t<std::is_base_of_v<EDynComp, T>, int> = 0>
+	const T* get() const noexcept {
+		auto it = dyn_comps.find(typeid(T));
+		return it != dyn_comps.end() ? static_cast<const T*>(it->second.c) : nullptr;
+	}
+	
+	template <typename T, std::enable_if_t<std::is_base_of_v<EDynComp, T>, int> = 0>
+	T& add(T* c) {
+		if (has<T>()) throw_type_error("add", typeid(T));
+		dyn_comps.emplace(typeid(T), DynComp{c, n_dyn_comps()});
+	//	on_add_comp(*c);
+		return *c;
+	}
+	
+	template <typename T, typename... Args, std::enable_if_t<std::is_base_of_v<EDynComp, T>, int> = 0>
+	T& add_new(Args&&... args) {
+		return add(new T(*this, std::forward<Args>(args)...));
+	}
+	
+	template <typename T, std::enable_if_t<std::is_base_of_v<EDynComp, T>, int> = 0>
+	T& ensure() noexcept {
+		if (auto p = get<T>()) return *p;
+		return add_new<T>();
+	}
+	
+	template <typename T, std::enable_if_t<std::is_base_of_v<EDynComp, T>, int> = 0>
+	void remove() noexcept {
+		auto it = dyn_comps.find(typeid(T));
+		if (it != dyn_comps.end()) {
+			int ord = it->second.order;
+			
+		//	on_rem_comp(*it->second.c);
+			dyn_comps.erase(it);
+			
+			for (auto& c : dyn_comps)
+				if (c.second.order > ord)
+					--c.second.order;
+		}
+	}
+	
+	int n_dyn_comps() const noexcept {
+		return static_cast<int>(dyn_comps.size());
+	}
+	
+	void dyn_foreach(callable_ref<void(EComp&)> f) {
+		for (auto& c : dyn_comps) f(*c.second.c);
+	}
+	
+protected:
+	Entity(GameCore& core);
+	Entity(const Entity&) = delete;
+	virtual ~Entity();
+	
+	/// Called only if registered (after ECompType::StepLogic) 
 	virtual void step() {}
 	
 	void   reg_this() noexcept; ///< Adds entity to step list (safe)
 	void unreg_this() noexcept; ///< Removes entity from step list (safe)
 	
-protected:
-	Entity();
-	Entity(const Entity&) = delete;
-	virtual ~Entity();
-	
 private:
-	bool was_destroyed = false;
-	std::optional<size_t> reglist_index;
+	struct DynComp {
+		EComp* c;
+		int order;
+		DynComp(DynComp&& v) noexcept : c(v.c), order(v.order) {v.c = {};}
+		DynComp(EComp* c, int order) noexcept : c(c), order(order) {}
+		void operator=(DynComp&& v) noexcept {
+			if (c) delete c;
+			c = v.c; v.c = {};
+			order = v.order;
+		}
+		~DynComp() {if (c) delete c;}
+	};
+	std::unordered_map<std::type_index, DynComp> dyn_comps;
+	
 	friend class GameCore_Impl;
+	std::optional<size_t> reglist_index;
+	bool was_destroyed = false;
+	
+	//
+	
+	[[noreturn]] void throw_type_error(const char *func, const std::type_info& t) const;
+	
+	void iterate_direct (callable_ref<void(EComp*&)> f);
+	void iterate_reverse(callable_ref<void(EComp*&)> f);
 };
 
 #endif // ENTITY_HPP

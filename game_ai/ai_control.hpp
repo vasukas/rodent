@@ -1,6 +1,7 @@
 #ifndef AI_GROUP_HPP
 #define AI_GROUP_HPP
 
+#include "game/entity.hpp"
 #include "ai_common.hpp"
 
 class  AI_AOS;
@@ -12,9 +13,10 @@ class  AI_SimResource;
 class AI_Group final
 {
 public:
+	GameCore& core;
 	const EntityIndex tar_eid;
 	
-	AI_Group(EntityIndex tar_eid);
+	AI_Group(GameCore& core, EntityIndex tar_eid);
 	
 	const std::vector<AI_Drone*>& get_drones() const {return drones;}
 	void forall(callable_ref<void(AI_Drone&)> f, AI_Drone* except = nullptr);
@@ -27,7 +29,7 @@ public:
 	vec2fp get_last_pos() const {return last_pos;} ///< Returns last known position
 	
 	/// Sets search state for all capable drones, if possible
-	static bool init_search(const std::vector<AI_Drone*>& drones, vec2fp target_pos, bool was_in_battle);
+	static bool init_search(GameCore& core, const std::vector<AI_Drone*>& drones, vec2fp target_pos, bool was_in_battle);
 	
 private:
 	friend class AI_Controller_Impl;
@@ -68,10 +70,8 @@ class AI_Controller
 public:
 	bool show_aos_debug = false;
 	
-	static AI_Controller& get(); ///< Returns singleton
-	virtual ~AI_Controller();
-	
-	static AI_Controller* init(); ///< Initializes singleton
+	static AI_Controller* create(GameCore& core);
+	virtual ~AI_Controller() = default;
 	virtual void step() = 0;
 	
 	virtual AI_GroupPtr get_group(AI_Drone& drone) = 0;

@@ -83,6 +83,30 @@ public:
 	
 	/// Adds callback to be called at screen size change. Returns callback deleter
 	[[nodiscard]] virtual RAII_Guard add_size_cb(std::function<void()> cb, bool call_now = true) = 0;
+	
+	
+	
+	struct Task
+	{
+		bool is_ready(); ///< Returns immediatly
+		void wait(); ///< Returns only when completed
+		
+		Task(Task&&);
+		~Task();
+		
+	private:
+		friend class RenderControl_Impl;
+		std::optional<size_t> i;
+		Task(size_t i): i(i) {}
+		Task() {}
+	};
+	
+	/// Executes function on render thread
+	virtual Task exec_task(std::function<void()> f) = 0;
+	
+protected:
+	virtual bool task_check(size_t i, bool = true) = 0;
+	virtual void task_wait(size_t i) = 0;
 };
 
 #endif // REN_CTL_HPP

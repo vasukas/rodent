@@ -1,9 +1,8 @@
 #ifndef AI_COMMON_HPP
 #define AI_COMMON_HPP
 
-#include <variant>
-#include "game/entity.hpp"
-#include "game/level_ctr.hpp"
+#include "vaslib/vas_math.hpp"
+#include "vaslib/vas_time.hpp"
 
 class AI_Drone;
 

@@ -2,6 +2,7 @@
 #define AI_COMPONENTS_HPP
 
 #include "game/damage.hpp"
+#include "game/level_ctr.hpp"
 #include "ai_common.hpp"
 
 // Note: components are NOT registered on initialization
@@ -117,11 +118,11 @@ private:
 
 
 
-struct AI_RenRotation
+struct AI_RotationControl
 {
-	std::optional<float> speed_override; ///< May be zero
+	std::optional<float> speed_override; ///< May be zero. For use by AI_AttackPattern
 	
-	void update(AI_Drone& ent, std::optional<vec2fp> view_target, std::optional<vec2fp> mov_target);
+	void update(AI_Drone& dr, std::optional<vec2fp> view_target, std::optional<vec2fp> mov_target);
 	
 private:
 	enum State {

@@ -1,20 +1,19 @@
 #include "client/effects.hpp"
+#include "client/presenter.hpp"
 #include "game/level_ctr.hpp"
 #include "game/game_core.hpp"
 #include "game/player_mgr.hpp"
-#include "render/ren_aal.hpp"
 #include "utils/noise.hpp"
 #include "vaslib/vas_log.hpp"
 #include "objs_basic.hpp"
 
 
 
-EWall::EWall(const std::vector<std::vector<vec2fp>>& walls)
-    :
-    phy(this, b2BodyDef{}),
-    ren(this, MODEL_LEVEL_STATIC, FColor(0.75, 0.75, 0.75, 1))
+EWall::EWall(GameCore& core, const std::vector<std::vector<vec2fp>>& walls)
+    : Entity(core), phy(*this, b2BodyDef{})
 {
-	ren.disable_culling = true;
+	add_new<EC_RenderModel>(MODEL_LEVEL_STATIC, FColor(0.75, 0.75, 0.75, 1));
+	ensure<EC_RenderPos>().disable_culling = true;
 	
 	std::vector<b2Vec2> verts;
 	vec2fp p0 = vec2fp::one(std::numeric_limits<float>::max());
@@ -40,13 +39,13 @@ EWall::EWall(const std::vector<std::vector<vec2fp>>& walls)
 		fd.friction = 0.15;
 		fd.restitution = 0.1;
 		fd.shape = &shp;
-		auto f = phy.body->CreateFixture(&fd);
+		auto f = phy.body.CreateFixture(&fd);
 		
-		setptr(f, new FixtureInfo( FixtureInfo::TYPEFLAG_WALL | FixtureInfo::TYPEFLAG_OPAQUE ));
+		set_info(*f, FixtureInfo{ FixtureInfo::TYPEFLAG_WALL | FixtureInfo::TYPEFLAG_OPAQUE });
 	};
 	for (auto& w : walls) addfix(w);
 	
-	auto& lc = LevelControl::get();
+	auto& lc = core.get_lc();
 	p0 = {};
 	p1 = lc.get_size() * lc.cell_size;
 	p0 += vec2fp::one( lc.cell_size/2 );
@@ -64,44 +63,25 @@ EWall::EWall(const std::vector<std::vector<vec2fp>>& walls)
 
 
 
-EPhyBox::EPhyBox(vec2fp at)
+EPhyBox::EPhyBox(GameCore& core, vec2fp at)
     :
-    phy(this, [&]{
-		b2BodyDef bd;
-		bd.type = b2_dynamicBody;
-		bd.position = conv(at);
-		return bd;
-	}()),
-    ren(this, MODEL_BOX_SMALL, FColor(1, 0.6, 0.2, 1)),
-    hlc(this, 250)
+	Entity(core),
+    phy(*this, bodydef(at, true)),
+    hlc(*this, 250)
 {
-	b2FixtureDef fd;
-	fd.friction = 0.1;
-	fd.restitution = 0.5;
-	phy.add_box(fd, vec2fp::one(GameConst::hsz_box_small), 40.f, new FixtureInfo( FixtureInfo::TYPEFLAG_OPAQUE ));
+	ui_descr = "Box";
+	add_new<EC_RenderModel>(MODEL_BOX_SMALL, FColor(1, 0.6, 0.2, 1));
+	phy.add(FixtureCreate::box(
+		fixtdef(0.1, 0.5), vec2fp::one(GameConst::hsz_box_small),
+		40.f, FixtureInfo{ FixtureInfo::TYPEFLAG_OPAQUE }));
 	
-	hlc.hook(phy);
+//	hlc.hook(phy);
 }
 
 
 
-static ModelType get_model(const EPickable::Value& val)
-{
-	return std::visit(overloaded{
-		[](const EPickable::AmmoPack& v) {return ammo_model(v.type);},
-		[](const EPickable::ArmorShard&) {return MODEL_ARMOR;},
-		[](const EPickable::Func& v) {return v.model;}
-	}, val);
-}
-static FColor get_color(const EPickable::Value& val)
-{
-	return std::visit(overloaded{
-		[](const EPickable::AmmoPack&) {return FColor(1, 1, 1);},
-		[](const EPickable::ArmorShard&) {return FColor(0.3, 1, 0.2);},
-		[](const EPickable::Func& v) {return v.clr;}
-	}, val);
-}
-EPickable::AmmoPack EPickable::rnd_ammo()
+
+EPickable::AmmoPack EPickable::rnd_ammo(GameCore& core)
 {
 	static const auto cs = normalize_chances<AmmoType, 4>({{
 		{AmmoType::Bullet,   1.3},
@@ -109,7 +89,7 @@ EPickable::AmmoPack EPickable::rnd_ammo()
 		{AmmoType::Energy,   0.8},
 		{AmmoType::FoamCell, 0.4}
 	}});
-	return std_ammo(GameCore::get().get_random().random_el(cs));
+	return std_ammo(core.get_random().random_el(cs));
 }
 EPickable::AmmoPack EPickable::std_ammo(AmmoType type)
 {
@@ -127,18 +107,18 @@ EPickable::AmmoPack EPickable::std_ammo(AmmoType type)
 	}
 	return ap;
 }
-void EPickable::death_drop(vec2fp pos, float value)
+void EPickable::create_death_drop(GameCore& core, vec2fp pos, float value)
 {
-	auto& rnd = GameCore::get().get_random();
+	auto& rnd = core.get_random();
 	if (value < rnd.range_n()) return;
 	
 	float m0 = clampf_n( (value - 0.5) / 0.5 );
 	float m1 = std::max(value - 1, 0.f);
 	
-	Value v;
+	EPickable::Value v;
 	if (rnd.range_n() < 0.5)
 	{
-		AmmoPack ap = rnd_ammo();
+		auto ap = EPickable::rnd_ammo(core);
 		ap.amount *= rnd.range(
 			lerp(0.2, 0.3, m0),
 			lerp(0.7, 2,   m1)
@@ -146,38 +126,52 @@ void EPickable::death_drop(vec2fp pos, float value)
 		v = ap;
 	}
 	else {
-		v = ArmorShard{rnd.int_range(
+		v = EPickable::ArmorShard{rnd.int_range(
 			lerp(5, 20,  m0),
 			lerp(20, 40, m1))};
 	}
-	new EPickable(pos, std::move(v));
+	
+	new EPickable(core, pos, std::move(v));
 }
 
 
 
-EPickable::EPickable(vec2fp pos, Value val)
+EPickable::EPickable(GameCore& core, vec2fp pos, Value val)
 	:
-    phy(this, [&]{b2BodyDef d; d.position = conv(pos); return d;}()),
-    ren(this, get_model(val), get_color(val)),
-    val(std::move(val))
+	Entity(core),
+	phy(*this, bodydef(pos, false)),
+	val(std::move(val))
 {
-	b2FixtureDef fd;
-	fd.isSensor = true;
-	phy.add_circle(fd, GameConst::hsz_supply + 0.2, 0);
+	phy.add(FixtureCreate::circle( fixtsensor(), GameConst::hsz_supply + 0.2, 0 ));
 	EVS_CONNECT1(phy.ev_contact, on_cnt);
-}
-std::string EPickable::ui_descr() const
-{
-	return std::visit(overloaded{
-		[](const AmmoPack& v) -> std::string {return ammo_name(v.type);},
-		[](const ArmorShard&) -> std::string {return "Armor shard";},
-		[](const Func& v)     -> std::string {return v.ui_name;}
+	
+	auto& ren = add_new<EC_RenderModel>();
+	std::visit(overloaded
+	{
+		[&](const AmmoPack& v)
+		{
+			ren.model = ammo_model(v.type);
+			ren.clr = FColor(1, 1, 1);
+			ui_descr = ammo_name(v.type);
+		},
+		[&](const ArmorShard&)
+		{
+			ren.model = MODEL_ARMOR;
+			ren.clr = FColor(0.3, 1, 0.2);
+			ui_descr = "Armor shard";
+		},
+		[&](const SecurityKey&)
+		{
+			ren.model = MODEL_TERMINAL_KEY;
+			ren.clr = FColor(1, 0.8, 0.4);
+			ui_descr = "Security token";
+		}
 	}, val);
 }
 void EPickable::on_cnt(const CollisionEvent& ce)
 {
 	if (ce.type != CollisionEvent::T_BEGIN) return;
-	if (!GameCore::get().get_pmg().is_player( ce.other )) return;
+	if (!core.get_pmg().is_player( *ce.other )) return;
 	
 	bool del = std::visit(overloaded
 	{
@@ -185,106 +179,48 @@ void EPickable::on_cnt(const CollisionEvent& ce)
 		{
 			if (v.amount <= 0) return true; // rare bug
 
-			auto eqp = ce.other->get_eqp();
-			int delta = eqp->get_ammo(v.type).add(v.amount);
+			auto& eqp = ce.other->ref_eqp();
+			int delta = eqp.get_ammo(v.type).add(v.amount);
 			
 			if (delta > 0)
 			{
 				v.amount -= delta;
 				if (v.amount <= 0) return true;
-				else ren.parts(ren.model, ME_DEATH, {});
+				else this->ref<EC_RenderModel>().parts(ME_DEATH, {});
 			}
 			return false;
 		},
 		[&](ArmorShard& v)
 		{
-			auto& fs = ce.other->get_hlc()->raw_fils();
-			for (auto& f : fs)
+			bool ret = false;
+			ce.other->ref_hlc().foreach_filter([&](DamageFilter& f)
 			{
-				if (auto p = dynamic_cast<DmgArmor*>(f.get()))
+				if (ret) return;
+				if (auto p = dynamic_cast<DmgArmor*>(&f))
 				{
 					p->get_hp().apply(v.amount);
-					return true;
+					ret = true;
 				}
-			}
-			return false;
+			});
+			return ret;
 		},
-		[&](Func& v)
+		[&](SecurityKey&)
 		{
-			return v.f(*ce.other);
+			core.get_pmg().inc_objective();
+			return true;
 		}
 	}, val);
 	
-	if (del) destroy();
+	if (del)
+		destroy();
 }
 
 
 
-EDoor::RenDoor::RenDoor(Entity* ent)
-	: ECompRender(ent)
-{}
-void EDoor::RenDoor::step()
-{
-	auto door = static_cast<EDoor*>(ent);
-	float t_ext;
-	
-	switch (door->state)
-	{
-	case ST_OPEN:
-		t_ext = 0;
-		break;
-		
-	case ST_TO_OPEN:
-		t_ext = door->tm_left / door->anim_time;
-		break;
-		
-	case ST_TO_CLOSE:
-		t_ext = 1 - door->tm_left / door->anim_time;
-		break;
-		
-	case ST_CLOSED:
-		t_ext = 1;
-		break;
-	}
-	
-	//
-	
-	vec2fp p0 = get_pos().pos - door->fix_he;
-	vec2fp p1 = get_pos().pos + door->fix_he;
-	
-	vec2fp o_len, o_wid; // offsets
-	if (door->is_x_ext)
-	{
-		o_len.set( lerp(min_off, door->fix_he.x, t_ext), 0 );
-		o_wid.set( 0, door->fix_he.y *2 );
-	}
-	else
-	{
-		o_len.set( 0, lerp(min_off, door->fix_he.y, t_ext) );
-		o_wid.set( door->fix_he.x *2, 0 );
-	}
-
-	//
-	
-	uint32_t l_clr = FColor(0, 0.8, 0.8).to_px();
-	if (door->plr_only) l_clr = FColor(0.3, 0.8, 0.3).to_px();
-	float l_wid = 0.1f;
-	float l_aa = 3.f;
-	
-	RenAAL::get().draw_line(p0,         p0 + o_len,         l_clr, l_wid, l_aa);
-	RenAAL::get().draw_line(p0 + o_wid, p0 + o_len + o_wid, l_clr, l_wid, l_aa);
-	RenAAL::get().draw_line(p0 + o_len, p0 + o_len + o_wid, l_clr, l_wid, l_aa);
-	
-	RenAAL::get().draw_line(p1,         p1 - o_len,         l_clr, l_wid, l_aa);
-	RenAAL::get().draw_line(p1 - o_wid, p1 - o_len - o_wid, l_clr, l_wid, l_aa);
-	RenAAL::get().draw_line(p1 - o_len, p1 - o_len - o_wid, l_clr, l_wid, l_aa);
-}
 void EDoor::on_cnt(const CollisionEvent& ce)
 {
-	if (!dynamic_cast<FI_Sensor*>(ce.fix_this)) return;
-	
 	if (!plr_only) {if (!ce.other->get_eqp()) return;}
-	else if (!GameCore::get().get_pmg().is_player( ce.other )) return;
+	else if (!core.get_pmg().is_player( *ce.other )) return;
 
 	if (ce.type == CollisionEvent::T_BEGIN) {
 		++num_cnt;
@@ -302,16 +238,20 @@ void EDoor::step()
 {
 	if (state == ST_OPEN)
 	{
+		ref<EC_RenderDoor>().set_state(0);
+		
 		tm_left -= GameCore::step_len;
 		if (tm_left.is_negative())
 		{
 			state = ST_TO_CLOSE;
 			tm_left = anim_time;
-			upd_fix();
+			fix.set_enabled(*this, true);
 		}
 	}
 	else if (state == ST_TO_OPEN)
 	{
+		ref<EC_RenderDoor>().set_state( tm_left / anim_time );
+		
 		tm_left -= GameCore::step_len;
 		if (tm_left.is_negative())
 		{
@@ -321,11 +261,13 @@ void EDoor::step()
 	}
 	else if (state == ST_TO_CLOSE)
 	{
+		ref<EC_RenderDoor>().set_state( 1 - tm_left / anim_time );
+		
 		tm_left -= GameCore::step_len;
 		if (tm_left.is_negative())
 		{
 			state = ST_CLOSED;
-			upd_fix();
+			fix.set_enabled(*this, true);
 			
 			if (num_cnt) tm_left = wait_time;
 			else unreg_this();
@@ -333,6 +275,8 @@ void EDoor::step()
 	}
 	else if (state == ST_CLOSED)
 	{
+		ref<EC_RenderDoor>().set_state(1);
+		
 		if (tm_left.is_positive())
 		{
 			tm_left -= GameCore::step_len;
@@ -340,96 +284,80 @@ void EDoor::step()
 			{
 				state = ST_TO_OPEN;
 				tm_left = anim_time;
-				upd_fix();
+				fix.set_enabled(*this, false);
 			}
 		}
 	}
 }
-void EDoor::upd_fix()
+EDoor::EDoor(GameCore& core, vec2i TL_origin, vec2i door_ext, vec2i room_dir, bool plr_only)
+: EDoor(core, [&]
 {
-	if (state == ST_OPEN || state == ST_TO_OPEN)
-	{
-		if (!fix) return;
-		GameCore::get().get_phy().post_step([this]
-		{
-			phy.destroy(fix);
-			fix = nullptr;
-		});
-	}
-	else if (!fix)
-	{
-		GameCore::get().get_phy().post_step([this]
-		{
-			b2FixtureDef fd;
-			fd.friction = 0.15;
-			fd.restitution = 0.1;
-			fix = phy.add_box(fd, fix_he, 0, new FixtureInfo( FixtureInfo::TYPEFLAG_WALL | FixtureInfo::TYPEFLAG_OPAQUE ));
-		});
-	}
-}
-EDoor::EDoor(vec2i TL_origin, vec2i door_ext, vec2i room_dir, bool plr_only)
-	:
-    phy(this, [&]
-	{
-		this->is_x_ext = (door_ext.x != 0);
+	Init init;
+	init.plr_only = plr_only;
+	init.is_x_ext = (door_ext.x != 0);
+
+	float cz = core.get_lc().cell_size;
+	vec2fp pos = vec2fp(TL_origin) * cz;
 	
-		b2BodyDef def;
-		float cz = LevelControl::get().cell_size;
-		vec2fp pos = vec2fp(TL_origin) * cz;
-		
-		if (is_x_ext)
-		{
-			pos.x += door_ext.x * cz /2;
-			pos.y += cz * ((room_dir.y > 0) ? (1 - offset - width /2) : (offset + width /2));
-		}
-		else
-		{
-			pos.y += door_ext.y * cz /2;
-			pos.x += cz * ((room_dir.x > 0) ? (1 - offset - width /2) : (offset + width /2));
-		}
-		
-		def.position = conv(pos);
-		return def;
-	}()),
-    ren(this),
-    plr_only(plr_only)
+	if (init.is_x_ext)
+	{
+		pos.x += door_ext.x * cz /2;
+		pos.y += cz * ((room_dir.y > 0) ? (1 - offset - width /2) : (offset + width /2));
+	}
+	else
+	{
+		pos.y += door_ext.y * cz /2;
+		pos.x += cz * ((room_dir.x > 0) ? (1 - offset - width /2) : (offset + width /2));
+	}
+	
+	if (init.is_x_ext) init.fix_he.set( door_ext.x * cz /2, width /2 );
+	else               init.fix_he.set( width /2, door_ext.y * cz /2 );
+	
+	if (init.is_x_ext) init.sens_he.set( door_ext.x * cz /2, cz * sens_width );
+	else               init.sens_he.set( cz * sens_width, door_ext.y * cz /2 );
+	
+	init.def.position = conv(pos);
+	return init;
+}())
+{}
+EDoor::EDoor(GameCore& core, Init init)
+    :
+	Entity(core),
+    phy(*this, init.def),
+	fix(FixtureCreate::box( fixtdef(0.15, 0.1), init.fix_he, 0,
+                            FixtureInfo{ FixtureInfo::TYPEFLAG_WALL | FixtureInfo::TYPEFLAG_OPAQUE } )),
+    plr_only(init.plr_only)
 {
+	phy.add(FixtureCreate::box( fixtsensor(), init.sens_he, 0 ));
 	EVS_CONNECT1(phy.ev_contact, on_cnt);
 	
-	float cz = LevelControl::get().cell_size;
-	vec2fp sens_he;
-	if (is_x_ext) sens_he.set( door_ext.x * cz /2, cz * sens_width );
-	else          sens_he.set( cz * sens_width, door_ext.y * cz /2 );
+	fix.set_enabled(*this, true);
 	
-	b2FixtureDef fd;
-	fd.friction = 0.15;
-	fd.restitution = 0.1;
-	fd.isSensor = true;
-	phy.add_box(fd, sens_he, 0, new FI_Sensor);
+	//
 	
-	if (is_x_ext) fix_he.set( door_ext.x * cz /2, width /2 );
-	else          fix_he.set( width /2, door_ext.y * cz /2 );
-	upd_fix();
+	ui_descr = "Door";
+	add_new<EC_RenderDoor>(init.fix_he, init.is_x_ext, plr_only ? FColor(0.3, 0.8, 0.3) : FColor(0, 0.8, 0.8))
+	.set_state(1);
 }
 
 
 
-EFinalTerminal::EFinalTerminal(vec2fp at)
+EFinalTerminal::EFinalTerminal(GameCore& core, vec2fp at)
 	:
-    phy(this, [&]{b2BodyDef d; d.position = conv(at); return d;}()),
-    ren(this, MODEL_TERMINAL_FIN, FColor(1, 0.8, 0.4))
+	EInteractive(core),
+    phy(*this, bodydef(at, false))
 {
-	b2FixtureDef fd;
-	fd.restitution = 0;
-	fd.friction = 0.5;
-	phy.add_circle(fd, GameConst::hsz_termfin, 0, new FixtureInfo(FixtureInfo::TYPEFLAG_INTERACTIVE | FixtureInfo::TYPEFLAG_OPAQUE));
+	phy.add(FixtureCreate::circle( fixtdef(0.5, 0), GameConst::hsz_termfin, 0,
+	                               FixtureInfo{FixtureInfo::TYPEFLAG_INTERACTIVE | FixtureInfo::TYPEFLAG_OPAQUE}));
+	add_new<EC_RenderModel>(MODEL_TERMINAL_FIN, FColor(1, 0.8, 0.4));
+	ui_descr = "Control terminal";
 }
 void EFinalTerminal::step()
 {
-	float t = (timer_end - GameCore::get().get_step_time()).seconds();
+	float t = (timer_end - core.get_step_time()).seconds();
 	GamePresenter::get()->dbg_text(get_pos(), FMT_FORMAT("Boot-up in process: {:2.1f}", t));
 	
-	if (timer_end < GameCore::get().get_step_time() || is_activated)
+	if (timer_end < core.get_step_time() || is_activated)
 		unreg_this();
 }
 std::pair<bool, std::string> EFinalTerminal::use_string()
@@ -438,7 +366,7 @@ std::pair<bool, std::string> EFinalTerminal::use_string()
 		return {0, "Security tokens required"};
 	if (!timer_end.is_positive())
 		return {1, "Activate control terminal"};
-	if (timer_end < GameCore::get().get_step_time()) 
+	if (timer_end < core.get_step_time()) 
 		return {1, "Gain level control"};
 	else
 		return {0, "Boot-up in process"};
@@ -450,11 +378,11 @@ void EFinalTerminal::use(Entity*)
 	}
 	else if (!timer_end.is_positive())
 	{
-		timer_end = GameCore::get().get_step_time() + TimeSpan::seconds(5);
+		timer_end = core.get_step_time() + TimeSpan::seconds(5);
 		GamePresenter::get()->add_float_text({ get_pos(), "Boot sequence initialized" });
 		reg_this();
 	}
-	else if (timer_end < GameCore::get().get_step_time())
+	else if (timer_end <core.get_step_time())
 	{
 		is_activated = true;
 		GamePresenter::get()->add_float_text({ get_pos(), "Terminal active" });
@@ -463,40 +391,40 @@ void EFinalTerminal::use(Entity*)
 
 
 
-EDispenser::EDispenser(vec2fp at, float rot, bool increased_amount)
+EDispenser::EDispenser(GameCore& core, vec2fp at, float rot, bool increased_amount)
 	:
-    phy(this, [&]{b2BodyDef d; d.position = conv(at); d.angle = rot; return d;}()),
-    ren(this, MODEL_DISPENSER, FColor(0.7, 0.9, 0.7)),
+	EInteractive(core),
+	phy(*this, bodydef(at, false, rot)),
     increased(increased_amount)
 {
-	left = GameCore::get().get_random().int_range(
+	ui_descr = "Dispenser";
+	add_new<EC_RenderModel>(MODEL_DISPENSER, FColor(0.7, 0.9, 0.7));
+	phy.add(FixtureCreate::circle( fixtsensor(), 0.5, 0, FixtureInfo{FixtureInfo::TYPEFLAG_INTERACTIVE} ));
+	
+	left = core.get_random().int_range(
 		!increased ? 0 : 3,
 		!increased ? 4 : 8 );
 	
-	b2FixtureDef fd;
-	fd.isSensor = true;
-	phy.add_circle(fd, 0.5, 0, new FixtureInfo(FixtureInfo::TYPEFLAG_INTERACTIVE));
-	
-	gen_at = {LevelControl::get().cell_size /2, 0};
+	gen_at = {core.get_lc().cell_size /2, 0};
 	gen_at.fastrotate(rot + M_PI);
 	gen_at += at;
 }
 std::pair<bool, std::string> EDispenser::use_string()
 {
 	if (!left) return {0, "Empty"};
-	TimeSpan left = usable_after - GameCore::get().get_step_time();
+	TimeSpan left = usable_after - core.get_step_time();
 	if (left.is_negative()) return {1, "Get supplies"};
 	return {0, FMT_FORMAT("Not ready ({:.1f} seconds)", left.seconds())};
 }
 void EDispenser::use(Entity*)
 {
 	if (!left) return;
-	TimeSpan now = GameCore::get().get_step_time();
+	TimeSpan now = core.get_step_time();
 	if (usable_after >= now) return;
 	
-	auto ap = EPickable::rnd_ammo();
-	if (increased) ap.amount *= GameCore::get().get_random().range(1.5, 3);
-	new EPickable(gen_at, ap);
+	auto ap = EPickable::rnd_ammo(core);
+	if (increased) ap.amount *= core.get_random().range(1.5, 3);
+	new EPickable(core, gen_at, ap);
 	
 	usable_after = now + TimeSpan::seconds(10);
 	--left;
@@ -506,7 +434,7 @@ void EDispenser::use(Entity*)
 
 void EMinidock::on_cnt(const CollisionEvent& ev)
 {
-	if (GameCore::get().get_pmg().is_player( ev.other ))
+	if (core.get_pmg().is_player( *ev.other ))
 	{
 		plr = ev.other; // contact will end before it's invalidated
 		if (ev.type == CollisionEvent::T_BEGIN) reg_this();
@@ -531,10 +459,12 @@ void EMinidock::step()
 	
 	//
 	
-	auto now = GameCore::get().get_step_time();
+	auto& hc = plr->ref_hlc();
+	
+	auto now = core.get_step_time();
 	if (usable_after > now) return;
 	
-	if (now - plr->get_hlc()->last_damaged < dmg_tmo)
+	if (hc.since_damaged() < dmg_tmo)
 	{
 		usable_after = now + TimeSpan::seconds(0.2);
 		return;
@@ -554,19 +484,12 @@ void EMinidock::step()
 		}
 	};
 	
-	auto hc = plr->get_hlc();
-	heal(hc->get_hp(), hps);
-	
-	for (auto& f : hc->raw_fils())
+	heal(hc.get_hp(), hps);
+	hc.foreach_filter([&](auto& f)
 	{
-		if (auto p = dynamic_cast<DmgShield*>(f.get()))
+		if (auto p = dynamic_cast<DmgShield*>(&f))
 			heal(p->get_hp(), sps);
-	}
-	for (auto& f : hc->raw_prot())
-	{
-		if (auto p = dynamic_cast<DmgShield*>(f.get()))
-			heal(p->get_hp(), sps);
-	}
+	});
 	
 	//
 	
@@ -585,40 +508,40 @@ void EMinidock::step()
 	
 	effect_lightning( get_pos(), plr->get_pos(), EffectLightning::Regular, wait, FColor(0.5, 0.9, 0.6));
 }
-EMinidock::EMinidock(vec2fp at, float rot)
+EMinidock::EMinidock(GameCore& core, vec2fp at, float rot)
     :
-    phy(this, [&]{b2BodyDef d; d.position = conv(at); d.angle = rot; return d;}()),
-    ren(this, MODEL_MINIDOCK, FColor(0.5, 0.7, 0.9))
+	Entity(core),
+    phy(*this, bodydef(at, false, rot))
 {
-	b2FixtureDef fd;
-	fd.isSensor = true;
-	phy.add_box(fd, vec2fp::one(2.5), 0, Transform{{-LevelControl::get().cell_size /2, 0}});
-	
+	ui_descr = "Minidoc";
+	add_new<EC_RenderModel>(MODEL_MINIDOCK, FColor(0.5, 0.7, 0.9));
+	phy.add(FixtureCreate::box( fixtsensor(), vec2fp::one(2.5), Transform{{-core.get_lc().cell_size /2, 0}}, 0 ));
 	EVS_CONNECT1(phy.ev_contact, on_cnt);
 }
 
 
 
-EDecor::EDecor(const char *ui_name, Rect at, float rot, ModelType model, FColor clr)
+EDecor::EDecor(GameCore& core, const char *ui_name, Rect at, float rot, ModelType model, FColor clr)
 	:
-	phy(this, [&]{
+	Entity(core),
+	phy(*this, [&]{
 		b2BodyDef d;
 		vec2fp ctr = ResBase::get().get_size(model).center();
 		ctr.rotate(rot);
-		d.position = conv( ctr + at.fp_center() * LevelControl::get().cell_size );
+		d.position = conv( ctr + at.fp_center() * core.get_lc().cell_size );
 		d.angle = rot;
 		return d;
-	}()),
-    ren(this, model, clr),
-    ui_name(ui_name)
+	}())
 {
-	b2FixtureDef fd;
-	fd.friction = 0.15;
-	fd.restitution = 0.1;
-	phy.add_box(fd, ResBase::get().get_size(model).size() /2, 0, new FixtureInfo(FixtureInfo::TYPEFLAG_OPAQUE | FixtureInfo::TYPEFLAG_WALL));
+	ui_descr = ui_name;
+	add_new<EC_RenderModel>(model, clr);
+	phy.add(FixtureCreate::box( fixtdef(0.15, 0.1), ResBase::get().get_size(model).size() /2, 0,
+	                            FixtureInfo{FixtureInfo::TYPEFLAG_OPAQUE | FixtureInfo::TYPEFLAG_WALL} ));
 }
-EDecorGhost::EDecorGhost(Transform at, ModelType model, FColor clr)
+EDecorGhost::EDecorGhost(GameCore& core, Transform at, ModelType model, FColor clr)
     :
-	phy(this, at),
-    ren(this, model, clr)
-{}
+	Entity(core),
+	phy(*this, at)
+{
+	add_new<EC_RenderModel>(model, clr);
+}

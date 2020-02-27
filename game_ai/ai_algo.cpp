@@ -9,12 +9,12 @@
 
 
 
-void room_flood(vec2i pos, int max_depth, bool random_dirs, callable_ref<bool(const LevelControl::Room&, int)> f)
+void room_flood(GameCore& core, vec2i pos, int max_depth, bool random_dirs, callable_ref<bool(const LevelControl::Room&, int)> f)
 {
 	if (!max_depth) return;
 	
-	auto& lc = LevelControl::get();
-	auto& rnd = GameCore::get().get_random();
+	auto& lc = core.get_lc();
+	auto& rnd = core.get_random();
 	std::vector<LevelControl::Room*> open, next, closed;
 	std::vector<size_t> i_tmp;
 	
@@ -68,28 +68,28 @@ void room_flood(vec2i pos, int max_depth, bool random_dirs, callable_ref<bool(co
 		++depth;
 	}
 }
-void room_flood_p(vec2fp pos, int max_depth, bool random_dirs, callable_ref<bool(const LevelControl::Room&, int)> f)
+void room_flood_p(GameCore& core, vec2fp pos, int max_depth, bool random_dirs, callable_ref<bool(const LevelControl::Room&, int)> f)
 {
-	auto p = LevelControl::get().to_cell_coord(pos);
-	room_flood(p, max_depth, random_dirs, std::move(f));
+	auto p = core.get_lc().to_cell_coord(pos);
+	room_flood(core, p, max_depth, random_dirs, std::move(f));
 }
-void room_query(const LevelControl::Room& rm, callable_ref<bool(AI_Drone&)> f)
+void room_query(GameCore& core, const LevelControl::Room& rm, callable_ref<bool(AI_Drone&)> f)
 {
-	auto ai_area = GameCore::get().get_pmg().get_ai_rects().second;
+	auto ai_area = core.get_pmg().get_ai_rects().second;
 	
-	Rectfp r = rm.area.to_fp(LevelControl::get().cell_size);
+	Rectfp r = rm.area.to_fp(core.get_lc().cell_size);
 	if (!r.overlaps(ai_area)) return;
 	
-	GameCore::get().get_phy().query_aabb(r, [&](auto& ent, auto& fix)
+	core.get_phy().query_aabb(r, [&](auto& ent, auto& fix)
 	{
 		if (fix.IsSensor()) return true;
 		if (auto d = ent.get_ai_drone(); d && d->is_online) return f(*d);
 		return true;
 	});
 }
-void area_query(vec2fp ctr, float radius, callable_ref<bool(AI_Drone&)> f)
+void area_query(GameCore& core, vec2fp ctr, float radius, callable_ref<bool(AI_Drone&)> f)
 {
-	GameCore::get().get_phy().query_circle_all(conv(ctr), radius, [&](auto& ent, auto&){
+	core.get_phy().query_circle_all(conv(ctr), radius, [&](auto& ent, auto&){
 		return f(*ent.get_ai_drone());
 	},
 	[&](auto& ent, auto& fix)
@@ -100,11 +100,11 @@ void area_query(vec2fp ctr, float radius, callable_ref<bool(AI_Drone&)> f)
 	});
 }
 
-std::vector<std::vector<vec2fp>> calc_search_rings(vec2fp ctr_pos)
+std::vector<std::vector<vec2fp>> calc_search_rings(GameCore& core, vec2fp ctr_pos)
 {
 	const vec2i dirs[4] = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
 	auto& ring_dist = AI_Const::search_ring_dist;
-	auto& lc = LevelControl::get();
+	auto& lc = core.get_lc();
 	
 	Rect grid_area = Rect::from_center_le( lc.to_cell_coord(ctr_pos), vec2i::one(ring_dist.back() + 1) );
 	grid_area = calc_intersection(grid_area, Rect{{}, lc.get_size(), true});
@@ -179,8 +179,8 @@ public:
 		Placement result;
 		vec2i cpos; ///< Current position
 		
-		DroneInfo(const PlaceParam& par): par(par) {
-			cpos = LevelControl::get().to_nonwall_coord(par.at);
+		DroneInfo(GameCore& core, const PlaceParam& par): par(par) {
+			cpos = core.get_lc().to_nonwall_coord(par.at);
 		}
 	};
 	std::vector<DroneInfo> drones_orig;
@@ -203,10 +203,12 @@ public:
 		bool occupied = false;
 		float dist; ///< Approximate, not squared
 		
-		LevelControl::Cell& lcell() {return LevelControl::get().mut_cell(pos);}
+		LevelControl::Cell& lcell(GameCore& core) {return core.get_lc().mut_cell(pos);}
 		int n_rays() {return i1 - i0;}
 		int i_mid() {return (int(i0) + int(i1)) /2;}
 	};
+	
+	GameCore& core;
 	
 	size_t origs_size; ///< Number of original rays
 	std::vector<Ray> origs; ///< Rays from center
@@ -233,11 +235,12 @@ public:
 		return true;
 	}
 	
+	AI_AOS_Impl(GameCore& core): core(core) {}
 	void place_begin(vec2fp origin, float max_radius) override
 	{
 		// prepare
 		
-		auto& lc = LevelControl::get();
+		auto& lc = core.get_lc();
 		
 		origs_size = std::min(255., 2 * M_PI * max_radius);
 		ray_diff = 2 * M_PI / origs_size;
@@ -366,7 +369,7 @@ public:
 		drones.reserve( drones_orig.size() );
 		for (auto& d : drones_orig) drones.push_back(&d);
 		
-		auto& lc = LevelControl::get();
+		auto& lc = core.get_lc();
 		
 		// mark & remove statics
 		
@@ -506,7 +509,7 @@ public:
 	}
 	void place_feed(const PlaceParam& pars) override {
 		reserve_more_block(drones_orig, 128);
-		drones_orig.emplace_back(pars);
+		drones_orig.emplace_back(core, pars);
 	}
 	Placement place_result() override {
 		return drones_orig[result_idx++].result;
@@ -515,7 +518,7 @@ public:
 	
 	void debug_draw() override
 	{
-		auto& lc = LevelControl::get();
+		auto& lc = core.get_lc();
 		for (auto& c : cells)
 		{
 			uint32_t clr;
@@ -536,6 +539,6 @@ public:
 		}
 	}
 };
-AI_AOS* AI_AOS::create() {
-	return new AI_AOS_Impl;
+AI_AOS* AI_AOS::create(GameCore& core) {
+	return new AI_AOS_Impl(core);
 }

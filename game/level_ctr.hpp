@@ -1,8 +1,10 @@
 #ifndef LEVEL_CTR_HPP
 #define LEVEL_CTR_HPP
 
-#include "entity.hpp"
+#include <memory>
+#include "vaslib/vas_math.hpp"
 
+class  GameCore;
 class  PathSearch;
 struct LevelTerrain;
 
@@ -26,7 +28,7 @@ struct PathRequest
 	static constexpr float default_max_length = 120;
 	
 	PathRequest() = default;
-	PathRequest(vec2fp from, vec2fp to, std::optional<float> max_length = {}, std::optional<Evade> evade = {});
+	PathRequest(GameCore& core, vec2fp from, vec2fp to, std::optional<float> max_length = {}, std::optional<Evade> evade = {});
 	PathRequest(const PathRequest&) = delete;
 	
 	/// Returns true if result is available or waiting
@@ -69,8 +71,7 @@ public:
 	
 	enum SpawnType
 	{
-		SP_PLAYER,
-		SP_FINAL_TERMINAL
+		SP_PLAYER
 	};
 	
 	struct Spawn
@@ -83,10 +84,9 @@ public:
 	
 	
 	
-	static LevelControl* init(const LevelTerrain& lt); ///< Creates singleton
-	static LevelControl& get(); ///< Returns singleton
-	~LevelControl();
+	static LevelControl* create(const LevelTerrain& lt);
 	void fin_init(const LevelTerrain& lt); ///< Completes init after spawn is complete
+	~LevelControl();
 	
 	vec2i get_size() const {return size;}
 	bool is_valid(vec2i pos) const {return Rect{{}, size, true}.contains_le(pos);}

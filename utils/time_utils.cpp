@@ -1,6 +1,5 @@
 #include "core/settings.hpp"
 #include "render/control.hpp"
-#include "vaslib/vas_math.hpp"
 #include "time_utils.hpp"
 
 

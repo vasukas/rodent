@@ -5,21 +5,23 @@
 #include "game_ai/ai_sim.hpp"
 #include "utils/noise.hpp"
 #include "vaslib/vas_log.hpp"
+#include "objs_basic.hpp"
 #include "objs_creature.hpp"
 #include "spawners.hpp"
 #include "weapon_all.hpp"
 
 
 
-void level_spawn(LevelTerrain& lt)
+void level_spawn(GameCore& core, LevelTerrain& lt)
 {
 	TimeSpan time_start = TimeSpan::since_start();
+	new EWall(core, lt.ls_wall);
 	
 	/// Square grid non-diagonal directions (-x, +x, -y, +y)
 	const std::array<vec2i, 4> sg_dirs{{{-1,0}, {1,0}, {0,-1}, {0,1}}};
-	auto& rnd = GameCore::get().get_random();
+	auto& rnd = core.get_random();
 	
-	auto& lc = LevelControl::get();
+	auto& lc = core.get_lc();
 	const vec2i size = lc.get_size();
 	
 	auto lt_cref = [&](vec2i pos) -> auto& {return lt.cs[pos.y * size.x + pos.x];};
@@ -38,7 +40,7 @@ void level_spawn(LevelTerrain& lt)
 				++n;
 			});
 			
-			n = GameCore::get().get_random().range_index(n);
+			n = core.get_random().range_index(n);
 			r.area.map_check([&](vec2i p)
 			{
 				if (!lt_cref(p).is_wall) {
@@ -158,9 +160,9 @@ void level_spawn(LevelTerrain& lt)
 			if (rnd.range_n() < res_fail_chance) return; // BALANCE HACK
 			
 			if (!is_ok(at, false)) return;
-			auto ap = EPickable::rnd_ammo();
+			auto ap = EPickable::rnd_ammo(core);
 			ap.amount *= rnd.range(0.1, 0.7);
-			new EPickable( lc.to_center_coord(at), ap );
+			new EPickable( core, lc.to_center_coord(at), ap );
 			lt_cref(at).decor_used = true;
 		};
 		auto get_rot = [&](vec2i at, std::optional<bool> horiz = {}) -> std::optional<float>
@@ -214,14 +216,14 @@ void level_spawn(LevelTerrain& lt)
 			if (rnd.range_n() < res_fail_chance) return; // BALANCE HACK
 			
 			if (auto rot = get_rot(at, horiz)) {
-				new EDispenser( lc.to_center_coord(at), *rot, increased );
+				new EDispenser( core, lc.to_center_coord(at), *rot, increased );
 				lt_cref(at).decor_used = true;
 			}
 		};
 		auto add_mdock = [&](vec2i at, std::optional<bool> horiz = {})
 		{
 			if (auto rot = get_rot(at, horiz)) {
-				new EMinidock( lc.to_center_coord(at), *rot );
+				new EMinidock( core, lc.to_center_coord(at), *rot );
 				lt_cref(at).decor_used = true;
 			}
 		};
@@ -242,18 +244,18 @@ void level_spawn(LevelTerrain& lt)
 			if (mk(at, r)) lt_cref(at).is_wall = true;
 		};
 		
-		auto mk_cont = [](vec2i at, float r) {
-			new EDecor( "Box", {at, {1,1}, true}, r, rnd_stat().range_n() < 0.3 ? MODEL_STORAGE_BOX_OPEN : MODEL_STORAGE_BOX );
+		auto mk_cont = [&](vec2i at, float r) {
+			new EDecor( core, "Box", {at, {1,1}, true}, r, rnd_stat().range_n() < 0.3 ? MODEL_STORAGE_BOX_OPEN : MODEL_STORAGE_BOX );
 			return true;
 		};
 		auto mk_abox = [&](vec2i at, float rot) {
-			new EDecor( "Autobox", {at, {1,1}, true}, rot, MODEL_STORAGE, FColor(0.7, 0.9, 0.7) );
+			new EDecor( core, "Autobox", {at, {1,1}, true}, rot, MODEL_STORAGE, FColor(0.7, 0.9, 0.7) );
 			return true;
 		};
-		auto mk_mk = [](const char *name, ModelType model, bool is_ghost) {
-			return [=](vec2i at, float r) {
-				if (is_ghost) new EDecorGhost( Transform(LevelControl::get().to_center_coord(at), r), model );
-				else new EDecor( name, {at, {1,1}, true}, r, model );
+		auto mk_mk = [&](const char *name, ModelType model, bool is_ghost) {
+			return [&core, name, model, is_ghost](vec2i at, float r) {
+				if (is_ghost) new EDecorGhost( core, Transform(core.get_lc().to_center_coord(at), r), model );
+				else new EDecor( core, name, {at, {1,1}, true}, r, model );
 				return !is_ghost;
 			};
 		};
@@ -361,7 +363,7 @@ void level_spawn(LevelTerrain& lt)
 						vec2fp at = lc.to_center_coord(p);
 						vec2fp vp = lc.to_center_coord(p) + vec2fp(d) * (lc.cell_size /2); // at the cell edge
 						
-						new AI_SimResource({AI_SimResource::T_ROCK, true,
+						new AI_SimResource(core, {AI_SimResource::T_ROCK, true,
 						                    AI_SimResource::max_capacity, AI_SimResource::max_capacity},
 						                   at, vp);
 					}
@@ -374,7 +376,7 @@ void level_spawn(LevelTerrain& lt)
 					if (lt_cref(p + d).is_wall) continue;
 					
 					vec2fp at = lc.to_center_coord(p) + vec2fp(d) * lc.cell_size;
-					new AI_SimResource({AI_SimResource::T_ROCK, false, 0, AI_SimResource::max_capacity},
+					new AI_SimResource(core, {AI_SimResource::T_ROCK, false, 0, AI_SimResource::max_capacity},
 					                   at, lc.to_center_coord(p));
 				}
 			}
@@ -510,8 +512,8 @@ void level_spawn(LevelTerrain& lt)
 					for (auto& p : bigc.line)
 					{
 						float t = rnd.range_n();
-						if		(t < 0.4) new EDecor( "Conveyor",  {p, {1,1}, true}, rot, MODEL_CONVEYOR );
-						else if (t < 0.7) new EDecor( "Assembler", {p, {1,1}, true}, rot, MODEL_ASSEMBLER );
+						if		(t < 0.4) new EDecor( core, "Conveyor",  {p, {1,1}, true}, rot, MODEL_CONVEYOR );
+						else if (t < 0.7) new EDecor( core, "Assembler", {p, {1,1}, true}, rot, MODEL_ASSEMBLER );
 						else              mk_abox(p, rot);
 						lt_cref(p).is_wall = true;
 					}
@@ -582,7 +584,7 @@ void level_spawn(LevelTerrain& lt)
 			Transform at;
 			at.pos = room_ctr(r, true);
 			at.rot = M_PI/2 * rnd.range_index(4);
-			new EDecorGhost(at, MODEL_TELEPAD);
+			new EDecorGhost(core, at, MODEL_TELEPAD);
 			lt_cref( lc.to_cell_coord(at.pos) ).decor_used = true;
 			
 			r.area.map_inner([&](vec2i p)
@@ -615,17 +617,6 @@ void level_spawn(LevelTerrain& lt)
 	
 	auto spawn_key = [&](LevelTerrain::Room& r)
 	{
-		EPickable::Func f;
-		f.f = [](Entity& ent)
-		{
-			if (!GameCore::get().get_pmg().is_player(&ent)) return false;
-			GameCore::get().get_pmg().inc_objective();
-			return true;
-		};
-		f.model = MODEL_TERMINAL_KEY;
-		f.clr   = FColor(1, 0.8, 0.4);
-		f.ui_name = "Security token";
-		
 		auto next_pos = [&](bool check_dec) -> std::optional<vec2i>
 		{
 			vec2i at;
@@ -640,7 +631,7 @@ void level_spawn(LevelTerrain& lt)
 		std::optional<vec2i> at;
 		for (int i=0; i<40 && !at; ++i) at = next_pos(true);
 		while (!at) at = next_pos(false);	
-		new EPickable( lc.to_center_coord(*at), std::move(f) );
+		new EPickable( core, lc.to_center_coord(*at), EPickable::SecurityKey{} );
 	};
 	
 	std::vector<LevelTerrain::Room*> key_rooms;
@@ -651,7 +642,7 @@ void level_spawn(LevelTerrain& lt)
 		if		(r.type == LevelTerrain::RM_KEY)     {++key_count; spawn_key(r);}
 		else if (r.type == LevelTerrain::RM_TERMINAL) {
 			vec2fp p = room_ctr(r);
-			lc.add_spawn({ LevelControl::SP_FINAL_TERMINAL, p });
+			new EFinalTerminal(core, p);
 			lt_cref(lc.to_cell_coord(p)).decor_used = true;
 		}
 		else if (r.type == LevelTerrain::RM_LIVING)   key_rooms.push_back(&r);
@@ -659,7 +650,7 @@ void level_spawn(LevelTerrain& lt)
 	
 	for (; key_count < GameConst::total_key_count && !key_rooms.empty(); ++key_count)
 	{
-		size_t i = GameCore::get().get_random().range_index( key_rooms.size() );
+		size_t i = core.get_random().range_index( key_rooms.size() );
 		spawn_key(*key_rooms[i]);
 		key_rooms.erase( key_rooms.begin() + i );
 	}
@@ -839,7 +830,7 @@ void level_spawn(LevelTerrain& lt)
 				spawn_ps.erase( spawn_ps.begin() + pi );
 				lt_cref(at).is_wall = true;
 				
-				new ETurret(lc.to_center_coord(at), TEAM_BOTS);
+				new ETurret(core, lc.to_center_coord(at), TEAM_BOTS);
 			}
 		}
 		
@@ -848,17 +839,17 @@ void level_spawn(LevelTerrain& lt)
 			vec2fp at = spawn_ps[i];
 			at = at * lc.cell_size + vec2fp::one(lc.cell_size /2);
 
-			at.x += GameCore::get().get_random().range_n2() * 0.5;
-			at.y += GameCore::get().get_random().range_n2() * 0.5;
+			at.x += core.get_random().range_n2() * 0.5;
+			at.y += core.get_random().range_n2() * 0.5;
 			
-			float rnd_k = GameCore::get().get_random().range_n();
+			float rnd_k = core.get_random().range_n();
 			if		(rnd_k < dl_work)
 			{
 				static const auto cs = normalize_chances<Weapon*(*)(), 2>({{
 					{[]()->Weapon*{return new WpnRocket;}, 1},
 					{[]()->Weapon*{return new WpnRifleBot;}, 0.05}
 				}});
-				new EEnemyDrone(at, {pars_workr, MODEL_WORKER, rnd.random_el(cs)(), new AtkPat_Burst, 0.4, true});
+				new EEnemyDrone(core, at, {pars_workr, MODEL_WORKER, rnd.random_el(cs)(), new AtkPat_Burst, 0.4, true});
 			}
 			else if (rnd_k < dl_drone)
 			{
@@ -881,11 +872,11 @@ void level_spawn(LevelTerrain& lt)
 					{[]()->Weapon*{return new WpnRocket;}, 0.6},
 					{[]()->Weapon*{return new WpnRifleBot;}, 0.4}
 				}});
-				new EEnemyDrone(at, {pars_drone, MODEL_DRONE, rnd.random_el(cs)(), {}, 0.7, false, std::move(patrol)});
+				new EEnemyDrone(core, at, {pars_drone, MODEL_DRONE, rnd.random_el(cs)(), {}, 0.7, false, std::move(patrol)});
 			}
 			else //if (rnd_k < dl_camper)
 			{
-				new EEnemyDrone(at, {pars_campr, MODEL_CAMPER, new WpnElectro(WpnElectro::T_CAMPER), new AtkPat_Sniper, 1});
+				new EEnemyDrone(core, at, {pars_campr, MODEL_CAMPER, new WpnElectro(WpnElectro::T_CAMPER), new AtkPat_Sniper, 1});
 			}
 		}
 		
@@ -971,7 +962,7 @@ void level_spawn(LevelTerrain& lt)
 			}
 			
 			lt_cref({x, y}).is_door = false;
-			new EDoor({x, y}, ext, room, plr_only);
+			new EDoor(core, {x, y}, ext, room, plr_only);
 			
 			if (plr_only) {
 				if (ext.x) {for (int i=0; i<ext.x; ++i) lt_cref({x + i, y}).is_wall = true;}
@@ -990,9 +981,10 @@ void level_spawn(LevelTerrain& lt)
 	VLOGD("                 enemies: {:.3f} seconds", (time_doors   - time_enemies).seconds());
 	VLOGD("                 doors:   {:.3f} seconds", (time_end     - time_doors  ).seconds());
 }
-void level_spawn_debug(LevelTerrain& lt)
+void level_spawn_debug(GameCore& core, LevelTerrain& lt)
 {
-	auto& lc = LevelControl::get();
+	auto& lc = core.get_lc();
+	new EWall(core, lt.ls_wall);
 	
 	EEnemyDrone::Init drone;
 	drone.pars = std::make_shared<AI_DroneParams>();
@@ -1013,7 +1005,7 @@ void level_spawn_debug(LevelTerrain& lt)
 			break;
 			
 		case LevelTerrain::DBG_SPAWN_DRONE:
-			new EEnemyDrone( pos, drone );
+			new EEnemyDrone( core, pos, drone );
 			break;
 		}
 	}

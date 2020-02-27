@@ -1,6 +1,7 @@
 #include <future>
 #include "core/hard_paths.hpp"
 #include "game/common_defs.hpp"
+#include "render/control.hpp"
 #include "render/ren_aal.hpp"
 #include "render/ren_particles.hpp"
 #include "render/texture.hpp"
@@ -9,7 +10,7 @@
 #include "utils/svg_simple.hpp"
 #include "vaslib/vas_atlas_packer.hpp"
 #include "vaslib/vas_log.hpp"
-#include "presenter.hpp"
+#include "resbase.hpp"
 
 // just looks better
 #define PLAYER_MODEL_RADIUS_INCREASE -0.05
@@ -29,10 +30,19 @@ public:
 	std::array <std::unique_ptr<ParticleGroupGenerator>, FE_TOTAL_COUNT_INTERNAL> ld_es;
 	std::array <vec2fp, MODEL_TOTAL_COUNT_INTERNAL> md_cpt = {};
 	std::array <Rectfp, MODEL_TOTAL_COUNT_INTERNAL> md_sz = {};
-	std::array <TextureReg, MODEL_TOTAL_COUNT_INTERNAL> md_img = {};
+	std::array <TextureReg, MODEL_TOTAL_COUNT_INTERNAL> md_img = {};	
 	
 	std::unique_ptr<Texture> tex;
-	std::future<ImageInfo> async;
+	std::future<Texture*> tex_async;
+	
+	struct AAL_Model {
+		std::vector<std::vector<vec2fp>> ls;
+		float width;
+	};
+	using InitResult = std::array<AAL_Model, MODEL_TOTAL_COUNT_INTERNAL>;
+	std::future<InitResult> future_init;
+	
+	
 	
 	ParticleGroupGenerator* get_eff(ModelType type, ModelEffect eff)
 	{
@@ -52,15 +62,21 @@ public:
 	}
 	TextureReg get_image(ModelType type)
 	{
-		if (async.valid() && async.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+		if (tex_async.valid())
 		{
-			auto res = async.get();
-			tex.reset(Texture::create_from(res));
-			for (auto& i : md_img) i.tex = tex.get();
+			if (tex_async.wait_for (std::chrono::seconds(0)) == std::future_status::ready) {
+				tex.reset( tex_async.get() );
+			}
+			else return {};
 		}
 		return md_img[type];
 	}
+	
+	ResBase_Impl();
+	void init_ren_wait();
 	void init_ren();
+	
+	InitResult init_func();
 };
 ResBase& ResBase::get()
 {
@@ -70,8 +86,27 @@ ResBase& ResBase::get()
 
 
 
-void ResBase_Impl::init_ren()
+ResBase_Impl::ResBase_Impl()
 {
+	future_init = std::async(std::launch::async, [this]{ return init_func(); });
+}
+void ResBase_Impl::init_ren_wait()
+{
+	if (!future_init.valid()) return;
+	auto mlns = future_init.get();
+	
+	auto& ren = RenAAL::get();
+	for (size_t i = MODEL_LEVEL_STATIC + 1; i < MODEL_TOTAL_COUNT_INTERNAL; ++i)
+	{
+		for (auto& s : mlns[i].ls) ren.inst_add(s, false, mlns[i].width);
+		if (i != ren.inst_add_end())
+			throw std::logic_error(std::to_string(i) + " - index mismatch (internal error)");
+	}
+}
+ResBase_Impl::InitResult ResBase_Impl::init_func()
+{
+	InitResult initres;
+	
 	struct Explosion : ParticleGroupGenerator
 	{
 		size_t n_base; // base count
@@ -787,8 +822,6 @@ void ResBase_Impl::init_ren()
 	
 	// fin
 	
-	auto& ren = RenAAL::get();
-	
 	for (size_t i = MODEL_LEVEL_STATIC + 1; i < MODEL_TOTAL_COUNT_INTERNAL; ++i)
 	{
 		if (mlns[i].ls.empty() && i != MODEL_NONE)
@@ -801,9 +834,8 @@ void ResBase_Impl::init_ren()
 		if (std::find( std::begin(wpn_ixs), std::end(wpn_ixs), i ) != std::end(wpn_ixs))
 			width = WEAPON_LINE_RADIUS;
 		
-		for (auto& s : mlns[i].ls) ren.inst_add(s, false, width);
-		if (i != ren.inst_add_end())
-			throw std::logic_error(std::to_string(i) + " - index mismatch (internal error)");
+		initres[i].ls = mlns[i].ls; // used later in image generator
+		initres[i].width = width;
 	}
 	
 	
@@ -820,8 +852,7 @@ void ResBase_Impl::init_ren()
 	
 	// generate images
 	
-	async = std::async(std::launch::async,
-	[this](std::array<ModelInfo, MODEL_TOTAL_COUNT_INTERNAL> mlns)
+	tex_async = std::async(std::launch::async, [this, mlns = std::move(mlns)] ()->Texture*
 	{
 		TimeSpan time0 = TimeSpan::since_start();
 	        
@@ -877,23 +908,30 @@ void ResBase_Impl::init_ren()
 		
 		if (as.empty()) {
 			VLOGE("Resbase:: no images");
-			return res;
+			return {};
 		}
 		
 		res.reset({ as[0].info.w, as[0].info.h });
 		std::memcpy(res.raw(), as[0].px.data(), as[0].px.size() );
 		
+		VLOGI("Resbase:: generated images in {:.3f} seconds, {}x{} atlas",
+		      (TimeSpan::since_start() - time0).seconds(), res.get_size().x, res.get_size().y);
+		
+		Texture* tx;
+		RenderControl::get().exec_task([&]{
+			tx = Texture::create_from(res);
+		});
+		
 		for (auto& a : as[0].info.sprs)
 		{
 			auto& inf = md_is[a.id];
-			auto& tc = md_img[inf.type].tc;
-			tc.a = vec2fp(a.x, a.y) / vec2fp(res.get_size());
-			tc.b = vec2fp(a.w, a.h) / vec2fp(res.get_size()) + tc.a;
+			auto& t = md_img[inf.type];
+			t.tex = tx;
+			t.tc.a = vec2fp(a.x, a.y) / vec2fp(res.get_size());
+			t.tc.b = vec2fp(a.w, a.h) / vec2fp(res.get_size()) + t.tc.a;
 		}
-		
-		VLOGI("Resbase:: generated images in {:.3f} seconds, {}x{} atlas",
-		      (TimeSpan::since_start() - time0).seconds(), res.get_size().x, res.get_size().y);
-		return res;
-	}
-	, std::move(mlns));
+		return tx;
+	});
+
+	return initres;
 }

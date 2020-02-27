@@ -3,9 +3,7 @@
 
 #include "utils/ev_signal.hpp"
 #include "entity.hpp"
-
-struct CollisionEvent;
-struct EC_Physics;
+#include "physics.hpp"
 
 struct DamageFilter;
 
@@ -14,7 +12,6 @@ struct DamageFilter;
 enum class DamageType
 {
 	Direct, ///< Ignoring armor, thresholds etc
-	Physical,
 	Kinetic ///< Projectile weapon
 };
 
@@ -34,7 +31,7 @@ struct DamageQuant
 struct HealthPool
 {
 	// Note: regen works even if not alive
-	int regen_hp = 0; ///< Healing amount
+	int regen_hp = 0; ///< Healing amount (Note: must always be either zero or non-zero)
 	TimeSpan regen_cd = TimeSpan::seconds(0.5); ///< Cooldown after healing
 	TimeSpan regen_wait = TimeSpan::seconds(3); ///< Cooldown after receiving damage
 	float regen_at = 1.f; ///< Amount hp below which regen is enabled
@@ -63,41 +60,33 @@ private:
 
 struct EC_Health : EComp
 {
-	EVS_SUBSCR;
 	ev_signal<DamageQuant> on_damage; ///< Contains original type and calculated damage (sent on damage >= 0)
 	
-	float ph_k = 0.5; ///< Impulse to damage coeff (collision damage)
-	float ph_thr = 40.f; ///< Minimal physical impulse
 	
-	TimeSpan last_damaged; ///< GameCore time (set on damage >= 0)
-	
-	
-	
-	EC_Health(Entity* ent, int hp = 100);
-	void apply(DamageQuant q);
+	EC_Health(Entity& ent, int hp);
+	bool apply(DamageQuant q); ///< Returns false if entity was killed, true otherwise
 	
 	HealthPool& get_hp() {return hp;}
-	void upd_hp(); ///< Must be called if regeneration params changed
+	void upd_reg(); ///< Call this if regeneration params of HealthPool are changed
 	
-	void hook(EC_Physics& ph); ///< Connects to collision event
-	void on_event(const CollisionEvent& ev);
+	TimeSpan since_damaged() const; ///< Returns time since last damage (reset even on zero damage)
 	
-	size_t add_filter(std::shared_ptr<DamageFilter> f); ///< Adds filter. Used in reverse order of addition
-	void rem_filter(size_t i); ///< Removes filter
+	void add_phys(std::unique_ptr<DamageFilter> f);
+	void add_filter(std::unique_ptr<DamageFilter> f); ///< Stack: last added is first processed
 	
-	size_t add_prot(std::shared_ptr<DamageFilter> f); ///< Adds protected area
-	void rem_prot(size_t i); ///< Removes protected area
+	void rem_phys(DamageFilter* f) noexcept;
+	void rem_filter(DamageFilter* f) noexcept;
 	
-	auto& raw_fils() {return fils;}
-	auto& raw_prot() {return pr_area;}
+	size_t get_phys_index(DamageFilter* f) const; ///< Returns index of filter registered as phys
+	void foreach_filter(callable_ref<void(DamageFilter&)> f); ///< Gets called for both types of filters
 	
 private:
 	HealthPool hp;
-	std::vector<std::shared_ptr<DamageFilter>> fils; // may contain nullptr
-	std::vector<std::shared_ptr<DamageFilter>> pr_area; // may contain nullptr
+	TimeSpan last_damaged; ///< GameCore time (set on damage >= 0)
 	
-	size_t add(std::vector<std::shared_ptr<DamageFilter>>& fs, std::shared_ptr<DamageFilter> f);
-	void rem(std::vector<std::shared_ptr<DamageFilter>>& fs, size_t i);
+	std::vector<std::unique_ptr<DamageFilter>> phys;
+	std::vector<std::unique_ptr<DamageFilter>> fils;
+	
 	void step() override;
 };
 
@@ -108,26 +97,33 @@ struct DamageFilter
 	virtual ~DamageFilter() = default;
 	virtual void proc(EC_Health&, DamageQuant& q) = 0;
 	virtual void step(EC_Health&) {} ///< Called each step
-	virtual bool has_step() const {return false;} ///< Must return true if step() is implemented
+	virtual bool has_step() const {return false;} ///< Must return true if implements step
 };
 
 
 
 struct DmgShield : DamageFilter
 {
-	bool enabled = true;
-	bool is_filter = true;
+	/// Note: if fc is supplied (physics filter), shield is disabled by default
+	DmgShield(int capacity, int regen_per_second,
+	          TimeSpan regen_wait = TimeSpan::seconds(3),
+	          std::optional<FixtureCreate> fc = {});
 	
-	DmgShield(int capacity, int regen_per_second, TimeSpan regen_wait = TimeSpan::seconds(3));
+	HealthPool& get_hp() {return hp;}
+	bool is_enabled() const {return enabled;}
+	bool is_phys() const {return !!fix;}
+	
+	void set_enabled(Entity& ent, bool on);
+	
+private:
+	bool enabled;
+	HealthPool hp;
+	TimeSpan hit_ren_tmo;
+	std::optional<SwitchableFixture> fix;
+	
 	void proc(EC_Health&, DamageQuant& q);
 	void step(EC_Health&);
 	bool has_step() const {return true;}
-	
-	HealthPool& get_hp() {return hp;}
-	
-private:
-	HealthPool hp;
-	TimeSpan hit_ren_tmo;
 };
 
 

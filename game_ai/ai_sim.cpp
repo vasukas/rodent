@@ -1,4 +1,5 @@
 #include "game/game_core.hpp"
+#include "game/level_ctr.hpp"
 #include "utils/noise.hpp"
 #include "ai_control.hpp"
 #include "ai_sim.hpp"
@@ -78,19 +79,19 @@ AI_SimResource::WorkResult AI_SimResource::WorkerReg::process(Value& val, vec2fp
 
 
 
-AI_SimResource::WorkerReg AI_SimResource::find(vec2fp origin, float radius, Type type, int rate, flags_t find_type)
+AI_SimResource::WorkerReg AI_SimResource::find(GameCore& core, vec2fp origin, float radius, Type type, int rate, flags_t find_type)
 {
 	const LevelControl::Room* room = nullptr;
 	if (find_type & FIND_F_SAME_ROOM)
-		room = LevelControl::get().ref_room(origin);
+		room = core.get_lc().ref_room(origin);
 	
 	std::vector<std::pair<AI_SimResource*, float>> rs;
 	rs.reserve(64);
 	
-	AI_Controller::get().find_resource( Rectfp::from_center(origin, vec2fp::one(radius)),
+	core.get_aic().find_resource( Rectfp::from_center(origin, vec2fp::one(radius)),
 	[&](AI_SimResource& p)
 	{
-		if (room && LevelControl::get().ref_room(p.pos) != room) return;
+		if (room && core.get_lc().ref_room(p.pos) != room) return;
 		if (p.val.type != type || !p.can_reg(rate)) return;
 		rs.emplace_back( &p, p.pos.dist_squ(origin) );
 	});
@@ -103,15 +104,15 @@ AI_SimResource::WorkerReg AI_SimResource::find(vec2fp origin, float radius, Type
 	size_t s = 0;
 	for (size_t i = 1; i < rs.size(); ++i)
 	{
-		if (rs[i].second < rs[s].second && (strict_nearest || GameCore::get().get_random().range_n() < nonstrict_chance))
+		if (rs[i].second < rs[s].second && (strict_nearest || core.get_random().range_n() < nonstrict_chance))
 			s = i;
 	}
 	return rs[s].first->reg(rate);
 }
-AI_SimResource::AI_SimResource(Value val, vec2fp pos, vec2fp vtar)
-	: val(val), pos(pos), vtar(vtar)
+AI_SimResource::AI_SimResource(GameCore& core, Value val, vec2fp pos, vec2fp vtar)
+	: core(core), val(val), pos(pos), vtar(vtar)
 {
-	AI_Controller::get().ref_resource(Rectfp::from_center(pos, vec2fp::one(work_range)), this);
+	core.get_aic().ref_resource(Rectfp::from_center(pos, vec2fp::one(work_range)), this);
 }
 AI_SimResource::WorkerReg AI_SimResource::reg(int rate)
 {

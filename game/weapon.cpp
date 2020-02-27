@@ -1,5 +1,4 @@
-#include "client/presenter.hpp"
-#include "utils/noise.hpp"
+#include "client/ec_render.hpp"
 #include "game_core.hpp"
 #include "physics.hpp"
 #include "weapon.hpp"
@@ -43,29 +42,36 @@ void Weapon::Info::set_origin_from_model()
 
 
 
-std::optional<Weapon::DirectionResult> Weapon::get_direction(const ShootParams& pars, bool ignore_target)
+std::optional<Weapon::DirectionResult> Weapon::get_direction(const ShootParams& pars, DirectionType dtype)
 {
-	auto ent = equip->ent;
-	vec2fp orig = ent->get_pos();
-	float rot = ent->get_face_rot();
+	auto& ent = equip->ent;
 	
-	if (!ignore_target)
+	vec2fp orig = ent.ref_pc().get_pos();
+	float rot = ent.ref_pc().get_angle();
+	
+	bool forward_dir;
+	if (dtype == DIRTYPE_IGNORE_ANGLE) forward_dir = true;
+	else
 	{
 		float ta = (pars.target - orig).fastangle();
 		if (std::fabs(wrap_angle( ta - rot )) > info->angle_limit)
-			return {};
+		{
+			if (dtype == DIRTYPE_TARGET) return {};
+			forward_dir = true;
+		}
+		else forward_dir = false;
 	}
 	
-	vec2fp offset = {ent->get_phy().get_radius(), 0};
+	vec2fp offset = {ent.ref_pc().get_radius(), 0};
 	offset.fastrotate(rot);
 	offset += vec2fp(info->bullet_offset).fastrotate( rot );
 	
-	if (auto rc = GameCore::get().get_phy().raycast_nearest( conv(orig), conv(orig + offset) )) {
+	if (auto rc = ent.core.get_phy().raycast_nearest( conv(orig), conv(orig + offset) )) {
 		offset = 0.9 * (conv(rc->poi) - orig);
 	}
 	orig += offset;
 	
-	vec2fp dir = ignore_target ? offset : pars.target - orig;
+	vec2fp dir = forward_dir ? offset : pars.target - orig;
 	dir.norm();
 
 	return DirectionResult{orig, dir};
@@ -90,7 +96,7 @@ float EC_Equipment::Ammo::add(int amount)
 
 
 
-EC_Equipment::EC_Equipment(Entity* ent)
+EC_Equipment::EC_Equipment(Entity& ent)
 	 : EComp(ent)
 {
 	reg(ECompType::StepPostUtil);
@@ -128,28 +134,28 @@ bool EC_Equipment::set_wpn(size_t index, bool even_if_no_ammo)
 		auto& wpn = get_wpn();
 		if (wpn.overheat && !wpn.overheat->is_ok())
 		{
-			last_req = index;
+//			last_req = index;
 			if (msgrep) msgrep->jerr(WeaponMsgReport::ERR_SELECT_OVERHEAT);
 			return false;
 		}
 	}
 	
 	// reset
-	if (auto rc = ent->get_ren())
-		rc->detach(ECompRender::ATT_WEAPON);
+	auto& rc = ent.ensure<EC_RenderEquip>();
+	rc.detach(EC_RenderEquip::ATT_WEAPON);
 	
 	if (wpn_cur != size_t_inval) w_prev = wpn_cur;
 	wpn_cur = index;
 	last_req.reset();
 	
 	// update
-	if (auto rc = ent->get_ren())
+	if (true)
 	{
 		auto& ri = *get_wpn().info;
 		int w_hand = ri.hand ? *ri.hand : hand;
 		
-		float r = ent->get_phy().get_radius();
-		rc->attach( ECompRender::ATT_WEAPON, Transform{vec2fp(r, r/2 * w_hand)}, ri.model, FColor(1, 0.4, 0, 1) );
+		float r = ent.ref_pc().get_radius();
+		rc.attach( EC_RenderEquip::ATT_WEAPON, Transform{vec2fp(r, r/2 * w_hand)}, ri.model, FColor(1, 0.4, 0, 1) );
 	}
 	
 	return true;
@@ -164,10 +170,10 @@ Weapon& EC_Equipment::get_wpn()
 	if (wpns.empty()) throw std::runtime_error("EC_Equipment::get_wpn() no weapons");
 	return *wpns[wpn_cur];
 }
-void EC_Equipment::add_wpn(Weapon* wpn)
+void EC_Equipment::add_wpn(std::unique_ptr<Weapon> wpn)
 {
-	wpns.emplace_back(wpn);
 	wpn->equip = this;
+	wpns.emplace_back(std::move(wpn));
 	
 	if (wpns.size() == 1) {
 		wpn_cur = size_t_inval;
@@ -199,12 +205,12 @@ bool EC_Equipment::shoot_internal(Weapon& wpn, Weapon::ShootParams pars)
 	
 	return true;
 }
-bool EC_Equipment::shoot_check(Weapon& wpn)
+int EC_Equipment::shoot_check(Weapon& wpn)
 {
-	if (wpn.rof_left.is_positive()) return false;
-	if (!has_ammo(wpn)) return false;
-	if (wpn.overheat && !wpn.overheat->is_ok()) return false;
-	return true;
+	if (wpn.rof_left.is_positive()) return 0;
+	if (wpn.overheat && !wpn.overheat->is_ok()) return 0;
+	if (!has_ammo(wpn)) return 1;
+	return 2;
 }
 void EC_Equipment::step()
 {
@@ -222,8 +228,9 @@ void EC_Equipment::step()
 		w_prev.reset();
 	}
 	
-	if (!shoot_check(get_wpn()))
-		pars.main = pars.alt = false;
+	int shcheck = shoot_check(get_wpn());
+	if (shcheck != 2) pars.main = pars.alt = false;
+	pars.is_ok = (shcheck != 0);
 	
 	bool has_shot = (pars.main || pars.alt || pars.main_was || pars.alt_was) && shoot_internal(get_wpn(), pars);
 	pars.main_was = pars.main;

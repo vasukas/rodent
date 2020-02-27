@@ -5,9 +5,10 @@
 #include "render/ren_imm.hpp"
 #include "vaslib/vas_containers.hpp"
 #include "vaslib/vas_log.hpp"
-#include "effects.hpp"
+#include "ec_render.hpp"
 #include "presenter.hpp"
 
+// for screenshot & debug
 #include <thread>
 #include "core/vig.hpp"
 #include "render/camera.hpp"
@@ -20,90 +21,23 @@ void effects_init(); // defined in effects.cpp
 
 
 
-ECompRender::ECompRender(Entity* ent)
-    : EComp(ent)
-{
-	_pos = ent ? ent->get_phy().get_trans() : Transform{};
-	_vel = {};
-	send(PresCmdCreate{this});
-}
-void ECompRender::parts(ModelType model, ModelEffect effect, const ParticleBatchPars& pars)
-{
-	send(PresCmdObjEffect{this, model, effect, pars});
-}
-void ECompRender::parts(FreeEffect effect, const ParticleBatchPars& pars)
-{
-	send(PresCmdEffect{this, effect, pars});
-}
-void ECompRender::attach(AttachType type, Transform at, ModelType model, FColor clr)
-{
-	send(PresCmdAttach{this, type, model, clr, at});
-}
-void ECompRender::send(PresCommand c)
-{
-	if (_is_ok) GamePresenter::get()->add_cmd(std::move(c));
-}
-void ECompRender::proc(PresCommand)
-{
-	THROW_FMTSTR("ECompRender::proc() not implemented ({})", ent->dbg_id());
-}
-void ECompRender::on_destroy_ent()
-{
-	on_destroy();
-	send(PresCmdDelete{this, _comp_id});
-	_is_ok = false;
-}
-
-
-
-EC_RenderSimple::EC_RenderSimple(Entity* ent, ModelType model, FColor clr)
-    : ECompRender(ent), model(model), clr(clr)
-{}
-void EC_RenderSimple::on_destroy()
-{
-	if (death_parts)
-		parts(model, ME_DEATH, {{}, 1, clr});
-}
-void EC_RenderSimple::step()
-{
-	RenAAL::get().draw_inst(get_pos(), clr, model);
-}
-
-
-
-EC_RenderBot::EC_RenderBot(Entity* ent, ModelType model, FColor clr)
-    : ECompRender(ent), model(model), clr(clr)
-{}
-void EC_RenderBot::on_destroy()
-{
-	parts(model, ME_DEATH, {{}, 1, clr});
-	GamePresenter::get()->effect( FE_EXPLOSION_FRAG, { Transform{get_pos()} } );
-	effect_explosion_wave( get_pos().pos );
-}
-void EC_RenderBot::step()
-{
-	if (!aequ(rot, rot_tar, 1e-3))
-		rot = lerp_angle(rot, rot_tar, std::min(1., 10 * GamePresenter::get()->get_passed().seconds()));
-	
-	const Transform fixed{get_pos().pos, rot};
-	RenAAL::get().draw_inst(fixed, clr, model);
-	
-	for (auto& a : atts) {
-		if (a.model != MODEL_NONE)
-			RenAAL::get().draw_inst(fixed.get_combined(a.at), a.clr, a.model);
-	}
-}
-void EC_RenderBot::proc(PresCommand ac)
-{
-	if (auto c = std::get_if<PresCmdAttach>(&ac))
-	{
-		auto& a = atts[c->type];
-		a.model = c->model;
-		a.at = c->pos;
-		a.clr = c->clr;
-	}
-	else THROW_FMTSTR("EC_RenderBot::proc() not implemented ({})", ent->dbg_id());
-}
+struct PresCmdDbgRect {
+	Rectfp dst;
+	uint32_t clr;
+};
+struct PresCmdDbgLine {
+	vec2fp a, b;
+	uint32_t clr;
+	float wid;
+};
+struct PresCmdDbgText {
+	vec2fp at;
+	std::string str;
+	uint32_t clr;
+};
+struct PresCmdEffectFunc {
+	std::unique_ptr<GameRenderEffect> eff;
+};
 
 
 
@@ -142,18 +76,23 @@ public:
 		}
 	};
 	
+	GameCore* core;
 	std::vector<PresCommand> cmds_queue;
-	std::vector<std::pair<ECompRender*, PresCommand>> cmds;
-	
 	std::vector<PartDelay> part_del;
-	std::vector<std::function<bool(TimeSpan)>> ef_fs;
 	
-	std::vector<PresCmdDbgRect> dbg_rs;
-	std::vector<PresCmdDbgLine> dbg_ls;
-	std::vector<PresCmdDbgText> dbg_ts;
+	std::vector<PresCmdDbgRect> dbg_rs, dbg_rs_new;
+	std::vector<PresCmdDbgLine> dbg_ls, dbg_ls_new;
+	std::vector<PresCmdDbgText> dbg_ts, dbg_ts_new;
+	SparseArray<std::unique_ptr<GameRenderEffect>> ef_fs;
 	std::vector<FloatTextRender> f_texts;
 	
-	SparseArray<ECompRender*> cs;
+	struct EntReg
+	{
+		EC_RenderPos* pos = {};
+		std::vector<EC_RenderComp*> subs;
+	};
+	
+	std::vector<EntReg> regs;
 	TimeSpan last_passed;
 	TimeSpan prev_frame;
 	
@@ -167,7 +106,11 @@ public:
 	
 	GamePresenter_Impl(const InitParams& pars)
 	{
-		RenAAL::get().inst_begin( pars.lvl->cell_size );
+		core = pars.core;
+		
+		RenderControl::get().exec_task([&]{
+			RenAAL::get().inst_begin( pars.lvl->cell_size );
+		});
 		
 		for (auto& l : pars.lvl->ls_grid) RenAAL::get().inst_add({l.first, l.second}, false, 0.07f, 1.5f);
 		RenAAL::get().inst_add_end();
@@ -175,62 +118,86 @@ public:
 		for (auto& l : pars.lvl->ls_wall) RenAAL::get().inst_add(l, false);
 		RenAAL::get().inst_add_end();
 		
-		try {ResBase::get().init_ren();}
+		try {ResBase::get().init_ren_wait();}
 		catch (std::exception& e) {
 			THROW_FMTSTR("GamePresenter::init() ResBase failed: {}", e.what());
 		}
-		RenAAL::get().inst_end();
 		
-		effects_init();
+		RenderControl::get().exec_task([]
+		{
+			RenAAL::get().inst_end();
+			effects_init();
+		});
 		
 		menu_g = vig_reg_menu(VigMenu::DebugGame, [this]{
 			vig_label_a("Interp frames (max): {}\n", max_interp_frames);
 		});
 	}
-	void sync(TimeSpan now)
+	void sync(TimeSpan now) override
 	{
+		dbg_rs.clear(); dbg_rs.swap(dbg_rs_new);
+		dbg_ls.clear(); dbg_ls.swap(dbg_ls_new);
+		dbg_ts.clear(); dbg_ts.swap(dbg_ts_new);
+		
+		//
+		
 		TimeSpan frame_time = now + GameCore::step_len;
-		
-		dbg_rs.clear();
-		dbg_ls.clear();
-		dbg_ts.clear();
-		
-		for (auto& c : cmds_queue) std::visit(*this, c);
-		cmds_queue.clear();
-		
 		int interp_dep = AppSettings::get().interp_depth;
 		
 		Rectfp vport = vport_rect();
-		for (auto& c : cs)
+		for (auto& ei : regs)
 		{
-			auto& phy = c->ent->get_phy();
-			Transform tr{ phy.get_pos(), c->ent->get_face_rot() };
+			if (!ei.pos) continue;
 			
-			bool was_vp = c->_in_vport;
-			c->_in_vport = c->disable_culling || vport.contains( tr.pos );
-			if (!c->_in_vport) continue;
+			EC_RenderPos& c = *ei.pos;
+			Transform tr = c.ent.ref_pc().get_trans();
+			
+			bool was_vp = c.in_vport;
+			c.in_vport = c.disable_culling || vport.contains( tr.pos );
+			if (!c.in_vport) continue;
 			
 			if (interp_dep)
 			{
-				auto& q = c->_q_pos;
 				if (!was_vp || playback_hack) {
-					c->_pos = tr;
-					q.fn = 0;
+					c.pos = tr;
+					c.fn = 0;
 				}
 				else {
-					if (!q.fn) q.fs[q.fn++] = { prev_frame, c->_pos };
-					if (q.fn == interp_dep) --q.fn;
-					q.fs[q.fn++] = { frame_time, tr };
+					if (!c.fn) c.fs[c.fn++] = { prev_frame, c.pos };
+					if (c.fn == interp_dep) --c.fn;
+					c.fs[c.fn++] = { frame_time, tr };
 				}
 			}
-			else
-			{
-				c->_pos = tr;
-				c->_vel = phy.get_vel();
+			else {
+				c.pos = tr;
+				c.vel = c.ent.ref_pc().get_vel();
 			}
-			
-			c->sync();
 		}
+		
+		//
+		
+		for (auto& c : cmds_queue)
+		{
+			std::visit(overloaded{
+				[&](PresCmdParticles& c)
+				{
+					if (!c.gen) return;
+
+					auto& pd = part_del.emplace_back();
+					pd.gen = c.gen;
+					pd.pars = c.pars;
+
+					if (!c.eid) {}
+					else if (auto e = getreg(c.eid))
+						pd.pars.tr = e->pos->get_cur().get_combined(pd.pars.tr);
+					else if (auto e = core->get_ent(c.eid))
+						pd.pars.tr = e->ref_pc().get_trans().get_combined(pd.pars.tr);
+				}
+			}, c);
+		}
+		cmds_queue.clear();
+		
+		//
 		
 		if (dbg_sshot_img)
 		{
@@ -251,48 +218,13 @@ public:
 			}
 		}
 	}
-	void del_sync()
+	void add_cmd(PresCommand c) override
 	{
-		for (size_t i=0; i < cmds_queue.size(); ++i)
-		{
-			if (auto cmd = std::get_if<PresCmdDelete>(&cmds_queue[i]))
-			{
-				for (size_t j=0; j < i; ++j)
-				{
-					auto& c = cmds_queue[j];
-					if		(auto p = std::get_if<PresCmdCreate>(&c)) {
-						if (p->ptr == cmd->ptr)
-							p->ptr = nullptr;
-					}
-					else if (auto p = std::get_if<PresCmdObjEffect>(&c)) {
-						if (p->ptr == cmd->ptr)
-							p->eff = ME_TOTAL_COUNT_INTERNAL;
-					}
-					else if (auto p = std::get_if<PresCmdEffect>(&c)) {
-						if (p->ptr == cmd->ptr)
-							p->eff = FE_TOTAL_COUNT_INTERNAL;
-					}
-					else if (auto p = std::get_if<PresCmdAttach>(&c)) {
-						if (p->ptr == cmd->ptr)
-							p->ptr = nullptr;
-					}
-				}
-				
-				(*this)(*cmd);
-				cmd->ptr = nullptr;
-			}
-		}
-	}
-	void add_cmd(PresCommand c)
-	{
-		reserve_more_block(cmds_queue, 1024);
+		reserve_more_block(cmds_queue, 256);
 		cmds_queue.emplace_back(std::move(c));
 	}
-	void render(TimeSpan now, TimeSpan passed)
+	void render(TimeSpan now, TimeSpan passed) override
 	{
-		for (auto& c : cmds) c.first->proc( std::move(c.second) );
-		cmds.clear();
-		
 		for (auto& d : part_del) d.gen->draw(d.pars);
 		part_del.clear();
 		
@@ -307,45 +239,59 @@ public:
 		prev_frame = now;
 		max_interp_frames = 0;
 		
-		for (auto& c : cs)
+		for (auto& ei : regs)
 		{
-			if (!c->_in_vport) continue;
+			if (!ei.pos) continue;
+			
+			EC_RenderPos& c = *ei.pos;
+			if (!c.is_visible_now()) continue;
 			
 			if (interp_dep)
 			{
-				auto& q = c->_q_pos;
-				while (q.fn >= 2)
+				while (c.fn >= 2)
 				{
-					float t = (now - q.fs[0].first) / (q.fs[1].first - q.fs[0].first);
+					float t = (now - c.fs[0].first) / (c.fs[1].first - c.fs[0].first);
 					if (t < 0 || t > 1) {
-						--q.fn;
-						for (int i=0; i<q.fn; ++i) q.fs[i] = q.fs[i+1];
+						--c.fn;
+						for (int i=0; i<c.fn; ++i) c.fs[i] = c.fs[i+1];
 						continue;
 					}
-					c->_pos = lerp(q.fs[0].second, q.fs[1].second, t);
+					c.pos = lerp(c.fs[0].second, c.fs[1].second, t);
 					break;
 				}
-				max_interp_frames = std::max(max_interp_frames, q.fn);
+			}
+			max_interp_frames = std::max(max_interp_frames, c.fn);
+			
+			if (!c.immediate_rotation) {
+				for (auto& sub : ei.subs)
+					sub->render(c, passed);
+			}
+			else {
+				Transform orig {c.pos};
+				Transform imr {c.pos.pos, c.ent.ref_pc().get_angle()};
+				for (auto& sub : ei.subs) {
+					c.pos = sub->allow_immediate_rotation() ? imr : orig;
+					sub->render(c, passed);
+				}
+				c.pos = orig;
 			}
 			
-			c->step();
-			
 			if (!interp_dep)
-				c->_pos.add( c->_vel * passed.seconds() );
+				c.pos.pos += c.vel * passed.seconds();
 		}
 		
 		//
 		
-		for (auto& d : dbg_rs) RenImm::get().draw_rect(d.dst, d.clr);
-		for (auto& d : dbg_ls) RenImm::get().draw_line(d.a, d.b, d.clr, d.wid);
-		
 		float text_k = 1.f / RenderControl::get().get_world_camera().get_state().mag;
-		for (auto& d : dbg_ts) RenImm::get().draw_text(d.at, d.str, d.clr, false, text_k);
 		
-		for (auto i = ef_fs.begin(); i != ef_fs.end(); )
+		for (auto i = ef_fs.begin(); i != ef_fs.end(); ++i)
 		{
-			if ((*i)(passed)) ++i;
-			else i = ef_fs.erase(i);
+			if ((*i)->is_first) {
+				(*i)->is_first = false;
+				(*i)->init();
+			}
+			if (!(*i)->render(passed))
+				ef_fs.free_and_reset(i.index());
 		}
 		
 		for (auto it = f_texts.begin(); it != f_texts.end(); )
@@ -361,6 +307,11 @@ public:
 			else it = f_texts.erase(it);
 		}
 		
+		for (auto& d : dbg_rs) RenImm::get().draw_rect(d.dst, d.clr);
+		for (auto& d : dbg_ls) RenImm::get().draw_line(d.a, d.b, d.clr, d.wid);
+		
+		for (auto& d : dbg_ts) RenImm::get().draw_text(d.at, d.str, d.clr, false, text_k);
+		
 		if (dbg_sshot_img && dbg_sshot_img->first == 2)
 		{
 			dbg_sshot_img->first |= 1;
@@ -369,10 +320,10 @@ public:
 		}
 	}
 	
-	TimeSpan get_passed() {return last_passed;}
-	Rectfp   get_vport()  {return vport_rect();}
+	TimeSpan get_passed() override {return last_passed;}
+	Rectfp   get_vport()  override {return vport_rect();}
 	
-	void dbg_screenshot()
+	void dbg_screenshot() override
 	{
 		dbg_sshot_img = {0, {}};
 	}
@@ -385,112 +336,87 @@ public:
 		return Rectfp::from_center( cam.get_state().pos, (cam.coord_size() /2) + vport_offset );
 	}
 	
-	template <typename T>
-	void add_pd(T& cmd, ECompRender* ptr, ParticleGroupGenerator* gen)
-	{
-		if (!gen) return;
-		auto& pd = part_del.emplace_back();
-		pd.gen = gen;
-		pd.pars = cmd.pars;
-		if (ptr) pd.pars.tr = ptr->get_pos().get_combined(pd.pars.tr);
-	}
 	
-	void operator()(PresCmdCreate& c)
+	
+	void dbg_line(vec2fp a, vec2fp b, uint32_t clr, float wid) override
 	{
-		if (!c.ptr) return; // invalidation check
-		
-		if (c.ptr->ent->is_ok())
-		{
-			c.ptr->_comp_id = cs.emplace_new(c.ptr);
-			c.ptr->_pos = c.ptr->ent->get_phy().get_trans();
-		}
+		reserve_more_block(dbg_ls_new, 128);
+		dbg_ls_new.emplace_back(PresCmdDbgLine{ a, b, clr, wid });
 	}
-	void operator()(PresCmdDelete& c)
+	void dbg_rect(Rectfp area, uint32_t clr) override
 	{
-		if (!c.ptr) return; // invalidation check
-		
-		if (c.index != size_t_inval)
-			cs.free_and_reset(c.index);
-		
-		for (size_t i = 0; i < cmds.size(); )
-		{
-			if (cmds[i].first == c.ptr) cmds.erase( cmds.begin() + i );
-			else ++i;
-		}
+		reserve_more_block(dbg_rs_new, 128);
+		dbg_rs_new.emplace_back(PresCmdDbgRect{ area, clr });
 	}
-	void operator()(PresCmdObjEffect& c)
+	void dbg_rect(vec2fp ctr, uint32_t clr, float rad) override
 	{
-		if (c.eff == ME_TOTAL_COUNT_INTERNAL) return; // invalidation check
-		add_pd(c, c.ptr, ResBase::get().get_eff(c.model, c.eff));
+		dbg_rect(Rectfp::from_center(ctr, vec2fp::one(rad)), clr);
 	}
-	void operator()(PresCmdEffect& c)
+	void dbg_text(vec2fp at, std::string str, uint32_t clr) override
 	{
-		if (c.eff == FE_TOTAL_COUNT_INTERNAL) return; // invalidation check
-		add_pd(c, c.ptr, ResBase::get().get_eff(c.eff));
+		reserve_more_block(dbg_ts_new, 128);
+		dbg_ts_new.emplace_back(PresCmdDbgText{ at, std::move(str), clr });
 	}
-	void operator()(PresCmdDbgRect& c)
+	void add_effect(std::unique_ptr<GameRenderEffect> c) override
 	{
-		reserve_more_block(dbg_rs, 64);
-		dbg_rs.emplace_back(c);
+//		reserve_more_block(ef_fs, 128);
+		ef_fs.emplace_new(std::move(c));
 	}
-	void operator()(PresCmdDbgLine& c)
-	{
-		reserve_more_block(dbg_ls, 64);
-		dbg_ls.emplace_back(c);
-	}
-	void operator()(PresCmdDbgText& c)
-	{
-		reserve_more_block(dbg_ts, 64);
-		dbg_ts.emplace_back(std::move(c));
-	}
-	void operator()(PresCmdEffectFunc& c)
-	{
-		reserve_more_block(ef_fs, 128);
-		ef_fs.emplace_back(std::move(c.eff));
-	}
-	void operator()(FloatText& c)
+	void add_float_text(FloatText c) override
 	{
 		reserve_more_block(f_texts, 128);
 		f_texts.emplace_back(std::move(c));
 	}
-	void operator()(PresCmdAttach& c)
+	
+	
+	
+	EntReg* getreg(EntityIndex eid, bool is_new = false)
 	{
-		if (!c.ptr) return; // invalidation check
-		reserve_more_block(cmds, 128);
-		cmds.emplace_back(c.ptr, std::move(c));
+		size_t i = eid.to_int();
+		if (is_new) {
+			if (regs.size() <= i) regs.resize(i + 1);
+		}
+		else if (i >= regs.size() || !regs[i].pos) return nullptr;
+		return &regs[i];
+	}
+	void on_add(EC_RenderPos& c) override
+	{
+		auto p = getreg(c.ent.index, true);
+		p->pos = &c;
+		p->subs.clear();
+	}
+	void on_rem(EC_RenderPos& pc) override
+	{
+		getreg(pc.ent.index)->pos = {};
+		Transform pos = pc.newest();
+		
+		for (auto& cmd : cmds_queue)
+		{
+			if (auto c = std::get_if<PresCmdParticles>(&cmd);
+			    c && c->eid == pc.ent.index)
+			{
+				auto& pd = part_del.emplace_back();
+				pd.gen = c->gen;
+				pd.pars = c->pars;
+				pd.pars.tr = pos.get_combined(c->pars.tr);
+				c->gen = nullptr; // ignore
+			}
+		}
+	}
+	void on_add(EC_RenderComp& c) override
+	{
+		if (auto p = getreg(c.ent.index))
+			p->subs.push_back(&c);
+	}
+	void on_rem(EC_RenderComp& c) override
+	{
+		if (auto p = getreg(c.ent.index))
+			erase_if(p->subs, [&](auto& v){ return v == &c; });
 	}
 };
-void GamePresenter::effect(FreeEffect effect, const ParticleBatchPars &pars)
+void GamePresenter::effect(PGG_Pointer pgg, const ParticleBatchPars& pars)
 {
-	add_cmd(PresCmdEffect{nullptr, effect, pars});
-}
-void GamePresenter::effect(ModelEffect effect, ModelType model, const ParticleBatchPars& pars)
-{
-	add_cmd(PresCmdObjEffect{nullptr, model, effect, pars});
-}
-void GamePresenter::dbg_line(vec2fp a, vec2fp b, uint32_t clr, float wid)
-{
-	add_cmd(PresCmdDbgLine{a, b, clr, wid});
-}
-void GamePresenter::dbg_rect(Rectfp area, uint32_t clr)
-{
-	add_cmd(PresCmdDbgRect{area, clr});
-}
-void GamePresenter::dbg_rect(vec2fp ctr, uint32_t clr, float rad)
-{
-	dbg_rect(Rectfp::from_center(ctr, vec2fp::one(rad)), clr);
-}
-void GamePresenter::dbg_text(vec2fp at, std::string str, uint32_t clr)
-{
-	add_cmd(PresCmdDbgText{at, std::move(str), clr});
-}
-void GamePresenter::add_effect(std::function<bool(TimeSpan passed)> eff)
-{
-	if (eff) add_cmd(PresCmdEffectFunc{std::move(eff)});
-}
-void GamePresenter::add_float_text(FloatText text)
-{
-	add_cmd(std::move(text));
+	if (pgg) add_cmd(PresCmdParticles{ {}, pgg.p, pars });
 }
 
 

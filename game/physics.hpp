@@ -10,16 +10,14 @@
 
 inline b2Vec2 conv(const vec2fp& p) {return {p.x, p.y};}
 inline vec2fp conv(const b2Vec2& p) {return {p.x, p.y};}
-inline b2Transform conv(const Transform& t) {return {conv(t.pos), b2Rot(t.rot)};}
-inline Transform conv(const b2Transform& t) {return Transform{conv(t.p), t.q.GetAngle()};}
 
 /// Copied from b2WorldCallbacks.cpp
 bool should_collide(const b2Filter& filterA, const b2Filter& filterB);
 
 
 
-/// Owned by b2Fixture (if deleted through EC_Physics)
-struct FixtureInfo
+/// Copied by b2Fixture
+struct FixtureInfo final
 {
 	enum
 	{
@@ -28,26 +26,9 @@ struct FixtureInfo
 		TYPEFLAG_INTERACTIVE = 4 ///< Entity is EInteractive
 	};
 	
-	b2Fixture* fix = nullptr;
 	flags_t typeflags = 0;
-	
-	FixtureInfo() = default;
-	FixtureInfo(flags_t typeflags): typeflags(typeflags) {}
-	virtual ~FixtureInfo();
-	void destroy_fixture(); ///< Also destroys self
-	
-	/// Returns index of armored area on entity
-	virtual std::optional<size_t> get_armor_index() {return {};}
-};
-
-
-
-/// Means this is armored part of entity
-struct FixtureArmor : FixtureInfo
-{
-	size_t index;
-	FixtureArmor(size_t index): index(index) {}
-	virtual std::optional<size_t> get_armor_index() {return index;}
+	std::optional<size_t> armor_index = {};
+	b2Fixture* fix = {}; ///< Always set
 };
 
 
@@ -67,12 +48,53 @@ struct CollisionEvent
 	vec2fp point; ///< Averaged world point of impact
 	float imp; ///< Resolution impulse (set only for T_RESOLVE)
 	
-	b2Contact* contact; ///< Actual contact
+	b2Fixture* fix_phy; ///< Actual fixture for this entity
 };
 
 
 
-struct EC_Physics : ECompPhysics
+inline b2BodyDef bodydef(vec2fp at, bool is_dynamic, float angle = 0)
+{
+	b2BodyDef bd;
+	bd.type = is_dynamic ? b2_dynamicBody : b2_staticBody;
+	bd.position = conv(at);
+	bd.angle = angle;
+	return bd;
+}
+inline b2FixtureDef fixtdef(float friction, float restitution)
+{
+	b2FixtureDef fd;
+	fd.friction = friction;
+	fd.restitution = restitution;
+	return fd;
+}
+inline b2FixtureDef fixtsensor()
+{
+	b2FixtureDef fd;
+	fd.isSensor = true;
+	return fd;
+}
+
+
+
+struct FixtureCreate
+{
+	b2FixtureDef fd; ///< Shape and userdata are ignored
+	std::shared_ptr<b2Shape> shp;
+	std::optional<FixtureInfo> info;
+	
+	static FixtureCreate empty() {return {};}
+	static FixtureCreate circle(b2FixtureDef fd, float radius, float mass, std::optional<FixtureInfo> info = {});
+	static FixtureCreate box(b2FixtureDef fd, vec2fp half_extents, float mass, std::optional<FixtureInfo> info = {});
+	static FixtureCreate box(b2FixtureDef fd, vec2fp half_extents, Transform offset, float mass, std::optional<FixtureInfo> info = {});
+	
+private:
+	FixtureCreate() = default;
+};
+
+
+
+struct EC_Physics : EC_Position
 {
 	enum : decltype(b2Filter::categoryBits)
 	{
@@ -81,55 +103,77 @@ struct EC_Physics : ECompPhysics
 		CF_BULLET  = 2
 	};
 	
-	b2Body* body;
+	/// May be null only if was created inside world step
+	b2Body& body;
+	
+	/// Note: handlers must use PhysicsWorld::post_step() if they add new bodies
 	ev_signal<CollisionEvent> ev_contact;
 	
 	
-	EC_Physics(Entity* ent, const b2BodyDef& def); ///< Creates body
+	
+	EC_Physics(Entity& ent, const b2BodyDef& def); ///< Creates body
 	~EC_Physics();
 	
-	b2Fixture* add_circle(b2FixtureDef& fd, float radius, float mass, FixtureInfo* info = nullptr);
-	b2Fixture* add_box(b2FixtureDef& fd, vec2fp half_extents, float mass, FixtureInfo* info = nullptr);
-	b2Fixture* add_box(b2FixtureDef& fd, vec2fp half_extents, float mass, Transform tr, FixtureInfo* info = nullptr);
+	b2Fixture& add(FixtureCreate& c);
+	b2Fixture& add(FixtureCreate&& c);
 	
-	Transform get_trans() const override {return conv(body->GetTransform());}
-	vec2fp    get_pos() const override {return conv(body->GetWorldCenter());}
-	Transform get_vel() const override {return Transform{conv(body->GetLinearVelocity()), body->GetAngularVelocity()};}
-	float get_radius()  const override; ///< Approximate radius, calculated from fixtures
-	
+	b2Fixture& add(b2FixtureDef& fd, const b2Shape& shp, std::optional<FixtureInfo> info);
 	void destroy(b2Fixture* f);
 	
+	vec2fp    get_pos()    const override {return conv(body.GetWorldCenter());}
+	vec2fp    get_vel()    const override {return conv(body.GetLinearVelocity());}
+	float     get_radius() const override; ///< Approximate radius, calculated from fixtures
+	float get_real_angle() const override {return body.GetAngle();}
+	
+	bool is_material() const; ///< Iterates all fixtures and returns true if at least one is not sensor
+	
 private:
-	b2Fixture* add(b2FixtureDef& fd, const b2Shape* shp, FixtureInfo* info);
 	mutable std::optional<float> b_radius;
 };
 
-inline EC_Physics&  getptr(b2Body* b)    {return *static_cast<EC_Physics*>(b->GetUserData());}
-inline FixtureInfo* getptr(b2Fixture* f) {return static_cast<FixtureInfo*>(f->GetUserData());}
+/// Returns current info or nullptr
+FixtureInfo* get_info(b2Fixture& f);
 
-inline void setptr(b2Fixture* f, FixtureInfo* info) {
-	f->SetUserData(info);
-	info->fix = f;
-}
+/// Replaces current info
+void set_info(b2Fixture& f, std::optional<FixtureInfo> info);
 
 
 
-struct EC_VirtualBody : ECompPhysics
+struct SwitchableFixture
+{
+	SwitchableFixture(FixtureCreate fc); ///< Disabled on init
+	~SwitchableFixture();
+	
+	bool is_enabled() const {return fix;}
+	void set_enabled(Entity& ent, bool on);
+	
+	b2Fixture* get_fixture() {return fix;}
+	FixtureCreate& get_fc() {return fc;}
+	
+private:
+	FixtureCreate fc;
+	b2Fixture* fix = {};
+};
+
+
+
+struct EC_VirtualBody : EC_Position
 {
 	Transform pos;
 	float radius = 0.5f;
 	
-	EC_VirtualBody(Entity* ent, Transform pos, std::optional<Transform> vel = {});
-	void set_vel(std::optional<Transform> vel);
-	void step() override;
+	EC_VirtualBody(Entity& ent, Transform pos, std::optional<Transform> vel = {});
+	void set_vel(std::optional<Transform> new_vel);
+	Transform get_vel_tr() const {return vel ? *vel : Transform{};}
 	
-	Transform get_trans() const override {return pos;}
-	vec2fp    get_pos() const override {return pos.pos;}
-	Transform get_vel() const override {return vel? *vel : Transform{};}
-	float get_radius()  const override {return radius;}
+	vec2fp    get_pos()    const override {return pos.pos;}
+	vec2fp    get_vel()    const override {return vel ? vel->pos : vec2fp{};}
+	float     get_radius() const override {return radius;}
+	float get_real_angle() const override {return pos.rot;}
 	
 private:
 	std::optional<Transform> vel;
+	void step() override;
 };
 
 
@@ -138,7 +182,14 @@ class PhysicsWorld
 {
 	std::unique_ptr<b2Draw> c_draw;
 	std::unique_ptr<b2ContactListener> c_lstr;
-	std::vector<std::function<void()>> post_cbs;
+	
+	struct Event {
+		EntityIndex ia, ib;
+		CollisionEvent ce;
+		b2Fixture* fb;
+	};
+	std::vector<Event> col_evs;
+	friend class PHW_Lstr;
 	
 public:
 	struct PointResult
@@ -178,18 +229,21 @@ public:
 	GameCore& core;
 	b2World world;
 	
+	// debug info
 	size_t raycast_count = 0;
 	size_t aabb_query_count = 0;
 	
 	
+	
 	PhysicsWorld(GameCore& core);
 	~PhysicsWorld();
+	
 	void step();
 	
 	
 	
 	/// Returns distance if entity is directly visible
-	std::optional<float> los_check(vec2fp from, Entity* target, std::optional<float> width = {}, bool is_bullet = false);
+	std::optional<float> los_check(vec2fp from, Entity& target, std::optional<float> width = {}, bool is_bullet = false);
 	
 	/// Appends result - all object along ray
 	void raycast_all(std::vector<RaycastResult>& es, b2Vec2 from, b2Vec2 to, CastFilter cf = {});
@@ -217,9 +271,6 @@ public:
 	
 	/// Calls function for all objects inside rectangle
 	void query_aabb(Rectfp area, QueryCb f);
-	
-	/// Executes function after step (or immediatly, if not inside one)
-	void post_step(std::function<void()> f);
 };
 
 #endif // PHYSICS_HPP

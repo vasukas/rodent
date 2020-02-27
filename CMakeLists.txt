@@ -65,9 +65,18 @@ target_include_directories(${TARGET} PRIVATE "${PROJECT_SOURCE_DIR}")
 
 include(FetchContent)
 
-FetchContent_Declare(Box2D   GIT_REPOSITORY  https://github.com/erincatto/Box2D.git)
-FetchContent_Declare(fmtlib  GIT_REPOSITORY  https://github.com/fmtlib/fmt.git)
-FetchContent_Declare(stb     GIT_REPOSITORY  https://github.com/nothings/stb.git)
+FetchContent_Declare(
+	Box2D
+	GIT_REPOSITORY  https://github.com/erincatto/Box2D.git
+)
+FetchContent_Declare(
+	fmtlib
+	GIT_REPOSITORY  https://github.com/fmtlib/fmt.git
+)
+FetchContent_Declare(
+	stb
+	GIT_REPOSITORY  https://github.com/nothings/stb.git
+)
 
 find_package(fmt      QUIET)
 find_package(Freetype REQUIRED)
@@ -75,9 +84,9 @@ find_package(GLEW     REQUIRED)
 find_package(OpenGL   REQUIRED)
 find_package(SDL2     REQUIRED)
 
-set(BOX2D_BUILD_TESTS   OFF CACHE BOOL "")
-set(BOX2D_BUILD_SAMPLES OFF CACHE BOOL "")
-set(BOX2D_BUILD_DOCS    OFF CACHE BOOL "")
+set(BOX2D_BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
+set(BOX2D_BUILD_TESTBED    OFF CACHE BOOL "" FORCE)
+set(BOX2D_BUILD_DOCS       OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(Box2D)
 target_include_directories(${TARGET} PRIVATE "${box2d_SOURCE_DIR}/include")
@@ -89,6 +98,8 @@ if (NOT ${fmt_FOUND})
 	FetchContent_MakeAvailable(fmtlib)
 	target_include_directories(${TARGET} PRIVATE "${fmtlib_SOURCE_DIR}/include")
 endif()
+
+
 
 target_link_libraries(${TARGET} PRIVATE
 	box2d
@@ -112,9 +123,11 @@ endif()
 
 list(APPEND SRC_LIST
 
+	client/ec_render
 	client/effects
 	client/gamepad
 	client/level_map
+	client/player_ui
 	client/plr_control
 	client/presenter
 	client/replay
@@ -143,9 +156,12 @@ list(APPEND SRC_LIST
 	game_ai/ai_drone
 	game_ai/ai_sim
 
+	game_ctr/game_control
+	game_ctr/game_ui
+
 	game_objects/objs_basic
 	game_objects/objs_creature
-	game_objects/player
+	game_objects/objs_player
 	game_objects/spawners
 	game_objects/weapon_all
 
@@ -168,8 +184,9 @@ list(APPEND SRC_LIST
 	utils/noise
 	utils/path_search
 	utils/res_image
-	utils/serializer.hpp
 	utils/serializer_defs.hpp
+	utils/serializer_dsl.hpp
+	utils/serializer_guts.hpp
 	utils/svg_simple
 	utils/tcp_net
 	utils/time_utils

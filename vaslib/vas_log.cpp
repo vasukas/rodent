@@ -45,6 +45,22 @@ void debugbreak() {__debugbreak();}
 void debugbreak() {raise(SIGTRAP);}
 #endif
 
+#if __has_include(<cxxabi.h>)
+#include <cxxabi.h>
+std::string human_readable(const std::type_info& t)
+{
+	int status = -1;
+	if (char *ret = abi::__cxa_demangle(t.name(), NULL, NULL, &status)) {
+		std::string s = ret;
+		free(ret);
+		return s;
+	}
+	return t.name();
+}
+#else
+std::string human_readable(const std::type_info& t) {return t.name();}
+#endif
+
 
 
 static std::vector<void(*)()> term_fs;

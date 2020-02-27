@@ -17,14 +17,16 @@ public:
 	
 	static RenAAL& get(); ///< Returns singleton
 	
-	/// Draws line of specified solid color width and additional anti-aliased width
+	/// Draws line with specified solid color width and additional anti-aliased width
 	virtual void draw_line(vec2fp p0, vec2fp p1, uint32_t clr, float width, float aa_width = 60.f, float clr_mul = 1.f) = 0;
 	
 	///
 	virtual void draw_chain(const std::vector<vec2fp>& ps, bool loop, uint32_t clr, float width, float aa_width = 60.f, float clr_mul = 1.f) = 0;
 	
-	virtual void inst_begin(float grid_cell_size) = 0; ///< Starts building collection, discarding all
-	virtual void inst_end() = 0; ///< Ends building collection
+	// Note: Only inst_add* functions may be called outside of render thread
+	// Drawing functions may not be called while building collection!
+	virtual void inst_begin(float grid_cell_size) = 0; ///< Starts building new collection, discarding previous data
+	virtual void inst_end() = 0; ///< Finishes building collection
 	virtual void inst_add(const std::vector<vec2fp>& ps, bool loop, float width = 0.1f, float aa_width = 3.f) = 0; ///< New object part (chain)
 	virtual size_t inst_add_end() = 0; ///< Returns ID of finished object
 	

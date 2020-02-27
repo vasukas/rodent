@@ -103,13 +103,11 @@ bool AppSettings::load()
 	FONT(dbg_);
 	P_INT(font_supersample, i >= 1);
 	
-	P_FLOAT(cam_mag_mul, true);
 	P_FLOAT(cam_pp_shake_str, true);
 	P_INT(interp_depth, interp_depth == 0 || interp_depth == 2 || interp_depth == 3);
 	
 	P_INT(cursor_info_flags, i >= 0 && i <= 1);
 	P_BOOL(plr_status_blink);
-	P_BOOL(spawn_drop);
 	
 	return bc_parsefile( path_settings.c_str(), std::move(cs), 2, BC_Block::F_IGNORE_UNKNOWN );
 }

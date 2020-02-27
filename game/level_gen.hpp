@@ -1,6 +1,7 @@
 #ifndef LEVEL_GEN_HPP
 #define LEVEL_GEN_HPP
 
+#include <vector>
 #include "vaslib/vas_math.hpp"
 
 struct ImageInfo;

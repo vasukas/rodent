@@ -1,7 +1,7 @@
 #ifndef AI_DRONE_HPP
 #define AI_DRONE_HPP
 
-#include "game_objects/objs_basic.hpp"
+#include "client/ec_render.hpp"
 #include "ai_components.hpp"
 #include "ai_control.hpp"
 #include "ai_sim.hpp"
@@ -88,12 +88,11 @@ public:
 	
 	
 	AI_Movement* mov = nullptr; ///< May be null
-	uint8_t is_online = false;
-	float face_rot = 0;
+	uint8_t is_online = 0;
 	
 	
 	
-	AI_Drone(Entity* ent, std::shared_ptr<AI_DroneParams> pars, IdleState idle, std::unique_ptr<AI_AttackPattern> atkpat);
+	AI_Drone(Entity& ent, std::shared_ptr<AI_DroneParams> pars, IdleState idle, std::unique_ptr<AI_AttackPattern> atkpat);
 	~AI_Drone();
 	
 	void set_online(bool is);
@@ -112,7 +111,7 @@ public:
 	void set_battle_state() {set_single_state(Battle{*this});}
 	void set_idle_state(); ///< Removes all states except idle
 	
-	AI_RenRotation& get_ren_rot() {return ren_rot;}
+	AI_RotationControl& get_rot_ctl() {return rot_ctl;}
 	
 private:
 	std::shared_ptr<AI_DroneParams> pars;
@@ -121,13 +120,13 @@ private:
 	
 	AI_TargetProvider prov;
 	AI_Attack atk;
-	AI_RenRotation ren_rot;
+	AI_RotationControl rot_ctl;
+	
+	TimeSpan helpcall_last;
+	TimeSpan retaliation_tmo;
 	
 	TimeSpan text_alert_last; // GameCore time
-	TimeSpan idle_particle_last;
-	TimeSpan helpcall_last;
-	
-	TimeSpan retaliation_tmo;
+	std::unique_ptr<EC_ParticleEmitter::Channel> particles;
 	
 	
 	void state_on_enter(State& state);

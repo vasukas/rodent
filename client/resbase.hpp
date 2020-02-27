@@ -1,8 +1,6 @@
 #ifndef RESBASE_HPP
 #define RESBASE_HPP
 
-#include <string>
-#include <vector>
 #include "vaslib/vas_math.hpp"
 
 struct ParticleGroupGenerator;
@@ -109,6 +107,8 @@ enum FreeEffect
 class ResBase
 {
 public:
+	// Note: must not be used before GamePresenter init
+	
 	static ResBase& get(); ///< Returns singleton
 	virtual ~ResBase() = default;
 	
@@ -117,11 +117,24 @@ public:
 	
 	virtual vec2fp get_cpt(ModelType type) = 0; ///< Some special control/center point. Default is (0,0)
 	virtual Rectfp get_size(ModelType type) = 0; ///< Without scalebox transform
-	virtual TextureReg get_image(ModelType type) = 0; ///< Returned value may change (async load)
+	virtual TextureReg get_image(ModelType type) = 0; ///< Value may change between calls
 	
 protected:
 	friend class GamePresenter_Impl;
-	virtual void init_ren() = 0;
+	virtual void init_ren_wait() = 0; // waits until all non-render-thread init is complete
+};
+
+
+
+struct PGG_Pointer
+{
+	ParticleGroupGenerator* p = nullptr;
+	
+	PGG_Pointer() = default;
+	PGG_Pointer(ParticleGroupGenerator* p): p(p) {}
+	PGG_Pointer(ModelType model, ModelEffect effect): p(ResBase::get().get_eff(model, effect)) {}
+	PGG_Pointer(FreeEffect effect): p(ResBase::get().get_eff(effect)) {}
+	operator bool() const {return p;}
 };
 
 #endif // RESBASE_HPP

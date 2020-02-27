@@ -30,9 +30,6 @@ font_dbg_pt  16
 # font atlas upscale
 font_supersample 2
 
-# camera magnification multiplier
-cam_mag_mul 1
-
 # camera shake effect strength
 cam_pp_shake_str 0.007
 
@@ -45,7 +42,4 @@ cursor_info_flags 1
 
 # animate player UI (on/off)
 plr_status_blink 1
-
-# item drop from destroyed eneimes (on/off)
-spawn_drop 1
 

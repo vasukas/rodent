@@ -78,8 +78,8 @@ void debugbreak();
 /// Returns stack trace as a string 
 // std::string get_backtrace();
 
-/// Returns demangled name (from typeinfo)
-// const char *demangle_name(const char *name);
+/// Returns demangled name
+std::string human_readable(const std::type_info& t);
 
 
 

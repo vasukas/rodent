@@ -1,6 +1,5 @@
 #include "client/effects.hpp"
 #include "client/presenter.hpp"
-#include "render/ren_aal.hpp"
 #include "utils/noise.hpp"
 #include "game/game_core.hpp"
 #include "game/level_ctr.hpp"
@@ -11,14 +10,15 @@
 PhysicsWorld::CastFilter StdProjectile::make_cf(EntityIndex)
 {
 	return PhysicsWorld::CastFilter(
-		[](Entity& ent, b2Fixture& f)
+		[](auto& ent, b2Fixture& f)
 		{
 			if (!ent.is_ok())
 				return false;
 			
 			if (f.IsSensor())
 			{
-				if (auto fi = getptr(&f); fi && fi->get_armor_index()) return true;
+				auto fi = get_info(f);
+				if (fi && fi->armor_index) return true;
 				return false;
 			}
 			return true;
@@ -32,11 +32,12 @@ PhysicsWorld::CastFilter StdProjectile::make_cf(EntityIndex)
 		false
 	);
 }
-void StdProjectile::explode(size_t src_team, EntityIndex src_eid, b2Vec2 self_vel, PhysicsWorld::RaycastResult hit, const Params& pars)
+void StdProjectile::explode(GameCore& core, size_t src_team, EntityIndex src_eid,
+                            b2Vec2 self_vel, PhysicsWorld::RaycastResult hit, const Params& pars)
 {
-	auto apply = [&](Entity* tar, float k, b2Vec2 at, b2Vec2 v, std::optional<size_t> armor)
+	auto apply = [&](Entity& tar, float k, b2Vec2 at, b2Vec2 v, std::optional<size_t> armor)
 	{
-		if (auto hc = tar->get_hlc(); hc && (tar->get_team() != src_team || pars.friendly_fire))
+		if (auto hc = tar.get_hlc(); hc && (tar.get_team() != src_team || pars.friendly_fire))
 		{
 			DamageQuant q = pars.dq;
 			q.amount *= k;
@@ -47,14 +48,9 @@ void StdProjectile::explode(size_t src_team, EntityIndex src_eid, b2Vec2 self_ve
 		}
 		if (pars.imp != 0.f && v.LengthSquared() > 0.01)
 		{
-			auto& pc = tar->get_phobj();
-			
 			v.Normalize();
 			v *= k * pars.imp;
-			
-			GameCore::get().get_phy().post_step(
-				[&pc, v, at]{ pc.body->ApplyLinearImpulse(v, at, true); }
-			);
+			tar.ref_phobj().body.ApplyLinearImpulse(v, at, true);
 		}
 	};
 	
@@ -64,8 +60,8 @@ void StdProjectile::explode(size_t src_team, EntityIndex src_eid, b2Vec2 self_ve
 	{	
 		if (!hit.ent) break;
 		std::optional<size_t> armor;
-		if (hit.fix) armor = hit.fix->get_armor_index();
-		apply(hit.ent, 1, hit.poi, self_vel, armor);
+		if (hit.fix) armor = hit.fix->armor_index;
+		apply(*hit.ent, 1, hit.poi, self_vel, armor);
 	}
 	break;
 		
@@ -90,7 +86,7 @@ void StdProjectile::explode(size_t src_team, EntityIndex src_eid, b2Vec2 self_ve
 			vec2fp d(pars.rad, 0);
 			d.rotate(2*M_PI*i/num);
 			
-			auto res = GameCore::get().get_phy().raycast_nearest(hit.poi, hit.poi + conv(d), make_cf(src_eid));
+			auto res = core.get_phy().raycast_nearest(hit.poi, hit.poi + conv(d), make_cf(src_eid));
 			if (!res) continue;
 			if (res->ent == hit.ent) continue;
 			
@@ -124,22 +120,22 @@ void StdProjectile::explode(size_t src_team, EntityIndex src_eid, b2Vec2 self_ve
 				p->ent = res->ent;
 				p->dist = res->distance;
 				p->poi = res->poi;
-				if (res->fix) p->armor = res->fix->get_armor_index();
+				if (res->fix) p->armor = res->fix->armor_index;
 			}
 		}
 		
 		if (hit.ent)
 		{
 			std::optional<size_t> armor;
-			if (hit.fix) armor = hit.fix->get_armor_index();
-			apply(hit.ent, 1, hit.poi, self_vel, armor);
+			if (hit.fix) armor = hit.fix->armor_index;
+			apply(*hit.ent, 1, hit.poi, self_vel, armor);
 		}
 		
 		for (auto& r : os)
 		{
 			float k = pars.rad_full ? 1 : std::min(1.f, std::max((pars.rad - r.dist) / pars.rad, pars.rad_min));
 			k = clampf(k, pars.aoe_min_k, pars.aoe_max_k);
-			apply(r.ent, k, r.poi, r.poi - hit.poi, r.armor);
+			apply(*r.ent, k, r.poi, r.poi - hit.poi, r.armor);
 		}
 	}
 	break;
@@ -148,23 +144,23 @@ void StdProjectile::explode(size_t src_team, EntityIndex src_eid, b2Vec2 self_ve
 
 
 
-StdProjectile::StdProjectile(Entity* ent, const Params& pars, EntityIndex src, std::optional<vec2fp> target)
+StdProjectile::StdProjectile(Entity& ent, const Params& pars, EntityIndex src, std::optional<vec2fp> target)
     : EComp(ent), pars(pars), src(src), target(target)
 {
 	reg(ECompType::StepLogic);
 }
 void StdProjectile::step()
 {
-	auto& self = dynamic_cast<EC_VirtualBody&>(ent->get_phy());
+	auto& pc = ent.ref_pc();
 	if (pars.trail)
-		ent->get_ren()->parts(FE_SPEED_DUST, {Transform({-self.radius, 0}), 0.6});
+		ent.ensure<EC_RenderPos>().parts(FE_SPEED_DUST, {Transform({-pc.get_radius(), 0}), 0.6});
 	
-	GameCore::get().valid_ent(src);
+	ent.core.valid_ent(src);
 	
 	const float d_err = 0.1;
-	const vec2fp k_vel = self.get_vel().pos;
+	const vec2fp k_vel = pc.get_vel();
 	const vec2fp rayd = k_vel * GameCore::time_mul + k_vel.get_norm() * d_err * 2,
-	             ray0 = self.pos.pos - k_vel.get_norm() * d_err;
+	             ray0 = pc.get_pos() - k_vel.get_norm() * d_err;
 	
 	if (target)
 	{
@@ -175,41 +171,41 @@ void StdProjectile::step()
 		{
 			PhysicsWorld::RaycastResult hit = {};
 			hit.poi = conv(*target);
-			explode(ent->get_team(), src, conv(k_vel), hit, pars);
-			ent->destroy();
+			explode(ent.core, ent.get_team(), src, conv(k_vel), hit, pars);
+			ent.destroy();
 			return;
 		}
 	}
 	
-	auto hit = GameCore::get().get_phy().raycast_nearest(conv(ray0), conv(ray0 + rayd), make_cf(src), pars.size);
+	auto hit = ent.core.get_phy().raycast_nearest(conv(ray0), conv(ray0 + rayd), make_cf(src), pars.size);
 	if (hit) {
-		explode(ent->get_team(), src, conv(k_vel), *hit, pars);
+		explode(ent.core, ent.get_team(), src, conv(k_vel), *hit, pars);
 		hit_location = conv(hit->poi);
-		ent->destroy();
+		ent.destroy();
 	}
 }
-ProjectileEntity::ProjectileEntity(vec2fp pos, vec2fp vel, std::optional<vec2fp> target, Entity* src,
-                                   const StdProjectile::Params& pars, ModelType model, FColor clr)
+ProjectileEntity::ProjectileEntity(GameCore& core, vec2fp pos, vec2fp vel, std::optional<vec2fp> target,
+                                   Entity* src, const StdProjectile::Params& pars, ModelType model, FColor clr)
     :
-    phy(this, Transform{pos, vel.angle()}, Transform{vel}),
-    ren(this, model, clr),
-    proj(this, pars, src? src->index : EntityIndex{}, target),
+	Entity(core),
+    phy(*this, Transform{pos, vel.angle()}, Transform{vel}),
+    proj(*this, pars, src? src->index : EntityIndex{}, target),
     team(src? src->get_team() : TEAM_ENVIRON)
 {
+	add_new<EC_RenderModel>(model, clr);
+	
 	// This prevents projectiles from going through walls at point-blank range.
 	// Projectile is created by chain of: StepLogic -> EC_Equip -> Weapon,
 	// so it is moved one step before logic (and collision check) is executed. 
 	phy.pos.pos -= vel * GameCore::time_mul;
-	
-	// otherwise would be displayed at incorrect pos
-	ren.death_parts = false;
 }
 ProjectileEntity::~ProjectileEntity()
 {
-	vec2fp sz = ResBase::get().get_size(ren.model).size();
-	Transform at{proj.hit_location, ren.get_pos().rot};
+	// fix display position
+	vec2fp sz = ResBase::get().get_size(ref<EC_RenderModel>().model).size();
+	Transform at{proj.hit_location, phy.pos.rot};
 	at.combine(Transform{ -sz/2 });
-	GamePresenter::get()->effect(ME_DEATH, ren.model, {at, 1, ren.clr});
+	phy.pos = at;
 }
 
 
@@ -246,13 +242,14 @@ std::optional<Weapon::ShootResult> WpnMinigun::shoot(ShootParams pars)
 	auto dirs_tuple = get_direction(pars);
 	if (!dirs_tuple) return {};
 	auto [p, v] = *dirs_tuple;
+	auto& core = equip->ent.core;
 
 	if (pars.main)
 	{
 		float disp = lerp(8, 30, overheat->value); // was 10, fixed
 		v *= info->bullet_speed;
-		v.rotate( GameCore::get().get_random().range_n2() * deg_to_rad(disp) );
-		new ProjectileEntity(p, v, {}, equip->ent, pp, MODEL_MINIGUN_PROJ, FColor(1, 1, 0.2, 1.5));
+		v.rotate( core.get_random().range_n2() * deg_to_rad(disp) );
+		new ProjectileEntity(core, p, v, {}, &equip->ent, pp, MODEL_MINIGUN_PROJ, FColor(1, 1, 0.2, 1.5));
 		return ShootResult{};
 	}
 	else if (pars.alt)
@@ -261,9 +258,9 @@ std::optional<Weapon::ShootResult> WpnMinigun::shoot(ShootParams pars)
 		for (int i=0; i<num; ++i)
 		{
 			vec2fp lv = v;
-			lv *= GameCore::get().get_random().range(20, 28);
-			lv.rotate( GameCore::get().get_random().range_n2() * deg_to_rad(25) );
-			new ProjectileEntity(p, lv, {}, equip->ent, p2, MODEL_MINIGUN_PROJ, FColor(1, 1, 0.2, 1.5));
+			lv *= core.get_random().range(20, 28);
+			lv.rotate( core.get_random().range_n2() * deg_to_rad(25) );
+			new ProjectileEntity(core, p, lv, {}, &equip->ent, p2, MODEL_MINIGUN_PROJ, FColor(1, 1, 0.2, 1.5));
 		}
 		return ShootResult{num, TimeSpan::seconds(0.7)};
 	}
@@ -303,10 +300,11 @@ std::optional<Weapon::ShootResult> WpnMinigunTurret::shoot(ShootParams pars)
 	auto dirs_tuple = get_direction(pars);
 	if (!dirs_tuple) return {};
 	auto [p, v] = *dirs_tuple;
+	auto& core = equip->ent.core;
 
 	v *= info->bullet_speed;
-	v.rotate( GameCore::get().get_random().range_n2() * deg_to_rad(10) );
-	new ProjectileEntity(p, v, {}, equip->ent, pp, MODEL_MINIGUN_PROJ, FColor(1, 1, 0.2, 1.5));
+	v.rotate( core.get_random().range_n2() * deg_to_rad(10) );
+	new ProjectileEntity(core, p, v, {}, &equip->ent, pp, MODEL_MINIGUN_PROJ, FColor(1, 1, 0.2, 1.5));
 	return ShootResult{};
 }
 
@@ -344,13 +342,14 @@ std::optional<Weapon::ShootResult> WpnRocket::shoot(ShootParams pars)
 	auto dirs_tuple = get_direction(pars);
 	if (!dirs_tuple) return {};
 	auto [p, v] = *dirs_tuple;
+	auto& core = equip->ent.core;
 	
 	v *= info->bullet_speed;
 	
 	std::optional<vec2fp> tar;
 	if (pars.alt) tar = pars.target;
 	
-	new ProjectileEntity(p, v, tar, equip->ent, pp, MODEL_ROCKET_PROJ, FColor(0.2, 1, 0.6, 1.5));
+	new ProjectileEntity(core, p, v, tar, &equip->ent, pp, MODEL_ROCKET_PROJ, FColor(0.2, 1, 0.6, 1.5));
 	return ShootResult{};
 }
 
@@ -363,28 +362,11 @@ bool ElectroCharge::SrcParams::ignore(Entity* ent)
 	if (!ign) prev.push_back(ent);
 	return ign;
 }
-bool ElectroCharge::generate(vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim)
+bool ElectroCharge::generate(GameCore& core, vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim)
 {
-	PhysicsWorld::CastFilter check(
-		[](auto&, b2Fixture& f)
-		{
-			if (f.IsSensor())
-			{
-				if (auto fi = getptr(&f); fi && fi->get_armor_index()) return true;
-				return false;
-			}
-			return true;
-		},
-		[]{
-			b2Filter f;
-			f.categoryBits = EC_Physics::CF_BULLET;
-			f.maskBits = ~f.categoryBits;
-			return f;
-		}(),
-		false
-	);
+	PhysicsWorld::CastFilter check = StdProjectile::make_cf({});
 	std::vector<PhysicsWorld::RaycastResult> rs;
-	GameCore::get().get_phy().circle_cast_nearest(rs, conv(pos), radius, check);
+	core.get_phy().circle_cast_nearest(rs, conv(pos), radius, check);
 	
 	std::vector<vec2fp> n_cs;
 	
@@ -404,9 +386,9 @@ bool ElectroCharge::generate(vec2fp pos, SrcParams src, std::optional<vec2fp> di
 		auto hc = r.ent->get_hlc();
 		if (!hc) continue;
 		
-		auto rc = GameCore::get().get_phy().raycast_nearest(conv(pos), conv(r.ent->get_pos()),
+		auto rc = core.get_phy().raycast_nearest(conv(pos), conv(r.ent->get_pos()),
 			{[&](auto& ent, auto& fix){
-		         FixtureInfo* f = getptr(&fix);
+		         FixtureInfo* f = get_info(fix);
 		         return &ent == r.ent || (f && (f->typeflags & FixtureInfo::TYPEFLAG_WALL));}});
 		vec2fp r_poi = rc? conv(rc->poi) : r.ent->get_pos();
 		if (dir_lim && dot(*dir_lim, (pos - r_poi).norm()) > -angle_lim) continue;
@@ -414,13 +396,13 @@ bool ElectroCharge::generate(vec2fp pos, SrcParams src, std::optional<vec2fp> di
 		auto& ro = rs_o.emplace_back();
 		ro.hc = hc;
 		ro.poi = r_poi;
-		if (r.fix) ro.armor = r.fix->get_armor_index();
+		if (r.fix) ro.armor = r.fix->armor_index;
 	}
 	
 	if (rs_o.size() > max_tars)
 	{
 		for (size_t i=0; i<rs_o.size(); ++i)
-			std::swap(rs_o[i], GameCore::get().get_random().random_el(rs_o));
+			std::swap(rs_o[i], core.get_random().random_el(rs_o));
 	}
 	
 	for (size_t i=0; i < std::min(max_tars, rs_o.size()); ++i)
@@ -443,26 +425,29 @@ bool ElectroCharge::generate(vec2fp pos, SrcParams src, std::optional<vec2fp> di
 	
 	for (auto& n : n_cs) {
 		effect_lightning(pos, n, src.gener == 0 ? EffectLightning::First : EffectLightning::Regular, left_init);
-		new ElectroCharge(n, src, (n - pos).norm());
+		new ElectroCharge(core, n, src, (n - pos).norm());
 	}
 	
 	return !n_cs.empty();
 }
-ElectroCharge::ElectroCharge(vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim)
-	: phy(this, Transform{pos}), src(src), dir_lim(dir_lim)
+ElectroCharge::ElectroCharge(GameCore& core, vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim)
+	:
+	Entity(core),
+	phy(*this, Transform{pos}),
+    src(src), dir_lim(dir_lim)
 {
 	reg_this();
 }
 void ElectroCharge::step()
 {
-	GameCore::get().valid_ent(src.src_eid);
+	core.valid_ent(src.src_eid);
 	
 	left -= GameCore::step_len;
 	if (left.is_negative())
 	{
 		if (src.gener != last_generation) {
 			++src.gener;
-			generate(phy.get_pos(), src, dir_lim);
+			generate(core, phy.get_pos(), src, dir_lim);
 		}
 		destroy();
 	}
@@ -532,9 +517,10 @@ WpnElectro::WpnElectro(Type type)
 {}
 std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 {
-	auto dirs_tuple = get_direction(pars);
+	auto dirs_tuple = get_direction(pars, DIRTYPE_FORWARD_FAIL);
 	if (!dirs_tuple) return {};
 	auto [p, v] = *dirs_tuple;
+	auto& core = equip->ent.core;
 	        
 	if (wpr.ai_alt_distance > 0)
 	{
@@ -556,8 +542,8 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 		}
 	}
 
-	auto ent = equip->ent;
-	if (pars.main || pars.main_was)
+	auto& ent = equip->ent;
+	if ((pars.main || pars.main_was) && pars.is_ok)
 	{
 		const float min_charge_lvl = 0.51f / wpr.max_ammo;
 		const float ray_width = 2; // full-width
@@ -596,10 +582,10 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 			int n_hits = 0;
 			
 			b2Vec2 r_offs[3] = {{0,0}, skew, -skew};
-			auto cf = StdProjectile::make_cf(ent->index);
+			auto cf = StdProjectile::make_cf(ent.index);
 			//
 			for (int i=0; i<3; ++i) {
-				if (auto hit = GameCore::get().get_phy().raycast_nearest(r_from + r_offs[i], r_to + r_offs[i], cf))
+				if (auto hit = core.get_phy().raycast_nearest(r_from + r_offs[i], r_to + r_offs[i], cf))
 					r_hits[n_hits++] = *hit;
 			}
 			if (!n_hits) return false; // unlikely (impossible)
@@ -617,7 +603,7 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 			StdProjectile::Params pp;
 			pp.dq.amount = wpr.max_damage * charge_lvl * k_dmg;
 			pp.imp = 400 * charge_lvl;
-			StdProjectile::explode(ent->get_team(), ent->index, conv(v), hit, pp);
+			StdProjectile::explode(core, ent.get_team(), ent.index, conv(v), hit, pp);
 			
 			return true;
 		};
@@ -630,6 +616,7 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 		
 		vec2fp r_hit = p + v * conv(hit.poi).dist(p);
 		effect_lightning( p, r_hit, EffectLightning::Straight, TimeSpan::seconds(0.3) );
+		
 		GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform(conv(hit.poi), v.angle() + M_PI),
 		                                             charge_lvl * 20, FColor(0.6, 0.85, 1, 1.2)});
 		
@@ -641,7 +628,7 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 	
 	if (pars.alt)
 	{
-		bool ok = ElectroCharge::generate(p, {ent->get_team(), ent->index}, v);
+		bool ok = ElectroCharge::generate(core, p, {ent.get_team(), ent.index}, v);
 		if (ok) return ShootResult{{}, wpr.alt_delay};
 		else if (auto m = equip->msgrep) m->jerr(WeaponMsgReport::ERR_NO_TARGET);
 	}
@@ -657,12 +644,12 @@ std::optional<Weapon::UI_Info> WpnElectro::get_ui_info()
 
 
 
-bool FoamProjectile::can_create(vec2fp pos, EntityIndex src_i)
+bool FoamProjectile::can_create(GameCore& core, vec2fp pos, EntityIndex src_i)
 {
 	if (!src_i) return true;
 	bool ok = true;
 	
-	GameCore::get().get_phy().query_circle_all(conv(pos), 2,
+	core.get_phy().query_circle_all(conv(pos), 2,
 	[&](auto& ent, auto&){
 		if (src_i == ent.index) {
 			ok = false;
@@ -672,9 +659,10 @@ bool FoamProjectile::can_create(vec2fp pos, EntityIndex src_i)
 	});
 	return ok;
 }
-FoamProjectile::FoamProjectile(vec2fp pos, vec2fp vel, size_t team, EntityIndex src_i, bool is_first)
+FoamProjectile::FoamProjectile(GameCore& core, vec2fp pos, vec2fp vel, size_t team, EntityIndex src_i, bool is_first)
 	:
-	phy(this, [&]
+	Entity(core),
+	phy(*this, [&]
 	{
 		b2BodyDef d;
 		d.type = b2_dynamicBody;
@@ -682,8 +670,7 @@ FoamProjectile::FoamProjectile(vec2fp pos, vec2fp vel, size_t team, EntityIndex 
 		d.linearVelocity = conv(vel);
 		return d;
 	}()),
-    ren(this, MODEL_GRENADE_PROJ_ALT, FColor(0.7, 1, 0.7)),
-    hlc(this, 20),
+    hlc(*this, 20),
 	team(team),
     left(is_first? TimeSpan::seconds(4) : frozen_left),
     min_spd(vel.len_squ() / 4), // half of original
@@ -691,22 +678,20 @@ FoamProjectile::FoamProjectile(vec2fp pos, vec2fp vel, size_t team, EntityIndex 
     src_i(src_i),
     vel_initial(vel)
 {
-	b2FixtureDef fd;
-	fd.friction = 0;
-	fd.restitution = 1;
-	phy.add_circle(fd, 0.6, 1);
+	add_new<EC_RenderModel>(MODEL_GRENADE_PROJ_ALT, FColor(0.7, 1, 0.7));
+	phy.add(FixtureCreate::circle( fixtdef(0, 1), 0.6, 1 ));
 	
 	if (is_first) EVS_CONNECT1(phy.ev_contact, on_event);
 	reg_this();
 }
 FoamProjectile::~FoamProjectile()
 {
-	if (!GameCore::get().is_freeing())
+	if (!core.is_freeing())
 		freeze(false);
 }
 void FoamProjectile::step()
 {
-	if (src_i && !GameCore::get().get_ent(src_i)) src_i = {};
+	if (src_i && !core.get_ent(src_i)) src_i = {};
 	
 	left -= GameCore::step_len;
 	if (left.is_negative())
@@ -718,7 +703,7 @@ void FoamProjectile::step()
 	
 	if (!frozen)
 	{
-		float n = phy.body->GetLinearVelocity().LengthSquared();
+		float n = phy.get_vel().len_squ();
 		if (n < min_spd) freeze();
 		else if (n > 20*20) destroy();
 	}
@@ -732,15 +717,14 @@ void FoamProjectile::on_event(const CollisionEvent& ev)
 }
 void FoamProjectile::freeze(bool is_normal)
 {
-	if (!can_create(phy.get_pos(), src_i)) {
+	if (!can_create(core, phy.get_pos(), src_i)) {
 		if (is_normal) destroy();
 		return;
 	}
 	
 	left = TimeSpan::seconds(12);
 	frozen = true;
-	
-	auto& phw = GameCore::get().get_phy();
+	ui_descr = "Foam";
 	
 	if (is_first)
 	{
@@ -748,11 +732,8 @@ void FoamProjectile::freeze(bool is_normal)
 		for (int i=0; i < (is_normal ? 12 : 4); ++i)
 		{
 			vec2fp dir = {phy.get_radius() - 0.2f, 0};
-			dir.fastrotate( GameCore::get().get_random().range_n2() * M_PI );
-			
-			phw.post_step([p = phy.get_pos(), v = dir, team = team, src_i = src_i, vel = vel_initial]{
-				new FoamProjectile(p + v, vel, team, src_i, false);
-			});
+			dir.fastrotate( core.get_random().range_n2() * M_PI );
+			new FoamProjectile(core, phy.get_pos() + dir, vel_initial, team, src_i, false);
 		}
 	}
 	if (!is_normal)
@@ -760,11 +741,11 @@ void FoamProjectile::freeze(bool is_normal)
 	
 	hlc.get_hp().renew(80);
 	
-	phw.post_step([this]{ phy.body->SetType(b2_staticBody); });
+	phy.body.SetType(b2_staticBody);
 	EVS_SUBSCR_UNSUB_ALL;
 	
 	team = TEAM_ENVIRON;
-	ren.clr = FColor(0.95, 1, 1);
+	ref<EC_RenderModel>().clr = FColor(0.95, 1, 1);
 }
 
 
@@ -791,11 +772,12 @@ std::optional<Weapon::ShootResult> WpnFoam::shoot(ShootParams pars)
 	auto dirs_tuple = get_direction(pars);
 	if (!dirs_tuple) return {};
 	auto [p, v] = *dirs_tuple;
+	auto& core = equip->ent.core;
 	        
-	auto ent = equip->ent;
+	auto& ent = equip->ent;
 	if (pars.main)
 	{
-		new FoamProjectile(p, v * 10, ent->get_team(), ent->index, true);
+		new FoamProjectile(core, p, v * 10, ent.get_team(), ent.index, true);
 		return ShootResult{};
 	}
 	if (pars.alt)
@@ -811,7 +793,7 @@ std::optional<Weapon::ShootResult> WpnFoam::shoot(ShootParams pars)
 			d.fastrotate(-a0 + i * ad);
 			
 			std::vector<PhysicsWorld::RaycastResult> es;
-			GameCore::get().get_phy().raycast_all(es, conv(p), conv(p + d * 8), StdProjectile::make_cf(ent->index));
+			core.get_phy().raycast_all(es, conv(p), conv(p + d * 8), StdProjectile::make_cf(ent.index));
 			
 			if (es.size() > 1)
 			{
@@ -840,7 +822,7 @@ std::optional<Weapon::ShootResult> WpnFoam::shoot(ShootParams pars)
 					q.type = DamageType::Kinetic;
 					q.wpos = conv(e.poi);
 					q.amount = full_dmg;
-					if (e.fix) q.armor = e.fix->get_armor_index();
+					if (e.fix) q.armor = e.fix->armor_index;
 					if (dynamic_cast<FoamProjectile*>(e.ent)) q.amount = foam_dmg;
 					
 					q.amount *= k;
@@ -861,9 +843,10 @@ std::optional<Weapon::ShootResult> WpnFoam::shoot(ShootParams pars)
 
 
 
-GrenadeProjectile::GrenadeProjectile(vec2fp pos, vec2fp dir, EntityIndex src_eid)
+GrenadeProjectile::GrenadeProjectile(GameCore& core, vec2fp pos, vec2fp dir, EntityIndex src_eid)
     :
-	phy(this, [&]
+	Entity(core),
+	phy(*this, [&]
 	{
 		b2BodyDef d;
 		d.type = b2_dynamicBody;
@@ -871,26 +854,23 @@ GrenadeProjectile::GrenadeProjectile(vec2fp pos, vec2fp dir, EntityIndex src_eid
 		d.linearVelocity = conv(dir * 15);
 		return d;
 	}()),
-    ren(this, MODEL_GRENADE_PROJ, FColor(1, 0, 0)),
-    hlc(this, 20),
+    hlc(*this, 20),
     src_eid(src_eid),
     ignore_tmo(TimeSpan::seconds(0.3)),
     left(TimeSpan::seconds(6))
 {
-	b2FixtureDef fd;
-	fd.friction = 0;
-	fd.restitution = 1;
-	phy.add_circle(fd, GameConst::hsz_proj, 1);
+	add_new<EC_RenderModel>(MODEL_GRENADE_PROJ, FColor(1, 0, 0));
 	
-	fd.isSensor = true;
-	phy.add_circle(fd, 2, 0);
+	phy.add(FixtureCreate::circle( fixtdef(0,1), GameConst::hsz_proj, 1 ));
+	phy.add(FixtureCreate::circle( fixtsensor(), 2, 0 ));
 	
 	EVS_CONNECT1(phy.ev_contact, on_event);
 	reg_this();
 }
 void GrenadeProjectile::step()
 {
-	GameCore::get().valid_ent(src_eid);
+	core.valid_ent(src_eid);
+	auto& ren = ref<EC_RenderModel>();
 	
 	float k = std::fmod(clr_t, 1);
 	k = (k < 0.5 ? k : 1 - k) * 2;
@@ -910,7 +890,7 @@ void GrenadeProjectile::on_event(const CollisionEvent& ev)
 	{
 		if (ev.other->get_team() != TEAM_ENVIRON && ignore_tmo.is_negative())
 		{
-			vec2fp dir = conv(phy.body->GetLinearVelocity());
+			vec2fp dir = phy.get_vel();
 			float t = lineseg_perpen_t(get_pos(), get_pos() + dir, ev.other->get_pos());
 			if		(t < 0) left = {};
 			else if (t < 1) left = TimeSpan::seconds(t);
@@ -920,18 +900,18 @@ void GrenadeProjectile::on_event(const CollisionEvent& ev)
 	{
 		if (ev.other->get_team() != TEAM_ENVIRON || dynamic_cast<GrenadeProjectile*>(ev.other)) explode();
 		else {
-			float angle = GameCore::get().get_random().range_n2() * deg_to_rad(15);
+			float angle = core.get_random().range_n2() * deg_to_rad(15);
 			
-			b2Vec2 vel = phy.body->GetLinearVelocity();
+			b2Vec2 vel = phy.body.GetLinearVelocity();
 			vel = b2Mul(b2Rot(angle), vel);
-			phy.body->SetLinearVelocity(vel);
+			phy.body.SetLinearVelocity(vel);
 		}
 	}
 }
 void GrenadeProjectile::explode()
 {
 	PhysicsWorld::RaycastResult hit = {};
-	hit.poi = phy.body->GetWorldCenter();
+	hit.poi = phy.body.GetWorldCenter();
 	
 	StdProjectile::Params pp;
 	pp.dq.amount = 120;
@@ -943,7 +923,7 @@ void GrenadeProjectile::explode()
 	pp.imp = 100;
 	pp.friendly_fire = true;
 	
-	StdProjectile::explode(TEAM_ENVIRON, src_eid, phy.body->GetLinearVelocity(), hit, pp);
+	StdProjectile::explode(core, TEAM_ENVIRON, src_eid, phy.body.GetLinearVelocity(), hit, pp);
 	destroy();
 }
 
@@ -973,14 +953,15 @@ std::optional<Weapon::ShootResult> WpnRifle::shoot(ShootParams pars)
 	auto dirs_tuple = get_direction(pars);
 	if (!dirs_tuple) return {};
 	auto [p, v] = *dirs_tuple;
+	auto& core = equip->ent.core;
 	        
-	auto ent = equip->ent;
+	auto& ent = equip->ent;
 	if (pars.main)
 	{
 		v *= info->bullet_speed;
-		v.rotate( GameCore::get().get_random().range(-1, 1) * deg_to_rad(2) );
+		v.rotate( core.get_random().range(-1, 1) * deg_to_rad(2) );
 	
-		new ProjectileEntity(p, v, {}, ent, pp, MODEL_MINIGUN_PROJ, FColor(0.6, 0.8, 1, 1.5));
+		new ProjectileEntity(core, p, v, {}, &ent, pp, MODEL_MINIGUN_PROJ, FColor(0.6, 0.8, 1, 1.5));
 		return ShootResult{};
 	}
 	
@@ -993,7 +974,7 @@ std::optional<Weapon::ShootResult> WpnRifle::shoot(ShootParams pars)
 			return {};
 		}
 		
-		new GrenadeProjectile(p, v, ent->index);
+		new GrenadeProjectile(core, p, v, ent.index);
 		return ShootResult{ammo, TimeSpan::seconds(0.7)};
 	}
 	
@@ -1026,13 +1007,14 @@ std::optional<Weapon::ShootResult> WpnRifleBot::shoot(ShootParams pars)
 	auto dirs_tuple = get_direction(pars);
 	if (!dirs_tuple) return {};
 	auto [p, v] = *dirs_tuple;
+	auto& core = equip->ent.core;
 
 	if (pars.main)
 	{
 		v *= info->bullet_speed;
-		v.rotate( GameCore::get().get_random().range(-1, 1) * deg_to_rad(5) );
+		v.rotate( core.get_random().range(-1, 1) * deg_to_rad(5) );
 	
-		new ProjectileEntity(p, v, {}, equip->ent, pp, MODEL_MINIGUN_PROJ, FColor(0.6, 0.8, 1, 1.5));
+		new ProjectileEntity(core, p, v, {}, &equip->ent, pp, MODEL_MINIGUN_PROJ, FColor(0.6, 0.8, 1, 1.5));
 		return ShootResult{};
 	}
 	return {};
@@ -1040,20 +1022,21 @@ std::optional<Weapon::ShootResult> WpnRifleBot::shoot(ShootParams pars)
 
 
 
-ElectroBall::ElectroBall(vec2fp pos, vec2fp dir)
+ElectroBall::ElectroBall(GameCore& core, vec2fp pos, vec2fp dir)
 	:
-	phy(this, [&]{
+	Entity(core),
+	phy(*this, [&]{
 		b2BodyDef d;
 		d.type = b2_kinematicBody;
 		d.position = conv(pos);
 		d.linearVelocity = conv(dir * speed_min);
 		return d;
-	}()),
-	ren(this, MODEL_GRENADE_PROJ_ALT, FColor(0.4, 0.2, 1))
+	}())
 {
-	b2FixtureDef fd;
-	fd.isSensor = true;
-	phy.add_circle(fd, expl_radius, 0);
+	ui_descr = "Plasma ball";
+	add_new<EC_RenderModel>(MODEL_GRENADE_PROJ_ALT, FColor(0.4, 0.2, 1));
+	
+	phy.add(FixtureCreate::circle( fixtsensor(), expl_radius, 0 ));
 	EVS_CONNECT1(phy.ev_contact, on_cnt);
 	
 	reg_this();
@@ -1080,7 +1063,7 @@ void ElectroBall::step()
 	if (tmo_explode.is_positive()) tmo_explode -= GameCore::step_len;
 	else if (explode_cntc != 0 || explode_close || explode_left == 1)
 	{
-		auto& rnd = GameCore::get().get_random();
+		auto& rnd = core.get_random();
 		
 		StdProjectile::Params pp;
 		pp.type = StdProjectile::T_AOE;
@@ -1091,7 +1074,7 @@ void ElectroBall::step()
 		
 		PhysicsWorld::RaycastResult rc = {};
 		rc.poi = conv(get_pos());
-		StdProjectile::explode(TEAM_ENVIRON, {}, {}, rc, pp);
+		StdProjectile::explode(core, TEAM_ENVIRON, {}, {}, rc, pp);
 		
 		for (int i=0; i<4; ++i)
 		{
@@ -1099,24 +1082,24 @@ void ElectroBall::step()
 			v.rotate( rnd.range_n2() * M_PI );
 			
 			vec2fp p = get_pos() + v;
-			ElectroCharge::generate( p, {TEAM_ENVIRON, {}}, {} );
+			ElectroCharge::generate( core, p, {TEAM_ENVIRON, {}}, {} );
 			
 			GamePresenter::get()->effect(FE_EXPLOSION_FRAG, {Transform{p}, 0.2});
 			GamePresenter::get()->effect(FE_CIRCLE_AURA, {Transform{p}, 4, FColor(0.6, 0.2, 1, 3)});
 		}
 		
-		if (!GameCore::get().valid_ent(target_id))
-			phy.body->SetLinearVelocity({0, 0});
+		if (!core.valid_ent(target_id))
+			phy.body.SetLinearVelocity({0, 0});
 		
 		tmo_explode = TimeSpan::seconds(0.5);
 		if	  (--explode_left == 0) destroy();
-		else if (explode_left == 1) ren.model = MODEL_NONE;
+		else if (explode_left == 1) remove<EC_RenderModel>();
 		return;
 	}
 	
 	//
 	
-	if (auto tar = GameCore::get().valid_ent(target_id))
+	if (auto tar = core.valid_ent(target_id))
 	{
 		vec2fp dt = tar->get_pos() - get_pos();
 		float dist = dt.len();
@@ -1129,10 +1112,10 @@ void ElectroBall::step()
 		float spd = lerp(speed_max, speed_min, dist / find_radius);
 		dt.norm_to(spd);
 		
-		vec2fp vel = phy.get_vel().pos;
+		vec2fp vel = phy.get_vel();
 		if (!explode_cntc) dt.fastrotate( deg_to_rad(-15) );
 		vel += (dt - vel) * (GameCore::step_len / TimeSpan::seconds(0.8));
-		phy.body->SetLinearVelocity(conv(vel));
+		phy.body.SetLinearVelocity(conv(vel));
 		
 		explode_close = (dist < expl_radius);
 	}
@@ -1140,7 +1123,7 @@ void ElectroBall::step()
 	{
 		explode_close = false;
 		
-		auto& rnd = GameCore::get().get_random();
+		auto& rnd = core.get_random();
 		vec2fp rv( rnd.range(3, 18), 0 );
 		rv.rotate( rnd.range_n2() * M_PI );
 		
@@ -1149,7 +1132,7 @@ void ElectroBall::step()
 			std::vector<EntityIndex> es_tars;
 			std::vector<Entity*> es_grav;
 			
-			GameCore::get().get_phy().query_circle_all( conv(get_pos()), find_radius,
+			core.get_phy().query_circle_all( conv(get_pos()), find_radius,
 			[&](auto& ent, auto&) {
 				if (ent.get_eqp()) es_tars.push_back(ent.index);
 				else es_grav.push_back(&ent);
@@ -1183,49 +1166,16 @@ void ElectroBall::step()
 			}
 		}
 		
-		vec2fp vel = phy.get_vel().pos;
+		vec2fp vel = phy.get_vel();
 		rv.fastrotate( deg_to_rad(15) );
 		vel += (rv - vel) * (GameCore::step_len / TimeSpan::seconds(2));
-		phy.body->SetLinearVelocity(conv(vel));
+		phy.body.SetLinearVelocity(conv(vel));
 	}
 	
-	if (!LevelControl::get().cell( LevelControl::get().to_cell_coord( get_pos() ) ))
+	if (!core.get_lc().cell( core.get_lc().to_cell_coord( get_pos() ) ))
 		destroy();
 }
 
-
-
-WpnUber_Ray::WpnUber_Ray(WpnUber& wpn)
-	: wpn(wpn), phy(this), ren(nullptr)
-{
-	ren.ent = this;
-}
-void WpnUber_Ray::Render::step()
-{
-	auto& self = dynamic_cast<WpnUber_Ray&>(*ent);
-	if (!self.show && !left.is_positive()) return;
-	
-	vec2fp b, a = get_pos().pos;
-	
-	constexpr TimeSpan left_max = TimeSpan::seconds(0.5);
-	if (self.show) {
-		left = left_max;
-		b = self.b_last;
-	}
-	else {
-		left -= GamePresenter::get()->get_passed();
-		
-		vec2fp v((self.b_last - a).fastlen() * (left / left_max), 0);
-		v.fastrotate( self.wpn.equip->ent->get_face_rot() );
-		b = a + v;
-	}
-	
-	RenAAL::get().draw_line(a, b, FColor(1, 0.3, 0.2).to_px(), 0.2, 4, left / left_max);
-}
-Transform WpnUber_Ray::ProxyPos::get_trans() const
-{
-	return dynamic_cast<WpnUber_Ray&>(*ent).wpn.equip->ent->get_phy().get_trans();
-}
 
 
 WpnUber::WpnUber()
@@ -1246,44 +1196,38 @@ WpnUber::WpnUber()
 	overheat->thr_off = 0.1;
 	overheat->v_decr = 0.2;
 	overheat->v_cool = 0.3;
-	
-	ray_ren = new WpnUber_Ray(*this);
 }
 WpnUber::~WpnUber()
 {
-	if (!GameCore::get().is_freeing())
-		ray_ren->destroy();
+	equip->ent.remove<EC_Uberray>();
 }
 std::optional<Weapon::ShootResult> WpnUber::shoot(ShootParams pars)
 {
-	if (pars.main_was) ray_ren->show = false;
-	
-	auto dirs_tuple = get_direction(pars);
+	auto dirs_tuple = get_direction(pars, DIRTYPE_FORWARD_FAIL);
 	if (!dirs_tuple) return {};
 	auto [p, v] = *dirs_tuple;
+	auto& core = equip->ent.core;
 
 	if (pars.main)
 	{
 		const float max_dist = 20;
 		const float ray_width = 1; // full-width
 		
-		auto ent = equip->ent;
+		auto& ent = equip->ent;
 		b2Vec2 tar = conv(p + max_dist * v);
-		auto hit = GameCore::get().get_phy().raycast_nearest(conv(p), tar, StdProjectile::make_cf(ent->index), ray_width);
+		auto hit = core.get_phy().raycast_nearest(conv(p), tar, StdProjectile::make_cf(ent.index), ray_width);
 		if (!hit) {
 			hit = PhysicsWorld::RaycastResult{};
 			hit->poi = tar;
 		}
-		
-		ray_ren->b_last = conv(hit->poi);
-		ray_ren->show = true;
+		ent.ensure<EC_Uberray>().trigger(conv(hit->poi));
 		
 		float dist = conv(hit->poi).dist(p) / max_dist;
 		
 		StdProjectile::Params pp;
 		pp.dq.amount = lerp(450, 50, dist) * GameCore::time_mul;
 		pp.imp = lerp(30, -5, dist);
-		StdProjectile::explode(ent->get_team(), ent->index, conv(v), *hit, pp);
+		StdProjectile::explode(core, ent.get_team(), ent.index, conv(v), *hit, pp);
 		
 		if (hit->ent) GamePresenter::get()->effect(FE_EXPLOSION, {Transform{conv(hit->poi)}, lerp(0.2f, 0.07f, dist)});
 		GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform(p, v.angle()), 0.3, FColor(1, 0.7, 0.5, 0.7)});
@@ -1300,7 +1244,7 @@ std::optional<Weapon::ShootResult> WpnUber::shoot(ShootParams pars)
 			return {};
 		}
 		
-		new ElectroBall(p, v);
+		new ElectroBall(core, p, v);
 		return ShootResult{ammo, {}, 1 / GameCore::time_mul};
 	}
 	return {};

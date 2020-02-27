@@ -4,9 +4,11 @@
 #include "vaslib/vas_time.hpp"
 #include "entity.hpp"
 
-struct RandomGen;
+class  AI_Controller;
+class  LevelControl;
 class  PhysicsWorld;
 class  PlayerManager;
+struct RandomGen;
 
 #define GAME_THROW LOG_THROW_X
 
@@ -21,16 +23,15 @@ public:
 	struct InitParams
 	{
 		std::string random_init;
-		std::unique_ptr<PlayerManager> pmg;
+		std::unique_ptr<LevelControl> lc;
 	};
 	
 	bool dbg_ai_attack; ///< Is AI attack enabled
 	bool dbg_ai_see_plr; ///< Is AI seeing player
 	bool spawn_drop; ///< From destroyed enemies
 	
-	static GameCore& get(); ///< Returns singleton
 	static GameCore* create(InitParams pars); ///< Creates empty handler and inits all systems
-	virtual ~GameCore(); ///< Destroys all systems
+	virtual ~GameCore() = default; ///< Destroys all systems
 	
 	
 	
@@ -40,14 +41,11 @@ public:
 	/// For 'per second' -> 'per step' conversions
 	static constexpr float time_mul = step_len.seconds();
 	
-	///
-	virtual PhysicsWorld& get_phy() noexcept = 0;
-	
-	///
+	virtual AI_Controller& get_aic() noexcept = 0;
+	virtual LevelControl&  get_lc()  noexcept = 0;
+	virtual PhysicsWorld&  get_phy() noexcept = 0;
 	virtual PlayerManager& get_pmg() noexcept = 0;
-	
-	///
-	virtual RandomGen& get_random() noexcept = 0;
+	virtual RandomGen&     get_random() noexcept = 0;
 	
 	
 	
@@ -78,11 +76,15 @@ public:
 	/// Returns entity or throws if it doesn't exist
 	virtual Entity& ent_ref(EntityIndex ei) const = 0;
 	
+	/// Calls function for each existing entity
+	virtual void foreach(callable_ref<void(Entity&)> f) = 0;
+	
+	
 	
 protected:
 	friend Entity;
-	virtual EntityIndex create_ent(Entity* e) noexcept = 0;
-	virtual void mark_deleted(Entity* e) noexcept = 0;
+	virtual EntityIndex on_ent_create(Entity* e) noexcept = 0;
+	virtual void on_ent_destroy(Entity* e) noexcept = 0;
 	
 	virtual size_t reg_ent(Entity* e) noexcept = 0;
 	virtual void unreg_ent(size_t i)  noexcept = 0;
