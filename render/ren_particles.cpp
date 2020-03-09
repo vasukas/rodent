@@ -15,7 +15,14 @@ void ParticleParams::set_zero(bool vel, bool accel)
 }
 void ParticleParams::decel_to_zero()
 {
-	acc = vel / -(ft + lt);
+	acc = -vel / (lt + ft);
+}
+void ParticleParams::apply_gravity(float height, float t_fall)
+{
+	float t1 = (lt + ft) * (1 + t_fall);
+	float t0 = t1 / 2; // max height time
+	vel.y += 4 * -height / t1;
+	acc.y += -vel.y / t0;
 }
 void ParticleGroupGenerator::draw(const ParticleBatchPars& pars)
 {

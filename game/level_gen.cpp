@@ -8,6 +8,8 @@
 #include "common_defs.hpp"
 #include "level_gen.hpp"
 
+constexpr float cell_size = GameConst::cell_size;
+
 struct Gen1
 {
 	struct RoomClass;
@@ -1688,7 +1690,6 @@ LevelTerrain* LevelTerrain::generate(const GenParams& pars)
 	TimeSpan t0 = TimeSpan::since_start();
 	Gen1( pars.rnd, pars.grid_size ).convert( lt );
 	lt.find_corridors();
-	lt.cell_size = pars.cell_size;
 	
 	TimeSpan t1 = TimeSpan::since_start();
 	lt.ls_wall = lt.vectorize();
@@ -1715,7 +1716,7 @@ LevelTerrain* LevelTerrain::generate(const GenParams& pars)
 	
 	return lt_ptr.release();
 }
-LevelTerrain* LevelTerrain::load_test(const char *filename, float cell_size)
+LevelTerrain* LevelTerrain::load_test(const char *filename)
 {
 	ImageInfo img;
 	if (!img.load(filename, ImageInfo::FMT_RGB))
@@ -1756,7 +1757,6 @@ LevelTerrain* LevelTerrain::load_test(const char *filename, float cell_size)
 		}
 	}
 	
-	lt.cell_size = cell_size;
 	lt.ls_wall = lt.vectorize();
 	lt.ls_grid = lt.gen_grid();
 	return lt_ptr.release();

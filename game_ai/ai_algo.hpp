@@ -9,11 +9,11 @@ struct AI_DroneParams;
 /// Function receives room and depth (starting with 0 for initial room). 
 /// If function returns false, flood is stopped. 
 /// If random_dirs is true, order of flood expansion is changed at each step, using GameCore random
-void room_flood(GameCore& core, vec2i pos, int max_depth, bool random_dirs, callable_ref<bool(const LevelControl::Room&, int)> f);
-void room_flood_p(GameCore& core, vec2fp pos, int max_depth, bool random_dirs, callable_ref<bool(const LevelControl::Room&, int)> f);
+void room_flood(GameCore& core, vec2i pos, int max_depth, bool random_dirs, callable_ref<bool(const LevelCtrRoom&, int)> f);
+void room_flood_p(GameCore& core, vec2fp pos, int max_depth, bool random_dirs, callable_ref<bool(const LevelCtrRoom&, int)> f);
 
 /// Performs physics query over room, limited by AI online range
-void room_query(GameCore& core, const LevelControl::Room& rm, callable_ref<bool(AI_Drone&)> f);
+void room_query(GameCore& core, const LevelCtrRoom& rm, callable_ref<bool(AI_Drone&)> f);
 
 /// Performs physics query over circle
 void area_query(GameCore& core, vec2fp ctr, float radius, callable_ref<bool(AI_Drone&)> f);

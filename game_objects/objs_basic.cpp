@@ -2,6 +2,7 @@
 #include "client/presenter.hpp"
 #include "game/level_ctr.hpp"
 #include "game/game_core.hpp"
+#include "game/game_info_list.hpp"
 #include "game/player_mgr.hpp"
 #include "utils/noise.hpp"
 #include "vaslib/vas_log.hpp"
@@ -47,9 +48,9 @@ EWall::EWall(GameCore& core, const std::vector<std::vector<vec2fp>>& walls)
 	
 	auto& lc = core.get_lc();
 	p0 = {};
-	p1 = lc.get_size() * lc.cell_size;
-	p0 += vec2fp::one( lc.cell_size/2 );
-	p1 -= vec2fp::one( lc.cell_size/2 );
+	p1 = lc.get_size() * GameConst::cell_size;
+	p0 += vec2fp::one( GameConst::cell_size/2 );
+	p1 -= vec2fp::one( GameConst::cell_size/2 );
 	
 	std::vector<vec2fp> enc = {
 	    {p0.x, p0.y},
@@ -296,7 +297,7 @@ EDoor::EDoor(GameCore& core, vec2i TL_origin, vec2i door_ext, vec2i room_dir, bo
 	init.plr_only = plr_only;
 	init.is_x_ext = (door_ext.x != 0);
 
-	float cz = core.get_lc().cell_size;
+	float cz = GameConst::cell_size;
 	vec2fp pos = vec2fp(TL_origin) * cz;
 	
 	if (init.is_x_ext)
@@ -405,7 +406,7 @@ EDispenser::EDispenser(GameCore& core, vec2fp at, float rot, bool increased_amou
 		!increased ? 0 : 3,
 		!increased ? 4 : 8 );
 	
-	gen_at = {core.get_lc().cell_size /2, 0};
+	gen_at = {GameConst::cell_size /2, 0};
 	gen_at.fastrotate(rot + M_PI);
 	gen_at += at;
 }
@@ -428,6 +429,63 @@ void EDispenser::use(Entity*)
 	
 	usable_after = now + TimeSpan::seconds(10);
 	--left;
+}
+
+
+
+ETeleport::ETeleport(GameCore& core, vec2fp at)
+	:
+	EInteractive(core),
+	phy(*this, bodydef(at, false))
+{
+	ui_descr = "Teleporter";
+	add_new<EC_RenderModel>(MODEL_TELEPAD, FColor(0.3, 0.3, 0.3));
+	phy.add(FixtureCreate::circle( fixtsensor(), 0.5, 0, FixtureInfo{FixtureInfo::TYPEFLAG_INTERACTIVE} ));
+	
+	EVS_CONNECT1(phy.ev_contact, on_cnt);
+	core.get_info().get_teleport_list().emplace_back(*this);
+}
+std::pair<bool, std::string> ETeleport::use_string()
+{
+	return {true, "Teleport"};
+}
+void ETeleport::use(Entity* by)
+{
+	if (core.get_pmg().is_player(*by))
+		activate(true);
+}
+void ETeleport::on_cnt(const CollisionEvent& ev)
+{
+	if (ev.type == CollisionEvent::T_BEGIN && core.get_pmg().is_player(*ev.other))
+		activate(false);
+}
+void ETeleport::activate(bool menu)
+{
+	size_t i;
+	if (menu)
+	{
+		i = core.get_info().find_teleport(*this);
+		core.get_info().set_menu_teleport(i);
+		core.get_pmg().on_teleport_activation();
+	}
+	else if (!activated)
+		i = core.get_info().find_teleport(*this);
+	
+	if (!activated)
+	{
+		activated = true;
+		core.get_info().get_teleport_list()[i].discovered = true;
+		
+		ref<EC_RenderModel>().clr = FColor(0.3, 0.6, 0.6);
+		ref<EC_RenderModel>().parts(ME_AURA, {{}, 1.f, FColor(0.25, 0.4, 0.4, 0.3)});
+	}
+}
+void ETeleport::teleport_player()
+{
+	auto& plr = core.get_pmg().ref_ent();
+	GamePresenter::get()->effect(FE_SPAWN, {Transform{plr.get_pos()}, plr.ref_pc().get_radius()});
+	plr.ref_phobj().teleport(get_pos());
+	GamePresenter::get()->effect(FE_SPAWN, {Transform{get_pos()}, plr.ref_pc().get_radius()});
 }
 
 
@@ -515,8 +573,39 @@ EMinidock::EMinidock(GameCore& core, vec2fp at, float rot)
 {
 	ui_descr = "Minidoc";
 	add_new<EC_RenderModel>(MODEL_MINIDOCK, FColor(0.5, 0.7, 0.9));
-	phy.add(FixtureCreate::box( fixtsensor(), vec2fp::one(2.5), Transform{{-core.get_lc().cell_size /2, 0}}, 0 ));
+	phy.add(FixtureCreate::box( fixtsensor(), vec2fp::one(2.5), Transform{{-GameConst::cell_size /2, 0}}, 0 ));
 	EVS_CONNECT1(phy.ev_contact, on_cnt);
+}
+
+
+
+EStorageBox::EStorageBox(GameCore& core, vec2fp at)
+	:
+	Entity(core),
+    phy(*this, bodydef(at, false)),
+    hlc(*this, 800)
+{
+	ui_descr = "Autobox";
+	add_new<EC_RenderModel>(MODEL_STORAGE, FColor(0.7, 0.9, 0.7), EC_RenderModel::DEATH_AND_EXPLOSION);
+	phy.add(FixtureCreate::box( fixtdef(0.15, 0.1), ResBase::get().get_size(MODEL_STORAGE).size() /2, 0,
+	                            FixtureInfo{FixtureInfo::TYPEFLAG_OPAQUE | FixtureInfo::TYPEFLAG_WALL} ));
+}
+EStorageBox::~EStorageBox()
+{
+	if (!core.is_freeing())
+	{
+		for (int i=0; i<5; ++i) {
+			float rot = core.get_random().range_n2() * M_PI;
+			float len = core.get_random().range(0, GameConst::cell_size /2);
+			EPickable::create_death_drop(core, get_pos() + vec2fp(len, 0).rotate(rot), 0.8);
+		}
+		
+		auto& lc = core.get_lc();
+		lc.mut_cell(lc.to_cell_coord( get_pos() )).is_wall = false;
+		lc.update_aps();
+		
+		GamePresenter::get()->effect(FE_WPN_EXPLOSION, {Transform{get_pos()}, 3.f});
+	}
 }
 
 
@@ -528,7 +617,7 @@ EDecor::EDecor(GameCore& core, const char *ui_name, Rect at, float rot, ModelTyp
 		b2BodyDef d;
 		vec2fp ctr = ResBase::get().get_size(model).center();
 		ctr.rotate(rot);
-		d.position = conv( ctr + at.fp_center() * core.get_lc().cell_size );
+		d.position = conv( ctr + at.fp_center() * GameConst::cell_size );
 		d.angle = rot;
 		return d;
 	}())

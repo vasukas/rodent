@@ -132,7 +132,7 @@ void AI_Group::update()
 	if (drones.size() < AI_Const::msg_engage_max_bots)
 	{
 		auto& lc = core.get_lc();
-		std::vector<std::pair<const LevelControl::Room*, int>> rooms;
+		std::vector<std::pair<const LevelCtrRoom*, int>> rooms;
 		
 		for (auto& d : drones)
 		{

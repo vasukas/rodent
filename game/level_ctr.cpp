@@ -23,10 +23,10 @@ PathRequest::PathRequest(GameCore& core, vec2fp from, vec2fp to, std::optional<f
 	PathSearch::Args args;
 	args.src = pa;
 	args.dst = pb;
-	args.max_length = std::ceil(*max_length / lc.cell_size);
+	args.max_length = std::ceil(*max_length / GameConst::cell_size);
 	if (evade) {
 		args.evade = lc.to_cell_coord(evade->pos);
-		args.evade_radius = std::ceil(evade->radius / lc.cell_size);
+		args.evade_radius = std::ceil(evade->radius / GameConst::cell_size);
 		args.evade_cost = evade->added_cost;
 	}
 	
@@ -43,11 +43,11 @@ PathRequest::PathRequest(GameCore& core, vec2fp from, vec2fp to, std::optional<f
 		res->not_found = false;
 		res->ps.reserve( r.ps.size() + 1 );
 		
-		const auto k2 = vec2fp::one(lc.cell_size / 2);
+		const auto k2 = vec2fp::one(GameConst::cell_size / 2);
 		
 		res->ps.push_back(from);
 		for (auto& p : r.ps)
-			res->ps.push_back(vec2fp(p) * lc.cell_size + k2);
+			res->ps.push_back(vec2fp(p) * GameConst::cell_size + k2);
 		
 		res->ps.back() = to;
 	}
@@ -62,7 +62,6 @@ std::optional<PathRequest::Result> PathRequest::result()
 
 
 LevelControl::LevelControl(const LevelTerrain& lt)
-	: cell_size(lt.cell_size)
 {
 	size = lt.grid_size;
 	cells.resize( size.area() );
@@ -106,8 +105,8 @@ LevelControl::LevelControl(const LevelTerrain& lt)
 		}
 		
 		auto& nr = rooms.emplace_back();
-		if (lr.type == LevelTerrain::RM_TERMINAL)
-			nr.is_final_term = true;
+		if		(lr.type == LevelTerrain::RM_TERMINAL) nr.type = LevelCtrRoom::T_FINAL_TERM;
+		else if (lr.type == LevelTerrain::RM_TRANSIT)  nr.type = LevelCtrRoom::T_TRANSIT;
 		
 		if (lr.type == LevelTerrain::RM_ABANDON) nr.name = "ERROR";
 		else if (typenm) nr.name = FMT_FORMAT("{}-{}", typenm, ++rm_cou[lr.type]);
@@ -213,13 +212,13 @@ const LevelControl::Cell& LevelControl::cref(vec2i pos) const
 	if (auto c = cell(pos)) return *c;
 	throw std::runtime_error("LevelControl::cref() null");
 }
-const LevelControl::Room* LevelControl::ref_room(vec2fp pos) const noexcept
+const LevelCtrRoom* LevelControl::ref_room(vec2fp pos) const noexcept
 {
 	auto ri = cref(to_cell_coord(pos)).room_i;
 	if (ri) return &rooms[*ri];
 	return nullptr;
 }
-LevelControl::Room& LevelControl::ref_room(size_t index)
+LevelCtrRoom& LevelControl::ref_room(size_t index)
 {
 	return rooms.at(index);
 }
@@ -245,7 +244,7 @@ vec2fp LevelControl::get_closest(SpawnType type, vec2fp from) const
 }
 vec2i LevelControl::to_nonwall_coord(vec2fp p) const
 {
-	p /= cell_size;
+	p /= GameConst::cell_size;
 	vec2i c = p.int_floor();
 	
 	if (cref(c).is_wall)

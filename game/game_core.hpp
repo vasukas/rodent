@@ -1,18 +1,14 @@
 #ifndef GAME_CORE_HPP
 #define GAME_CORE_HPP
 
-#include "vaslib/vas_time.hpp"
 #include "entity.hpp"
 
 class  AI_Controller;
+class  GameInfoList;
 class  LevelControl;
 class  PhysicsWorld;
 class  PlayerManager;
 struct RandomGen;
-
-#define GAME_THROW LOG_THROW_X
-
-#define GAME_DEBUG VLOGV
 
 
 
@@ -42,6 +38,7 @@ public:
 	static constexpr float time_mul = step_len.seconds();
 	
 	virtual AI_Controller& get_aic() noexcept = 0;
+	virtual GameInfoList&  get_info()noexcept = 0;
 	virtual LevelControl&  get_lc()  noexcept = 0;
 	virtual PhysicsWorld&  get_phy() noexcept = 0;
 	virtual PlayerManager& get_pmg() noexcept = 0;

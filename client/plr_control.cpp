@@ -193,6 +193,20 @@ PlayerController::PlayerController()
 	}
 	
 	{
+		Bind& b = binds[A_MENU_SELECT];
+		b.name = "Menu: select";
+		b.type = BT_ONESHOT;
+		b.mou = SDL_BUTTON_LEFT;
+		b.mmod = MMOD_MENU;
+	}{
+		Bind& b = binds[A_MENU_EXIT];
+		b.name = "Menu: exit";
+		b.type = BT_ONESHOT;
+		b.key = SDL_SCANCODE_ESCAPE;
+		b.mmod = MMOD_MENU;
+	}
+	
+	{
 		Bind& b = binds[AX_MOV_Y_NEG];
 		b.name = "Move up";
 		b.type = BT_HELD;
@@ -236,8 +250,8 @@ void PlayerController::on_event(const SDL_Event& ev)
 		
 		for (auto& b : binds)
 		{
-			if (check(b.key, ks.scancode, true)) break;
-			if (check(b.alt, ks.scancode, true)) break;
+			if (check(b.key, ks.scancode, true) && bind_used(b)) break;
+			if (check(b.alt, ks.scancode, true) && bind_used(b)) break;
 		}
 	}
 	else if (ev.type == SDL_KEYUP)
@@ -247,19 +261,19 @@ void PlayerController::on_event(const SDL_Event& ev)
 		
 		for (auto& b : binds)
 		{
-			if (check(b.key, ks.scancode, false)) break;
-			if (check(b.alt, ks.scancode, false)) break;
+			if (check(b.key, ks.scancode, false) && bind_used(b)) break;
+			if (check(b.alt, ks.scancode, false) && bind_used(b)) break;
 		}
 	}
 	else if (ev.type == SDL_MOUSEBUTTONDOWN)
 	{
 		for (auto& b : binds)
-			if (check(b.mou, ev.button.button, true)) break;
+			if (check(b.mou, ev.button.button, true) && bind_used(b)) break;
 	}
 	else if (ev.type == SDL_MOUSEBUTTONUP)
 	{
 		for (auto& b : binds)
-			if (check(b.mou, ev.button.button, false)) break;
+			if (check(b.mou, ev.button.button, false) && bind_used(b)) break;
 	}
 	else if (ev.type == SDL_MOUSEWHEEL)
 	{
@@ -271,7 +285,7 @@ void PlayerController::on_event(const SDL_Event& ev)
 		for (auto& b : binds)
 			if (b.mou.v == v) {
 				b.mou.state = K_ONCE;
-				break;
+				if (bind_used(b)) break;
 			}
 	}
 }
@@ -280,6 +294,19 @@ void PlayerController::update()
 	auto is_enabled = [this](size_t i)
 	{
 		auto& b = binds[i];
+		if (!bind_used(b))
+		{
+			switch (b.type)
+			{
+			case BT_ONESHOT:
+			case BT_HELD:
+				return false;
+				
+			case BT_SWITCH:
+				return b.sw_val;
+			}
+		}
+		
 		switch (b.type)
 		{
 		case BT_ONESHOT:

@@ -4,6 +4,7 @@
 #include "vaslib/vas_containers.hpp"
 #include "vaslib/vas_log.hpp"
 #include "game_core.hpp"
+#include "game_info_list.hpp"
 #include "level_ctr.hpp"
 #include "player_mgr.hpp"
 #include "physics.hpp"
@@ -19,6 +20,7 @@ public:
 	std::unique_ptr<PhysicsWorld> phy;
 	std::unique_ptr<PlayerManager> pmg;
 	std::unique_ptr<AI_Controller> aic;
+	GameInfoList infolist;
 	
 	std::array<SparseArray<EComp*>, static_cast<size_t>(ECompType::TOTAL_COUNT)> cs_list;
 	SparseArray<Entity*> es_list;
@@ -59,6 +61,7 @@ public:
 	}
 	
 	AI_Controller& get_aic()    noexcept {return *aic;}
+	GameInfoList&  get_info()   noexcept {return infolist;}
 	LevelControl&  get_lc()     noexcept {return *lc ;}
 	PhysicsWorld&  get_phy()    noexcept {return *phy;}
 	PlayerManager& get_pmg()    noexcept {return *pmg;}
@@ -164,7 +167,7 @@ public:
 	Entity& ent_ref(EntityIndex ei) const
 	{
 		if (auto e = get_ent(ei)) return *e;
-		GAME_THROW("GameCore::ent_ref() failed (eid {})", ei.to_int());
+		THROW_FMTSTR("GameCore::ent_ref() failed (eid {})", ei.to_int());
 	}
 	void foreach(callable_ref<void(Entity&)> f)
 	{

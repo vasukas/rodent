@@ -112,6 +112,7 @@ Mode options (--game):
   --seed <N>  use specified level seed
   --no-ffwd   disable fast-forwarding world on init
   --superman  enable enhanced godmode for player
+  --dbg-ai-rect  enable smaller AI online rects (for performance)
 
   --no-demo-record     disables record-by-default ("user/last.ratdemo")
   --demo-record        record replay to "user/replay_DATETIME.ratdemo"

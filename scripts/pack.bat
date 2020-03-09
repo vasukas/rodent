@@ -18,7 +18,6 @@ mkdir %OUTDIR%
 mkdir %OUTDIR%\data
 xcopy /y /s data %OUTDIR%\data
 
-copy /y scripts\rodent.bat %OUTDIR%
 copy /y build\rodent_x%BITS%.exe %OUTDIR%
 FOR %%f IN (external\msvc%BITS%\*.dll) DO copy /y %%f %OUTDIR%
 

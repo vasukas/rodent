@@ -11,12 +11,17 @@
 
 
 #include "game/physics.hpp"
+#include "game_objects/objs_basic.hpp"
 
 static void play(GameCore& core, ReplayEvent ev)
 {
-	std::visit([&](Replay_DebugTeleport& e) {
-		core.get_pmg().ref_ent().ref_phobj().body.SetTransform( conv(e.target), 0 );
-	}, ev);
+	std::visit(overloaded{
+	[&](Replay_DebugTeleport& e) {
+		core.get_pmg().ref_ent().ref_phobj().teleport(e.target);
+	},
+	[&](Replay_UseTransitTeleport& e) {
+		dynamic_cast<ETeleport&>(core.ent_ref(e.teleport)).teleport_player();
+	}}, ev);
 }
 
 

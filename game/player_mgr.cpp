@@ -142,11 +142,11 @@ public:
 			if (!lct_found)
 			{
 				auto room = core.get_lc().ref_room(plr_ent->get_pos());
-				if (room && room->is_final_term)
+				if (room && room->type == LevelCtrRoom::T_FINAL_TERM)
 				{
 					lct_found = true;
 					add_msg("You have found\ncontrol room");
-					LevelMap::get().mark_final_term();
+					LevelMap::get().mark_final_term(*room);
 				}
 			}
 			
@@ -222,13 +222,12 @@ public:
 	{
 		if (fastforward) {
 			auto& lc = core.get_lc();
-			Rectfp r {{}, vec2fp(lc.get_size()) * lc.cell_size, false};
+			Rectfp r {{}, vec2fp(lc.get_size()) * GameConst::cell_size, false};
 			return {r, r};
 		}
 		
 		// halfsizes
-//		const vec2fp hsz_on  = {50, 35};
-		const vec2fp hsz_on  = {80, 65};
+		const vec2fp hsz_on = debug_ai_rect ? vec2fp{48, 35} : vec2fp{80, 65};
 		const vec2fp hsz_off = hsz_on * 1.25;
 		
 		if (auto ent = core.get_ent(plr_eid))
@@ -258,6 +257,22 @@ public:
 	bool is_game_finished() override
 	{
 		return obj_term && obj_term->is_activated && obj_term->timer_end < core.get_step_time();
+	}
+	void on_teleport_activation() override
+	{
+		if (!lct_found && obj_count >= obj_need)
+		{
+			lct_found = true;
+			add_msg("Map updated.\nActivate control terminal");
+			
+			LevelMap::get().mark_final_term([&]{
+				for (auto& r : core.get_lc().get_rooms()) {
+					if (r.type == LevelCtrRoom::T_FINAL_TERM)
+						return r;
+				}
+				throw std::runtime_error("PlayerManager::on_teleport_activation() no final term room");
+			}());
+		}
 	}
 	void set_ctr(std::shared_ptr<PlayerController> pc_ctr) override
 	{

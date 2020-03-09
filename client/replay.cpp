@@ -10,7 +10,7 @@
 #include "replay.hpp"
 
 constexpr std::string_view stream_header = "ratdemo";
-const uint32_t stream_version = 4;
+const uint32_t stream_version = 5;
 
 
 
@@ -22,10 +22,15 @@ SERIALFUNC_PLACEMENT_1(PlayerController::State,
 
 SERIALFUNC_PLACEMENT_1(ReplayInitData,
 	SER_FDT(rnd_init, Array32),
-	SER_FD(fastforward));
+	SER_FD(fastforward),
+	SER_FD(pmg_superman),
+	SER_FD(pmg_dbg_ai_rect));
 
 SERIALFUNC_PLACEMENT_1(Replay_DebugTeleport,
 	SER_FD(target));
+
+SERIALFUNC_PLACEMENT_1(Replay_UseTransitTeleport,
+	SER_FD(teleport));
 
 static void write_header(File& f)
 {

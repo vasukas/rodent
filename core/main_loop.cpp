@@ -264,6 +264,7 @@ public:
 	bool use_gamepad = false;
 	bool use_rndseed = false;
 	bool is_superman_init = false;
+	bool debug_ai_rect_init = false;
 	bool no_ffwd = false;
 	std::optional<uint32_t> use_seed;
 	
@@ -296,6 +297,7 @@ public:
 		else if (arg.is("--seed")) use_seed = arg.i32();
 		else if (arg.is("--no-ffwd")) no_ffwd = true;
 		else if (arg.is("--superman")) is_superman_init = true;
+		else if (arg.is("--dbg-ai-rect")) debug_ai_rect_init = true;
 		
 		else if (arg.is("--no-demo-record")) {
 			replay_write_default = false;
@@ -390,6 +392,8 @@ public:
 			{
 				replay_dat.rnd_init = gci.rndg.save();
 				replay_dat.fastforward = gci.fastforward_time;
+				replay_dat.pmg_superman = is_superman_init;
+				replay_dat.pmg_dbg_ai_rect = debug_ai_rect_init;
 			}
 			
 			std::visit(overloaded{
@@ -419,11 +423,13 @@ public:
 			if (gci.replay_rd) {
 				gci.rndg.load( replay_dat.rnd_init );
 				gci.fastforward_time = replay_dat.fastforward;
+				is_superman_init = replay_dat.pmg_superman;
+				debug_ai_rect_init = replay_dat.pmg_dbg_ai_rect;
 			}
 			
 			// init
 			
-			std::shared_ptr<LevelTerrain> lt( LevelTerrain::generate({ &gci.rndg, {220,140}, 3 }) );
+			std::shared_ptr<LevelTerrain> lt( LevelTerrain::generate({ &gci.rndg, {220,140} }) );
 			
 			gci.lt = lt;
 			gci.pc_ctr = pc_ctr;
@@ -476,7 +482,10 @@ public:
 				pars.init_greet = std::move(init_greet);
 				gui.reset( GameUI::create(std::move(pars)) );
 				
-				gctr->get_core().get_pmg().is_superman = is_superman_init;
+				if (!gctr->get_replay_reader()) {
+					gctr->get_core().get_pmg().is_superman   = is_superman_init;
+					gctr->get_core().get_pmg().debug_ai_rect = debug_ai_rect_init;
+				}
 				gctr->set_pause(false);
 			}
 			else draw_text_message(std::string("Generating...\n\n") + init_greet);

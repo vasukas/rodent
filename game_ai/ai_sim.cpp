@@ -81,7 +81,7 @@ AI_SimResource::WorkResult AI_SimResource::WorkerReg::process(Value& val, vec2fp
 
 AI_SimResource::WorkerReg AI_SimResource::find(GameCore& core, vec2fp origin, float radius, Type type, int rate, flags_t find_type)
 {
-	const LevelControl::Room* room = nullptr;
+	const LevelCtrRoom* room = nullptr;
 	if (find_type & FIND_F_SAME_ROOM)
 		room = core.get_lc().ref_room(origin);
 	

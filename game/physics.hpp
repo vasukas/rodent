@@ -125,6 +125,7 @@ struct EC_Physics : EC_Position
 	float     get_radius() const override; ///< Approximate radius, calculated from fixtures
 	float get_real_angle() const override {return body.GetAngle();}
 	
+	void teleport(vec2fp to, std::optional<float> rot = {});
 	bool is_material() const; ///< Iterates all fixtures and returns true if at least one is not sensor
 	
 private:

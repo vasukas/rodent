@@ -359,6 +359,7 @@ PlayerEntity::PlayerEntity(GameCore& core, vec2fp pos, bool is_superman)
 	// rendering
 	
 	ensure<EC_RenderPos>().immediate_rotation = true;
+	ensure<EC_RenderPos>().disable_culling = true;
 	add_new<EC_RenderModel>(MODEL_PC_RAT, FColor(0.4, 0.9, 1, 1));
 	add_new<EC_RenderEquip>();
 	add_new<EC_LaserDesigRay>();

@@ -173,6 +173,27 @@ public:
 
 
 
+class ETeleport final : public EInteractive
+{
+	EC_Physics phy;
+	bool activated = false;
+	
+	EVS_SUBSCR;
+	void on_cnt(const CollisionEvent& ev);
+	void activate(bool menu);
+	
+public:
+	ETeleport(GameCore& core, vec2fp at);
+	EC_Position& ref_pc() override {return phy;}
+	
+	std::pair<bool, std::string> use_string() override;
+	void use(Entity* by) override;
+	
+	void teleport_player();
+};
+
+
+
 class EMinidock final : public Entity
 {
 	EC_Physics phy;
@@ -190,6 +211,19 @@ public:
 	EC_Position& ref_pc() override {return phy;}
 	
 	Entity* get_target() const {return plr;}
+};
+
+
+
+class EStorageBox final : public Entity
+{
+	EC_Physics phy;
+	EC_Health  hlc;
+public:
+	EStorageBox(GameCore& core, vec2fp at);
+	~EStorageBox();
+	EC_Position& ref_pc() override {return phy;}
+	EC_Health* get_hlc() override {return &hlc;}
 };
 
 

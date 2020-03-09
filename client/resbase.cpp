@@ -209,6 +209,7 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 				p.vel *= 1.5;
 			}
 			
+			if (!implode) p.apply_gravity(3, 0.8);
 			t += dt;
 		}
 	};
@@ -421,11 +422,11 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 		void gen(ParticleParams& p)
 		{
 			p.lt = rnd_stat().range(0.2, 0.4);
-			p.ft = rnd_stat().range(0.2, 1);
+			p.ft = rnd_stat().range(0.6, 1.5);
 			
 			p.clr = FColor(
 				rnd_stat().flag() ? rnd_stat().range(0, 0.17) : rnd_stat().range(0.55, 1),
-				0.5, 1, 0.7
+				0.8, 1, 0.7
 			).hsv_to_rgb();
 			
 			vec2fp dt = {1, 0};
@@ -434,6 +435,8 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 			p.pos = ctr + dt * 0.5;
 			p.vel = dt * rnd_stat().range(1.5, 7) * pwr;
 			p.decel_to_zero();
+			
+			p.apply_gravity(2);
 		}
 	};
 
@@ -810,12 +813,13 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 	
 	// generate parts
 	
-	{
-		auto g = new Aura(mlns[MODEL_PC_RAT].ls);
-		ld_me[MODEL_PC_RAT][ME_AURA].reset(g);
-	}{
-		auto g = new Aura(mlns[MODEL_PC_SHLD].ls);
-		ld_me[MODEL_PC_SHLD][ME_AURA].reset(g);
+	const int parts_aura[] = {
+	    MODEL_PC_RAT,
+        MODEL_PC_SHLD,
+        MODEL_TELEPAD
+	};
+	for (auto& i : parts_aura) {
+		ld_me[i][ME_AURA].reset( new Aura(mlns[i].ls) );
 	}
 	
 	

@@ -60,7 +60,6 @@ struct LevelTerrain
 	};
 	
 	vec2i grid_size;
-	float cell_size;
 	
 	std::vector<Cell> cs;
 	std::vector<Room> rooms; ///< [0] is always initial room
@@ -82,14 +81,13 @@ struct LevelTerrain
 	{
 		RandomGen* rnd; ///< Must be non-null
 		vec2i grid_size;
-		float cell_size;
 	};
 	
 	/// Generates level, never returns null
 	static LevelTerrain* generate(const GenParams& pars);
 	
 	/// Loads debug level from image. Throws on error. Never returns null
-	static LevelTerrain* load_test(const char *filename, float cell_size);
+	static LevelTerrain* load_test(const char *filename);
 	
 	///
 	ImageInfo draw_grid(bool is_debug) const;

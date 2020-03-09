@@ -27,6 +27,7 @@ const vec2fp hsz_pshl = {0.7, 1.2}; ///< Projected shield
 
 // other consts
 
+constexpr float cell_size = 3;
 const size_t total_key_count = 6;
 }
 

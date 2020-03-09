@@ -14,7 +14,8 @@ public:
 	bool cheat_ammo    = false;
 	bool cheat_godmode = false;
 	bool is_superman   = false;
-	bool fastforward = false; ///< see usages
+	bool fastforward   = false; ///< see usages
+	bool debug_ai_rect = false;
 	
 	static PlayerManager* create(GameCore& core);
 	virtual ~PlayerManager() = default;
@@ -33,6 +34,9 @@ public:
 	
 	/// Increments objective count
 	virtual void inc_objective() = 0;
+	
+	///
+	virtual void on_teleport_activation() = 0;
 	
 	///
 	virtual bool is_game_finished() = 0;

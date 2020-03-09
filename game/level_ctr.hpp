@@ -2,7 +2,7 @@
 #define LEVEL_CTR_HPP
 
 #include <memory>
-#include "vaslib/vas_math.hpp"
+#include "common_defs.hpp"
 
 class  GameCore;
 class  PathSearch;
@@ -43,21 +43,32 @@ private:
 
 
 
+struct LevelCtrRoom
+{
+	enum RoomType
+	{
+		T_DEFAULT,
+		T_TRANSIT,
+		T_FINAL_TERM
+	};
+	
+	std::string name;
+	RoomType type = T_DEFAULT;
+	
+	Rect area; ///< cells
+	std::vector<size_t> neis; ///< rooms
+	
+	int ai_radio_cost = 1;
+	int tmp; ///< for algorithms
+	
+	Rectfp fp_area() const {
+		return area.to_fp(GameConst::cell_size);
+	}
+};
+
 class LevelControl final
 {
 public:
-	struct Room
-	{
-		std::string name;
-		bool is_final_term = false;
-		
-		Rect area; ///< cells
-		std::vector<size_t> neis; ///< rooms
-		
-		int ai_radio_cost = 1;
-		int tmp; ///< for algorithms
-	};
-	
 	struct Cell
 	{
 		vec2i pos; ///< self
@@ -80,8 +91,6 @@ public:
 		vec2fp pos;
 	};
 	
-	const float cell_size;
-	
 	
 	
 	static LevelControl* create(const LevelTerrain& lt);
@@ -94,15 +103,17 @@ public:
 	Cell& mut_cell(vec2i pos); // Note: if is_wall is modified, aps must be updated
 	const Cell* cell(vec2i pos) const noexcept;
 	const Cell& cref(vec2i pos) const;
-	const Room* ref_room(vec2fp pos) const noexcept;
-	Room& ref_room(size_t index);
+	
+	const LevelCtrRoom* ref_room(vec2fp pos) const noexcept;
+	LevelCtrRoom& ref_room(size_t index);
+	const std::vector<LevelCtrRoom>& get_rooms() const {return rooms;}
 	
 	vec2fp get_closest(SpawnType type, vec2fp from) const;
 	const std::vector<Spawn>& get_spawns() const {return spps;}
 	PathSearch& get_aps() {return *aps;}
 	
-	vec2i to_cell_coord(vec2fp p) const {return (p / cell_size).int_floor();}
-	vec2fp to_center_coord(vec2i p) const {return vec2fp(p) * cell_size + vec2fp::one(cell_size * 0.5);}
+	vec2i to_cell_coord(vec2fp p) const {return (p / GameConst::cell_size).int_floor();}
+	vec2fp to_center_coord(vec2i p) const {return vec2fp(p) * GameConst::cell_size + vec2fp::one(GameConst::cell_size * 0.5);}
 	bool is_same_coord(vec2fp a, vec2fp b) const {return to_cell_coord(a) == to_cell_coord(b);}
 	
 	/// Converts world coords to cell, rounding to nearest non-wall cell if possible
@@ -119,7 +130,7 @@ public:
 	
 protected:
 	vec2i size;
-	std::vector<Room> rooms;
+	std::vector<LevelCtrRoom> rooms;
 	std::vector<Cell> cells;
 	std::vector<Spawn> spps;
 	std::unique_ptr<PathSearch> aps;

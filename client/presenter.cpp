@@ -109,7 +109,7 @@ public:
 		core = pars.core;
 		
 		RenderControl::get().exec_task([&]{
-			RenAAL::get().inst_begin( pars.lvl->cell_size );
+			RenAAL::get().inst_begin( GameConst::cell_size );
 		});
 		
 		for (auto& l : pars.lvl->ls_grid) RenAAL::get().inst_add({l.first, l.second}, false, 0.07f, 1.5f);
@@ -164,8 +164,13 @@ public:
 				}
 				else {
 					if (!c.fn) c.fs[c.fn++] = { prev_frame, c.pos };
-					if (c.fn == interp_dep) --c.fn;
-					c.fs[c.fn++] = { frame_time, tr };
+					if (c.fs[c.fn-1].first >= frame_time) {
+						c.fs[c.fn-1].second = tr;
+					}
+					else {
+						if (c.fn >= interp_dep) c.fn = interp_dep - 1;
+						c.fs[c.fn++] = { frame_time, tr };
+					}
 				}
 			}
 			else {
@@ -252,6 +257,7 @@ public:
 				{
 					float t = (now - c.fs[0].first) / (c.fs[1].first - c.fs[0].first);
 					if (t < 0 || t > 1) {
+						c.pos = c.fs[0].second;
 						--c.fn;
 						for (int i=0; i<c.fn; ++i) c.fs[i] = c.fs[i+1];
 						continue;

@@ -94,10 +94,10 @@ std::optional<vec2fp> AI_Movement::calc_avoidance()
 	const float ray_width = std::max(0.2, ent.ref_pc().get_radius() - 0.1);
 	const float side_ray_width = 1.5;
 	const float min_tar_dist = ent.ref_pc().get_radius() + 0.5;
-	const float max_ray_dist = ent.core.get_lc().cell_size * 2;
+	const float max_ray_dist = GameConst::cell_size * 2;
 	const float side_ray_angle = deg_to_rad(30);
 	const float headon_hack_angle = deg_to_rad(15);
-	const float side_ray_dist = ent.core.get_lc().cell_size * 2;
+	const float side_ray_dist = GameConst::cell_size * 2;
 	
 	auto tar = get_next_point();
 	if (!tar) return {};

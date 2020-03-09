@@ -25,6 +25,10 @@ struct ParticleParams
 	/// Sets acceleration so particle would stop moving at the end of full lifetime. 
 	/// Needs velocity and lt & ft to be already set
 	void decel_to_zero();
+	
+	/// Adds to velocity and acceleration to simulate rise and fall. 
+	/// t_fall is relative height [0-1] at the end
+	void apply_gravity(float height, float t_fall = 0);
 };
 
 

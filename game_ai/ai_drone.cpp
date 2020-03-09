@@ -500,7 +500,7 @@ void AI_Drone::step()
 					if (auto d_st = std::get_if<Idle>(&d->get_state()))
 					{
 						if (auto os = std::get_if<IdlePatrol>(&d_st->ist);
-						    os && os->pts[os->at].equals( npt, ent.core.get_lc().cell_size ))
+						    os && os->pts[os->at].equals( npt, GameConst::cell_size ))
 						{
 							stop = true;
 						}

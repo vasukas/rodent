@@ -3,6 +3,7 @@
 
 #include <variant>
 #include "client/plr_control.hpp"
+#include "game/entity.hpp"
 #include "vaslib/vas_time.hpp"
 
 
@@ -12,13 +13,19 @@ struct ReplayInitData
 {
 	std::string rnd_init;
 	TimeSpan fastforward;
+	bool pmg_superman;
+	bool pmg_dbg_ai_rect;
 };
 
 struct Replay_DebugTeleport
 {
 	vec2fp target;
 };
-using ReplayEvent = std::variant<Replay_DebugTeleport>;
+struct Replay_UseTransitTeleport
+{
+	EntityIndex teleport;
+};
+using ReplayEvent = std::variant<Replay_DebugTeleport, Replay_UseTransitTeleport>;
 
 
 

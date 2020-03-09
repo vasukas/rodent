@@ -18,6 +18,7 @@
 #include "vaslib/vas_log.hpp"
 
 #include "game/damage.hpp"
+#include "game/game_info_list.hpp"
 #include "game/physics.hpp"
 #include "game_ai/ai_drone.hpp"
 #include "game_objects/objs_basic.hpp"
@@ -218,6 +219,12 @@ public:
 						upd_cheats |= vig_checkbox(core.get_pmg().cheat_godmode, "God mode");
 						upd_cheats |= vig_checkbox(core.get_pmg().is_superman, "Superman (requires respawn)");
 						if (upd_cheats) core.get_pmg().update_cheats();
+						
+						vig_lo_next();
+						if (vig_button("Get all keys")) {
+							for (int i=0; i<3; ++i)
+								core.get_pmg().inc_objective();
+						}
 					}
 					else vig_label("Cheats disabled");
 					vig_lo_next();
@@ -434,7 +441,7 @@ public:
 			GamePresenter::get()->render( frame_time, passed );
 			
 			if (ph_debug_draw)
-				core.get_phy().world.DrawDebugData();
+				core.get_phy().world.DebugDraw();
 			
 			// draw pause stub
 			
@@ -457,21 +464,15 @@ public:
 			
 			bool use_crosshair = is_playback
 			                     || (pc_ctr->get_gpad() && pc_ctr->get_gpad()->get_gpad_state() == Gamepad::STATE_OK);
+			vec2i g_mpos;
+			if (use_crosshair) {
+				g_mpos = RenderControl::get().get_world_camera().direct_cast( pc_ctr->get_state().tar_pos );
+			}
+			else SDL_GetMouseState(&g_mpos.x, &g_mpos.y);
 			
-			if (vig_current_menu() == VigMenu::Default)
+			if (vig_current_menu() == VigMenu::Default && !core.get_info().get_menu_teleport())
 			{
-				vec2i mpos;
-				if (use_crosshair) {
-					mpos = RenderControl::get().get_world_camera().direct_cast( pc_ctr->get_state().tar_pos );
-				}
-				else SDL_GetMouseState(&mpos.x, &mpos.y);
-				core.get_pmg().render(passed, mpos);
-				
-				if (lmap) {
-					std::optional<vec2fp> plr_p;
-					if (auto ent = core.get_pmg().get_ent()) plr_p = ent->get_pos();
-					lmap->draw(passed, plr_p, pc_ctr->get_state().is[PlayerController::A_SHOW_MAP]);
-				}
+				core.get_pmg().render(passed, g_mpos);
 				
 				if (use_crosshair) // draw
 				{
@@ -483,6 +484,51 @@ public:
 					RenImm::get().draw_image(Rectfp::from_center(p, vec2fp::one(z/2)), crosshair_tex.get(), clr);
 				}
 			}
+			
+			// teleport menu
+			
+			if (auto i_cur = core.get_info().get_menu_teleport())
+			{
+				pc_ctr->set_menu_mode(PlayerController::MMOD_MENU);
+				auto exit = [&]{
+					pc_ctr->set_menu_mode(PlayerController::MMOD_DEFAULT);
+					core.get_info().set_menu_teleport({});
+				};
+				
+				if (core.get_pmg().get_ent())
+				{
+					const auto& list = core.get_info().get_teleport_list();
+					auto sel = lmap->draw_transit(g_mpos, &list[*i_cur], list);
+					
+					vig_lo_toplevel({ {}, RenderControl::get_size(), true });
+					for (auto& t : list)
+						vig_label_a("{}, status: {}\n", t.room.name, t.discovered ? "Online" : "UNKNOWN");
+					vig_lo_pop();
+					
+					if (pc_ctr->get_state().is[ PlayerController::A_MENU_EXIT ]) {
+						exit();
+					}
+					else if (pc_ctr->get_state().is[ PlayerController::A_MENU_SELECT ])
+					{
+						if (sel) {
+							if (auto rw = gctr.get_replay_writer())
+								rw->add_event(Replay_UseTransitTeleport{ sel->ent.index });
+							
+							sel->ent.teleport_player();
+							exit();
+						}
+					}
+				}
+				else exit();
+			}
+			else
+			{
+				std::optional<vec2fp> plr_p;
+				if (auto ent = core.get_pmg().get_ent()) plr_p = ent->get_pos();
+				lmap->draw(passed, plr_p, pc_ctr->get_state().is[PlayerController::A_SHOW_MAP]);
+			}
+			
+			// debug UI
 			
 			if (ui_dbg_mode)
 			{
@@ -504,7 +550,7 @@ public:
 					const auto p = pc_ctr->get_state().tar_pos;
 					const vec2i gp = core.get_lc().to_cell_coord(p);
 					if (Rect({1,1}, core.get_lc().get_size() - vec2i::one(2), false).contains_le( gp ))
-						plr_ent->ref_phobj().body.SetTransform( conv(p), 0 );
+						plr_ent->ref_phobj().teleport(p);
 					
 					if (auto rw = gctr.get_replay_writer())
 						rw->add_event(Replay_DebugTeleport{ p });
@@ -516,8 +562,19 @@ public:
 					std::string s;
 					s += FMT_FORMAT("EID: {}\n", ent->index.to_int());
 					
+					if (auto h = ent->get_hlc()) {
+						s += FMT_FORMAT("HP: {}/{}\n", h->get_hp().exact().first, h->get_hp().exact().second);
+						h->foreach_filter([&](DamageFilter& f){
+							if (auto p = dynamic_cast<DmgShield*>(&f)) {
+								s += FMT_FORMAT("-- SHL {}/{}\n", p->get_hp().exact().first, p->get_hp().exact().second);
+							}
+							else s += "-- FLT\n";
+						});
+					}
+					
 					if (AI_Drone* d = ent->get_ai_drone()) s += d->get_dbg_state();
-					else s += "NO DEBUG STATS";
+					else s += "NO DEBUG STATS\n";
+					
 					draw_text_hud({X_OFF, RenderControl::get_size().y / 2.f + Y_STR*4}, s);
 					
 					auto& cam = RenderControl::get().get_world_camera();
@@ -574,7 +631,7 @@ public:
 		auto& core = gctr.get_core();
 		
 		vec2fp size = core.get_lc().get_size();
-		size *= core.get_lc().cell_size;
+		size *= GameConst::cell_size;
 		
 		auto& cam = RenderControl::get().get_world_camera();
 		auto orig_frm = cam.get_state();
@@ -595,7 +652,7 @@ public:
 			{
 				auto& c = lc.cref({x,y});
 				if (!c.is_wall) {
-					auto r = Rectfp::from_center(lc.to_center_coord({x,y}), vec2fp::one(lc.cell_size /2));
+					auto r = Rectfp::from_center(lc.to_center_coord({x,y}), vec2fp::one(GameConst::cell_size /2));
 					GamePresenter::get()->dbg_rect(r, 0x00ff0040);
 				}
 			}

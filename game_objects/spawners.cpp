@@ -28,7 +28,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 	
 	auto room_ctr = [&](LevelTerrain::Room& r, bool limited = false)
 	{
-		vec2fp pos = lc.cell_size * r.area.fp_center();
+		vec2fp pos = GameConst::cell_size * r.area.fp_center();
 		auto is_ok = [&](vec2i p){ return !lt_cref(p).is_wall && !lt_cref(p).decor_used; };
 		
 		if (!is_ok(lc.to_cell_coord(pos)))
@@ -248,8 +248,8 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 			new EDecor( core, "Box", {at, {1,1}, true}, r, rnd_stat().range_n() < 0.3 ? MODEL_STORAGE_BOX_OPEN : MODEL_STORAGE_BOX );
 			return true;
 		};
-		auto mk_abox = [&](vec2i at, float rot) {
-			new EDecor( core, "Autobox", {at, {1,1}, true}, rot, MODEL_STORAGE, FColor(0.7, 0.9, 0.7) );
+		auto mk_abox = [&](vec2i at, float) {
+			new EStorageBox(core, lc.to_center_coord(at));
 			return true;
 		};
 		auto mk_mk = [&](const char *name, ModelType model, bool is_ghost) {
@@ -361,7 +361,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 						if (rnd.range_n() < 0.3) continue; // 70% of all walls
 						
 						vec2fp at = lc.to_center_coord(p);
-						vec2fp vp = lc.to_center_coord(p) + vec2fp(d) * (lc.cell_size /2); // at the cell edge
+						vec2fp vp = lc.to_center_coord(p) + vec2fp(d) * (GameConst::cell_size /2); // at the cell edge
 						
 						new AI_SimResource(core, {AI_SimResource::T_ROCK, true,
 						                    AI_SimResource::max_capacity, AI_SimResource::max_capacity},
@@ -375,7 +375,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 				{
 					if (lt_cref(p + d).is_wall) continue;
 					
-					vec2fp at = lc.to_center_coord(p) + vec2fp(d) * lc.cell_size;
+					vec2fp at = lc.to_center_coord(p) + vec2fp(d) * GameConst::cell_size;
 					new AI_SimResource(core, {AI_SimResource::T_ROCK, false, 0, AI_SimResource::max_capacity},
 					                   at, lc.to_center_coord(p));
 				}
@@ -581,11 +581,9 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 		}
 		else if (r.type == LevelTerrain::RM_TRANSIT)
 		{
-			Transform at;
-			at.pos = room_ctr(r, true);
-			at.rot = M_PI/2 * rnd.range_index(4);
-			new EDecorGhost(core, at, MODEL_TELEPAD);
-			lt_cref( lc.to_cell_coord(at.pos) ).decor_used = true;
+			vec2fp at = room_ctr(r, true);
+			new ETeleport(core, at);
+			lt_cref( lc.to_cell_coord(at) ).decor_used = true;
 			
 			r.area.map_inner([&](vec2i p)
 			{
@@ -611,7 +609,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 	
 	TimeSpan time_spawns = TimeSpan::since_start();
 	
-	lc.add_spawn({ LevelControl::SP_PLAYER, lc.cell_size * lt.rooms[0].area.fp_center() });
+	lc.add_spawn({ LevelControl::SP_PLAYER, GameConst::cell_size * lt.rooms[0].area.fp_center() });
 	
 	// spawn keys & terminals
 	
@@ -774,7 +772,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 		std::vector<std::vector<vec2fp>> base_patrol;
 		if (dl_drone > 0)
 		{
-			const float same_point = lc.cell_size * 1.5; // aprrox. diagonal
+			const float same_point = GameConst::cell_size * 1.5; // aprrox. diagonal
 			std::vector<vec2fp> bps;
 			
 			r.area.map_inner([&](vec2i p0)
@@ -837,7 +835,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 		for (size_t i=0; i<num; ++i)
 		{
 			vec2fp at = spawn_ps[i];
-			at = at * lc.cell_size + vec2fp::one(lc.cell_size /2);
+			at = at * GameConst::cell_size + vec2fp::one(GameConst::cell_size /2);
 
 			at.x += core.get_random().range_n2() * 0.5;
 			at.y += core.get_random().range_n2() * 0.5;

@@ -143,6 +143,7 @@ list(APPEND SRC_LIST
 	game/damage
 	game/entity
 	game/game_core
+	game/game_info_list
 	game/level_ctr
 	game/level_gen
 	game/physics

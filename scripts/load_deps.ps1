@@ -36,7 +36,8 @@ else {
 }
 
 $OutDir=Get-Location
-New-Item -ItemType Directory -Force -Path "$OutDir" -Name "external"
+Remove-Item -Recurse -Force "$OutDir/external"
+New-Item -ItemType Directory -Path "$OutDir" -Name "external"
 
 $OutDir="$OutDir/external"
 New-Item -ItemType Directory -Force -Path "$OutDir" -Name "include"

@@ -2,11 +2,12 @@
 #define SERIALIZER_DEFS_HPP
 
 #include "serializer_dsl.hpp"
+#include "vaslib/vas_file.hpp"
 
 #include <bitset>
 #include <variant>
+#include "game/entity.hpp"
 #include "utils/color_manip.hpp"
-#include "vaslib/vas_file.hpp"
 #include "vaslib/vas_math.hpp"
 #include "vaslib/vas_time.hpp"
 
@@ -338,6 +339,11 @@ template<> struct SerialFunc<FColor, SerialTag_None> {
 	using Ser = SerialFunc<FColor, SerialTag_FixedArray<4, float, SerialTag_fp_8_8>>;
 	static void write(const FColor& p, File& f) {Ser::write(p, f);}
 	static void read (      FColor& p, File& f) {Ser::read (p, f);}
+};
+
+template<> struct SerialFunc<EntityIndex, SerialTag_None> {
+	static void write(EntityIndex  p, File& f) {f.w32L(p.to_int());}
+	static void read (EntityIndex& p, File& f) {p.from_int(f.r32L());}
 };
 
 #endif // SERIALIZER_DEFS_HPP

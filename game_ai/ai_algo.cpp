@@ -9,13 +9,13 @@
 
 
 
-void room_flood(GameCore& core, vec2i pos, int max_depth, bool random_dirs, callable_ref<bool(const LevelControl::Room&, int)> f)
+void room_flood(GameCore& core, vec2i pos, int max_depth, bool random_dirs, callable_ref<bool(const LevelCtrRoom&, int)> f)
 {
 	if (!max_depth) return;
 	
 	auto& lc = core.get_lc();
 	auto& rnd = core.get_random();
-	std::vector<LevelControl::Room*> open, next, closed;
+	std::vector<LevelCtrRoom*> open, next, closed;
 	std::vector<size_t> i_tmp;
 	
 	open.reserve(32);
@@ -68,16 +68,16 @@ void room_flood(GameCore& core, vec2i pos, int max_depth, bool random_dirs, call
 		++depth;
 	}
 }
-void room_flood_p(GameCore& core, vec2fp pos, int max_depth, bool random_dirs, callable_ref<bool(const LevelControl::Room&, int)> f)
+void room_flood_p(GameCore& core, vec2fp pos, int max_depth, bool random_dirs, callable_ref<bool(const LevelCtrRoom&, int)> f)
 {
 	auto p = core.get_lc().to_cell_coord(pos);
 	room_flood(core, p, max_depth, random_dirs, std::move(f));
 }
-void room_query(GameCore& core, const LevelControl::Room& rm, callable_ref<bool(AI_Drone&)> f)
+void room_query(GameCore& core, const LevelCtrRoom& rm, callable_ref<bool(AI_Drone&)> f)
 {
 	auto ai_area = core.get_pmg().get_ai_rects().second;
 	
-	Rectfp r = rm.area.to_fp(core.get_lc().cell_size);
+	Rectfp r = rm.fp_area();
 	if (!r.overlaps(ai_area)) return;
 	
 	core.get_phy().query_aabb(r, [&](auto& ent, auto& fix)
@@ -155,7 +155,7 @@ std::vector<std::vector<vec2fp>> calc_search_rings(GameCore& core, vec2fp ctr_po
 					if (!lc.cref(p).is_wall)
 					{
 						if (add_ring)
-							rings.back().emplace_back( vec2fp(p) * lc.cell_size + vec2fp::one(lc.cell_size / 2) );
+							rings.back().emplace_back( vec2fp(p) * GameConst::cell_size + vec2fp::one(GameConst::cell_size / 2) );
 							
 						free_nodes.emplace_back(p);
 					}
@@ -250,18 +250,18 @@ public:
 		origs.resize(origs_size);
 		
 		cells.clear();
-		cells.reserve( std::pow((max_radius / lc.cell_size + 1)*2, 2) );
+		cells.reserve( std::pow((max_radius / GameConst::cell_size + 1)*2, 2) );
 		
 		drones_orig.clear();
 		
 		//
 		
-		const vec2fp ray_origin = origin / lc.cell_size;
+		const vec2fp ray_origin = origin / GameConst::cell_size;
 		const vec2i grid_origin = lc.to_cell_coord(origin);
-		const float ray_maxdist = std::ceil( max_radius / lc.cell_size );
+		const float ray_maxdist = std::ceil( max_radius / GameConst::cell_size );
 		
 		calc_intersection(
-			Rect::from_center_le( grid_origin, vec2i::one(max_radius / lc.cell_size + 2) ),
+			Rect::from_center_le( grid_origin, vec2i::one(max_radius / GameConst::cell_size + 2) ),
 			Rect{{}, lc.get_size(), true} )
 		.map([&](vec2i p){
 			lc.mut_cell(p).tmp = -1;
@@ -528,14 +528,14 @@ public:
 			clr |= 0x30;
 			
 			vec2fp p = lc.to_center_coord(c.pos);
-			GamePresenter::get()->dbg_rect(Rectfp::from_center( p, vec2fp::one(lc.cell_size/2) ), clr);
+			GamePresenter::get()->dbg_rect(Rectfp::from_center( p, vec2fp::one(GameConst::cell_size/2) ), clr);
 //			GamePresenter::get()->dbg_text(p, FMT_FORMAT("{:.1f}", c.dist));
 		}
 		
 		for (auto& d : drones_orig)
 		{
 			if (!d.result.tar)
-				GamePresenter::get()->dbg_rect(Rectfp::from_center( lc.to_center_coord(d.cpos), vec2fp::one(lc.cell_size/2) ), 0x00ff0040);
+				GamePresenter::get()->dbg_rect(Rectfp::from_center( lc.to_center_coord(d.cpos), vec2fp::one(GameConst::cell_size/2) ), 0x00ff0040);
 		}
 	}
 };

@@ -154,6 +154,11 @@ float EC_Physics::get_radius() const
 	}
 	return *b_radius;
 }
+void EC_Physics::teleport(vec2fp to, std::optional<float> rot)
+{
+	body.SetAwake(true);
+	body.SetTransform(conv(to), rot.value_or(body.GetAngle()));
+}
 bool EC_Physics::is_material() const
 {
 	auto f = body.GetFixtureList();

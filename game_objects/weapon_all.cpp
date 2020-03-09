@@ -464,7 +464,7 @@ struct WpnElectro_Pars
 	TimeSpan charge_time = TimeSpan::seconds(2.2);
 	TimeSpan wait_time = TimeSpan::seconds(3); ///< Wait before auto-discharge when fully charged
 	int max_ammo = 10; ///< At max charge
-	float max_damage = 300;
+	float max_damage = 270;
 	TimeSpan max_cd = TimeSpan::seconds(1); ///< Cooldown at max charge
 };
 static const WpnElectro_Pars& get_wpr(WpnElectro::Type type)
@@ -576,14 +576,25 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 		skew *= ray_width / 2;
 		
 		PhysicsWorld::RaycastResult hit;
-		auto proc_hit = [&](vec2fp v, float k_dmg)
+		EntityIndex prev_hits[shoot_through + 1] = {};
+		
+		auto proc_hit = [&](vec2fp v, int step)
 		{
 			PhysicsWorld::RaycastResult r_hits[3];
 			int n_hits = 0;
 			
 			b2Vec2 r_offs[3] = {{0,0}, skew, -skew};
 			auto cf = StdProjectile::make_cf(ent.index);
+			
+			auto f_cf = std::move(cf.check);
+			cf.check = [&](Entity& ent, auto& fix) {
+				if (!f_cf(ent, fix)) return false;
+				for (int i=0; i<step; ++i) if (prev_hits[i] == ent.index) return false;
+				return true;
+			};
+
 			//
+			
 			for (int i=0; i<3; ++i) {
 				if (auto hit = core.get_phy().raycast_nearest(r_from + r_offs[i], r_to + r_offs[i], cf))
 					r_hits[n_hits++] = *hit;
@@ -598,7 +609,12 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 					hit = h;
 			}
 			
+			if (!hit.fix || (hit.fix->typeflags & FixtureInfo::TYPEFLAG_WALL) == 0)
+				prev_hits[step] = hit.ent->index;
+			
 			//
+			
+			float k_dmg = std::pow(2.f, -step);
 			
 			StdProjectile::Params pp;
 			pp.dq.amount = wpr.max_damage * charge_lvl * k_dmg;
@@ -608,9 +624,9 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 			return true;
 		};
 		
-		if (!proc_hit(v, 1)) return {}; // unlikely (impossible)
-		for (int i=0, k = 2; i < shoot_through; ++i, k *= 2)
-			proc_hit(v, 1.f / k);
+		if (!proc_hit(v, 0)) return {}; // unlikely (impossible)
+		for (int i=1; i <= shoot_through; ++i)
+			proc_hit(v, i);
 		
 		//
 		
@@ -628,9 +644,13 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 	
 	if (pars.alt)
 	{
-		bool ok = ElectroCharge::generate(core, p, {ent.get_team(), ent.index}, v);
-		if (ok) return ShootResult{{}, wpr.alt_delay};
-		else if (auto m = equip->msgrep) m->jerr(WeaponMsgReport::ERR_NO_TARGET);
+		if (ElectroCharge::generate(core, p, {ent.get_team(), ent.index}, v)) {
+			return ShootResult{{}, wpr.alt_delay};
+		}
+		else {
+			effect_lightning(p, p + v*2, EffectLightning::First, TimeSpan::seconds(0.3), FColor(0.5, 0.7, 1, 0.8));
+			return ShootResult{0, wpr.alt_delay};
+		}
 	}
 	
 	return {};
@@ -1074,7 +1094,7 @@ void ElectroBall::step()
 		
 		PhysicsWorld::RaycastResult rc = {};
 		rc.poi = conv(get_pos());
-		StdProjectile::explode(core, TEAM_ENVIRON, {}, {}, rc, pp);
+		StdProjectile::explode(core, TEAM_ENVIRON, {}, {0,0}, rc, pp);
 		
 		for (int i=0; i<4; ++i)
 		{

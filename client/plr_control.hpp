@@ -36,6 +36,12 @@ public:
 		MOUSE_WHEELUP
 	};
 	
+	enum MenuMode
+	{
+		MMOD_DEFAULT,
+		MMOD_MENU
+	};
+	
 	struct InputMethod
 	{
 		struct Name {
@@ -71,6 +77,7 @@ public:
 	{
 		BindType type = BT_ONESHOT;
 		std::string name, descr;
+		MenuMode mmod = MMOD_DEFAULT;
 		
 		IM_Key   key, alt;
 		IM_Mouse mou;
@@ -103,6 +110,9 @@ public:
 		A_WPN_4,
 		A_WPN_5,
 		A_WPN_6,
+		
+		A_MENU_SELECT,
+		A_MENU_EXIT,
 		
 		// internal
 		AX_MOV_Y_NEG,
@@ -145,12 +155,18 @@ public:
 	
 	std::string get_hint(Action act);
 	
+	void set_menu_mode(MenuMode m) {cur_mmod = m;}
+	MenuMode get_menu_mode() const {return cur_mmod;}
+	
 private:
 	std::array<Bind, ACTION_TOTAL_COUNT_INTERNAL> binds;
 	std::unique_ptr<Gamepad> gpad;
 	
 	State state;
 	std::mutex mutex;
+	
+	MenuMode cur_mmod = MMOD_DEFAULT;
+	bool bind_used(const Bind& b) {return b.mmod == cur_mmod;}
 };
 
 #endif // PLR_CONTROL_HPP
