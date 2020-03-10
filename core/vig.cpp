@@ -110,6 +110,7 @@ static vec2i ttip_set_pos = {}; ///< Current tooltip element rect
 static vec2i ttip_set_size = {};
 static int64_t ttip_time = 0; ///< Time when tooltip was set
 static std::string ttip_text; ///< Tooltip string; if empty, not displayed
+static bool ttip_forced = false; ///< Is forced to be always drawn
 
 static std::string text_input_ev; ///< Inputed UTF-8 text
 static vigTextbox* textbox_sel; ///< Selected now
@@ -293,7 +294,9 @@ void vig_draw_end() {
 		
 		// draw
 		int64_t passed = get_ms_ticks() - ttip_time - vig_TooltipDelay;
-		if (passed > 0 && passed < vig_TooltipTime) {
+		if ((passed > 0 && passed < vig_TooltipTime) || ttip_forced) {
+			ttip_forced = false;
+			
 			vec2i size = vig_element_size( ttip_text );
 			vec2i pos = mouse_pos + vec2i(10, 10);
 			
@@ -431,16 +434,17 @@ void vig_message(std::string str, int len) {
 	msg_time = get_ms_ticks();
 	msg_length = (len == vig_Message_Default)? vig_MessageTime : len;
 }
-void vig_tooltip(std::string_view text) {
-	vig_tooltip(text, ttip_last_pos, ttip_last_size);
+void vig_tooltip(std::string_view text, bool forced) {
+	vig_tooltip(text, ttip_last_pos, ttip_last_size, forced);
 }
-void vig_tooltip(std::string_view text, vec2i pos, vec2i size) {
-	if (text.empty()) return;
+void vig_tooltip(std::string_view text, vec2i pos, vec2i size, bool forced) {
+	if (text.empty() || (ttip_forced && !forced)) return;
 	Rect r{pos, size, true};
-	if (!r.contains( mouse_pos )) return;
+	if (!r.contains( mouse_pos ) && !forced) return;
 	ttip_set_pos = pos;
 	ttip_set_size = size;
 	ttip_text = text;
+	ttip_forced = forced;
 }
 
 

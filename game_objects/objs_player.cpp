@@ -1,4 +1,4 @@
-#include "client/plr_control.hpp"
+#include "client/plr_input.hpp"
 #include "client/presenter.hpp"
 #include "game/game_core.hpp"
 #include "vaslib/vas_log.hpp"
@@ -259,14 +259,15 @@ void EC_PlayerLogic::on_dmg(const DamageQuant&)
 {
 	pmov.battle_trigger();
 }
-void EC_PlayerLogic::m_step(PlayerController& ctr)
+void EC_PlayerLogic::m_step()
 {
+	auto& pinp = PlayerInput::get();
+	auto& cst = pinp.get_state(PlayerInput::CTX_GAME);
 	auto& eqp = ent.ref_eqp();
-	auto& cst = ctr.get_state();
 	
 	// shield
 	
-	ctr.set_switch(PlayerController::A_SHIELD_SW, shlc.step(cst.is[PlayerController::A_SHIELD_SW]));
+	pinp.set_switch(PlayerInput::CTX_GAME, PlayerInput::A_SHIELD_SW, shlc.step(cst.is[PlayerInput::A_SHIELD_SW]));
 	
 	float sh_rest = std::min( shld_restore_left, shld_restore_rate * GameCore::time_mul );
 	pers_shld->get_hp().apply( sh_rest );
@@ -274,11 +275,11 @@ void EC_PlayerLogic::m_step(PlayerController& ctr)
 	
 	// actions
 	
-	bool accel = cst.is[PlayerController::A_ACCEL];
+	bool accel = cst.is[PlayerInput::A_ACCEL];
 	
 	for (auto& a : cst.acts)
 	{
-		if		(a == PlayerController::A_WPN_PREV)
+		if		(a == PlayerInput::A_WPN_PREV)
 		{
 			auto& wpns = eqp.raw_wpns();
 			auto i = eqp.wpn_index(), j = i - 1;
@@ -289,7 +290,7 @@ void EC_PlayerLogic::m_step(PlayerController& ctr)
 			}
 			if (i == j) eqp.set_wpn(i, true);
 		}
-		else if (a == PlayerController::A_WPN_NEXT)
+		else if (a == PlayerInput::A_WPN_NEXT)
 		{
 			auto& wpns = eqp.raw_wpns();
 			auto i = eqp.wpn_index(), j = i + 1;
@@ -300,12 +301,12 @@ void EC_PlayerLogic::m_step(PlayerController& ctr)
 			}
 			if (i == j) eqp.set_wpn(i, true);
 		}
-		else if (a == PlayerController::A_WPN_1) eqp.set_wpn(0);
-		else if (a == PlayerController::A_WPN_2) eqp.set_wpn(1);
-		else if (a == PlayerController::A_WPN_3) eqp.set_wpn(2);
-		else if (a == PlayerController::A_WPN_4) eqp.set_wpn(3);
-		else if (a == PlayerController::A_WPN_5) eqp.set_wpn(4);
-		else if (a == PlayerController::A_WPN_6) eqp.set_wpn(5);
+		else if (a == PlayerInput::A_WPN_1) eqp.set_wpn(0);
+		else if (a == PlayerInput::A_WPN_2) eqp.set_wpn(1);
+		else if (a == PlayerInput::A_WPN_3) eqp.set_wpn(2);
+		else if (a == PlayerInput::A_WPN_4) eqp.set_wpn(3);
+		else if (a == PlayerInput::A_WPN_5) eqp.set_wpn(4);
+		else if (a == PlayerInput::A_WPN_6) eqp.set_wpn(5);
 	}
 	
 	// move & shoot
@@ -319,9 +320,9 @@ void EC_PlayerLogic::m_step(PlayerController& ctr)
 	
 	pmov.upd_vel(ent, cst.mov, accel, prev_tar);
 	
-	eqp.shoot(tar, cst.is[PlayerController::A_SHOOT], cst.is[PlayerController::A_SHOOT_ALT] );
+	eqp.shoot(tar, cst.is[PlayerInput::A_SHOOT], cst.is[PlayerInput::A_SHOOT_ALT] );
 	
-	if (cst.is[PlayerController::A_SHOOT] || cst.is[PlayerController::A_SHOOT_ALT])
+	if (cst.is[PlayerInput::A_SHOOT] || cst.is[PlayerInput::A_SHOOT_ALT])
 		pmov.battle_trigger();
 	
 	// set rotation
@@ -338,7 +339,7 @@ void EC_PlayerLogic::m_step(PlayerController& ctr)
 	
 	auto& laser = ent.ref<EC_LaserDesigRay>();
 	tar -= spos;
-	laser.enabled = cst.is[PlayerController::A_LASER_DESIG] && tar.len_squ() > 0.1;
+	laser.enabled = cst.is[PlayerInput::A_LASER_DESIG] && tar.len_squ() > 0.1;
 	if (laser.enabled)
 		laser.find_target( tar.norm() );
 }

@@ -5,7 +5,7 @@
 #include "game/weapon.hpp"
 #include "utils/time_utils.hpp"
 
-class PlayerController;
+class PlayerInput;
 class PlayerEntity;
 
 
@@ -117,7 +117,7 @@ private:
 	void on_dmg(const DamageQuant& dq);
 	
 	friend class PlayerManager_Impl;
-	void m_step(PlayerController& ctr);
+	void m_step();
 };
 
 

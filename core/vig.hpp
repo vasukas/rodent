@@ -44,7 +44,7 @@ inline uint32_t vig_Colors[vig_Color_Count] =
     
     0xe0e0e0ff, // Frame
     0xffffffff, // Text
-    0x682020ff, // IncorrectInput
+    0xc02020ff, // IncorrectInput
     0x000000e0, // TooltipBackgr
     
     0xa00000e0  // MsgBackgr
@@ -197,10 +197,10 @@ void vig_infobox(std::string message, bool is_error = true);
 
 
 /// Sets tooltip for last added element
-void vig_tooltip(std::string_view text);
+void vig_tooltip(std::string_view text, bool forced = false);
 
 /// Sets tooltip for area (internal)
-void vig_tooltip(std::string_view text, vec2i pos, vec2i size);
+void vig_tooltip(std::string_view text, vec2i pos, vec2i size, bool forced = false);
 
 
 

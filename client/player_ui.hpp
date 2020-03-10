@@ -4,9 +4,7 @@
 #include "vaslib/vas_math.hpp"
 #include "vaslib/vas_time.hpp"
 
-class  PlayerController;
 class  PlayerManager;
-
 class  EInteractive;
 struct WeaponMsgReport;
 
@@ -25,10 +23,7 @@ protected:
 		TimeSpan resp_left;
 		std::string objective;
 		std::string lookat;
-		vec2fp tar_pos;
-		
 		EInteractive* einter = {};
-		PlayerController* ctr; ///< Never null
 	};
 	
 	/// May not be called each cycle

@@ -7,7 +7,7 @@
 #include "utils/noise.hpp"
 
 struct LevelTerrain;
-class  PlayerController;
+class  PlayerInput;
 class  ReplayReader;
 class  ReplayWriter;
 
@@ -20,14 +20,11 @@ public:
 	{
 		RandomGen rndg;
 		void (*spawner)(GameCore&, LevelTerrain& lt);
-		
 		std::shared_ptr<LevelTerrain> lt;
 		
 		TimeSpan fastforward_time = TimeSpan::seconds(10); // total
 		TimeSpan fastforward_fullworld = TimeSpan::seconds(5); // how long full world is simulated
-		
 		bool init_presenter = true;
-		std::shared_ptr<PlayerController> pc_ctr;
 		
 		// Note: init data must be already written/read
 		std::unique_ptr<ReplayReader> replay_rd;

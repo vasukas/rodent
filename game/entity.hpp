@@ -89,7 +89,7 @@ struct EntityIndex
 	bool operator !=(const EntityIndex& ei) const {return i != ei.i;}
 	operator bool() const {return i != std::numeric_limits<uint32_t>::max();}
 	
-	static EntityIndex from_int(uint32_t i) {EntityIndex ei; ei.i = i; return ei;}
+	[[nodiscard]] static EntityIndex from_int(uint32_t i) {EntityIndex ei; ei.i = i; return ei;}
 	uint32_t to_int() const {return i;}
 	
 private:

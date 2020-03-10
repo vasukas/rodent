@@ -46,7 +46,6 @@ public:
 	// game
 	std::unique_ptr<GamePresenter> pres;
 	std::unique_ptr<GameCore> core;
-	std::shared_ptr<PlayerController> pc_ctr;
 	
 	// playback
 	std::unique_ptr<ReplayReader> replay_rd;
@@ -61,7 +60,6 @@ public:
 		
 		replay_rd = std::move(pars->replay_rd);
 		replay_wr = std::move(pars->replay_wr);
-		pc_ctr = std::move(pars->pc_ctr);
 		
 		init(std::move(pars));
 		VLOGI("Game initialized");
@@ -85,7 +83,6 @@ public:
 		
 		core->spawn_drop = true;
 		core->get_random() = std::move(pars.rndg);
-		core->get_pmg().set_ctr(pc_ctr);
 		
 		if (pars.init_presenter)
 			pres.reset(GamePresenter::init({ core.get(), pars.lt.get() }));
@@ -125,18 +122,19 @@ public:
 			auto t0 = TimeSpan::since_start();
 			std::optional<float> sleep_time_k;
 			
+			auto& pc_ctr = PlayerInput::get();
 			if (pause_on) {
-				auto ctr_lock = pc_ctr->lock();
-				pc_ctr->update();
+				auto ctr_lock = pc_ctr.lock();
+				pc_ctr.update(PlayerInput::CTX_GAME);
 			}
 			else
 			{
 				std::unique_lock lock(ren_lock);
-				auto ctr_lock = pc_ctr->lock();
+				auto ctr_lock = pc_ctr.lock();
 				
-				if (!replay_rd) pc_ctr->update();
+				if (!replay_rd) pc_ctr.update(PlayerInput::CTX_GAME);
 				else {
-					auto ret = replay_rd->update_server(*pc_ctr);
+					auto ret = replay_rd->update_server(pc_ctr);
 					if (auto r = std::get_if<ReplayReader::RET_OK>(&ret))
 					{
 						sleep_time_k = r->pb_speed;
@@ -159,7 +157,7 @@ public:
 					}
 				}
 				if (replay_wr)
-					replay_wr->update_client(*pc_ctr);
+					replay_wr->update_client(pc_ctr);
 
 				if (!sleep_time_k && speed_k) sleep_time_k = *speed_k;
 				if (pres) pres->playback_hack = !!sleep_time_k;

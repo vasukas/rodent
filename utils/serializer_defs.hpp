@@ -266,6 +266,22 @@ struct SerialFunc<T, SerialTag_Int<N>> {
 
 
 
+template<auto& S>
+struct SerialTag_Signature {};
+
+template<auto& S>
+struct SerialFunc<SerialType_Void, SerialTag_Signature<S>> {
+	static constexpr size_t N = []{size_t i=0; while (S[i]) ++i; return i;}();
+	static void write(SerialType_Void, File& f) {f.write(S, N);}
+	static void read(SerialType_Void&, File& f) {
+		char r[N];
+		f.read(r, N);
+		for (size_t i=0; i<N; ++i) if (r[i] != S[i]) throw std::runtime_error("Invalid signature");
+	}
+};
+
+
+
 struct SerialTag_8rad {}; ///< [0; 2*pi] mapped to 8 bits
 struct SerialTag_fp_8_8 {}; ///< Fixed-point 8.8
 struct SerialTag_fp_16_8 {}; ///< Fixed-point 16.8
@@ -343,7 +359,7 @@ template<> struct SerialFunc<FColor, SerialTag_None> {
 
 template<> struct SerialFunc<EntityIndex, SerialTag_None> {
 	static void write(EntityIndex  p, File& f) {f.w32L(p.to_int());}
-	static void read (EntityIndex& p, File& f) {p.from_int(f.r32L());}
+	static void read (EntityIndex& p, File& f) {p = EntityIndex::from_int(f.r32L());}
 };
 
 #endif // SERIALIZER_DEFS_HPP

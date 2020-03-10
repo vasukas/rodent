@@ -125,10 +125,9 @@ list(APPEND SRC_LIST
 
 	client/ec_render
 	client/effects
-	client/gamepad
 	client/level_map
 	client/player_ui
-	client/plr_control
+	client/plr_input
 	client/presenter
 	client/replay
 	client/resbase
@@ -178,10 +177,10 @@ list(APPEND SRC_LIST
 	render/shader
 	render/texture
 
-	utils/block_cfg
 	utils/color_manip
 	utils/ev_signal.hpp
 	utils/image_utils
+	utils/line_cfg
 	utils/noise
 	utils/path_search
 	utils/res_image

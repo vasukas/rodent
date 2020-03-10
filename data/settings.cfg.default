@@ -1,31 +1,23 @@
 # window size
 wnd_size 1024 600
 
-# start maximized
-wnd_size_max 1
+# start maximized (not fullscreen)
+wnd_size_max true
 
-# fullscreen mode:
-#   0 windowed
-#   1 fullscreen
-#  -1 fullscreen window
-fscreen 0
+# fullscreen: off, on, desktop
+fscreen off
 
 # frames per second
 target_fps 60
 
-# vertical synchronization
-#  -1 don't set
-#   0 disable
-#   1 enable
-set_vsync 1
+# vertical synchronization: dont_set, force_off, on
+set_vsync on
 
 # primary font - filename and size
-font_fn  Inconsolata-Bold.ttf
-font_pt  16
+font Inconsolata-Bold.ttf 16
 
 # font for debug info etc
-font_dbg_fn  Inconsolata.otf
-font_dbg_pt  16
+font_dbg Inconsolata.otf 16
 
 # font atlas upscale
 font_supersample 2
@@ -40,6 +32,6 @@ interp_depth 3
 # sum of: 1 weapon status, 2 shield status, 4 more status
 cursor_info_flags 1
 
-# animate player UI (on/off)
-plr_status_blink 1
+# animate player UI
+plr_status_blink true
 

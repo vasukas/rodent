@@ -1,4 +1,4 @@
-#include "client/plr_control.hpp"
+#include "client/plr_input.hpp"
 #include "core/settings.hpp"
 #include "core/vig.hpp"
 #include "game/level_ctr.hpp"
@@ -503,6 +503,8 @@ public:
 		
 		if (plr_ent)
 		{
+			auto& pinp = PlayerInput::get();
+			
 			std::string stat_str;
 			stat_str += FMT_FORMAT("Looking at: {}\n", dstate.lookat);
 			
@@ -510,7 +512,7 @@ public:
 			auto room = lc.ref_room(plr_ent->get_pos());
 			stat_str += FMT_FORMAT("Room: {}\n", room? room->name : "Corridor");
 			
-			if (auto c = lc.cell( lc.to_cell_coord( dstate.tar_pos ) ))
+			if (auto c = lc.cell( lc.to_cell_coord( pinp.get_state(PlayerInput::CTX_GAME).tar_pos ) ))
 				stat_str += FMT_FORMAT("{} {}x{}\n", c->is_wall ? "Wall" : "Cell", c->pos.x, c->pos.y);
 			
 			stat_str += FMT_FORMAT("Objective: {}", dstate.objective);
@@ -523,7 +525,7 @@ public:
 				auto usage = e->use_string();
 				
 				std::string str;
-				if (usage.first) str = FMT_FORMAT("[{}] ", dstate.ctr->get_hint( PlayerController::A_INTERACT ));
+				if (usage.first) str = FMT_FORMAT("[{}] ", pinp.get_hint( PlayerInput::A_INTERACT ));
 				str += usage.second;
 				
 				RenImm::get().draw_text(

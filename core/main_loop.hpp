@@ -14,12 +14,12 @@ public:
 	{
 		INIT_DEFAULT,
 		INIT_GAME,
-		INIT_SETTINGS,
+		INIT_KEYBIND,
 		INIT_HELP
 	};
 	
 	static void create(InitWhich which); ///< Makes it current
-	virtual void init() = 0; ///< Must be called after create
+	virtual void init() {} ///< Must be called after create
 	virtual bool parse_arg(ArgvParse& arg);
 	
 	virtual void on_current() {} ///< Called when set current (but not after create())

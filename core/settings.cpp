@@ -1,6 +1,6 @@
 #include <SDL2/SDL_filesystem.h>
 #include "core/hard_paths.hpp"
-#include "utils/block_cfg.hpp"
+#include "utils/line_cfg.hpp"
 #include "vaslib/vas_log.hpp"
 #include "settings.hpp"
 
@@ -57,57 +57,47 @@ AppSettings::AppSettings()
 
 bool AppSettings::load()
 {
-	VLOGI( "AppSettings::load() from \"{}\"", path_settings );
-	std::vector <BC_Cmd> cs;
-	
-	int i, i2;
-	std::string s;
-	BC_Cmd* c;
-	float f;
+	VLOGI("AppSettings::load() from \"{}\"", path_settings);
+	std::vector<LineCfgOption> cs;
 	
 #define P_INT(NAME, CHECK)\
-	c = &cs.emplace_back( true, true, #NAME, [&](){ NAME = i; return CHECK; }); \
-	c->val(i)
+	cs.emplace_back(#NAME, true, [&]{int i = NAME; return CHECK;}).vint(NAME)
 	
 #define P_FLOAT(NAME, CHECK)\
-	c = &cs.emplace_back( true, true, #NAME, [&](){ NAME = f; return CHECK; }); \
-	c->val(f)
+	cs.emplace_back(#NAME, true, [&]{float i = NAME; return CHECK;}).vfloat(NAME)
 	
 #define P_BOOL(NAME)\
-	c = &cs.emplace_back( true, true, #NAME, [&](){ NAME = i; return i == 0 || i == 1; }); \
-	c->val(i)
+	cs.emplace_back(#NAME).vbool(NAME)
 	
-#define P_TERN(NAME)\
-	c = &cs.emplace_back( true, true, #NAME, [&](){ NAME = i; return i > -2 && i < 2; }); \
-	c->val(i)
+#define P_ENUM(NAME, ...)\
+	cs.emplace_back(#NAME).venum(NAME, LineCfgEnumType::make<int>({ __VA_ARGS__ }))
 	
 	//
 	
-	c = &cs.emplace_back( true, true, "wnd_size", [&](){ wnd_size = {i, i2}; return i > 0 && i2 > 0; });
-	c->val(i);
-	c->val(i2);
+	cs.emplace_back("wnd_size", true, [&]{return wnd_size.x > 0 && wnd_size.y > 0;})
+	.vint(wnd_size.x)
+	.vint(wnd_size.y);
 	
 	P_BOOL(wnd_size_max);
-	P_TERN(fscreen);
+	P_ENUM(fscreen, {0, "off"}, {1, "on"}, {-1, "desktop"});
 	
 	P_INT(target_fps, i > 0 && i <= 1000);
-	P_TERN(set_vsync);
+	P_ENUM(set_vsync, {-1, "dont_set"}, {0, "force_off"}, {1, "on"});
 	
 #define FONT(NM) \
-	c = &cs.emplace_back( true, true, "font_" #NM "fn", [&](){ font_##NM##path = s; font_##NM##path.insert(0, HARDPATH_DATA_PREFIX); return true; }); \
-	c->val(s); \
-	c = &cs.emplace_back( true, true, "font_" #NM "pt", [&](){ font_##NM##pt = i; return true; }); \
-	c->val(i) \
+	cs.emplace_back("font" #NM, true, [&]{font##NM##_path.insert(0, HARDPATH_DATA_PREFIX); return font##NM##_pt > 0;})\
+	.vstr(font##NM##_path)\
+	.vfloat(font##NM##_pt)
 	
 	FONT();
-	FONT(dbg_);
+	FONT(_dbg);
 	P_INT(font_supersample, i >= 1);
 	
-	P_FLOAT(cam_pp_shake_str, true);
-	P_INT(interp_depth, interp_depth == 0 || interp_depth == 2 || interp_depth == 3);
+	P_FLOAT(cam_pp_shake_str, i >= 0);
+	P_INT(interp_depth, i == 0 || i == 2 || i == 3);
 	
 	P_INT(cursor_info_flags, i >= 0 && i <= 1);
 	P_BOOL(plr_status_blink);
 	
-	return bc_parsefile( path_settings.c_str(), std::move(cs), 2, BC_Block::F_IGNORE_UNKNOWN );
+	return LineCfg(std::move(cs)).read(path_settings.c_str());
 }

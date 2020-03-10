@@ -9,16 +9,28 @@
 #include "vaslib/vas_log.hpp"
 #include "replay.hpp"
 
-constexpr std::string_view stream_header = "ratdemo";
-const uint32_t stream_version = 5;
+constexpr const char* stream_header = "ratdemo";
+const uint32_t stream_version = 6;
+
+struct Header {
+	SerialType_Void signature_hack;
+	uint32_t version;
+	std::string platform;
+};
+struct Frame {
+	PlayerInput::ContextMode ctx;
+	PlayerInput::State st;
+	std::vector<ReplayEvent> evs;
+};
 
 
 
-SERIALFUNC_PLACEMENT_1(PlayerController::State,
+SERIALFUNC_PLACEMENT_1(PlayerInput::State,
 	SER_FD(is),
-	SER_FDT(acts, Array32<SerialTag_Enum< PlayerController::ACTION_TOTAL_COUNT_INTERNAL >>),
+	SER_FDT(acts, Array32<SerialTag_Enum< PlayerInput::ACTION_TOTAL_COUNT_INTERNAL >>),
 	SER_FD(mov),
-	SER_FD(tar_pos));
+	SER_FD(tar_pos),
+	SER_FD(cursor));
 
 SERIALFUNC_PLACEMENT_1(ReplayInitData,
 	SER_FDT(rnd_init, Array32),
@@ -32,86 +44,49 @@ SERIALFUNC_PLACEMENT_1(Replay_DebugTeleport,
 SERIALFUNC_PLACEMENT_1(Replay_UseTransitTeleport,
 	SER_FD(teleport));
 
-static void write_header(File& f)
+SERIALFUNC_PLACEMENT_1(Header,
+	SER_FDT(signature_hack, Signature<stream_header>),
+	SER_FD(version),
+	SER_FD(platform));
+
+SERIALFUNC_PLACEMENT_1(Frame,
+	SER_FDT(ctx, Enum< PlayerInput::CTX_TOTAL_COUNT_INTERNAL >),
+	SER_FD(st),
+	SER_FDT(evs, Array32));
+
+
+
+static void write_header(File& f, const ReplayInitData& init)
 {
-	f.write(stream_header.data(), stream_header.size());
-	f.w32L(stream_version);
-	
-	auto ps = get_full_platform_version();
-	f.w8( ps.size() );
-	f.write( ps.data(), ps.size() + 1 );
+	Header h;
+	h.version = stream_version;
+	h.platform = get_full_platform_version();
+	SERIALFUNC_WRITE(h, f);
+	SERIALFUNC_WRITE(init, f);
 }
-static void check_header(File& f)
+static void read_header(File& f, ReplayInitData& init)
 {
-	for (auto& c : stream_header)
-	{
-		char r;
-		f.read(&r, 1);
-		if (c != r)
-			throw std::runtime_error("Invalid file header");
-	}
+	Header h;
+	SERIALFUNC_READ(h, f);
 	
-	auto vers = f.r32L();
-	if		(vers < stream_version) throw std::runtime_error("Unsupported file version (old)");
-	else if (vers > stream_version) throw std::runtime_error("Unsupported file version (new)");
+	if (h.version != stream_version)
+	    throw std::runtime_error("ReplayReader:: unsupported file version");
 	
-	std::string ps;
-	ps.resize( f.r8() );
-	f.read( ps.data(), ps.size() + 1 );
-	if (ps != get_full_platform_version())
-		VLOGW("ReplayReader:: incompatible platform - {}", ps);
+	if (h.platform != get_full_platform_version())
+		VLOGW("ReplayReader:: incompatible platform - {}", h.platform);
+	
+	SERIALFUNC_READ(init, f);
 }
 static std::unique_ptr<File> net_init(const char *addr, const char *port, bool is_server)
 {
-	VLOGD("Replay:: net_init - {}, [{}]:{}", is_server?"server":"client", addr, port);
-	if (is_server)
-	{
+	VLOGD("Replay:: net_init - {}, [{}]:{}", is_server ? "server" : "client", addr, port);
+	if (is_server) {
 		std::unique_ptr<TCP_Server> serv(TCP_Server::create(addr, port));
 		if (auto f = serv->accept()) return f;
 		throw std::runtime_error("Network failed");
 	}
-	else
-	{
+	else {
 		return std::unique_ptr<TCP_Socket>(TCP_Socket::connect(addr, port));
-	}
-}
-
-
-
-struct Frame {
-	PlayerController::State st;
-	std::vector<ReplayEvent> evs;
-	bool st_set = false; ///< Only for ReplayThread on writing
-};
-static void write(const PlayerController::State& st, File& f)
-{
-	f.w8(0);
-	SerialFunc<PlayerController::State>::write(st, f);
-}
-static void write(const ReplayEvent& ev, File& f)
-{
-	f.w8(1);
-	SerialFunc<ReplayEvent>::write(ev, f);
-}
-static bool read(Frame& frm, File& f)
-{
-	try {
-		while (true)
-		{
-			int i = f.r8();
-			if (i == 1) {
-				auto& ev = frm.evs.emplace_back();
-				SERIALFUNC_READ(ev, f);
-			}
-			else {
-				SERIALFUNC_READ(frm.st, f);
-				return true;
-			}
-		}
-	}
-	catch (std::exception& e) {
-		VLOGE("DemoRecordReader:: read failed - {}", e.what());
-		return false;
 	}
 }
 
@@ -128,7 +103,7 @@ struct ReplayThread
 			{
 				std::unique_lock lock(t.mut);
 				t.sig.wait(lock, [&]{
-					return (!t.q.empty() && t.q.front().st_set) || t.close;
+					return !t.q.empty() || t.close;
 				});
 				if (t.close) break;
 				
@@ -137,8 +112,7 @@ struct ReplayThread
 				lock.unlock();
 				
 				try {
-					for (auto& e : q.evs) ::write(e, *f);
-					::write(q.st, *f);
+					SERIALFUNC_WRITE(q, *f);
 				}
 				catch (std::exception& e) {
 					VLOGE("ReplayThread:: exception - {}", e.what());
@@ -157,11 +131,7 @@ struct ReplayThread
 			{
 				Frame frm;
 				try {
-					if (!::read(frm, *f)) {
-						VLOGE("ReplayThread:: ended");
-						t.error = true;
-						break;
-					}
+					SERIALFUNC_READ(frm, *f);
 				}
 				catch (std::exception& e) {
 					VLOGE("ReplayThread:: exception - {}", e.what());
@@ -188,32 +158,17 @@ struct ReplayThread
 		if (thr.joinable()) thr.join();
 	}
 	
-	void write(ReplayEvent ev)
+	void write(Frame frm)
 	{
 		if (error) throw std::runtime_error("ReplayThread:: failed");
 		std::unique_lock lock(mut);
-		
-		if (q.empty() || q.back().st_set) q.emplace();
-		q.back().evs.emplace_back(std::move(ev));
-		
-		sig.notify_one();
-	}
-	void write(PlayerController::State st)
-	{
-		if (error) throw std::runtime_error("ReplayThread:: failed");
-		std::unique_lock lock(mut);
-		
-		if (q.empty() || q.back().st_set) q.emplace();
-		q.back().st = std::move(st);
-		q.back().st_set = true;
-		
+		q.emplace(std::move(frm));
 		sig.notify_one();
 	}
 	std::queue<Frame> read()
 	{
 		if (error) throw std::runtime_error("ReplayThread:: failed");
 		std::unique_lock lock(mut);
-		
 		return std::move(q);
 	}
 	
@@ -247,7 +202,7 @@ public:
 	Replay_NetReader(std::unique_ptr<File> f)
 	    : f(std::move(f)), thr(ReplayThread::mk_net_read(this->f.get()))
 	{}
-	Ret update_server(PlayerController& pc) override
+	Ret update_server(PlayerInput& pc) override
 	{
 		auto nq = thr.read();
 		while (!nq.empty()) {
@@ -263,8 +218,9 @@ public:
 			delay_check = false;
 		}
 		
-		auto evs = std::move(frms.front().evs);
-		pc.force_state( frms.front().st );
+		auto& frm = frms.front();
+		auto evs = std::move(frm.evs);
+		pc.force_state(frm.ctx, std::move(frm.st));
 		frms.pop();
 		
 		if		(frms.size() > fn_skip_thr) return RET_OK{ 0.f, std::move(evs) };
@@ -277,9 +233,7 @@ public:
 ReplayReader* ReplayReader::read_net(ReplayInitData& dat, const char *addr, const char *port, bool is_server)
 {
 	auto f = net_init(addr, port, is_server);
-	check_header(*f);
-	
-	SERIALFUNC_READ(dat, *f);
+	read_header(*f, dat);
 	return new Replay_NetReader(std::move(f));
 }
 
@@ -290,19 +244,25 @@ class Replay_NetWriter : public ReplayWriter
 public:
 	std::unique_ptr<File> f;
 	ReplayThread thr;
+	Frame frm;
 	
 	Replay_NetWriter(std::unique_ptr<File> f)
 	    : f(std::move(f)), thr(ReplayThread::mk_write(this->f.get()))
 	{}
-	void add_event(ReplayEvent ev) override {thr.write(std::move(ev));}
-	void update_client(PlayerController& pc) override {thr.write(pc.get_state());}
+	void add_event(ReplayEvent ev) override {
+		frm.evs.emplace_back(std::move(ev));
+	}
+	void update_client(PlayerInput& pc) override {
+		frm.ctx = pc.get_context();
+		frm.st = pc.get_state(frm.ctx);
+		thr.write(std::move(frm));
+		frm.evs.clear();
+	}
 };
 ReplayWriter* ReplayWriter::write_net(ReplayInitData dat, const char *addr, const char *port, bool is_server)
 {
 	auto f = net_init(addr, port, is_server);
-	write_header(*f);
-	
-	SERIALFUNC_WRITE(dat, *f);
+	write_header(*f, dat);
 	return new Replay_NetWriter(std::move(f));
 }
 
@@ -312,36 +272,39 @@ class Replay_File : public ReplayWriter, public ReplayReader
 {
 public:
 	std::unique_ptr<File> f;
+	Frame frm;
 	
 	Replay_File(std::unique_ptr<File> f): f(std::move(f)) {}
-	void add_event    (ReplayEvent   ev)     override {write(ev, *f);}
-	void update_client(PlayerController& pc) override {write(pc.get_state(), *f);}
-	
-	Ret update_server(PlayerController& pc) override
+	void add_event(ReplayEvent ev) override {
+		frm.evs.emplace_back(std::move(ev));
+	}
+	void update_client(PlayerInput& pc) override {
+		frm.ctx = pc.get_context();
+		frm.st = pc.get_state(frm.ctx);
+		SERIALFUNC_WRITE(frm, *f);
+		frm.evs.clear();
+	}
+	Ret update_server(PlayerInput& pc) override
 	{
 		if (f->tell() == f->get_size())
 			return RET_END{};
 		
 		Frame frm;
-		read(frm, *f);
-		pc.force_state(std::move(frm.st));
+		SERIALFUNC_READ(frm, *f);
 		
+		pc.force_state(frm.ctx, std::move(frm.st));
 		return RET_OK{{}, std::move(frm.evs)};
 	}
 };
 ReplayWriter* ReplayWriter::write_file(ReplayInitData dat, const char *filename)
 {
 	auto f = File::open_ptr(filename, File::OpenCreate);
-	write_header(*f);
-	
-	SERIALFUNC_WRITE(dat, *f);
+	write_header(*f, dat);
 	return new Replay_File(std::move(f));
 }
 ReplayReader* ReplayReader::read_file(ReplayInitData& dat, const char *filename)
 {
 	auto f = File::open_ptr(filename);
-	check_header(*f);
-	
-	SERIALFUNC_READ(dat, *f);
+	read_header(*f, dat);
 	return new Replay_File(std::move(f));
 }

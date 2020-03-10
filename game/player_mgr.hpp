@@ -3,7 +3,7 @@
 
 #include "entity.hpp"
 
-class PlayerController;
+class PlayerInput;
 class PlayerUI;
 
 
@@ -40,9 +40,6 @@ public:
 	
 	///
 	virtual bool is_game_finished() = 0;
-	
-	///
-	virtual void set_ctr(std::shared_ptr<PlayerController> pc_ctr) = 0;
 	
 	/// Expected to be called only once
 	virtual void set_pui(std::unique_ptr<PlayerUI> pui) = 0;

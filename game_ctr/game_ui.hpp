@@ -10,11 +10,11 @@ public:
 	struct InitParams
 	{
 		GameControl* ctr;
-		std::shared_ptr<PlayerController> pc_ctr;
 		std::shared_ptr<LevelTerrain> lt; ///< May be null
 		
 		std::string init_greet;
 		bool debug_menu = true;
+		bool allow_cheats = false;
 	};
 	
 	static GameUI* create(InitParams pars); ///< Must be called from render thread

@@ -1,6 +1,6 @@
 #include "client/level_map.hpp"
 #include "client/player_ui.hpp"
-#include "client/plr_control.hpp"
+#include "client/plr_input.hpp"
 #include "client/presenter.hpp"
 #include "game/game_core.hpp"
 #include "game/level_ctr.hpp"
@@ -19,7 +19,6 @@ public:
 	// control
 	
 	GameCore& core;
-	std::shared_ptr<PlayerController> pc_ctr;
 	
 	TimeSpan plr_resp; // respawn timeout
 	vec2fp last_plr_pos = {}; // for AI rects
@@ -81,9 +80,7 @@ public:
 		PlayerUI::DrawState uis;
 		uis.resp_left = plr_resp;
 		uis.lookat = pui_lookat;
-		uis.tar_pos = pc_ctr->get_state().tar_pos;
 		uis.einter = dynamic_cast<EInteractive*>(core.valid_ent(pui_einter));
-		uis.ctr = pc_ctr.get();
 		
 		if (obj_count < obj_need) {
 			uis.objective += FMT_FORMAT("collect security tokens ({} left)", obj_need - obj_count);
@@ -135,7 +132,8 @@ public:
 		try_spawn_plr();
 		if (plr_ent)
 		{
-			plr_ent->log.m_step( *pc_ctr );
+			auto& pcst = PlayerInput::get().get_state(PlayerInput::CTX_GAME);
+			plr_ent->log.m_step();
 			
 			// objective
 			
@@ -155,7 +153,7 @@ public:
 			Entity* lookat = nullptr;
 			
 			core.get_phy().query_aabb(
-			Rectfp::from_center(pc_ctr->get_state().tar_pos, vec2fp::one(0.3)),
+			Rectfp::from_center(pcst.tar_pos, vec2fp::one(0.3)),
 			[&](Entity& ent, b2Fixture& fix)
 			{
 				if (typeid(ent) == typeid(EWall)) return true;
@@ -192,7 +190,7 @@ public:
 				if (!e) THROW_FMTSTR("Entity is not EInteractive - {}", einter->dbg_id());
 				
 				auto now = core.get_step_time();
-				if (pc_ctr->get_state().is[ PlayerController::A_INTERACT ] && now > interact_after)
+				if (pcst.is[ PlayerInput::A_INTERACT ] && now > interact_after)
 				{
 					e->use(plr_ent);
 					interact_after = now + TimeSpan::seconds(0.5);
@@ -273,10 +271,6 @@ public:
 				throw std::runtime_error("PlayerManager::on_teleport_activation() no final term room");
 			}());
 		}
-	}
-	void set_ctr(std::shared_ptr<PlayerController> pc_ctr) override
-	{
-		this->pc_ctr = std::move(pc_ctr);
 	}
 	void set_pui(std::unique_ptr<PlayerUI> pui) override
 	{

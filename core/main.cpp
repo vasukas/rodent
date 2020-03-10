@@ -1,5 +1,4 @@
 #include <SDL2/SDL.h>
-#include "client/gamepad.hpp"
 #include "core/hard_paths.hpp"
 #include "core/vig.hpp"
 #include "render/control.hpp"
@@ -105,8 +104,6 @@ Modes:
   --game      [default]
 
 Mode options (--game):
-  --gpad-on   use gamepad by default (if available)
-  --gpad-off  don't use gamepad by default [default]
   --cheats    allows cheats
   --rndseed   use random level seed
   --seed <N>  use specified level seed
@@ -395,7 +392,6 @@ Mode options (--game):
 				if (ks.scancode == SDL_SCANCODE_GRAVE) debug_key_combo = false;
 			}
 			
-			Gamepad::on_event(ev);
 			RenderControl::get().on_event( ev );
 			
 			vig_on_event(ev);
@@ -414,7 +410,6 @@ Mode options (--game):
 		}
 		
 		if (!run) break;
-		Gamepad::update();
 		
 		RenImm::get().set_context(RenImm::DEFCTX_UI);
 		vig_draw_start();

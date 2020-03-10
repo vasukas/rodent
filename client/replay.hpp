@@ -2,7 +2,7 @@
 #define REPLAY_HPP
 
 #include <variant>
-#include "client/plr_control.hpp"
+#include "client/plr_input.hpp"
 #include "game/entity.hpp"
 #include "vaslib/vas_time.hpp"
 
@@ -38,7 +38,7 @@ public:
 	virtual ~ReplayWriter() = default;
 	
 	virtual void add_event(ReplayEvent ev) = 0; ///< Would be written with next step
-	virtual void update_client(PlayerController& pc) = 0; ///< Call on each logic tic
+	virtual void update_client(PlayerInput& pc) = 0; ///< Call on each logic tic
 };
 
 
@@ -60,7 +60,7 @@ public:
 	struct RET_END  {}; ///< Transmission/record ended
 	
 	using Ret = std::variant<RET_OK, RET_WAIT, RET_END>;
-	virtual Ret update_server(PlayerController& pc) = 0; ///< Call on each logic tick
+	virtual Ret update_server(PlayerInput& pc) = 0; ///< Call on each logic tick
 };
 
 #endif // REPLAY_HPP

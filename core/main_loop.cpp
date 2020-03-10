@@ -1,5 +1,5 @@
 #include <future>
-#include "client/plr_control.hpp"
+#include "client/plr_input.hpp"
 #include "client/replay.hpp"
 #include "core/hard_paths.hpp"
 #include "core/vig.hpp"
@@ -12,6 +12,7 @@
 #include "render/control.hpp"
 #include "render/ren_imm.hpp"
 #include "render/ren_text.hpp"
+#include "utils/line_cfg.hpp"
 #include "vaslib/vas_file.hpp"
 #include "vaslib/vas_misc.hpp"
 #include "vaslib/vas_string_utils.hpp"
@@ -20,89 +21,121 @@
 
 
 
-class ML_Settings : public MainLoop
+class ML_Keybind : public MainLoop
 {
 public:
-	bool is_game;
-	std::shared_ptr<PlayerController> ctr;
+	std::vector<PlayerInput::Bind*> binds;
 	std::optional<std::pair<int, int>> bix;
 	vec2i scroll_pos = {};
-	std::string gpad_try;
 	
-	void init()
+	std::vector<std::pair<int, int>> conflicts;
+	bool conflict_msg = false;
+	
+	ML_Keybind()
 	{
-		is_game = !!ctr;
-		if (!ctr) {
-			ctr.reset (new PlayerController);
-			ctr->set_gpad( std::unique_ptr<Gamepad> (Gamepad::open_default()) );
+		for (auto& b : PlayerInput::get().binds_ref(PlayerInput::CTX_GAME)) {
+			if (!b.hidden)
+				binds.push_back(&b);
 		}
+		update_conflicts();
 	}
 	void on_event(const SDL_Event& ev)
 	{
-		if		(ev.type == SDL_KEYUP)
+		if (!bix)
 		{
-			int k = ev.key.keysym.scancode;
-			if		(k == SDL_SCANCODE_ESCAPE)
+			if (ev.type == SDL_KEYDOWN)
 			{
-				if (bix) bix.reset();
-				else delete this;
+				int k = ev.key.keysym.scancode;
+				if (k == SDL_SCANCODE_ESCAPE)
+				{
+					if (conflicts.empty())
+						delete this;
+					else
+						conflict_msg = !conflict_msg;
+				}
+				else if (conflict_msg && k == SDL_SCANCODE_Y) {
+					delete this;
+				}
 			}
+		}
+		else if (ev.type == SDL_KEYDOWN &&
+			     ev.key.keysym.scancode == SDL_SCANCODE_ESCAPE)
+		{
+			bix.reset();
+		}
+		else if (binds[bix->first]->ims()[bix->second]->set_from(ev))
+		{
+			bix.reset();
+			update_conflicts();
+			
+			if (LineCfg(PlayerInput::get().gen_cfg_opts()).write(HARDPATH_KEYBINDS))
+				VLOGI("Saved new keybinds");
+			else
+				VLOGE("Failed to save new keybinds");
 		}
 	}
 	void render(TimeSpan, TimeSpan)
 	{
 		RenImm::get().draw_rect({{}, RenderControl::get_size(), false}, 0xff);
+		if (conflict_msg) {
+			draw_text_message("Binding conflict!\n\n"
+			                  "Press ESCAPE to resolve   \n"
+			                  "Press Y to ignore and exit");
+			return;
+		}
+		
 		vig_lo_push_scroll( RenderControl::get_size() - vig_element_decor()*2, scroll_pos );
 		
-		vig_label("KEYBINDS (hover over action to see description)\n");
-		if (vig_button(is_game? "Return to game" : "Return to main menu")) {
-			delete this;
+		vig_label("KEYBINDS (place cursor over action name to see description)\n");
+		if (vig_button("Return to menu")) {
+			if (conflicts.empty())
+				delete this;
+			else
+				conflict_msg = true;
 			return;
 		}
 		vig_space_line();
 		vig_lo_next();
 		
-		auto& bs = ctr->binds_ref();
-		vigTableLC lc( vec2i(6, bs.size() + 1) );
-		
+		const int i_btype = 1 + PlayerInput::Bind::ims_num;
+		vigTableLC lc( vec2i(i_btype + 1, binds.size() + 1) );
 		lc.get({0,0}).str = "ACTION";
 		lc.get({1,0}).str = "KEY    ";
 		lc.get({2,0}).str = "KEY    ";
 		lc.get({3,0}).str = "MOUSE  ";
-		lc.get({4,0}).str = "GAMEPAD";
-		lc.get({5,0}).str = "TYPE   ";
+		lc.get({4,0}).str = "TYPE   ";
 		
 		const char *hd_str[] = {
 		    "",
 		    "Primary key",
 		    "Alternate key",
 		    "Mouse button",
-		    "Gamepad button",
 		    "Action type"
 		};
 		
-		for (size_t i=0; i<bs.size(); ++i)
+		for (size_t i=0; i<binds.size(); ++i)
 		{
-			lc.get( vec2i(0, i+1) ).str = bs[i].name;
-			auto& is = bs[i].ims;
-			for (size_t j=0; j<is.size(); ++j)
-				lc.get( vec2i(j+1, i+1) ).str = is[j]->name.str;
+			auto& bind = *binds[i];
+			lc.get( vec2i(0, i+1) ).str = bind.name;
 			
-			auto& s = lc.get( vec2i(5, i+1) ).str;
-			switch (bs[i].type)
+			for (size_t j=0; j<bind.ims().size(); ++j)
+				lc.get( vec2i(j+1, i+1) ).str = bind.ims()[j]->name.str;
+			
+			lc.get( vec2i(i_btype, i+1) ).str = [&]
 			{
-			case PlayerController::BT_ONESHOT:
-				s = "Trigger";
-				break;
-				
-			case PlayerController::BT_HELD:
-				s = "Hold";
-				break;
-				
-			case PlayerController::BT_SWITCH:
-				s = "Switch";
-				break;
-			}
+				switch (bind.type)
+				{
+				case PlayerInput::BT_TRIGGER:
+					return "Action";
+					
+				case PlayerInput::BT_HELD:
+					return "Hold";
+					
+				case PlayerInput::BT_SWITCH:
+					return "Switch";
+				}
+				return ""; // silence warning
+			}();
 		}
 		
 		vec2i off = vig_lo_get_next();
@@ -112,76 +145,78 @@ public:
 		for (int x=0; x < lc.get_size().x; ++x)
 		{
 			auto& e = lc.get({x,y});
-			if (!y || !x) {
+			if (!y || !x)
+			{
 				vig_label(*e.str, off + e.pos, e.size);
-				if (y) vig_tooltip( bs[y-1].descr, off + e.pos, e.size );
+				if (y) vig_tooltip( binds[y-1]->descr, off + e.pos, e.size );
 				else vig_tooltip( hd_str[x], off + e.pos, e.size );
 			}
-			else if (x == 5)
+			else if (x == i_btype)
 			{
-				if (vig_button(*e.str, 0, false, false, off + e.pos, e.size))
-					{;}
-				switch (bs[y-1].type)
+				bool pressed = vig_button(*e.str, 0, false, false, off + e.pos, e.size);
+				
+				auto& bind = *binds[y-1];
+				switch (bind.type)
 				{
-				case PlayerController::BT_ONESHOT:
-					vig_tooltip("Triggered on press", off + e.pos, e.size);
+				case PlayerInput::BT_TRIGGER:
+					vig_tooltip("Triggered once on press", off + e.pos, e.size);
 					break;
 					
-				case PlayerController::BT_HELD:
-					vig_tooltip("Enabled while pressed", off + e.pos, e.size);
+				case PlayerInput::BT_HELD:
+					if (pressed) {
+						bind.type = PlayerInput::BT_SWITCH;
+					}
+					vig_tooltip("Enabled all time while pressed", off + e.pos, e.size);
 					break;
 					
-				case PlayerController::BT_SWITCH:
-					vig_tooltip("Switched on press", off + e.pos, e.size);
+				case PlayerInput::BT_SWITCH:
+					if (pressed) {
+						bind.type = PlayerInput::BT_HELD;
+						bind.sw_val = false;
+					}
+					vig_tooltip("Switched once on press", off + e.pos, e.size);
 					break;
 				}
 			}
 			else {
 				bool act = bix? y == bix->first + 1 && x == bix->second + 1 : false;
-				if (vig_button(*e.str, 0, act, false, off + e.pos, e.size) && !bix)
-					{;} //bix = std::make_pair(y-1, x-1);
+				bool err = false;
+				
+				if (!bix) {
+					for (auto& c : conflicts)
+						if (c.first == y-1 && c.second == x-1) {
+							err = true;
+							vig_push_palette();
+							vig_CLR(Active) = vig_CLR(Incorrect);
+							break;
+						}
+				}
+				
+				if (vig_button(*e.str, 0, act || err, false, off + e.pos, e.size) && !bix)
+					bix = std::make_pair(y-1, x-1);
+				
+				if (err)
+					vig_pop_palette();
 			}
 		}
 		
-		if (auto gpad = ctr->get_gpad())
+		if (bix)
+			vig_tooltip("Press new key or button to bind to control.\nPress ESCAPE to keep current bind.", true);
+	}
+	void update_conflicts()
+	{
+		conflicts.clear();
+		auto& bs = PlayerInput::get().binds_ref(PlayerInput::CTX_GAME);
+		
+		for (size_t i=0; i<binds.size(); ++i)
+		for (size_t j=0; j<bs.size(); ++j)
 		{
-			if (gpad->get_gpad_state() == Gamepad::STATE_OK)
+			if (binds[i] == &bs[j]) continue;
+			for (size_t k=0; k<PlayerInput::Bind::ims_num; ++k)
 			{
-				auto gc = static_cast<SDL_GameController*> (gpad->get_raw());
-				
-				vig_lo_next();
-				vig_label_a("Your gamepad: {}\n", SDL_GameControllerName(gc));
-				
-				bool any = false;
-				for (size_t i=0; i<Gamepad::TOTAL_BUTTONS_INTERNAL; ++i)
-				{
-					auto b = static_cast<Gamepad::Button>(i);
-					if (gpad->get_state(b)) {
-						auto nm = PlayerController::IM_Gpad::get_name(b);
-						vig_label_a("Pressed: {}\n", nm.str);
-						any = true;
-					}
-				}
-				if (!any)
-					vig_label("Press any gamepad button to see it's name");
+				if (binds[i]->ims()[k]->is_same( *bs[j].ims()[k] ))
+					conflicts.emplace_back(i, k);
 			}
-			else if (gpad->get_gpad_state()== Gamepad::STATE_WAITING)
-				vig_label("Press START to init gamepad");
-			else if (gpad->get_gpad_state()== Gamepad::STATE_DISABLED)
-				vig_label("Gamepad is removed or disabled");
-		}
-		else {
-			vig_lo_next();
-			vig_label_a("No gamepad connected");
-			
-			vig_lo_next();
-			if (vig_button("Enable gamepad"))
-			{
-				std::unique_ptr<Gamepad> gpad(Gamepad::open_default());
-				if (!gpad) gpad_try = "Not found";
-				else ctr->set_gpad( std::move(gpad) );
-			}
-			vig_label(gpad_try);
 		}
 	}
 };
@@ -192,13 +227,13 @@ class ML_Help : public MainLoop
 {
 public:
 	std::optional<TextRenderInfo> tri;
-	void init() {}
-	void on_event(const SDL_Event& ev)
-	{
-		if (ev.type == SDL_KEYUP && (
-		        ev.key.keysym.scancode == SDL_SCANCODE_ESCAPE ||
-		        ev.key.keysym.scancode == SDL_SCANCODE_F1))
-			delete this;
+	
+	void on_event(const SDL_Event& ev) {
+		if (ev.type == SDL_KEYDOWN && 
+		    !ev.key.repeat && (
+			ev.key.keysym.scancode == SDL_SCANCODE_ESCAPE ||
+			ev.key.keysym.scancode == SDL_SCANCODE_F1))
+				delete this;
 	}
 	void render(TimeSpan, TimeSpan)
 	{
@@ -257,12 +292,11 @@ public:
 	
 	std::string init_greet;
 	std::future<std::shared_ptr<LevelTerrain>> async_init; // inits gctr
-	std::shared_ptr<PlayerController> pc_ctr; // not used
 	
 	// init args
 	
-	bool use_gamepad = false;
 	bool use_rndseed = false;
+	bool allow_cheats = false;
 	bool is_superman_init = false;
 	bool debug_ai_rect_init = false;
 	bool no_ffwd = false;
@@ -290,9 +324,7 @@ public:
 	ML_Game() = default;
 	bool parse_arg(ArgvParse& arg)
 	{
-		if		(arg.is("--gpad-on"))  use_gamepad = true;
-		else if (arg.is("--gpad-off")) use_gamepad = false;
-		else if (arg.is("--cheats")) PlayerController::allow_cheats = true;
+		if		(arg.is("--cheats")) allow_cheats = true;
 		else if (arg.is("--rndseed")) use_rndseed = true;
 		else if (arg.is("--seed")) use_seed = arg.i32();
 		else if (arg.is("--no-ffwd")) no_ffwd = true;
@@ -341,22 +373,7 @@ public:
 	}
 	void init()
 	{
-		// controls
-		
-		std::unique_ptr<Gamepad> gpad;
-		if (use_gamepad)
-		{
-			TimeSpan time0 = TimeSpan::since_start();
-			gpad.reset(Gamepad::open_default());
-			VLOGI("Wasted on gamepad: {:.3f}", (TimeSpan::since_start() - time0).seconds());
-		}
-		else VLOGI("Gamepad is disabled by default");
-		
-		pc_ctr.reset (new PlayerController);
-		pc_ctr->set_gpad(std::move(gpad));
-		
-		//
-		
+		PlayerInput::get(); // init
 		init_greet = GameUI::generate_greet();
 		
 		async_init = std::async(std::launch::async,
@@ -432,7 +449,6 @@ public:
 			std::shared_ptr<LevelTerrain> lt( LevelTerrain::generate({ &gci.rndg, {220,140} }) );
 			
 			gci.lt = lt;
-			gci.pc_ctr = pc_ctr;
 			gci.spawner = level_spawn;
 			
 			gctr.reset( GameControl::create(std::move(p_gci)) );
@@ -445,25 +461,8 @@ public:
 	}
 	void on_event(const SDL_Event& ev)
 	{
-		if (!gui) return;
-		
-		gui->on_event(ev);
-		if (ev.type == SDL_KEYUP)
-		{
-			int k = ev.key.keysym.scancode;
-			if (k == SDL_SCANCODE_F1)
-			{
-				gui->on_leave();
-				MainLoop::create(INIT_HELP);
-			}
-			else if (k == SDL_SCANCODE_ESCAPE)
-			{
-				gui->on_leave();
-				MainLoop::create(INIT_SETTINGS);
-				dynamic_cast<ML_Settings&>(*MainLoop::current).ctr = pc_ctr;
-				MainLoop::current->init();
-			}
-		}
+		if (gui)
+			gui->on_event(ev);
 	}
 	void render(TimeSpan frame_begin, TimeSpan passed)
 	{
@@ -477,9 +476,9 @@ public:
 				
 				GameUI::InitParams pars;
 				pars.ctr = gctr.get();
-				pars.pc_ctr = pc_ctr;
 				pars.lt = std::move(lt);
 				pars.init_greet = std::move(init_greet);
+				pars.allow_cheats = allow_cheats;
 				gui.reset( GameUI::create(std::move(pars)) );
 				
 				if (!gctr->get_replay_reader()) {
@@ -490,7 +489,24 @@ public:
 			}
 			else draw_text_message(std::string("Generating...\n\n") + init_greet);
 		}
-		else gui->render(frame_begin, passed);
+		else
+		{
+			gui->render(frame_begin, passed);
+			
+			PlayerInput::State st;
+			{	auto lock = PlayerInput::get().lock();
+				st = PlayerInput::get().get_state(PlayerInput::CTX_GAME);
+			}
+			
+			if (st.is[PlayerInput::A_MENU_HELP]) {
+				gui->on_leave();
+				MainLoop::create(INIT_HELP);
+			}
+			else if (st.is[PlayerInput::A_MENU_EXIT]) {
+				gui->on_leave();
+				MainLoop::create(INIT_KEYBIND);
+			}
+		}
 	}
 };
 
@@ -510,8 +526,8 @@ void MainLoop::create(InitWhich which)
 			current = new ML_Game;
 			break;
 			
-		case INIT_SETTINGS:
-			current = new ML_Settings;
+		case INIT_KEYBIND:
+			current = new ML_Keybind;
 			break;
 			
 		case INIT_HELP:

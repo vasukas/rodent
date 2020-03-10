@@ -1,9 +1,10 @@
+#include <SDL2/SDL_events.h>
 #include "game_ui.hpp"
 
 #include "client/ec_render.hpp"
 #include "client/level_map.hpp"
 #include "client/player_ui.hpp"
-#include "client/plr_control.hpp"
+#include "client/plr_input.hpp"
 #include "client/presenter.hpp"
 #include "client/replay.hpp"
 #include "core/hard_paths.hpp"
@@ -127,7 +128,6 @@ public:
 	// main
 	
 	GameControl& gctr;
-	std::shared_ptr<PlayerController> pc_ctr;
 	
 	std::optional<float> replay_speed_k;
 	bool is_playback = false;
@@ -150,6 +150,7 @@ public:
 	
 	// debug controls
 	
+	bool allow_cheats;
 	bool ph_debug_draw = false;
 	
 	bool ui_dbg_mode = false;
@@ -170,7 +171,8 @@ public:
 	GameUI_Impl(InitParams pars)
 		: gctr(*pars.ctr)
 	{
-		pc_ctr = std::move(pars.pc_ctr);
+		PlayerInput::get().set_context(PlayerInput::CTX_GAME);
+		allow_cheats = pars.allow_cheats;
 		init_greet = std::move(pars.init_greet);
 		
 		RenAAL::get().draw_grid = true;
@@ -196,7 +198,7 @@ public:
 				vig_label_a("AABB query: {:4}\n", core.get_phy().aabb_query_count);
 				vig_lo_next();
 				
-				if (PlayerController::allow_cheats)
+				if (allow_cheats)
 				{
 					vig_checkbox(core.dbg_ai_attack, "AI attack");
 					vig_checkbox(core.dbg_ai_see_plr, "AI see player");
@@ -212,7 +214,7 @@ public:
 					if (vig_button("Damage self"))
 						ent->ref_hlc().apply({ DamageType::Direct, 30 });
 					
-					if (PlayerController::allow_cheats)
+					if (allow_cheats)
 					{
 						bool upd_cheats = false;
 						upd_cheats |= vig_checkbox(core.get_pmg().cheat_ammo, "Infinite ammo");
@@ -259,6 +261,7 @@ public:
 	void on_leave()
 	{
 		RenAAL::get().draw_grid = false;
+		RenParticles::get().enabled = false;
 		
 		auto lock = gctr.core_lock();
 		gctr.set_pause(true);
@@ -266,6 +269,7 @@ public:
 	void on_enter()
 	{
 		RenAAL::get().draw_grid = true;
+		RenParticles::get().enabled = true;
 		hide_pause_until = TimeSpan::since_start() + TimeSpan::seconds(0.5);
 		
 		auto lock = gctr.core_lock();
@@ -288,7 +292,7 @@ public:
 		if (ev.type == SDL_KEYDOWN)
 		{
 			int k = ev.key.keysym.scancode;
-			if (!is_first_frame && PlayerController::allow_cheats)
+			if (!is_first_frame && allow_cheats)
 			{
 				if (k == SDL_SCANCODE_LSHIFT || k == SDL_SCANCODE_RSHIFT) {
 					ui_dbg_mode = true;
@@ -308,7 +312,7 @@ public:
 			if		(k == SDL_SCANCODE_1) mod_pb_speed([](float v){return v/2;});
 			else if (k == SDL_SCANCODE_2) mod_pb_speed([](float v){return v*2;});
 			else if (k == SDL_SCANCODE_3) mod_pb_speed([](float){return 1;});
-			else if (!is_first_frame && PlayerController::allow_cheats)
+			else if (!is_first_frame && allow_cheats)
 			{
 				if		(k == SDL_SCANCODE_0) {
 					ph_debug_draw = !ph_debug_draw;
@@ -352,8 +356,8 @@ public:
 		}
 		
 		if (!ui_dbg_mode && !is_ren_paused) {
-			auto g = pc_ctr->lock();
-			pc_ctr->on_event(ev);
+			auto g = PlayerInput::get().lock();
+			PlayerInput::get().on_event(ev);
 		}
 	}
 	void render(TimeSpan frame_time, TimeSpan passed)
@@ -409,6 +413,12 @@ public:
 				is_first_frame = false;
 			}
 			
+			// input
+			
+			auto& pinp = PlayerInput::get();
+			pinp.update(PlayerInput::CTX_MENU);
+			auto& inpst = pinp.get_state(PlayerInput::CTX_GAME);
+			
 			// set camera
 			
 			if (auto ent = core.get_pmg().get_ent())
@@ -421,17 +431,16 @@ public:
 				                   ? ent->get_pos()
 				                   : ent->ref<EC_RenderPos>().get_cur().pos;
 				vec2fp tar = pos;
-				
-				auto& pctr = pc_ctr->get_state();
-				if (pctr.is[PlayerController::A_CAM_FOLLOW])
+				if (inpst.is[PlayerInput::A_CAM_FOLLOW])
 				{
-					tar = pctr.tar_pos;
+					tar = inpst.tar_pos;
 					
 					vec2fp tar_d = (tar - pos);
 					if		(tar_d.len() < tar_min) tar = pos;
 					else if (tar_d.len() > tar_max) tar = pos + tar_d.get_norm() * tar_max;
 				}
 				
+				cctr.is_close_cam = inpst.is[PlayerInput::A_CAM_CLOSE_SW];
 				cctr.update(tar, passed);
 			}
 			
@@ -462,13 +471,8 @@ public:
 			
 			// draw HUD
 			
-			bool use_crosshair = is_playback
-			                     || (pc_ctr->get_gpad() && pc_ctr->get_gpad()->get_gpad_state() == Gamepad::STATE_OK);
-			vec2i g_mpos;
-			if (use_crosshair) {
-				g_mpos = RenderControl::get().get_world_camera().direct_cast( pc_ctr->get_state().tar_pos );
-			}
-			else SDL_GetMouseState(&g_mpos.x, &g_mpos.y);
+			bool use_crosshair = is_playback;
+			vec2i g_mpos = inpst.cursor;
 			
 			if (vig_current_menu() == VigMenu::Default && !core.get_info().get_menu_teleport())
 			{
@@ -479,53 +483,56 @@ public:
 					float z = std::max(10., RenderControl::get_size().minmax().y * 0.03);
 					uint32_t clr = 0x00ff20c0;
 					
-					vec2fp p = pc_ctr->get_state().tar_pos;
+					vec2fp p = inpst.tar_pos;
 					p = RenderControl::get().get_world_camera().direct_cast(p);
 					RenImm::get().draw_image(Rectfp::from_center(p, vec2fp::one(z/2)), crosshair_tex.get(), clr);
 				}
 			}
 			
-			// teleport menu
+			// teleport menu / map
 			
-			if (auto i_cur = core.get_info().get_menu_teleport())
-			{
-				pc_ctr->set_menu_mode(PlayerController::MMOD_MENU);
-				auto exit = [&]{
-					pc_ctr->set_menu_mode(PlayerController::MMOD_DEFAULT);
-					core.get_info().set_menu_teleport({});
-				};
-				
-				if (core.get_pmg().get_ent())
+			if (!gctr.get_replay_reader()) {
+				if (auto i_cur = core.get_info().get_menu_teleport())
 				{
-					const auto& list = core.get_info().get_teleport_list();
-					auto sel = lmap->draw_transit(g_mpos, &list[*i_cur], list);
+					pinp.set_context(PlayerInput::CTX_MENU);
+					auto exit = [&]{
+						pinp.set_context(PlayerInput::CTX_GAME);
+						core.get_info().set_menu_teleport({});
+					};
 					
-					vig_lo_toplevel({ {}, RenderControl::get_size(), true });
-					for (auto& t : list)
-						vig_label_a("{}, status: {}\n", t.room.name, t.discovered ? "Online" : "UNKNOWN");
-					vig_lo_pop();
-					
-					if (pc_ctr->get_state().is[ PlayerController::A_MENU_EXIT ]) {
-						exit();
-					}
-					else if (pc_ctr->get_state().is[ PlayerController::A_MENU_SELECT ])
+					if (core.get_pmg().get_ent())
 					{
-						if (sel) {
-							if (auto rw = gctr.get_replay_writer())
-								rw->add_event(Replay_UseTransitTeleport{ sel->ent.index });
-							
-							sel->ent.teleport_player();
+						const auto& list = core.get_info().get_teleport_list();
+						auto sel = lmap->draw_transit(g_mpos, &list[*i_cur], list);
+						
+						vig_lo_toplevel({ {}, RenderControl::get_size(), true });
+						for (auto& t : list)
+							vig_label_a("{}, status: {}\n", t.room.name, t.discovered ? "Online" : "UNKNOWN");
+						vig_lo_pop();
+						
+						auto& pcst = pinp.get_state(PlayerInput::CTX_MENU);
+						if (pcst.is[ PlayerInput::A_MENU_EXIT ]) {
 							exit();
 						}
+						else if (pcst.is[ PlayerInput::A_MENU_SELECT ])
+						{
+							if (sel) {
+								if (auto rw = gctr.get_replay_writer())
+									rw->add_event(Replay_UseTransitTeleport{ sel->ent.index });
+								
+								sel->ent.teleport_player();
+								exit();
+							}
+						}
 					}
+					else exit();
 				}
-				else exit();
-			}
-			else
-			{
-				std::optional<vec2fp> plr_p;
-				if (auto ent = core.get_pmg().get_ent()) plr_p = ent->get_pos();
-				lmap->draw(passed, plr_p, pc_ctr->get_state().is[PlayerController::A_SHOW_MAP]);
+				else
+				{
+					std::optional<vec2fp> plr_p;
+					if (auto ent = core.get_pmg().get_ent()) plr_p = ent->get_pos();
+					lmap->draw(passed, plr_p, inpst.is[PlayerInput::A_SHOW_MAP]);
+				}
 			}
 			
 			// debug UI
@@ -545,9 +552,9 @@ public:
 					draw_text_hud({X_OFF, RenderControl::get_size().y / 2.f + Y_STR}, "PUPPET MODE");
 				
 				// player teleport
-				if (plr_ent && r_but && !ui_dbg_puppet_switch)
+				if (plr_ent && r_but && !ui_dbg_puppet_switch && allow_cheats)
 				{
-					const auto p = pc_ctr->get_state().tar_pos;
+					const auto p = inpst.tar_pos;
 					const vec2i gp = core.get_lc().to_cell_coord(p);
 					if (Rect({1,1}, core.get_lc().get_size() - vec2i::one(2), false).contains_le( gp ))
 						plr_ent->ref_phobj().teleport(p);
@@ -582,13 +589,14 @@ public:
 					auto size = cam.direct_cast( ent->get_pos() + vec2fp::one(ent->ref_pc().get_radius()) );
 					RenImm::get().draw_frame( Rectfp::from_center(pos, size - pos), 0x00ff00ff, 3 );
 					
-					if (AI_Drone* d = ent->get_ai_drone())
+					if (AI_Drone* d = ent->get_ai_drone();
+					    d && allow_cheats)
 					{
 						if (ui_dbg_puppet_switch)
 						{
 							if (auto st = std::get_if<AI_Drone::Puppet>(&d->get_state())) {
 								if (r_but)
-									st->mov_tar = { pc_ctr->get_state().tar_pos, AI_Speed::Normal };
+									st->mov_tar = { inpst.tar_pos, AI_Speed::Normal };
 							}
 							else {
 								d->set_idle_state();
@@ -606,7 +614,7 @@ public:
 					Entity* lookat = nullptr;
 					
 					core.get_phy().query_aabb(
-						Rectfp::from_center(pc_ctr->get_state().tar_pos, vec2fp::one(0.3)),
+						Rectfp::from_center(inpst.tar_pos, vec2fp::one(0.3)),
 					[&](Entity& ent, b2Fixture& fix)
 					{
 						if (typeid(ent) == typeid(EWall)) return true;
