@@ -146,6 +146,8 @@ public:
 		for (auto e : e_todel) delete e;
 		e_todel.clear();
 		
+		lc->update_aps(false);
+		
 		step_flag = false;
 	}
 	Entity* get_ent( EntityIndex ei ) const noexcept

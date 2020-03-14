@@ -39,6 +39,10 @@ struct StdProjectile : EComp
 	static void explode(GameCore& core, size_t src_team, EntityIndex src_eid,
 	                    b2Vec2 self_vel, PhysicsWorld::RaycastResult hit, const Params& pars);
 	
+	/// Returns fixed ray hit point. Direction must be normalized
+	static std::optional<vec2fp> multiray(GameCore& core, vec2fp pos, vec2fp dir,
+	                                      callable_ref<void(PhysicsWorld::RaycastResult& hit, int step)> on_hit,
+	                                      float full_width, float max_distance, int shoot_through, EntityIndex src_eid);
 	
 	
 	StdProjectile(Entity& ent, const Params& pars, EntityIndex src, std::optional<vec2fp> target);
@@ -136,6 +140,24 @@ private:
 	void step() override;
 	void on_event(const CollisionEvent& ev);
 	void freeze(bool is_normal = true);
+};
+
+
+
+class FireletProjectile : public Entity
+{
+	EC_Physics phy;
+	TimeSpan left, tmo, particle_tmo;
+	size_t team;
+	float charge = 1;
+	EntityIndex src_eid;
+	
+	void step() override;
+	
+public:
+	FireletProjectile(GameCore& core, vec2fp pos, vec2fp vel, size_t team, EntityIndex src_eid);
+	EC_Position&  ref_pc()  override {return phy;}
+	size_t get_team() const override {return team;}
 };
 
 

@@ -401,3 +401,7 @@ PlayerEntity::PlayerEntity(GameCore& core, vec2fp pos, bool is_superman)
 	log.armor = new DmgArmor(300);
 	hlc.add_filter(std::unique_ptr<DamageFilter>( log.armor ));
 }
+PlayerEntity::~PlayerEntity()
+{
+	PlayerInput::get().set_switch(PlayerInput::CTX_GAME, PlayerInput::A_SHIELD_SW, false);
+}

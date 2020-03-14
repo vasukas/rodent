@@ -83,17 +83,19 @@ struct EC_Position : EComp
 
 struct EntityIndex
 {
+	using Int = uint32_t;
+	
 	EntityIndex() = default;
 	
 	bool operator ==(const EntityIndex& ei) const {return i == ei.i;}
 	bool operator !=(const EntityIndex& ei) const {return i != ei.i;}
-	operator bool() const {return i != std::numeric_limits<uint32_t>::max();}
+	explicit operator bool() const {return i != std::numeric_limits<Int>::max();}
 	
-	[[nodiscard]] static EntityIndex from_int(uint32_t i) {EntityIndex ei; ei.i = i; return ei;}
-	uint32_t to_int() const {return i;}
+	[[nodiscard]] static EntityIndex from_int(Int i) {EntityIndex ei; ei.i = i; return ei;}
+	Int to_int() const {return i;}
 	
 private:
-	uint32_t i = std::numeric_limits<uint32_t>::max();
+	Int i = std::numeric_limits<Int>::max();
 };
 
 
@@ -121,6 +123,8 @@ public:
 	
 	virtual size_t get_team() const {return TEAM_ENVIRON;}
 	vec2fp get_pos() {return ref_pc().get_pos();}
+	
+	virtual bool is_creature() {return get_eqp();}
 
 	
 	
@@ -132,6 +136,9 @@ public:
 	
 	/// Returns true if wasn't deleted
 	bool is_ok() const {return !was_destroyed;}
+	
+	///
+	bool dbg_is_reg() const {return !!reglist_index;}
 	
 	
 	

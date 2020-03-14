@@ -177,6 +177,11 @@ public:
 				c.pos = tr;
 				c.vel = c.ent.ref_pc().get_vel();
 			}
+			
+			if (!was_vp) {
+				for (auto& sub : ei.subs)
+					sub->on_vport_enter();
+			}
 		}
 		
 		//

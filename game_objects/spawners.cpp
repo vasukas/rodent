@@ -145,7 +145,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 	
 	TimeSpan time_decor = TimeSpan::since_start();
 	
-	const float res_fail_chance = 0.3; // chance to fail spawning resource
+	const float res_fail_chance = 0.45; // chance to fail spawning resource
 	
 	for (auto& r : lt.rooms)
 	{
@@ -252,6 +252,10 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 			new EStorageBox(core, lc.to_center_coord(at));
 			return true;
 		};
+		auto mk_drill = [&](vec2i at, float r) {
+			new EMiningDrill(core, lc.to_center_coord(at), r);
+			return true;
+		};
 		auto mk_mk = [&](const char *name, ModelType model, bool is_ghost) {
 			return [&core, name, model, is_ghost](vec2i at, float r) {
 				if (is_ghost) new EDecorGhost( core, Transform(core.get_lc().to_center_coord(at), r), model );
@@ -329,9 +333,8 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 			n_max = std::min(1 + r.area.size().area() / 100, 3);
 			for (int i=0, n=0; i<n_max*1.5; ++i)
 			{
-				if (auto p = next_pos())
-				{
-					add_decor(*p, mk_mk("Drilling rig", MODEL_MINEDRILL_MINI, false), false);
+				if (auto p = next_pos()) {
+					add_decor(*p, mk_drill, false);
 					if (++n == n_max) break;
 				}
 			}

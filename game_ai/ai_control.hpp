@@ -29,7 +29,8 @@ public:
 	vec2fp get_last_pos() const {return last_pos;} ///< Returns last known position
 	
 	/// Sets search state for all capable drones, if possible
-	static bool init_search(GameCore& core, const std::vector<AI_Drone*>& drones, vec2fp target_pos, bool was_in_battle);
+	static bool init_search(GameCore& core, const std::vector<AI_Drone*>& drones, vec2fp target_pos,
+	                        bool was_in_battle, std::optional<vec2fp> real_target_pos);
 	
 private:
 	friend class AI_Controller_Impl;
@@ -69,6 +70,7 @@ class AI_Controller
 {
 public:
 	bool show_aos_debug = false;
+	size_t debug_batle_number = 0;
 	
 	static AI_Controller* create(GameCore& core);
 	virtual ~AI_Controller() = default;

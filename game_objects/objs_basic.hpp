@@ -76,7 +76,7 @@ class EDoor final : public Entity
 {
 	// logic
 	static constexpr float sens_width = 1; // relative to cell size
-	static constexpr TimeSpan wait_time = TimeSpan::seconds(0.3); // before opening
+	static constexpr TimeSpan wait_time = TimeSpan::seconds(0.6); // before (re-)opening
 	static constexpr TimeSpan anim_time = TimeSpan::seconds(0.5); // opening/closing time
 	static constexpr TimeSpan keep_time = TimeSpan::seconds(7); // kept open
 	static constexpr TimeSpan keep_time_plr = TimeSpan::seconds(1); // kept open, plr_only
@@ -224,6 +224,25 @@ public:
 	~EStorageBox();
 	EC_Position& ref_pc() override {return phy;}
 	EC_Health* get_hlc() override {return &hlc;}
+};
+
+
+
+class EMiningDrill final : public EInteractive
+{
+	EC_Physics phy;
+	EC_Equipment eqp;
+	TimeSpan left;
+	int stage = 0;
+	void step() override;
+public:
+	EMiningDrill(GameCore& core, vec2fp at, float rot);
+	EC_Position&  ref_pc()  override {return phy;}
+	EC_Equipment& ref_eqp() override {return eqp;}
+	bool is_creature() override {return false;}
+	
+	std::pair<bool, std::string> use_string() override {return {true, {}};}
+	void use(Entity* by) override;
 };
 
 

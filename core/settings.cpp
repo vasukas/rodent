@@ -98,6 +98,7 @@ bool AppSettings::load()
 	
 	P_INT(cursor_info_flags, i >= 0 && i <= 1);
 	P_BOOL(plr_status_blink);
+	P_BOOL(plr_status_flare);
 	
 	return LineCfg(std::move(cs)).read(path_settings.c_str());
 }

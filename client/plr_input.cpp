@@ -9,7 +9,7 @@
 /*
 =====================================================
 	!!! WHEN CHANGING CONTROLS !!!
-	
+
 	client/replay.cpp  - increase version 
 	core/main_loop.cpp - update F1 help menu
 =====================================================
@@ -540,8 +540,6 @@ void PlayerInput::Context::update(bool is_current)
 	if (state.is[AX_MOV_Y_POS]) ++p_mov.y;
 	if (state.is[AX_MOV_X_POS]) ++p_mov.x;
 	
-	int mx, my;
-	SDL_GetMouseState(&mx, &my);
-	state.cursor = {mx, my};
-	state.tar_pos = RenderControl::get().get_world_camera().mouse_cast({mx, my});
+	state.cursor = RenderControl::get().get_current_cursor();
+	state.tar_pos = RenderControl::get().get_world_camera().mouse_cast(state.cursor);
 }

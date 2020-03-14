@@ -1,8 +1,7 @@
 #ifndef LEVEL_CTR_HPP
 #define LEVEL_CTR_HPP
 
-#include <memory>
-#include "common_defs.hpp"
+#include "entity.hpp"
 
 class  GameCore;
 class  PathSearch;
@@ -28,8 +27,12 @@ struct PathRequest
 	static constexpr float default_max_length = 120;
 	
 	PathRequest() = default;
-	PathRequest(GameCore& core, vec2fp from, vec2fp to, std::optional<float> max_length = {}, std::optional<Evade> evade = {});
 	PathRequest(const PathRequest&) = delete;
+	
+	PathRequest(GameCore& core, vec2fp from, vec2fp to,
+	            std::optional<float> max_length = {},
+	            std::optional<Evade> evade = {},
+	            EntityIndex who = {});
 	
 	/// Returns true if result is available or waiting
 	bool is_ok() const {return !!res;}
@@ -66,6 +69,22 @@ struct LevelCtrRoom
 	}
 };
 
+struct LevelCtrTmpLock
+{
+	static LevelCtrTmpLock try_lock(Entity& who, vec2i at);
+	explicit operator bool() const {return who;}
+	
+	LevelCtrTmpLock() = default;
+	~LevelCtrTmpLock();
+	LevelCtrTmpLock(LevelCtrTmpLock&& l) noexcept;
+	LevelCtrTmpLock& operator=(LevelCtrTmpLock&& l) noexcept;
+	
+private:
+	Entity* who = nullptr;
+	vec2i at;
+	LevelCtrTmpLock(Entity& who, vec2i at): who(&who), at(at) {}
+};
+
 class LevelControl final
 {
 public:
@@ -73,6 +92,7 @@ public:
 	{
 		vec2i pos; ///< self
 		bool is_wall;
+		bool is_tmplocked = false;
 		
 		int tmp; ///< for algorithms
 		
@@ -100,7 +120,7 @@ public:
 	vec2i get_size() const {return size;}
 	bool is_valid(vec2i pos) const {return Rect{{}, size, true}.contains_le(pos);}
 	
-	Cell& mut_cell(vec2i pos); // Note: if is_wall is modified, aps must be updated
+	Cell& mut_cell(vec2i pos); ///< Updates pathfinding at the end of the step
 	const Cell* cell(vec2i pos) const noexcept;
 	const Cell& cref(vec2i pos) const;
 	
@@ -121,7 +141,7 @@ public:
 	
 	void add_spawn(Spawn sp);
 	
-	void update_aps(); ///< Updates wall states for path search
+	void update_aps(bool forced = true); ///< Updates wall states for path search
 	void set_wall(vec2i pos, bool is_wall); ///< Sets wall state and updates aps. Coord-safe
 	
 	void rooms_reset_tmp(int value) {
@@ -134,6 +154,10 @@ protected:
 	std::vector<Cell> cells;
 	std::vector<Spawn> spps;
 	std::unique_ptr<PathSearch> aps;
+	bool aps_req_update = false;
+	
+	friend LevelCtrTmpLock;
+	std::vector<std::pair<Entity*,vec2i>> templocks;
 	
 	LevelControl(const LevelTerrain& lt);
 };

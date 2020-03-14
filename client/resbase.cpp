@@ -369,6 +369,42 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 			p.vel.fastrotate( bp.tr.rot + deg_to_rad(70) * rnd_stat().normal_fixed() );
 		}
 	};
+	struct FireSpread : ParticleGroupGenerator
+	{
+		Transform tr;
+		float dist, angle, anglim;
+		
+		size_t begin(const ParticleBatchPars& pars, ParticleParams& p)
+		{
+			constexpr float ppm = 2; // parts per radius meter
+			
+			tr = pars.tr;
+			dist = pars.power;
+			angle = pars.tr.rot;
+			anglim = pars.rad;
+			
+			p.size = 0.12;
+			return (2 * M_PI * dist) * (anglim / M_PI) * ppm;
+		}
+		void gen(ParticleParams& p)
+		{
+			p.lt = rnd_stat().range(0.3, 0.7);
+			p.ft = rnd_stat().range(0.2, 0.4);
+			
+			if (rnd_stat().range_n() < 0.2) p.clr = {0,0,0,1};
+			else
+			p.clr = FColor(
+				rnd_stat().range(0.05, 0.16),
+				rnd_stat().range(0.2, 1), 1, 0.7
+			).hsv_to_rgb();
+			
+			float rot = angle + rnd_stat().range_n2() * anglim;
+			p.pos = tr.pos + vec2fp(dist * 0.2, 0).fastrotate(rot);
+			p.vel.set(dist / (p.lt + p.ft), 0);
+			p.vel.fastrotate(rot);
+			p.decel_to_zero();
+		}
+	};
 	struct CircAura : ParticleGroupGenerator
 	{
 		ParticleBatchPars bp;
@@ -507,6 +543,9 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 	}{
 		auto g = new ExploFrag;
 		ld_es[FE_EXPLOSION_FRAG].reset(g);
+	}{
+		auto g = new FireSpread;
+		ld_es[FE_FIRE_SPREAD].reset(g);
 	}
 	
 	
@@ -661,6 +700,8 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 	    
 		MODEL_ARMOR,
 	    MODEL_TERMINAL_KEY,
+	    
+	    MODEL_MINEDRILL_MINI,
 	    
 	    MODEL_HANDGUN_AMMO,
 		MODEL_BOLTER_AMMO,

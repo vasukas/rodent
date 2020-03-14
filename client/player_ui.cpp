@@ -1,3 +1,4 @@
+#include <SDL2/SDL_endian.h>
 #include "client/plr_input.hpp"
 #include "core/settings.hpp"
 #include "core/vig.hpp"
@@ -10,6 +11,7 @@
 #include "render/camera.hpp"
 #include "render/control.hpp"
 #include "render/ren_imm.hpp"
+#include "render/texture.hpp"
 #include "utils/time_utils.hpp"
 #include "vaslib/vas_log.hpp"
 #include "player_ui.hpp"
@@ -231,9 +233,6 @@ public:
 		}
 	};
 	
-	std::vector<StatusIndicator> ind_stat;
-	std::vector<WeaponIndicator> ind_wpns;
-	
 	enum IndStat {
 		INDST_HEALTH,
 		INDST_ACCEL,
@@ -244,14 +243,53 @@ public:
 		INDST_TOTAL_COUNT_INTERNAL
 	};
 	
+	std::array<StatusIndicator, INDST_TOTAL_COUNT_INTERNAL> ind_stat;
+	std::vector<WeaponIndicator> ind_wpns;
 	bool proj_shld_was_dead = false;
+	
+	// interface - flare
+	
+	
+	struct Flare {
+		float flare_incr = 1.f / 0.5; // per second
+		float flare_decr = 1.f / 1.2;
+		FColor clr;
+		
+		float level = 0;
+		std::optional<float> target;
+		
+		void trigger(float max = 1) {
+			if (target) target = std::max(*target, max);
+			else target = max;
+		}
+		float update(float passed) {
+			if (target) {
+				if (level > target) target.reset();
+				else level += flare_incr * passed;
+			}
+			else level = std::max(level - flare_decr * passed, 0.f);
+			return level;
+		}
+		void reset() {
+			level = 0;
+			target.reset();
+		}
+	};
+	
+	enum FlareStat {
+		FLARE_SHIELD,
+		FLARE_HEALTH,
+		FLARE_TOTAL_COUNT_INTERNAL
+	};
+	std::array<Flare, FLARE_TOTAL_COUNT_INTERNAL> flares;
+	
+	RAII_Guard flare_g;
+	std::unique_ptr<Texture> flare_tex;
 	
 	
 	
 	PlayerUI_Impl()
 	{
-		ind_stat.resize(INDST_TOTAL_COUNT_INTERNAL);
-		//
 		ind_stat[INDST_HEALTH].clr = FColor(0x10c060ff);
 		ind_stat[INDST_ACCEL].clr     = FColor(0xd07010ff);
 		ind_stat[INDST_ACCEL].alt_clr = FColor(0x706060ff);
@@ -267,6 +305,42 @@ public:
 		ind_stat[INDST_PROJ_SHIELD_REGEN].clr     = FColor(0xa02020ff);
 		ind_stat[INDST_PROJ_SHIELD_REGEN].alt_clr = FColor(0x289090ff);
 		ind_stat[INDST_PROJ_SHIELD_REGEN].thr = 1;
+		
+		//
+		
+		flares[FLARE_SHIELD].clr = FColor(0.4, 0.9, 1);
+		flares[FLARE_HEALTH].clr = FColor(0.4, 0, 0);
+		flares[FLARE_HEALTH].flare_decr = 1.f / 3;
+		
+		flare_g = RenderControl::get().add_size_cb([this]
+		{
+			vec2i sz = RenderControl::get_size();
+			std::vector<uint32_t> px (sz.area());
+			
+			int x0 = sz.x/6; // min offset
+			int x1 = sz.x/3; // max offset
+			int y0 = sz.y/5; // center min
+			float alpha_d = 255.f / x1;
+			
+			auto line = [&](int x, int y){
+				int i; float a;
+				for (a=0, i=x; i>=0; --i, a += alpha_d) {
+					px[            y *sz.x + i] = px[            y *sz.x - i + sz.x - 1] =
+					px[(sz.y - y - 1)*sz.x + i] = px[(sz.y - y - 1)*sz.x - i + sz.x - 1] =
+						SDL_SwapBE32(0xffff'ff00 | int(a));
+				}
+			};
+			for (int y=0; y<y0; ++y) {
+				float t = float(y) / y0;
+				line(lerp(x1, x0, t), y);
+			}
+			int y2 = sz.y/2;
+			if (sz.y % 1) ++y2;;
+			for (int y=y0; y<y2; ++y)
+				line(x0, y);
+			
+			flare_tex.reset(Texture::create_from( sz, Texture::FMT_RGBA, px.data() ));
+		});
 	}
 	void render(PlayerManager& mgr, const DrawState& dstate, TimeSpan passed, vec2i mou_pos)
 	{
@@ -279,6 +353,9 @@ public:
 				i.blink_upd.force_reset();
 			}
 			ind_wpns.clear();
+			
+			for (auto& f : flares)
+				f.reset();
 		}
 		
 		if (plr_ent)
@@ -288,6 +365,39 @@ public:
 			auto& hlc = plr_ent->hlc;
 			auto& log = plr_ent->log;
 			
+			// flares
+			if (AppSettings::get().plr_status_flare)
+			{
+				auto pst = log.shlc.get_state();
+				switch (pst.first) {
+					case ShieldControl::ST_DEAD:
+					case ShieldControl::ST_DISABLED:
+						break;
+					case ShieldControl::ST_SWITCHING:
+						flares[FLARE_SHIELD].trigger(0.3);
+						break;
+					case ShieldControl::ST_ACTIVE: {
+							float t = log.shlc.get_ft()->get_hp().t_state();
+							flares[FLARE_SHIELD].trigger(lerp(1, 0.5, t));
+						}
+						break;
+				}
+				
+				if (hlc.get_hp().t_state() < 0.95)
+					flares[FLARE_HEALTH].trigger(1 - hlc.get_hp().t_state()/2);
+				
+				FColor clr = {0,0,0,0};
+				for (auto& f : flares) {
+					FColor c = f.clr;
+					c.a = f.update(passed.seconds());
+					clr += c * c.a;
+				}
+				
+				RenImm::get().draw_image({{}, flare_tex->get_size(), true}, flare_tex.get(), clr.to_px());
+			}
+			
+			//
+			
 			// Health
 			{	auto& hp = hlc.get_hp();
 				ind_stat[INDST_HEALTH].draw(FMT_FORMAT("Health {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
@@ -296,11 +406,11 @@ public:
 			
 			// Accelartion
 			if (log.pmov.is_infinite_accel()) {
-				ind_stat[INDST_ACCEL].draw("Accel INFINIT", 1, true);
+				ind_stat[INDST_ACCEL].draw("Accel INFINITE", 1, true);
 			}
 			else {
 				auto acc_st = log.pmov.get_t_accel();
-				ind_stat[INDST_ACCEL].draw(FMT_FORMAT("Accel {}", acc_st.first? "OK     " : "charge "),
+				ind_stat[INDST_ACCEL].draw(FMT_FORMAT("Accel {}", acc_st.first? "OK      " : "charge  "),
 									       acc_st.second, !acc_st.first);
 			}
 			vig_lo_next();
@@ -309,7 +419,7 @@ public:
 			{	auto& hp = log.armor->get_hp();
 				auto& ind = ind_stat[INDST_ARMOR];
 				if (hp.t_state() > ind.prev_value) ind.blink_upd.trigger();
-				ind.draw(FMT_FORMAT("Armor {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
+				ind.draw(FMT_FORMAT("Armor  {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
 			}
 			vig_lo_next();
 			
@@ -416,7 +526,8 @@ public:
 					clr += lerp<int>(64, 220, t) << 16;
 					clr += lerp<int>(64, 220, t) << 8;
 					
-					draw_progress_ring(mou_pos, 1, clr, radius, width);
+					RenImm::get().mouse_cursor_hack();
+					draw_progress_ring({}, 1, clr, radius, width);
 					radius += width;
 				}
 				else
@@ -435,13 +546,15 @@ public:
 							clr |= 0x40ff4000;
 							t = 1;
 						}
-						draw_progress_ring(mou_pos, t, clr, radius, width);
+						RenImm::get().mouse_cursor_hack();
+						draw_progress_ring({}, t, clr, radius, width);
 						radius += width;
 					}
 					if (auto& m = wpn.overheat)
 					{
 						uint32_t clr = m->flag ? 0xff606000 : 0xffff0000;
-						draw_progress_ring(mou_pos, m->value, clr | alpha, radius, width);
+						RenImm::get().mouse_cursor_hack();
+						draw_progress_ring({}, m->value, clr | alpha, radius, width);
 						radius += width;
 					}
 					if (auto m = wpn.get_ui_info())
@@ -458,7 +571,8 @@ public:
 								clr |= 0x40c0ff00;
 								wpn_ring_charge = now;
 							}
-							draw_progress_ring(mou_pos, *m->charge_t, clr, radius, width);
+							RenImm::get().mouse_cursor_hack();
+							draw_progress_ring({}, *m->charge_t, clr, radius, width);
 						}
 						radius += width;
 					}
@@ -504,17 +618,19 @@ public:
 		if (plr_ent)
 		{
 			auto& pinp = PlayerInput::get();
-			
 			std::string stat_str;
-			stat_str += FMT_FORMAT("Looking at: {}\n", dstate.lookat);
 			
-			auto& lc = plr_ent->core.get_lc();
-			auto room = lc.ref_room(plr_ent->get_pos());
-			stat_str += FMT_FORMAT("Room: {}\n", room? room->name : "Corridor");
-			
-			if (auto c = lc.cell( lc.to_cell_coord( pinp.get_state(PlayerInput::CTX_GAME).tar_pos ) ))
-				stat_str += FMT_FORMAT("{} {}x{}\n", c->is_wall ? "Wall" : "Cell", c->pos.x, c->pos.y);
-			
+			if (full_info)
+			{
+				stat_str += FMT_FORMAT("Looking at: {}\n", dstate.lookat);
+				
+				auto& lc = plr_ent->core.get_lc();
+				auto room = lc.ref_room(plr_ent->get_pos());
+				stat_str += FMT_FORMAT("Room: {}\n", room? room->name : "Corridor");
+				
+				if (auto c = lc.cell( lc.to_cell_coord( pinp.get_state(PlayerInput::CTX_GAME).tar_pos ) ))
+					stat_str += FMT_FORMAT("{} {}x{}\n", c->is_wall ? "Wall" : "Cell", c->pos.x, c->pos.y);
+			}
 			stat_str += FMT_FORMAT("Objective: {}", dstate.objective);
 			draw_text_hud({0, -1}, stat_str);
 			
@@ -539,11 +655,13 @@ public:
 		}
 		
 		// shouldn't be visible by player
-		RenImm::get().set_context(RenImm::DEFCTX_WORLD);
-		auto [ai_on, ai_off] = mgr.get_ai_rects();
-		RenImm::get().draw_frame(ai_on,  0x00ff0060, 0.5);
-		RenImm::get().draw_frame(ai_off, 0xff000060, 0.5);
-		RenImm::get().set_context(RenImm::DEFCTX_UI);
+		if (debug_mode) {
+			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
+			auto [ai_on, ai_off] = mgr.get_ai_rects();
+			RenImm::get().draw_frame(ai_on,  0x00ff0060, 0.5);
+			RenImm::get().draw_frame(ai_off, 0xff000060, 0.5);
+			RenImm::get().set_context(RenImm::DEFCTX_UI);
+		}
 	}
 	WeaponMsgReport& get_wpnrep()
 	{

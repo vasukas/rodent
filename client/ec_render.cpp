@@ -1,6 +1,7 @@
 #include "game/game_core.hpp"
 #include "game/physics.hpp"
 #include "render/ren_aal.hpp"
+#include "utils/time_utils.hpp"
 #include "ec_render.hpp"
 #include "effects.hpp"
 #include "presenter.hpp"
@@ -225,7 +226,8 @@ void EC_Uberray::render(const EC_RenderPos& p, TimeSpan passed)
 	}
 	left -= passed;
 	
-	RenAAL::get().draw_line(a, b, FColor(1, 0.3, 0.2).to_px(), 0.2, 4, left / left_max);
+	float ta = time_sine(TimeSpan::seconds(2), 0.85);
+	RenAAL::get().draw_line(a, b, clr.to_px() | 0xff, 0.2, 4, left / left_max * clr.a * ta);
 }
 
 

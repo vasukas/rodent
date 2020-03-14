@@ -25,6 +25,7 @@ protected:
 	friend class RenderControl_Impl;
 	static Postproc* init(); ///< Creates singleton
 	virtual void render() = 0;
+	virtual void render_reset() = 0;
 	virtual ~Postproc();
 };
 

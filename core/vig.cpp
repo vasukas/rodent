@@ -96,6 +96,7 @@ static std::array <keydat, KEY_LIMIT> keys;
 
 static int mouse_state = 0; ///< vig_Mouse_* flags
 static vec2i mouse_pos = {-1, -1};
+static vec2i mouse_press_pos = {-1, -1};
 static vec2i scroll_state = {};
 
 static std::string msg_text; ///< Message text (if empty - not shown)
@@ -205,21 +206,22 @@ void vig_on_event(const SDL_Event& ev) {
 		else it->time = -1; // key was pressed and released on same event cycle, will be resetted in vig_draw_end()
 	}
 	else if (ev.type == SDL_MOUSEBUTTONDOWN) {
-		// set 'pressed' flag if in range
+		// set 'pressed' flag and click
 		int i = ev.button.button;
-		if (i < vig_Mouse_ButtonCount)
+		if (i < vig_Mouse_ButtonCount) {
+			if (!(mouse_state & vig_Mouse_PressN(i))) mouse_state |= vig_Mouse_ClickN(i);
 			mouse_state |= vig_Mouse_PressN(i);
+		}
 		
 		// get pos
 		mouse_pos = {ev.button.x, ev.button.y};
+		mouse_press_pos = mouse_pos;
 	}
 	else if (ev.type == SDL_MOUSEBUTTONUP) {
-		// if in range and pressed, reset and set click
+		// reset flag
 		int i = ev.button.button;
-		if (i < vig_Mouse_ButtonCount && (mouse_state & vig_Mouse_PressN(i))) {
+		if (i < vig_Mouse_ButtonCount && (mouse_state & vig_Mouse_PressN(i)))
 			mouse_state &= ~vig_Mouse_PressN(i);
-			mouse_state |= vig_Mouse_ClickN(i);
-		}
 	}
 	else if (ev.type == SDL_MOUSEWHEEL) {
 		int x = ev.wheel.x, y = -ev.wheel.y;
@@ -255,6 +257,9 @@ void vig_draw_end() {
 	
 	// reset keys that was pressed and released on same cycle (see vig_on_event())
 	for (auto &k : keys) if (k.code && k.time == -1) k.code = 0;
+	
+	// reset mouse clicks
+	for (int i=1; i<vig_Mouse_ButtonCount; ++i) mouse_state &= ~vig_Mouse_ClickN(i);
 	
 	std::unique_lock msg_lock(msg_mutex);
 	
@@ -419,6 +424,10 @@ int vig_mouse_state() {
 vec2i vig_mouse_pos() {
 	if (input_locked) return {};
 	return mouse_pos;
+}
+vec2i vig_mouse_press_pos() {
+	if (input_locked) return {};
+	return mouse_press_pos;
 }
 vec2i vig_get_scroll() {
 	vec2i s = scroll_state;
@@ -956,7 +965,8 @@ bool vig_slider(std::string_view text, double& value, double min, double max, in
 }
 bool vig_scrollbar(float& offset, float span, bool is_horizontal, vec2i pos, vec2i size, Rect zone) {
 	// check if element hovered by mouse
-	bool hov = Rect(pos, size, true).contains(vig_mouse_pos());
+	bool press = (vig_mouse_state() & vig_Mouse_PRESS(Left)) && Rect(pos, size, true).contains(vig_mouse_press_pos());
+	bool hov = press || Rect(pos, size, true).contains(vig_mouse_pos());
 	bool area_hov = zone.contains(vig_mouse_pos());
 	
 	// draw background
@@ -980,18 +990,17 @@ bool vig_scrollbar(float& offset, float span, bool is_horizontal, vec2i pos, vec
 	vig_draw_rect(pos, size, vig_CLR(Frame), vig_FrameWidth);
 	
 	// check if pressed
+	if (press) {
+		bool is_x = is_horizontal;
+		offset = float(vig_mouse_pos()(is_x) - pos(is_x)) / size(is_x) - span/2;
+		offset = clampf(offset, 0, 1 - span);
+		return true;
+	}
 	if (hov || area_hov) {
-		if ((vig_mouse_state() & vig_Mouse_CLICK(Left)) && hov) {
-			bool is_x = is_horizontal;
-			offset = float(vig_mouse_pos()(is_x) - pos(is_x)) / size(is_x) - span/2;
-			offset = clampf(offset, 0, 1 - span);
-		}
-		else {
-			vec2i scr = vig_get_scroll();
-			if		(scr.x < 0 || scr.y < 0) offset = std::max(offset - span * 0.1f, 0.f);
-			else if (scr.x > 0 || scr.y > 0) offset = std::min(offset + span * 0.1f, 1.f - span);
-			else return false;
-		}
+		vec2i scr = vig_get_scroll();
+		if		(scr.x < 0 || scr.y < 0) offset = std::max(offset - span * 0.1f, 0.f);
+		else if (scr.x > 0 || scr.y > 0) offset = std::min(offset + span * 0.1f, 1.f - span);
+		else return false;
 		return true;
 	}
 	return false;
@@ -1144,7 +1153,7 @@ void vigAverage::draw()
 	}
 	avg /= vals.size();
 	
-	auto s = FMT_FORMAT("Avg {:<6.3} Now {:<6.3}\nMin {:<6.3} Max {:<6.3}", avg, vals[vptr].first, min, max);
+	auto s = FMT_FORMAT("Avg {:6.3f} Now {:6.3f}\nMin {:6.3f} Max {:6.3f}", avg, vals[vptr].first, min, max);
 	vec2i size = vig_element_size(s);
 	size.x += 2 + tex_k * vals.size();
 	

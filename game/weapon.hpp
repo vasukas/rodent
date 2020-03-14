@@ -145,10 +145,13 @@ struct EC_Equipment : EComp
 		bool has(Weapon& w) {return w.info->def_ammo ? has(*w.info->def_ammo) : true;}
 	};
 	
-	int hand = 0; // 1 right, 0 center, -1 left
+	std::optional<int> hand = 0; // 1 right, 0 center, -1 left. If not set, weapons not shown
 	
 	/// If true, ammo not consumed for any weapon
 	bool infinite_ammo = true;
+	
+	/// If true, never overheats
+	bool no_overheat = false;
 	
 	/// If set, error messages sent to it
 	WeaponMsgReport* msgrep = nullptr;

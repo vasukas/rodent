@@ -1,6 +1,5 @@
 ﻿#include "client/presenter.hpp"
 #include "game/game_core.hpp"
-#include "game/physics.hpp"
 #include "utils/noise.hpp"
 #include "ai_drone.hpp"
 
@@ -70,8 +69,7 @@ void AI_Drone::set_online(bool is)
 		prov.unreg(ECompType::StepPreUtil);
 		if (mov) {
 			mov->unreg(ECompType::StepPostUtil);
-			ent.ref_phobj().body.SetLinearVelocity({0, 0});
-			ent.ref_phobj().body.SetAngularVelocity(0);
+			mov->on_unreg();
 		}
 	}
 }
@@ -332,8 +330,8 @@ void AI_Drone::step()
 				
 				if (st->not_visible > st->grp->passed_since_seen())
 				{
-					mov->set_target( tar, AI_Speed::Accel );
-					// someone in group is closer, so no init_search on failure
+					if (mov->set_target( tar, AI_Speed::Accel ))
+						st->grp->init_search(); // may cause stops when someone is chasing ahead, but should prevent deadlocks
 				}
 				else if (!mov->has_target() || st->not_visible <= GameCore::step_len) // chase ahead
 				{
@@ -441,7 +439,7 @@ void AI_Drone::step()
 						mov->set_target(wr.move_target, AI_Speed::SlowPrecise);
 
 						particles->stop(true);
-						st->particle_tmo = TimeSpan::seconds(2);
+						st->particle_tmo = TimeSpan::seconds(1.5);
 					},
 					[&](AI_SimResource::ResultWorking wr)
 					{
@@ -453,13 +451,16 @@ void AI_Drone::step()
 							if (st->particle_tmo.is_positive())
 								st->particle_tmo -= GameCore::step_len;
 							else {
-								vec2fp p = {ent.ref_pc().get_radius(), 0};
+								float len = ent.ref_pc().get_radius();
 								if (st->is_loading)
-									particles->play(FE_WPN_CHARGE, {Transform{p}, 1, FColor(0.5, 0.4, 0.8), 0.5},
+									particles->play(FE_WPN_CHARGE, {Transform{{len,0}}, 1, FColor(0.5, 0.4, 0.8), 0.5},
 									                TimeSpan::seconds(0.2), TimeSpan::nearinfinity);
-								else
-									particles->play(FE_WPN_CHARGE, {Transform{p}, 1, FColor(0.8, 0.7, 0.4), 0.4},
-									                TimeSpan::seconds(1), TimeSpan::nearinfinity);
+								else {
+									auto& ray = ent.ensure<EC_Uberray>();
+									ray.clr = FColor(0.8, 0.7, 0.4, 1.5);
+									ray.left_max = TimeSpan::seconds(0.15);
+									ray.trigger(ent.get_pos() + vec2fp(len+1, 0).fastrotate(ent.ref_pc().get_angle()));
+				                }
 							}
 						}
 					}

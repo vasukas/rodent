@@ -86,7 +86,10 @@ public:
 		
 		vig_lo_push_scroll( RenderControl::get_size() - vig_element_decor()*2, scroll_pos );
 		
-		vig_label("KEYBINDS (place cursor over action name to see description)\n");
+		vig_label("=== KEYBINDS ===\n");
+		vig_label("Click on table cell to change value\n");
+		vig_label("Place cursor over table cell to see description\n");
+		
 		if (vig_button("Return to menu")) {
 			if (conflicts.empty())
 				delete this;
@@ -226,23 +229,15 @@ public:
 class ML_Help : public MainLoop
 {
 public:
-	std::optional<TextRenderInfo> tri;
+	TextRenderInfo tri;
+	vec2i scroll_pos = {};
 	
-	void on_event(const SDL_Event& ev) {
-		if (ev.type == SDL_KEYDOWN && 
-		    !ev.key.repeat && (
-			ev.key.keysym.scancode == SDL_SCANCODE_ESCAPE ||
-			ev.key.keysym.scancode == SDL_SCANCODE_F1))
-				delete this;
-	}
-	void render(TimeSpan, TimeSpan)
-	{
-		if (!tri) {
-			tri = TextRenderInfo{};
-			tri->str_a = R"(=== CONTROLS LIST ===
+	ML_Help() {
+		tri.str_a = R"(=== CONTROLS LIST ===
 
 F1       toggle this menu
 ESC      show keyboard bindings
+Pause	 pause game (explicitly)
 
 === GAME ===
 
@@ -252,6 +247,11 @@ Mouse    aim						E   interact
 LMB      primary fire				M   (held) show map
 RMB      alt. fire					1-6             select weapon
 Ctrl     track mouse movement		Mousewheel,[,]  change weapon
+
+=== TELEPORT MENU ===
+		             
+LMB		select teleport
+ESC		exit menu
 
 === REPLAY PLAYBACK ===
 
@@ -263,22 +263,35 @@ Ctrl     track mouse movement		Mousewheel,[,]  change weapon
 
 B		toggle far camera			Shift (held) debug mode
 F4		toggle godmode				F7    toggle debug mode
-F5		save full world renderer	P     (debug mode) toggle puppet mode
+0		toggle physics debug draw	P     (debug mode) toggle puppet mode
 									LMB   (debug mode) select object
-0		toggle physics debug draw	RMB   (debug mode) teleport at
-F9		toggle AoS debug draw		RMB   (puppet mode) move to
-F10		toggle particles rendering
+									RMB   (debug mode) teleport at
+									RMB   (puppet mode) move to
 
 === APP DEBUG ===
 
 ~ + Q   exit immediatly				F2      toggle log
-~ + R   reload shaders				~ + 1   debug menu: disable
-~ + F   switch fullscreen mode		~ + 2   debug menu: rendering
-~ + S   reset window to minimal		~ + 3   debug menu: game
-~ + C   reload config)";
-			tri->build();
-		}
-		RenImm::get().draw_text(vec2fp::one(6), *tri, RenImm::White);
+~ + R   reload shaders				F3      toggle fps counter
+~ + F   switch fullscreen mode		~ + 1   debug menu: disable
+~ + S   reset window to minimal		~ + 2   debug menu: rendering
+~ + C   reload config				~ + 3   debug menu: game
+~     while held, blocks non-UI input)";
+		tri.build();
+	}
+	void on_event(const SDL_Event& ev) {
+		if (ev.type == SDL_KEYDOWN && 
+		    !ev.key.repeat && (
+			ev.key.keysym.scancode == SDL_SCANCODE_ESCAPE ||
+			ev.key.keysym.scancode == SDL_SCANCODE_F1))
+				delete this;
+	}
+	void render(TimeSpan, TimeSpan)
+	{
+		vig_lo_push_scroll(RenderControl::get_size() - vig_element_decor()*2, scroll_pos);
+		vec2i offset, size = tri.size.int_ceil();
+		vig_lo_place(offset, size);
+		RenImm::get().draw_text(offset, tri, RenImm::White);
+		vig_lo_pop();
 	}
 };
 
@@ -293,10 +306,12 @@ public:
 	std::string init_greet;
 	std::future<std::shared_ptr<LevelTerrain>> async_init; // inits gctr
 	
+	size_t i_cheat = 0;
+	
 	// init args
 	
 	bool use_rndseed = false;
-	bool allow_cheats = false;
+	bool debug_mode = false;
 	bool is_superman_init = false;
 	bool debug_ai_rect_init = false;
 	bool no_ffwd = false;
@@ -324,7 +339,7 @@ public:
 	ML_Game() = default;
 	bool parse_arg(ArgvParse& arg)
 	{
-		if		(arg.is("--cheats")) allow_cheats = true;
+		if		(arg.is("--debugmode")) debug_mode = true;
 		else if (arg.is("--rndseed")) use_rndseed = true;
 		else if (arg.is("--seed")) use_seed = arg.i32();
 		else if (arg.is("--no-ffwd")) no_ffwd = true;
@@ -463,6 +478,18 @@ public:
 	{
 		if (gui)
 			gui->on_event(ev);
+		
+		constexpr std::string_view s("90-88-90");
+		if (ev.type == SDL_KEYUP && i_cheat != s.length()) {
+			if (ev.key.keysym.sym == s[i_cheat] && (ev.key.keysym.mod & KMOD_SHIFT)) {
+				++i_cheat;
+				if (i_cheat == s.length()) {
+					VLOGI("Cheat sequence entered");
+					gui->enable_debug_mode();
+				}
+			}
+			else i_cheat = 0;
+		}
 	}
 	void render(TimeSpan frame_begin, TimeSpan passed)
 	{
@@ -478,7 +505,7 @@ public:
 				pars.ctr = gctr.get();
 				pars.lt = std::move(lt);
 				pars.init_greet = std::move(init_greet);
-				pars.allow_cheats = allow_cheats;
+				pars.allow_cheats = debug_mode;
 				gui.reset( GameUI::create(std::move(pars)) );
 				
 				if (!gctr->get_replay_reader()) {

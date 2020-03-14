@@ -43,7 +43,8 @@ public:
 			T_SHAD, // set shader and camera matrix, index is SHAD_*
 			T_CLIP, // set clip rect, index into 'clips' or INVIX for default
 			T_TEX, // set texture, index is object
-			T_CLR // set color, index is uint32_t
+			T_CLR, // set color, index is uint32_t
+			T_HACK_CURSOR
 		};
 		Type type;
 		size_t index;
@@ -74,7 +75,7 @@ public:
 	GLuint white_tex; ///< White rectangle texture
 	Rectfp white_tc; ///< White rectangle texcoord
 	
-	GLint vp[4]; // for restoring after clip rects
+	GLint vp[4] = {0,0,1,1}; // for restoring after clip rects
 	
 	std::unique_ptr<Shader> sh_default, sh_default_text;
 	
@@ -587,6 +588,14 @@ public:
 		if (cx.clip_stack.empty()) cx.cmds.push_back({ Cmd::T_CLIP, size_t_inval });
 		else                       cx.cmds.push_back({ Cmd::T_CLIP, cx.clip_stack.back().second });
 	}
+	void mouse_cursor_hack()
+	{
+		if (!ctx_ok) return;
+		auto& cx = ctxs[ ctx_cur ];
+		
+		reserve_more_block( cx.cmds, 256 );
+		cx.cmds.push_back({ Cmd::T_HACK_CURSOR, 0 });
+	}
 	void raw_vertices(size_t vert_num, const vec2fp *vert_pos, const vec2fp *uv)
 	{
 		data.reserve(4 * vert_num);
@@ -631,13 +640,22 @@ public:
 		vao.bind();
 		glActiveTexture( GL_TEXTURE0 );
 		
+		bool hack_cursor = false;
+		
 		for (auto& cmd : cx.cmds)
 		{
 			switch (cmd.type)
 			{
 			case Cmd::T_OBJ:
-				{	auto& obj = objs[ cmd.index ];
+				if (hack_cursor)
+					sh->set2f("offset", RenderControl::get().get_current_cursor());
+				{
+					auto& obj = objs[ cmd.index ];
 					glDrawArrays( GL_TRIANGLES, obj.off, obj.count );
+				}
+				if (hack_cursor) {
+					hack_cursor = false;
+					sh->set2f("offset", 0, 0);
 				}
 				break;
 				
@@ -662,6 +680,11 @@ public:
 				sh = (cmd.index == SHAD_MAIN ? ps.sh : ps.sh_text);
 				sh->bind();
 				sh->set4mx( "proj", mx );
+				sh->set2f("offset", 0, 0);
+				break;
+				
+			case Cmd::T_HACK_CURSOR:
+				hack_cursor = true;
 				break;
 			}
 		}

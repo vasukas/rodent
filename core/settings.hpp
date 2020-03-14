@@ -33,6 +33,7 @@ struct AppSettings
 	// game
 	int cursor_info_flags = 1;
 	bool plr_status_blink = false;
+	bool plr_status_flare = false;
 	
 	
 	

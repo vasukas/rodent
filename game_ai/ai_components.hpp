@@ -26,6 +26,8 @@ struct AI_Movement final : EComp
 	bool is_same(vec2fp a, vec2fp b) const; ///< Checks if two coordinates refer to (roughly) same position
 	std::optional<vec2fp> get_target() const; ///< Returns current target, if any
 	
+	void on_unreg();
+	
 private:
 	AI_Drone& drone;
 	
@@ -44,9 +46,14 @@ private:
 	bool preq_failed = false;
 	std::optional<vec2fp> patrol_reset;
 	
+	vec2fp rare_pos = vec2fp::one(-1000);
+	TimeSpan rare_last;
+	LevelCtrTmpLock path_lock;
+	
 	
 	std::optional<vec2fp> calc_avoidance(); // collision avoidance vector
 	vec2fp step_path();
+	void lock_check();
 	void step() override;
 	
 	static float inert_k(AI_Speed speed);
@@ -105,7 +112,7 @@ protected:
 	EVS_SUBSCR;
 	AI_Drone& drone;
 	
-	bool is_primary(Entity& ent) const {return ent.get_eqp();}
+	bool is_primary(Entity& ent) const {return ent.is_creature();}
 	
 private:
 	std::optional<Target> tar_sel;

@@ -153,6 +153,9 @@ int vig_mouse_state();
 /// Returns absolute mouse position
 vec2i vig_mouse_pos();
 
+/// Returns absolute mouse position when pressed button last time
+vec2i vig_mouse_press_pos();
+
 /// Returns scroll state - but only once per render step!
 vec2i vig_get_scroll();
 

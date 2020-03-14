@@ -25,6 +25,7 @@
 #include "game_objects/objs_basic.hpp"
 #include "render/postproc.hpp"
 #include "render/ren_text.hpp"
+#include "utils/path_search.hpp"
 #include "utils/res_image.hpp"
 
 
@@ -134,6 +135,8 @@ public:
 	
 	// screen
 	
+	bool ignore_ren_pause = false;
+	
 	bool is_ren_paused = false; ///< Is paused be window becoming non-visible
 	TimeSpan hide_pause_until; ///< Pause stub is not drawn until after that time
 	bool is_first_frame = true;
@@ -148,9 +151,12 @@ public:
 	std::vector<WinrarAnim> winrars;
 	std::string init_greet;
 	
+	PlayerUI* pmg_ui;
+	bool menu_pause = false;
+	
 	// debug controls
 	
-	bool allow_cheats;
+	bool allow_cheats = false;
 	bool ph_debug_draw = false;
 	
 	bool ui_dbg_mode = false;
@@ -166,14 +172,21 @@ public:
 	size_t serv_avg_count = 0;
 	size_t serv_overmax_count = 0;
 	
+	struct DebugAPS {
+		float time;
+		size_t reqs, locks;
+	};
+	std::array<DebugAPS, int(TimeSpan::seconds(5) / GameCore::step_len)> dbg_aps = {};
+	size_t i_dbg_aps = 0;
+	
 	
 	
 	GameUI_Impl(InitParams pars)
 		: gctr(*pars.ctr)
 	{
 		PlayerInput::get().set_context(PlayerInput::CTX_GAME);
-		allow_cheats = pars.allow_cheats;
 		init_greet = std::move(pars.init_greet);
+		allow_cheats = pars.allow_cheats;
 		
 		RenAAL::get().draw_grid = true;
 		Postproc::get().tint_seq({}, FColor(0,0,0,0));
@@ -194,9 +207,53 @@ public:
 				dbg_serv_avg->draw();
 				vig_lo_next();
 				
-				vig_label_a("Raycasts:   {:4}\n", core.get_phy().raycast_count);
-				vig_label_a("AABB query: {:4}\n", core.get_phy().aabb_query_count);
+				if (vig_button("Save world render")) {
+					lock.unlock();
+					save_automap("AUTOMAP.png");
+					return;
+				}
+				vig_checkbox(pmg_ui->full_info, "Additional HUD info");
+				vig_checkbox(ignore_ren_pause, "Ignore render pause");
+				vig_checkbox(core.get_aic().show_aos_debug, "Show AOS");
+				vig_checkbox(RenParticles::get().enabled, "Show particles");
 				vig_lo_next();
+				
+				vig_label_a("Raycasts:  {:4}\nAABB query: {:3}\n",
+				            core.get_phy().raycast_count, core.get_phy().aabb_query_count);
+				vig_label_a("Bots (battle): {}\n", core.get_aic().debug_batle_number);
+				vig_lo_next();
+				
+				//
+				
+				float ad_time = 0;
+				size_t ad_reqs = 0;
+				size_t ad_locks = 0;
+				for (auto& p : dbg_aps) {
+					ad_time  = std::max(ad_time,  p.time);
+					ad_reqs  = std::max(ad_reqs,  p.reqs);
+					ad_locks = std::max(ad_locks, p.locks);
+				}
+				
+				vig_label_a("Time: {:2.3f}\nReqs:  {:3}\nLocks: {:3}\n",
+				            ad_time, ad_reqs, ad_locks);
+				vig_lo_next();
+				
+				static uint32_t last_step = 0;
+				if (core.get_step_counter() != last_step)
+				{
+					auto& aps = core.get_lc().get_aps();
+					
+					dbg_aps[i_dbg_aps].time = aps.debug_time.seconds();
+					dbg_aps[i_dbg_aps].reqs = aps.debug_request_count;
+					dbg_aps[i_dbg_aps].locks = aps.debug_lock_count;
+					i_dbg_aps = (i_dbg_aps + 1) % dbg_aps.size();
+					
+					last_step = core.get_step_counter();
+					aps.debug_time = {};
+					aps.debug_request_count = {};
+				}
+				
+				//
 				
 				if (allow_cheats)
 				{
@@ -204,14 +261,13 @@ public:
 					vig_checkbox(core.dbg_ai_see_plr, "AI see player");
 					vig_lo_next();
 				}
-				
 				if (auto ent = core.get_pmg().get_ent())
 				{
 					auto pos = ent->get_pos();
 					vig_label_a("x:{:5.2f} y:{:5.2f}", pos.x, pos.y);
 					vig_lo_next();
 					
-					if (vig_button("Damage self"))
+					if (vig_button("Damage self (30)"))
 						ent->ref_hlc().apply({ DamageType::Direct, 30 });
 					
 					if (allow_cheats)
@@ -227,8 +283,12 @@ public:
 							for (int i=0; i<3; ++i)
 								core.get_pmg().inc_objective();
 						}
+						if (vig_button("Get 500 armor")) {
+							new EPickable(core, pos, EPickable::ArmorShard{500});
+						}
+						vig_checkbox(ent->ref_eqp().no_overheat, "No overheat");
 					}
-					else vig_label("Cheats disabled");
+					else vig_label("\nCheats disabled");
 					vig_lo_next();
 				}
 			});
@@ -250,7 +310,9 @@ public:
 		});
 		
 		is_playback = gctr.get_replay_reader();
-		gctr.get_core().get_pmg().set_pui( std::unique_ptr<PlayerUI>(PlayerUI::create()) );
+		pmg_ui = PlayerUI::create();
+		pmg_ui->debug_mode = allow_cheats;
+		gctr.get_core().get_pmg().set_pui( std::unique_ptr<PlayerUI>(pmg_ui) );
 	}
 	~GameUI_Impl()
 	{
@@ -312,6 +374,7 @@ public:
 			if		(k == SDL_SCANCODE_1) mod_pb_speed([](float v){return v/2;});
 			else if (k == SDL_SCANCODE_2) mod_pb_speed([](float v){return v*2;});
 			else if (k == SDL_SCANCODE_3) mod_pb_speed([](float){return 1;});
+			else if (k == SDL_SCANCODE_PAUSE) is_ren_paused = true;
 			else if (!is_first_frame && allow_cheats)
 			{
 				if		(k == SDL_SCANCODE_0) {
@@ -327,19 +390,10 @@ public:
 					pm.cheat_godmode = !pm.cheat_godmode;
 					pm.update_cheats();
 				}
-				else if (k == SDL_SCANCODE_F5) {
-					save_automap("AUTOMAP.png");
-				}
 				else if (k == SDL_SCANCODE_F7) {
 					ui_dbg_mode = !ui_dbg_mode;
 					ui_dbg_puppet_switch = false;
 				}
-				else if (k == SDL_SCANCODE_F9) {
-					auto lock = gctr.core_lock();
-					bool& flag = gctr.get_core().get_aic().show_aos_debug;
-					flag = !flag;
-				}
-				else if (k == SDL_SCANCODE_F10) RenParticles::get().enabled = !RenParticles::get().enabled;
 				else if (k == SDL_SCANCODE_LSHIFT || k == SDL_SCANCODE_RSHIFT) {
 					ui_dbg_mode = false;
 				}
@@ -389,7 +443,7 @@ public:
 			for (auto& w : winrars) w.draw();
 			draw_text_message("Game completed.\n\nA WINRAR IS YOU.");
 		}
-		else if (!RenderControl::get().is_visible())
+		else if (!RenderControl::get().is_visible() && !ignore_ren_pause)
 		{
 			auto lock = gctr.core_lock();
 			gctr.set_pause(true);
@@ -397,14 +451,14 @@ public:
 		}
 		else
 		{
-			if (SDL_GetKeyboardFocus() != RenderControl::get().get_wnd())
+			if (SDL_GetKeyboardFocus() != RenderControl::get().get_wnd() && !ignore_ren_pause)
 				is_ren_paused = true;
 			
 			auto lock = gctr.core_lock();
 			auto& core = gctr.get_core();
 			
-			bool is_core_paused = std::get<GameControl::CS_Run>(gctr.get_state()).paused;
-			gctr.set_pause(is_ren_paused);
+//			bool is_core_paused = std::get<GameControl::CS_Run>(gctr.get_state()).paused;
+			gctr.set_pause(is_ren_paused || menu_pause);
 			gctr.set_speed(replay_speed_k);
 			
 			if (is_first_frame)
@@ -454,7 +508,7 @@ public:
 			
 			// draw pause stub
 			
-			if (is_core_paused)
+			if (is_ren_paused)
 			{
 				if (TimeSpan::since_start() > hide_pause_until)
 				{
@@ -495,9 +549,12 @@ public:
 				if (auto i_cur = core.get_info().get_menu_teleport())
 				{
 					pinp.set_context(PlayerInput::CTX_MENU);
+					menu_pause = true;
+					
 					auto exit = [&]{
 						pinp.set_context(PlayerInput::CTX_GAME);
 						core.get_info().set_menu_teleport({});
+						menu_pause = false;
 					};
 					
 					if (core.get_pmg().get_ent())
@@ -532,20 +589,20 @@ public:
 					std::optional<vec2fp> plr_p;
 					if (auto ent = core.get_pmg().get_ent()) plr_p = ent->get_pos();
 					lmap->draw(passed, plr_p, inpst.is[PlayerInput::A_SHOW_MAP]);
+					menu_pause = inpst.is[PlayerInput::A_SHOW_MAP];
 				}
 			}
 			
 			// debug UI
 			
+			const float X_OFF = 200;
+			const float Y_STR = RenText::get().line_height(FontIndex::Mono);
+			bool l_but = (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON_LMASK);
+			bool r_but = (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON_RMASK);
+			
 			if (ui_dbg_mode)
 			{
-				const float X_OFF = 200;
-				const float Y_STR = RenText::get().line_height(FontIndex::Mono);
-				
 				Entity* plr_ent = core.get_pmg().get_ent();
-				
-				bool l_but = (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON_LMASK);
-				bool r_but = (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON_RMASK);
 				
 				draw_text_hud({X_OFF, RenderControl::get_size().y / 2.f}, "DEBUG UI MODE");
 				if (ui_dbg_puppet_switch)
@@ -561,51 +618,6 @@ public:
 					
 					if (auto rw = gctr.get_replay_writer())
 						rw->add_event(Replay_DebugTeleport{ p });
-				}
-				
-				// object info + AI puppet
-				if (auto ent = core.valid_ent(dbg_select))
-				{
-					std::string s;
-					s += FMT_FORMAT("EID: {}\n", ent->index.to_int());
-					
-					if (auto h = ent->get_hlc()) {
-						s += FMT_FORMAT("HP: {}/{}\n", h->get_hp().exact().first, h->get_hp().exact().second);
-						h->foreach_filter([&](DamageFilter& f){
-							if (auto p = dynamic_cast<DmgShield*>(&f)) {
-								s += FMT_FORMAT("-- SHL {}/{}\n", p->get_hp().exact().first, p->get_hp().exact().second);
-							}
-							else s += "-- FLT\n";
-						});
-					}
-					
-					if (AI_Drone* d = ent->get_ai_drone()) s += d->get_dbg_state();
-					else s += "NO DEBUG STATS\n";
-					
-					draw_text_hud({X_OFF, RenderControl::get_size().y / 2.f + Y_STR*4}, s);
-					
-					auto& cam = RenderControl::get().get_world_camera();
-					auto pos  = cam.direct_cast( ent->get_pos() );
-					auto size = cam.direct_cast( ent->get_pos() + vec2fp::one(ent->ref_pc().get_radius()) );
-					RenImm::get().draw_frame( Rectfp::from_center(pos, size - pos), 0x00ff00ff, 3 );
-					
-					if (AI_Drone* d = ent->get_ai_drone();
-					    d && allow_cheats)
-					{
-						if (ui_dbg_puppet_switch)
-						{
-							if (auto st = std::get_if<AI_Drone::Puppet>(&d->get_state())) {
-								if (r_but)
-									st->mov_tar = { inpst.tar_pos, AI_Speed::Normal };
-							}
-							else {
-								d->set_idle_state();
-								d->add_state( AI_Drone::Puppet{} );
-							}
-						}
-						else if (std::holds_alternative<AI_Drone::Puppet>(d->get_state()))
-							d->remove_state();
-					}
 				}
 				
 				// select object
@@ -628,7 +640,61 @@ public:
 					else dbg_select = {};
 				}
 			}
+			
+			// object info + AI puppet
+			if (auto ent = core.valid_ent(dbg_select))
+			{
+				std::string s;
+				s += FMT_FORMAT("EID: {}\n", ent->index.to_int());
+				
+				if (ent->dbg_is_reg())
+					s += "HASSTEPREG\n";
+				
+				if (auto h = ent->get_hlc()) {
+					s += FMT_FORMAT("HP: {}/{}\n", h->get_hp().exact().first, h->get_hp().exact().second);
+					h->foreach_filter([&](DamageFilter& f){
+						if (auto p = dynamic_cast<DmgShield*>(&f)) {
+							s += FMT_FORMAT("-- SHL {}/{}\n", p->get_hp().exact().first, p->get_hp().exact().second);
+						}
+						else s += "-- FLT\n";
+					});
+				}
+				
+				if (AI_Drone* d = ent->get_ai_drone()) s += d->get_dbg_state();
+				else s += "NO DEBUG STATS\n";
+				
+				draw_text_hud({X_OFF, RenderControl::get_size().y / 2.f + Y_STR*4}, s);
+				
+				auto& cam = RenderControl::get().get_world_camera();
+				auto pos  = cam.direct_cast( ent->get_pos() );
+				auto size = cam.direct_cast( ent->get_pos() + vec2fp::one(ent->ref_pc().get_radius()) );
+				RenImm::get().draw_frame( Rectfp::from_center(pos, size - pos), 0x00ff00ff, 3 );
+				
+				if (AI_Drone* d = ent->get_ai_drone();
+				    d && allow_cheats && ui_dbg_mode)
+				{
+					if (ui_dbg_puppet_switch)
+					{
+						if (auto st = std::get_if<AI_Drone::Puppet>(&d->get_state())) {
+							if (r_but)
+								st->mov_tar = { inpst.tar_pos, AI_Speed::Normal };
+						}
+						else {
+							d->set_idle_state();
+							d->add_state( AI_Drone::Puppet{} );
+						}
+					}
+					else if (std::holds_alternative<AI_Drone::Puppet>(d->get_state()))
+						d->remove_state();
+				}
+			}
 		}
+	}
+	void enable_debug_mode()
+	{
+		allow_cheats = true;
+		pmg_ui->debug_mode = allow_cheats;
+		pmg_ui->message("CHEATS ENABLED", TimeSpan::seconds(1), TimeSpan::seconds(1));
 	}
 	
 	void save_automap(const char *filename)

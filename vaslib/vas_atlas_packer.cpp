@@ -4,6 +4,8 @@
 #include "vaslib/vas_cpp_utils.hpp"
 #include "vaslib/vas_log.hpp"
 
+constexpr size_t buf_y_incr = 128;
+
 
 
 bool AtlasPacker::InputInfo::operator <( const InputInfo& im )
@@ -55,6 +57,12 @@ std::vector <AtlasPacker::AtlasInfo> AtlasPacker::build()
 		std::vector <uint8_t> is_occ; // is_occupied flag (per min-size), without atlas borders
 		int y_min = 0, y_max = 0; // current minimal and maximal height
 		// y_min never modified :(
+		
+		void set_max(int y, int real_size) {
+			y_max = y;
+			if (int(is_occ.size()) < real_size * y)
+				is_occ.resize(real_size * (y + buf_y_incr));
+		}
 	};
 	std::vector <Atlas> ats;
 	
@@ -78,7 +86,7 @@ std::vector <AtlasPacker::AtlasInfo> AtlasPacker::build()
 		if (req_ht > at.y_max)
 		{
 			if (req_ht > real_size) return false;
-			at.y_max = req_ht;
+			at.set_max(req_ht, real_size);
 		}
 		
 		// for all lines
@@ -114,7 +122,7 @@ std::vector <AtlasPacker::AtlasInfo> AtlasPacker::build()
 			if (at.y_max == real_size) return false;
 			req_ht = real_size;
 		}
-		at.y_max = req_ht;
+		at.set_max(req_ht, real_size);
 		return place( at_ix, im, place );
 	};
 	
@@ -130,13 +138,7 @@ std::vector <AtlasPacker::AtlasInfo> AtlasPacker::build()
 		if (at_ix == ats.size())
 		{
 			// add new atlas
-			try {
-				VLOGD( "AtlasPacker::build() alloc (is_occ): {} bytes", real_size * real_size );
-				ats.emplace_back().is_occ.resize( real_size * real_size );
-			}
-			catch (std::exception& e) {
-				THROW_FMTSTR( "AtlasPacker::build() allocation failed - {}", e.what() );
-			}
+			ats.emplace_back();
 			
 			if (!place( at_ix, im, place ))
 				THROW_FMTSTR( "AtlasPacker::build() sprite {} is bigger than max_size", im.id );
@@ -149,6 +151,8 @@ std::vector <AtlasPacker::AtlasInfo> AtlasPacker::build()
 	
 	for (auto& at : ats)
 	{
+		VLOGV( "AtlasPacker::build() alloc'ed (is_occ): {} bytes", at.is_occ.size() );
+		
 		int max_x = 0;
 		int max_y = 0;
 		

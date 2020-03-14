@@ -64,7 +64,8 @@ std::optional<Weapon::DirectionResult> Weapon::get_direction(const ShootParams& 
 	
 	vec2fp offset = {ent.ref_pc().get_radius(), 0};
 	offset.fastrotate(rot);
-	offset += vec2fp(info->bullet_offset).fastrotate( rot );
+	if (equip->hand)
+		offset += vec2fp(info->bullet_offset).fastrotate( rot );
 	
 	if (auto rc = ent.core.get_phy().raycast_nearest( conv(orig), conv(orig + offset) )) {
 		offset = 0.9 * (conv(rc->poi) - orig);
@@ -149,10 +150,10 @@ bool EC_Equipment::set_wpn(size_t index, bool even_if_no_ammo)
 	last_req.reset();
 	
 	// update
-	if (true)
+	if (hand)
 	{
 		auto& ri = *get_wpn().info;
-		int w_hand = ri.hand ? *ri.hand : hand;
+		int w_hand = ri.hand ? *ri.hand : *hand;
 		
 		float r = ent.ref_pc().get_radius();
 		rc.attach( EC_RenderEquip::ATT_WEAPON, Transform{vec2fp(r, r/2 * w_hand)}, ri.model, FColor(1, 0.4, 0, 1) );
@@ -208,7 +209,7 @@ bool EC_Equipment::shoot_internal(Weapon& wpn, Weapon::ShootParams pars)
 int EC_Equipment::shoot_check(Weapon& wpn)
 {
 	if (wpn.rof_left.is_positive()) return 0;
-	if (wpn.overheat && !wpn.overheat->is_ok()) return 0;
+	if (!no_overheat && wpn.overheat && !wpn.overheat->is_ok()) return 0;
 	if (!has_ammo(wpn)) return 1;
 	return 2;
 }

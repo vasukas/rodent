@@ -170,7 +170,7 @@ struct SocketInternal
 		}
 	}
 	
-	operator bool() const {return s != INVALID_SOCKET;}
+	explicit operator bool() const {return s != INVALID_SOCKET;}
 	
 	static SocketInternal create_from(SOCKET s)
 	{

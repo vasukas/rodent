@@ -100,7 +100,7 @@ void area_query(GameCore& core, vec2fp ctr, float radius, callable_ref<bool(AI_D
 	});
 }
 
-std::vector<std::vector<vec2fp>> calc_search_rings(GameCore& core, vec2fp ctr_pos)
+std::vector<std::vector<vec2fp>> calc_search_rings(GameCore& core, vec2fp ctr_pos, vec2fp fp_real_target, bool& real_inside)
 {
 	const vec2i dirs[4] = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
 	auto& ring_dist = AI_Const::search_ring_dist;
@@ -124,6 +124,9 @@ std::vector<std::vector<vec2fp>> calc_search_rings(GameCore& core, vec2fp ctr_po
 	
 	std::vector<std::vector<vec2fp>> rings;
 	rings.reserve( ring_dist.size() );
+	
+	vec2i real_target = lc.to_cell_coord(fp_real_target);
+	real_inside = false;
 	
 	for (int step = 1; step <= ring_dist.back() && !free_nodes.empty(); ++step)
 	{
@@ -155,8 +158,10 @@ std::vector<std::vector<vec2fp>> calc_search_rings(GameCore& core, vec2fp ctr_po
 					if (!lc.cref(p).is_wall)
 					{
 						if (add_ring)
-							rings.back().emplace_back( vec2fp(p) * GameConst::cell_size + vec2fp::one(GameConst::cell_size / 2) );
-							
+							rings.back().emplace_back(lc.to_center_coord(p));
+						else if (!real_inside && p == real_target && !rings.empty())
+							real_inside = true;
+						
 						free_nodes.emplace_back(p);
 					}
 				}

@@ -35,3 +35,6 @@ cursor_info_flags 1
 # animate player UI
 plr_status_blink true
 
+# screen edge flare (HUD)
+plr_status_flare true
+

@@ -65,7 +65,7 @@ struct RAII_Guard
 	RAII_Guard( RAII_Guard&& g ) noexcept { foo = std::move(g.foo); g.foo = {}; }
 	void operator =( RAII_Guard&& g ) noexcept { foo = std::move(g.foo); g.foo = {}; }
 	
-	operator bool() {return foo.operator bool();}
+	explicit operator bool() {return !!foo;}
 	std::function <void()> copy_func() { return foo; }
 	std::function <void()> release() { auto f = std::move(foo); foo = {}; return f; }
 	
@@ -156,7 +156,7 @@ public:
 		_erased_fn = nullptr;
 	}
 	
-	operator bool() const {
+	explicit operator bool() const {
 		return AllowOptional ? _ptr != nullptr : true;
 	}
 	auto operator()(Args... xs) {

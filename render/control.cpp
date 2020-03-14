@@ -170,8 +170,8 @@ public:
 					if (type == GL_DEBUG_TYPE_ERROR) VLOGE("GL [Error/{}]: {}", dbgo_sever_name(sever), std::string_view(msg, length));
 					else if (opt_gldbg) VLOGV("GL [{}/{}]: {}", dbgo_type_name(type), dbgo_sever_name(sever), std::string_view(msg, length));
 					
-					if (type == GL_DEBUG_TYPE_ERROR && sever == GL_DEBUG_SEVERITY_HIGH)
-						debugbreak();
+//					if (type == GL_DEBUG_TYPE_ERROR && sever == GL_DEBUG_SEVERITY_HIGH)
+//						debugbreak();
 				}
 			};
 			
@@ -245,6 +245,14 @@ public:
 	SDL_Window* get_wnd()      { return wnd; }
 	TimeSpan    get_passed()   { return last_passed; }
 	
+	vec2i get_current_cursor()
+	{
+		vec2i m, w;
+		SDL_GetGlobalMouseState(&m.x, &m.y);
+		SDL_GetWindowPosition(wnd, &w.x, &w.y);
+		return m - w;
+	}
+	
 	bool render( TimeSpan passed )
 	{
 		proc_tasks();
@@ -260,6 +268,14 @@ public:
 			old_size = n_size;
 			if (fs_cur == FULLSCREEN_OFF) nonfs_size = old_size;
 			VLOGD("RenderControl:: resized to {} {}", n_size.x, n_size.y);
+			
+			// blank screen for one frame
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glViewport(0, 0, n_size.x, n_size.y);
+			glClearColor(0, 0, 0, 1);
+			glClear(GL_COLOR_BUFFER_BIT);
+			pp_main->render_reset();
+			return true;
 		}
 		
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);

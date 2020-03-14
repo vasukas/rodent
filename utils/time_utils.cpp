@@ -2,6 +2,13 @@
 #include "render/control.hpp"
 #include "time_utils.hpp"
 
+float time_sine(TimeSpan full_period, float min, float max, TimeSpan time) {
+	if (full_period.ms() < 0) return max;
+	float t = std::fmod(time.seconds(), full_period.seconds()) / full_period.seconds();
+	t = sine_lut_norm(t);
+	return min + (max - min) * (t + 1)/2;
+}
+
 
 SmoothSwitch::SmoothSwitch(TimeSpan tmo, std::optional<TimeSpan> tmo_out) {reset(tmo, tmo_out);}
 void SmoothSwitch::reset(TimeSpan tmo, std::optional<TimeSpan> tmo_out_new)

@@ -131,6 +131,7 @@ public:
 	EC_PlayerLogic log;
 	
 	PlayerEntity(GameCore& core, vec2fp pos, bool is_superman);
+	~PlayerEntity();
 	size_t get_team() const override {return TEAM_PLAYER;}
 
 	EC_Equipment* get_eqp() override {return &eqp;}

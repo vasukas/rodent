@@ -49,8 +49,11 @@ public:
 	virtual SDL_Window* get_wnd() = 0;
 	
 	virtual TimeSpan get_passed() = 0; ///< Returns last 'passed' value which was passed to render()
+
 	
 	
+	/// Returns current system coordinates, may be slow
+	virtual vec2i get_current_cursor() = 0;
 	
 	/// Render everything to screen. 
 	/// Returns false if some unrecoverable error occured

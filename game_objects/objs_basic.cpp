@@ -7,6 +7,7 @@
 #include "utils/noise.hpp"
 #include "vaslib/vas_log.hpp"
 #include "objs_basic.hpp"
+#include "weapon_all.hpp"
 
 
 
@@ -220,7 +221,7 @@ void EPickable::on_cnt(const CollisionEvent& ce)
 
 void EDoor::on_cnt(const CollisionEvent& ce)
 {
-	if (!plr_only) {if (!ce.other->get_eqp()) return;}
+	if (!plr_only) {if (!ce.other->is_creature()) return;}
 	else if (!core.get_pmg().is_player( *ce.other )) return;
 
 	if (ce.type == CollisionEvent::T_BEGIN) {
@@ -231,8 +232,10 @@ void EDoor::on_cnt(const CollisionEvent& ce)
 }
 void EDoor::open()
 {
-	if      (state == ST_OPEN)   tm_left = keep_time;
-	else if (state == ST_CLOSED) tm_left = wait_time;
+	if (state == ST_OPEN) tm_left = keep_time;
+	else if (state == ST_CLOSED && !tm_left.is_positive())
+		tm_left = wait_time;
+	
 	reg_this();
 }
 void EDoor::step()
@@ -278,15 +281,12 @@ void EDoor::step()
 	{
 		ref<EC_RenderDoor>().set_state(1);
 		
-		if (tm_left.is_positive())
+		tm_left -= GameCore::step_len;
+		if (tm_left.is_negative())
 		{
-			tm_left -= GameCore::step_len;
-			if (tm_left.is_negative())
-			{
-				state = ST_TO_OPEN;
-				tm_left = anim_time;
-				fix.set_enabled(*this, false);
-			}
+			state = ST_TO_OPEN;
+			tm_left = anim_time;
+			fix.set_enabled(*this, false);
 		}
 	}
 }
@@ -356,7 +356,7 @@ EFinalTerminal::EFinalTerminal(GameCore& core, vec2fp at)
 void EFinalTerminal::step()
 {
 	float t = (timer_end - core.get_step_time()).seconds();
-	GamePresenter::get()->dbg_text(get_pos(), FMT_FORMAT("Boot-up in process: {:2.1f}", t));
+	GamePresenter::get()->dbg_text(get_pos(), FMT_FORMAT("Boot-up in progress: {:2.1f}", t));
 	
 	if (timer_end < core.get_step_time() || is_activated)
 		unreg_this();
@@ -370,10 +370,13 @@ std::pair<bool, std::string> EFinalTerminal::use_string()
 	if (timer_end < core.get_step_time()) 
 		return {1, "Gain level control"};
 	else
-		return {0, "Boot-up in process"};
+		return {0, "Boot-up in progress"};
 }
-void EFinalTerminal::use(Entity*)
+void EFinalTerminal::use(Entity* by)
 {
+	if (!by || !core.get_pmg().is_player(*by))
+		return;
+	
 	if (!enabled) {
 		GamePresenter::get()->add_float_text({ get_pos(), "Access denied" });
 	}
@@ -451,7 +454,7 @@ std::pair<bool, std::string> ETeleport::use_string()
 }
 void ETeleport::use(Entity* by)
 {
-	if (core.get_pmg().is_player(*by))
+	if (by && core.get_pmg().is_player(*by))
 		activate(true);
 }
 void ETeleport::on_cnt(const CollisionEvent& ev)
@@ -602,9 +605,61 @@ EStorageBox::~EStorageBox()
 		
 		auto& lc = core.get_lc();
 		lc.mut_cell(lc.to_cell_coord( get_pos() )).is_wall = false;
-		lc.update_aps();
 		
 		GamePresenter::get()->effect(FE_WPN_EXPLOSION, {Transform{get_pos()}, 3.f});
+	}
+}
+
+
+
+EMiningDrill::EMiningDrill(GameCore& core, vec2fp at, float rot)
+    :
+	EInteractive(core),
+	phy(*this, bodydef(at, false, rot)),
+	eqp(*this)
+{
+	ui_descr = "Drilling rig";
+	add_new<EC_RenderModel>(MODEL_MINEDRILL_MINI, FColor(0.7, 0.7, 0.7));
+	
+	flags_t ff = FixtureInfo::TYPEFLAG_OPAQUE | FixtureInfo::TYPEFLAG_WALL | FixtureInfo::TYPEFLAG_INTERACTIVE;
+	phy.add(FixtureCreate::box( fixtdef(0.15, 0.1), ResBase::get().get_size(MODEL_MINEDRILL_MINI).size() /2, 0,
+	                            FixtureInfo{ff} ));
+	
+	eqp.no_overheat = true;
+	eqp.hand.reset();
+	eqp.add_wpn(std::make_unique<WpnUber>());
+}
+void EMiningDrill::use(Entity*)
+{
+	if (!stage) {
+		stage = 1;
+		left = TimeSpan::seconds(3);
+		reg_this();
+	}
+	else if (stage == 3) {
+		ref<EC_RenderPos>().parts({ FE_WPN_CHARGE }, {Transform{vec2fp(phy.get_radius(), 0)}, 3.f, FColor(1, 0.3, 0)});
+	}
+}
+void EMiningDrill::step()
+{
+	if		(stage == 1) {
+		ref<EC_RenderPos>().parts({ FE_WPN_CHARGE }, {Transform{vec2fp(phy.get_radius(), 0)}, 0.2f, FColor(1, 0.1, 0)});
+	}
+	else if (stage == 2) {
+		vec2fp off = phy.get_norm_dir() * phy.get_radius() * 2;
+		eqp.shoot(phy.get_pos() + off, true, false);
+	}
+	
+	left -= core.step_len;
+	if (left.is_negative()) {
+		if (stage == 1) {
+			stage = 2;
+			left = TimeSpan::seconds(core.get_random().range(4, 8));
+		}
+		else {
+			stage = 3;
+			unreg_this();
+		}
 	}
 }
 

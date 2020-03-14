@@ -80,6 +80,15 @@ int main( int argc, char *argv[] )
 	
 	std::string log_filename = AppSettings::get().path_log; // init settings
 	bool cfg_override = false;
+	bool is_debug_mode = false;
+	
+	auto show_error_msg = [&](std::string_view text, const char *title = "Error"){
+		if (!is_debug_mode)
+			SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title, text.data(), nullptr);
+	};
+	auto show_internal_error = [&](std::string text = "Your PC is gonna EXPLODE!"){
+		show_error_msg(FMT_FORMAT("{}\n\nShow log (user/app.log) to developer", text), "Internal error");
+	};
 
 	ArgvParse arg;
 	arg.set(argc-1, argv+1);
@@ -88,7 +97,7 @@ int main( int argc, char *argv[] )
 		{
 			if (arg.is("--help"))
 			{
-				printf("%s", R"(
+				const char *opts = R"(
 Usage: rodent [OPTIONS] [MODE [MODE_OPTS]]
 
 Options:
@@ -99,12 +108,12 @@ Options:
 
   -v0 -v -vv  different log verbosity levels, from default (info) to verbose
   --gldbg     create debug OpenGL context and log all GL messages as verbose
+  --debugmode enables various debug options
 
 Modes:
   --game      [default]
 
 Mode options (--game):
-  --cheats    allows cheats
   --rndseed   use random level seed
   --seed <N>  use specified level seed
   --no-ffwd   disable fast-forwarding world on init
@@ -119,7 +128,11 @@ Mode options (--game):
 
   --demo-net       <ADDR> <PORT> <IS_SERVER>  write replay to network
   --demo-net-play  <ADDR> <PORT> <IS_SERVER>  playback replay from network
-)");
+)";
+				printf("%s", opts);
+#ifdef _WIN32
+				SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "CLI options (--help)", opts, nullptr);
+#endif
 				return 1;
 			}
 			else if (arg.is("--log")) log_filename = arg.str();
@@ -133,10 +146,12 @@ Mode options (--game):
 			else if (arg.is("-v"))  cli_verb = LogLevel::Debug;
 			else if (arg.is("-vv")) cli_verb = LogLevel::Verbose;
 			else if (arg.is("--gldbg")) RenderControl::opt_gldbg = true;
+			else if (arg.is("--debugmode")) is_debug_mode = true;
 			else if (arg.is("--game"))
 			{
 				if (MainLoop::current) {
 					printf("Invalid argument: mode already selected\n");
+					show_error_msg("Invalid command-line option: mode already selected");
 					return 1;
 				}
 				MainLoop::create(MainLoop::INIT_GAME);
@@ -146,6 +161,7 @@ Mode options (--game):
 				if (MainLoop::current->parse_arg(arg)) continue;
 				
 				printf("Invalid option: %s\n", arg.cur().c_str());
+				show_error_msg(FMT_FORMAT("Invalid command-line option: {}", arg.cur()));
 				return 1;
 			}
 		}
@@ -153,6 +169,7 @@ Mode options (--game):
 	catch (std::exception& e)
 	{
 		printf("%s\nFailed to parse arguments\n", e.what());
+		show_error_msg("Failed to parse command-line options");
 		return 1;
 	}
 	
@@ -194,8 +211,11 @@ Mode options (--game):
 	
 
 	
-	if (!set_current_dir( AppSettings::get().path_resources.c_str() ))
+	if (!AppSettings::get().path_resources.empty() &&
+	    !set_current_dir( AppSettings::get().path_resources.c_str() ))
+	{
 		VLOGW("Can't set resources directory");
+	}
 	
 	auto cfg_load = [&]
 	{
@@ -262,7 +282,10 @@ Mode options (--game):
 		RenderControl::opt_fullscreen = true;
 	
 	log_write_str(LogLevel::Critical, "=== Starting renderer initialization ===");
-	if (!RenderControl::init()) return 1;
+	if (!RenderControl::init()) {
+		show_internal_error("Renderer init failed.");
+		return 1;
+	}
 	log_write_str(LogLevel::Critical, "=== Renderer initialization finished ===");
 	
 	if (AppSettings::get().fscreen == -1)
@@ -283,7 +306,13 @@ Mode options (--game):
 	try {MainLoop::current->init();}
 	catch (std::exception& e) {
 		VLOGE("MainLoop::init() failed: {}", e.what());
+		show_internal_error("Menu init failed.");
 		return 1;
+	}
+	if (is_debug_mode) {
+		ArgvParse arg;
+		arg.args.emplace_back("--debugmode");
+		MainLoop::current->parse_arg(arg);
 	}
 	
 	VLOGI("Full initialization finished in {:.3f} seconds", (TimeSpan::since_start() - time_init).seconds());
@@ -334,6 +363,7 @@ Mode options (--game):
 	lag_spike_flags.resize( TimeSpan::seconds(5) / loop_length );
 	size_t lag_spike_i = 0;
 	int lag_spike_count = 0;
+	const TimeSpan lag_spike_tolerance = TimeSpan::ms(2);
 	
 	double avg_total = 0;
 	size_t avg_total_n = 0;
@@ -345,6 +375,7 @@ Mode options (--game):
 	
 	bool log_shown = false;
 	bool debug_key_combo = false;
+	bool fpscou_shown = is_debug_mode;
 	
 	bool run = true;
 	while (run)
@@ -385,6 +416,7 @@ Mode options (--game):
 				}
 				else if (ks.scancode == SDL_SCANCODE_GRAVE) debug_key_combo = true;
 				else if (ks.scancode == SDL_SCANCODE_F2) log_shown = !log_shown;
+				else if (ks.scancode == SDL_SCANCODE_F3) fpscou_shown = !fpscou_shown;
 			}
 			else if (ev.type == SDL_KEYUP)
 			{
@@ -401,6 +433,7 @@ Mode options (--game):
 			catch (std::exception& e) {
 				VLOGE("MainLoop::on_event() exception: {}", e.what());
 				run = false;
+				show_internal_error("Event handling error.");
 				break;
 			}
 			if (!MainLoop::current) {
@@ -421,6 +454,7 @@ Mode options (--game):
 		try {MainLoop::current->render( loop_0, passed );}
 		catch (std::exception& e) {
 			VLOGE("MainLoop::render() exception: {}", e.what());
+			show_internal_error("Menu render failed.");
 			break;
 		}
 		if (!MainLoop::current) break;
@@ -429,10 +463,15 @@ Mode options (--game):
 		
 		RenImm::get().set_context( RenImm::DEFCTX_UI );
 		
-		auto dbg_str = FMT_FORMAT( "{:6.3f}\n{:6.3f}", passed.micro() / 1000.f, last_time.micro() / 1000.f );
-		if (lag_spike_count) dbg_str += FMT_FORMAT("\nSkips: {:3} / 5s", lag_spike_count);
-		draw_text_hud( {-1,0}, dbg_str, 0x00ff00ff );
-		avg_passed->add( last_time.micro() / 1000.f, passed.seconds() );
+		if (fpscou_shown)
+		{
+			auto dbg_str = FMT_FORMAT( "{:6.3f}\n{:6.3f}", passed.micro() / 1000.f, last_time.micro() / 1000.f );
+			if (lag_spike_count) dbg_str += FMT_FORMAT("\nSkips: {:3} / 5s", lag_spike_count);
+			draw_text_hud( {-1,0}, dbg_str, 0x00ff00ff );
+			avg_passed->add( last_time.micro() / 1000.f, passed.seconds() );
+		}
+		else if (lag_spike_count)
+			draw_text_hud( {-1,0}, FMT_FORMAT("Skips: {}", lag_spike_count), 0x00ff00ff );
 		
 		if (log_shown)
 		{
@@ -464,6 +503,7 @@ Mode options (--game):
 		if (!RenderControl::get().render( passed ))
 		{
 			VLOGC("Critical rendering error");
+			show_internal_error("Rendering failed.");
 			break;
 		}
 		
@@ -479,14 +519,14 @@ Mode options (--game):
 		}
 		
 		if (lag_spike_flags[lag_spike_i]) --lag_spike_count;
-		lag_spike_flags[lag_spike_i] = loop_total > loop_length;
+		lag_spike_flags[lag_spike_i] = loop_total > (loop_length + lag_spike_tolerance);
 		if (lag_spike_flags[lag_spike_i]) ++lag_spike_count;
 		lag_spike_i = (lag_spike_i + 1) % lag_spike_flags.size();
 		
 		++avg_total_n;
 		avg_total += (loop_total.seconds() * 1000 - avg_total) / avg_total_n;
 		
-		if (loop_total > loop_length + TimeSpan::ms(2)) {
+		if (loop_total > loop_length + lag_spike_tolerance) {
 			++overmax_count;
 			VLOGD("Render lag: {:.3f} seconds on step {}", loop_total.seconds(), avg_total_n);
 		}

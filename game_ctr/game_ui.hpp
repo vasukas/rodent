@@ -26,6 +26,7 @@ public:
 	virtual void on_event(const SDL_Event& ev) = 0; ///< Processes only internal events
 	virtual void render(TimeSpan frame_time, TimeSpan passed) = 0;
 	
+	virtual void enable_debug_mode() = 0;
 	static std::string generate_greet();
 };
 

@@ -100,7 +100,8 @@ struct EC_Physics : EC_Position
 	{
 		CF_ALL = std::numeric_limits<decltype(b2Filter::categoryBits)>::max(),
 		CF_DEFAULT = 1,
-		CF_BULLET  = 2
+		CF_BULLET  = 2,
+		CF_FIRELET = 4
 	};
 	
 	/// May be null only if was created inside world step
@@ -185,9 +186,11 @@ class PhysicsWorld
 	std::unique_ptr<b2ContactListener> c_lstr;
 	
 	struct Event {
-		EntityIndex ia, ib;
+		Entity *ea, *eb;
 		CollisionEvent ce;
 		b2Fixture* fb;
+		
+		void dispatch();
 	};
 	std::vector<Event> col_evs;
 	friend class PHW_Lstr;

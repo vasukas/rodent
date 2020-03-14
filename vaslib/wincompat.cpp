@@ -13,7 +13,7 @@ struct HandleWrapper
 	HANDLE h = INVALID_HANDLE_VALUE;
 	~HandleWrapper() {CloseHandle(h);}
 	void operator=(HANDLE h_) {h = h_;}
-	operator bool() const {return h != INVALID_HANDLE_VALUE;}
+	explicit operator bool() const {return h != INVALID_HANDLE_VALUE;}
 	operator HANDLE() const {return h;}
 };
 
@@ -123,6 +123,13 @@ bool winc_mkdir( const char *fn )
 //int main(int, char*[]);
 
 int __stdcall WinMain(HINSTANCE, HINSTANCE, char *, int) {
+	if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+		freopen("CONOUT$", "w", stdout);
+		freopen("CONOUT$", "w", stderr);
+		printf("\n");
+		atexit([]{ printf("\n=== Console detached ===\n"); });
+	}
+
 	LPWSTR cmd = GetCommandLineW();
 	int argc = 0;
 	LPWSTR* w_argv = CommandLineToArgvW(cmd, &argc);

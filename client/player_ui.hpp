@@ -12,8 +12,13 @@ struct WeaponMsgReport;
 class PlayerUI
 {
 public:
+	bool full_info = false;
+	bool debug_mode = false;
+	
 	static PlayerUI* create();
 	virtual ~PlayerUI() = default;
+	
+	virtual void message(std::string s, TimeSpan show, TimeSpan fade = TimeSpan::seconds(1.5)) = 0;
 	
 protected:
 	friend class PlayerManager_Impl;
@@ -30,7 +35,6 @@ protected:
 	virtual void render(PlayerManager& mgr, const DrawState& dst, TimeSpan passed, vec2i cursor_pos) = 0;
 
 	virtual WeaponMsgReport& get_wpnrep() = 0;
-	virtual void message(std::string s, TimeSpan show, TimeSpan fade = TimeSpan::seconds(1.5)) = 0;
 };
 
 #endif // PLAYER_UI_HPP

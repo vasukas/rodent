@@ -2,7 +2,7 @@
 #define AI_ALGO_HPP
 
 #include "game/level_ctr.hpp"
-struct AI_Drone;
+class  AI_Drone;
 struct AI_DroneParams;
 
 /// Floodfills rooms, visiting each one only once, up to (excluding) max_depth. 
@@ -18,8 +18,8 @@ void room_query(GameCore& core, const LevelCtrRoom& rm, callable_ref<bool(AI_Dro
 /// Performs physics query over circle
 void area_query(GameCore& core, vec2fp ctr, float radius, callable_ref<bool(AI_Drone&)> f);
 
-/// Floodfilled rings
-std::vector<std::vector<vec2fp>> calc_search_rings(GameCore& core, vec2fp ctr_pos);
+/// Floodfilled rings. Real target is considered inside only if it's past first and before last circles
+std::vector<std::vector<vec2fp>> calc_search_rings(GameCore& core, vec2fp ctr_pos, vec2fp real_target, bool& real_inside);
 
 /// Area-of-sight distribution
 class AI_AOS

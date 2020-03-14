@@ -217,6 +217,8 @@ public:
 			
 			delay_check = false;
 		}
+		if (frms.empty())
+			return RET_WAIT{};
 		
 		auto& frm = frms.front();
 		auto evs = std::move(frm.evs);

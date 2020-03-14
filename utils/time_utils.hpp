@@ -4,6 +4,9 @@
 #include "vaslib/vas_cpp_utils.hpp"
 #include "vaslib/vas_time.hpp"
 
+float time_sine(TimeSpan full_period, float min = 0, float max = 1, TimeSpan time = TimeSpan::since_start());
+
+
 
 struct SmoothSwitch
 {

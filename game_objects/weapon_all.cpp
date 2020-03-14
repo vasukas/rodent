@@ -141,6 +141,68 @@ void StdProjectile::explode(GameCore& core, size_t src_team, EntityIndex src_eid
 	break;
 	}
 }
+std::optional<vec2fp> StdProjectile::multiray(GameCore& core, vec2fp p, vec2fp v,
+                                              callable_ref<void(PhysicsWorld::RaycastResult&, int)> on_hit,
+                                              float full_width, float max_distance, int shoot_through, EntityIndex src_eid)
+{
+	constexpr int max_shoot_through = 10;
+	if (shoot_through > max_shoot_through)
+		throw std::logic_error("StdProjectile::multiray() shoot_through > max");
+	
+	b2Vec2 r_from = conv(p);
+	b2Vec2 r_to = conv(p + max_distance * v);
+	
+	b2Vec2 skew = (r_to - r_from).Skew();
+	skew.Normalize();
+	skew *= full_width / 2;
+	
+	PhysicsWorld::RaycastResult hit;
+	EntityIndex prev_hits[max_shoot_through + 1] = {}; // no target is hit twice
+	
+	for (int step = 0; step <= shoot_through; ++step)
+	{
+		PhysicsWorld::RaycastResult r_hits[3];
+		int n_hits = 0;
+		
+		b2Vec2 r_offs[3] = {{0,0}, skew, -skew};
+		auto cf = StdProjectile::make_cf(src_eid);
+		
+		auto f_cf = std::move(cf.check);
+		cf.check = [&](Entity& ent, auto& fix) {
+			if (!f_cf(ent, fix)) return false;
+			for (int i=0; i<step; ++i) if (prev_hits[i] == ent.index) return false;
+			return true;
+		};
+
+		//
+		
+		for (int i=0; i<3; ++i) {
+			if (auto hit = core.get_phy().raycast_nearest(r_from + r_offs[i], r_to + r_offs[i], cf))
+				r_hits[n_hits++] = *hit;
+		}
+		if (!n_hits) {
+			if (step == shoot_through) return {};
+			continue;
+		}
+		
+		hit = r_hits[0];
+		for (int i=1; i < n_hits; ++i)
+		{
+			auto& h = r_hits[i];
+			if (h.ent->is_creature() && (!hit.ent->is_creature() || h.distance < hit.distance))
+				hit = h;
+		}
+		
+		if (!hit.fix || (hit.fix->typeflags & FixtureInfo::TYPEFLAG_WALL) == 0)
+			prev_hits[step] = hit.ent->index;
+		
+		//
+		
+		on_hit(hit, step);
+	}
+	
+	return p + v * conv(hit.poi).dist(p);
+}
 
 
 
@@ -192,12 +254,12 @@ ProjectileEntity::ProjectileEntity(GameCore& core, vec2fp pos, vec2fp vel, std::
     proj(*this, pars, src? src->index : EntityIndex{}, target),
     team(src? src->get_team() : TEAM_ENVIRON)
 {
-	add_new<EC_RenderModel>(model, clr);
-	
 	// This prevents projectiles from going through walls at point-blank range.
 	// Projectile is created by chain of: StepLogic -> EC_Equip -> Weapon,
 	// so it is moved one step before logic (and collision check) is executed. 
 	phy.pos.pos -= vel * GameCore::time_mul;
+	
+	add_new<EC_RenderModel>(model, clr);
 }
 ProjectileEntity::~ProjectileEntity()
 {
@@ -568,72 +630,19 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 		
 		//
 		
-		b2Vec2 r_from = conv(p);
-		b2Vec2 r_to = conv(p + 1000 * v);
-		
-		b2Vec2 skew = (r_to - r_from).Skew();
-		skew.Normalize();
-		skew *= ray_width / 2;
-		
-		PhysicsWorld::RaycastResult hit;
-		EntityIndex prev_hits[shoot_through + 1] = {};
-		
-		auto proc_hit = [&](vec2fp v, int step)
+		vec2fp r_hit = StdProjectile::multiray(ent.core, p, v, [&, &v = v](auto& hit, int step)
 		{
-			PhysicsWorld::RaycastResult r_hits[3];
-			int n_hits = 0;
-			
-			b2Vec2 r_offs[3] = {{0,0}, skew, -skew};
-			auto cf = StdProjectile::make_cf(ent.index);
-			
-			auto f_cf = std::move(cf.check);
-			cf.check = [&](Entity& ent, auto& fix) {
-				if (!f_cf(ent, fix)) return false;
-				for (int i=0; i<step; ++i) if (prev_hits[i] == ent.index) return false;
-				return true;
-			};
-
-			//
-			
-			for (int i=0; i<3; ++i) {
-				if (auto hit = core.get_phy().raycast_nearest(r_from + r_offs[i], r_to + r_offs[i], cf))
-					r_hits[n_hits++] = *hit;
-			}
-			if (!n_hits) return false; // unlikely (impossible)
-			
-			hit = r_hits[0];
-			for (int i=1; i < n_hits; ++i)
-			{
-				auto& h = r_hits[i];
-				if (h.ent->get_eqp() && (!hit.ent->get_eqp() || h.distance < hit.distance))
-					hit = h;
-			}
-			
-			if (!hit.fix || (hit.fix->typeflags & FixtureInfo::TYPEFLAG_WALL) == 0)
-				prev_hits[step] = hit.ent->index;
-			
-			//
-			
 			float k_dmg = std::pow(2.f, -step);
 			
 			StdProjectile::Params pp;
 			pp.dq.amount = wpr.max_damage * charge_lvl * k_dmg;
 			pp.imp = 400 * charge_lvl;
 			StdProjectile::explode(core, ent.get_team(), ent.index, conv(v), hit, pp);
-			
-			return true;
-		};
+		}
+		, ray_width, 1000, shoot_through, ent.index).value_or(p + v);
 		
-		if (!proc_hit(v, 0)) return {}; // unlikely (impossible)
-		for (int i=1; i <= shoot_through; ++i)
-			proc_hit(v, i);
-		
-		//
-		
-		vec2fp r_hit = p + v * conv(hit.poi).dist(p);
 		effect_lightning( p, r_hit, EffectLightning::Straight, TimeSpan::seconds(0.3) );
-		
-		GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform(conv(hit.poi), v.angle() + M_PI),
+		GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform(r_hit, v.angle() + M_PI),
 		                                             charge_lvl * 20, FColor(0.6, 0.85, 1, 1.2)});
 		
 		ShootResult res = {int_round(wpr.max_ammo * charge_lvl), std::max(wpr.max_cd * charge_lvl, *info->def_delay)};
@@ -770,6 +779,94 @@ void FoamProjectile::freeze(bool is_normal)
 
 
 
+FireletProjectile::FireletProjectile(GameCore& core, vec2fp pos, vec2fp vel, size_t team, EntityIndex src_eid)
+	:
+	Entity(core),
+	phy(*this, [&]
+	{
+		b2BodyDef d;
+		d.type = b2_dynamicBody;
+		d.position = conv(pos);
+		d.linearVelocity = conv(vel);
+		d.fixedRotation = true;
+		return d;
+	}()),
+	left(TimeSpan::seconds(2.5)),
+    tmo(TimeSpan::seconds(0.4)),
+    particle_tmo(TimeSpan::seconds(0)),
+	team(team),
+	src_eid(src_eid)
+{
+	auto fc = FixtureCreate::circle( fixtdef(0.5, 0.3), 0.2, 6 );
+	fc.fd.filter.maskBits     = ~EC_Physics::CF_FIRELET;
+	fc.fd.filter.categoryBits =  EC_Physics::CF_FIRELET;
+	phy.add(fc);
+	
+	reg_this();
+}
+void FireletProjectile::step()
+{
+	const float dist = 3;
+	const TimeSpan tmo_full = TimeSpan::seconds(0.2);
+	const float full_dmg = 80  * tmo_full.seconds();
+	const float foam_dmg = 160 * tmo_full.seconds();
+	const float charge_per_hit = 0.34;
+	const float ally_damage = 0.5;
+	
+	if (particle_tmo.is_positive()) particle_tmo -= GameCore::step_len;
+	else GamePresenter::get()->effect(FE_FIRE_SPREAD, {Transform(phy.get_pos()), dist, {}, M_PI});
+	
+	tmo -= GameCore::step_len;
+	if (tmo.is_negative())
+	{
+		tmo = tmo_full;
+		
+		std::vector<PhysicsWorld::CastResult> es;
+		core.get_phy().circle_cast_all(es, conv(get_pos()), dist, StdProjectile::make_cf({}));
+		
+		for (auto& e : es)
+		{
+			vec2fp poi;
+			if (auto h = core.get_phy().raycast_nearest(conv(get_pos()), conv(e.ent->get_pos()), {
+				[&](auto& ent, auto&){ return &ent == e.ent; }}))
+			{
+				poi = conv(h->poi);
+			}
+			else poi = e.ent->get_pos();
+			
+			float k = 1;
+			if (e.ent->get_team() == team)
+				k *= ally_damage;
+			
+			if (auto hc = e.ent->get_hlc())
+			{
+				DamageQuant q;
+				q.type = DamageType::Kinetic;
+				q.wpos = poi;
+				q.amount = full_dmg;
+				if (e.fix) q.armor = e.fix->armor_index;
+				if (dynamic_cast<FoamProjectile*>(e.ent)) q.amount = foam_dmg;
+				q.src_eid = src_eid;
+				
+				q.amount *= k;
+				hc->apply(q);
+				
+				charge -= charge_per_hit * k;
+				if (charge < 0) {
+					destroy();
+					return;
+				}
+			}
+		}
+	}
+	
+	left -= GameCore::step_len;
+	if (left.is_negative())
+		destroy();
+}
+
+
+
 WpnFoam::WpnFoam()
     : Weapon([]{
 		static std::optional<Info> info;
@@ -802,61 +899,16 @@ std::optional<Weapon::ShootResult> WpnFoam::shoot(ShootParams pars)
 	}
 	if (pars.alt)
 	{
-		const size_t tars = 2;
-		const int num = 6;
-		const float a0 = deg_to_rad(50);
+		const int num = 2;
+		const float a0 = deg_to_rad(15); // half-spread
 		const float ad = a0 * 2 / num;
 		
+		float a = -a0 + core.get_random().range_n() * ad;
 		for (int i=0; i<num; ++i)
-		{
-			vec2fp d = v;
-			d.fastrotate(-a0 + i * ad);
-			
-			std::vector<PhysicsWorld::RaycastResult> es;
-			core.get_phy().raycast_all(es, conv(p), conv(p + d * 8), StdProjectile::make_cf(ent.index));
-			
-			if (es.size() > 1)
-			{
-				std::sort(es.begin(), es.end(), [](auto& a, auto& b){return a.distance < b.distance;});
-				if (es.size() > tars) es.resize(tars);
-				
-				for (auto it = es.begin(); it != es.end(); ++it)
-				{
-					if (it->fix && (it->fix->typeflags & FixtureInfo::TYPEFLAG_WALL))
-					{
-						es.erase( it, es.end() );
-						break;
-					}
-				}
-			}
-			
-			const float full_dmg = 60 * info->def_delay->seconds();
-			const float foam_dmg = 150 * info->def_delay->seconds();
-			
-			float k = 1;
-			for (auto& e : es)
-			{
-				if (auto hc = e.ent->get_hlc())
-				{
-					DamageQuant q;
-					q.type = DamageType::Kinetic;
-					q.wpos = conv(e.poi);
-					q.amount = full_dmg;
-					if (e.fix) q.armor = e.fix->armor_index;
-					if (dynamic_cast<FoamProjectile*>(e.ent)) q.amount = foam_dmg;
-					
-					q.amount *= k;
-					hc->apply(q);
-				}
-				GamePresenter::get()->effect(FE_EXPLOSION, {Transform(conv(e.poi)), 0.1f * k});
-				k /= 2;
-			}
-			
-			GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform(p, v.angle()), 3, FColor(1, 0.4, 0.2, 1)});
-		}
+			new FireletProjectile(ent.core, p, 11 * vec2fp(v).fastrotate(a + i * ad), ent.get_team());
 		
 		ammo_skip_count = (ammo_skip_count + 1) % 2;
-		return ShootResult{ammo_skip_count ? 0 : 1};
+		return ShootResult{ammo_skip_count ? 0 : 1, TimeSpan::seconds(0.3)};
 	}
 	return {};
 }
@@ -1063,7 +1115,7 @@ ElectroBall::ElectroBall(GameCore& core, vec2fp pos, vec2fp dir)
 }
 void ElectroBall::on_cnt(const CollisionEvent& ev)
 {
-	if (ev.other->get_eqp())
+	if (ev.other->is_creature())
 	{
 		if		(ev.type == CollisionEvent::T_BEGIN) ++explode_cntc;
 		else if (ev.type == CollisionEvent::T_END)   --explode_cntc;
@@ -1117,7 +1169,7 @@ void ElectroBall::step()
 		return;
 	}
 	
-	//
+	// movement
 	
 	if (auto tar = core.valid_ent(target_id))
 	{
@@ -1186,14 +1238,25 @@ void ElectroBall::step()
 			}
 		}
 		
+		// push from walls & check bounds
+		auto cell = core.get_lc().cell( core.get_lc().to_cell_coord( get_pos() ) );
+		if (!cell) {
+			destroy();
+			return;
+		}
+		else if (cell->is_wall) {
+			vec2fp dir = core.get_lc().ref_room(cell->room_nearest).fp_area().center() - get_pos();
+			if (std::fabs(dir.x) > std::fabs(dir.y)) dir.y = 0;
+			else dir.x = 0;
+			rv += dir.norm_to(5);
+		}
+		
+		// apply velocity
 		vec2fp vel = phy.get_vel();
 		rv.fastrotate( deg_to_rad(15) );
 		vel += (rv - vel) * (GameCore::step_len / TimeSpan::seconds(2));
 		phy.body.SetLinearVelocity(conv(vel));
 	}
-	
-	if (!core.get_lc().cell( core.get_lc().to_cell_coord( get_pos() ) ))
-		destroy();
 }
 
 
@@ -1231,25 +1294,26 @@ std::optional<Weapon::ShootResult> WpnUber::shoot(ShootParams pars)
 	if (pars.main)
 	{
 		const float max_dist = 20;
-		const float ray_width = 1; // full-width
+		const float ray_width = 1.5; // full-width
 		
 		auto& ent = equip->ent;
-		b2Vec2 tar = conv(p + max_dist * v);
-		auto hit = core.get_phy().raycast_nearest(conv(p), tar, StdProjectile::make_cf(ent.index), ray_width);
-		if (!hit) {
-			hit = PhysicsWorld::RaycastResult{};
-			hit->poi = tar;
+		float dist;
+		
+		auto r_hit = StdProjectile::multiray(ent.core, p, v, [&, &p = p, &v = v](auto& hit, auto)
+		{
+			dist = conv(hit.poi).dist(p) / max_dist;
+			
+			StdProjectile::Params pp;
+			pp.dq.amount = lerp(450, 50, dist) * GameCore::time_mul;
+			pp.imp = lerp(30, -5, dist);
+			StdProjectile::explode(core, ent.get_team(), ent.index, conv(v), hit, pp);
 		}
-		ent.ensure<EC_Uberray>().trigger(conv(hit->poi));
+		, ray_width, max_dist, 0, ent.index);
 		
-		float dist = conv(hit->poi).dist(p) / max_dist;
+		if (r_hit) GamePresenter::get()->effect(FE_EXPLOSION, {Transform{*r_hit}, lerp(0.2f, 0.07f, dist)});
+		else r_hit = p + v * max_dist;
 		
-		StdProjectile::Params pp;
-		pp.dq.amount = lerp(450, 50, dist) * GameCore::time_mul;
-		pp.imp = lerp(30, -5, dist);
-		StdProjectile::explode(core, ent.get_team(), ent.index, conv(v), *hit, pp);
-		
-		if (hit->ent) GamePresenter::get()->effect(FE_EXPLOSION, {Transform{conv(hit->poi)}, lerp(0.2f, 0.07f, dist)});
+		ent.ensure<EC_Uberray>().trigger(*r_hit);
 		GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform(p, v.angle()), 0.3, FColor(1, 0.7, 0.5, 0.7)});
 		
 		ammo_skip_count = (ammo_skip_count + 1) % 4;

@@ -88,6 +88,12 @@ const float move_slowprecise_dist_squ = 0.5 * 0.5;
 /// Distance to target at which it can be reset in Patrol speed mode (squared)
 const float move_patrol_reset_distance_squ = 7 * 7;
 
+/// Minimal distance at which 'rare_pos' and 'tmp_lock' are reset
+const float move_lock_distance = 5;
+
+/// Additional time for 'rare_pos' lock check
+const TimeSpan move_lock_tolerance = TimeSpan::seconds(2);
+
 /// Timeout before switching rotation types (fix for twitching)
 const TimeSpan fixed_rotation_length = TimeSpan::seconds(0.3);
 

@@ -358,8 +358,12 @@ template<> struct SerialFunc<FColor, SerialTag_None> {
 };
 
 template<> struct SerialFunc<EntityIndex, SerialTag_None> {
-	static void write(EntityIndex  p, File& f) {f.w32L(p.to_int());}
-	static void read (EntityIndex& p, File& f) {p = EntityIndex::from_int(f.r32L());}
+	static void write(EntityIndex  p, File& f) {SerialFunc<EntityIndex::Int, SerialTag_None>::write(p.to_int(), f);}
+	static void read (EntityIndex& p, File& f) {
+		EntityIndex::Int i;
+		SerialFunc<EntityIndex::Int, SerialTag_None>::read(i, f);
+		p = EntityIndex::from_int(i);
+	}
 };
 
 #endif // SERIALIZER_DEFS_HPP

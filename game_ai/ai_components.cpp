@@ -89,6 +89,14 @@ std::optional<vec2fp> AI_Movement::get_target() const
 	if (preq) return preq->target;
 	return {};
 }
+void AI_Movement::on_unreg()
+{
+	ent.ref_phobj().body.SetLinearVelocity({0, 0});
+	ent.ref_phobj().body.SetAngularVelocity(0);
+	
+	rare_pos = vec2fp::one(-1000);
+	path_lock = {};
+}
 std::optional<vec2fp> AI_Movement::calc_avoidance()
 {
 	const float ray_width = std::max(0.2, ent.ref_pc().get_radius() - 0.1);
@@ -207,10 +215,48 @@ vec2fp AI_Movement::step_path()
 	
 	return dt;
 }
+void AI_Movement::lock_check()
+{
+	if (ent.get_pos().dist_squ(rare_pos) >= AI_Const::move_lock_distance * AI_Const::move_lock_distance)
+	{
+		rare_pos = ent.get_pos();
+		rare_last = ent.core.get_step_time();
+		path_lock = {};
+	}
+	if (path)
+	{
+		if (path_lock)
+			return;
+		
+		// check if standing still too long
+		float t_still = (ent.core.get_step_time() - rare_last).seconds();
+		float t_max = AI_Const::move_lock_distance / get_set_speed();
+		if (t_still < t_max + AI_Const::move_lock_tolerance.seconds())
+			return; // no, not yet
+		
+		// lock if possible
+		path_lock = LevelCtrTmpLock::try_lock(ent, ent.core.get_lc().to_cell_coord(ent.get_pos()));
+		
+		// retrigger pathfinding
+		if (!path_lock) {
+			vec2fp tar = path->ps.back();
+			path.reset();
+			
+			auto& p = preq.emplace();
+			p.target = tar;
+			p.req = PathRequest(ent.core, ent.get_pos(), tar, {}, {});
+		}
+		
+		// for lock | don't overwhelm with pathfinding requests
+		rare_pos = ent.get_pos();
+		rare_last = ent.core.get_step_time();
+	}
+}
 void AI_Movement::step()
 {
 	vec2fp fvel = {};
 	
+	lock_check();
 	if (preq)
 	{
 		if (auto res = preq->req.result())
@@ -266,7 +312,7 @@ float AI_Movement::inert_k(AI_Speed speed)
 
 bool AI_Attack::shoot(Entity& target, float distance, Entity& self)
 {
-	auto& wpn = self.get_eqp()->get_wpn();
+	auto& wpn = self.ref_eqp().get_wpn();
 	
 	vec2fp p = target.get_pos();
 	vec2fp corr = p + correction(distance, wpn.info->bullet_speed, target);
@@ -283,7 +329,7 @@ bool AI_Attack::shoot(Entity& target, float distance, Entity& self)
 	if (target.core.dbg_ai_attack)
 	{
 		if (atkpat) atkpat->shoot(target, distance, self);
-		else self.get_eqp()->shoot(p, true, false);
+		else self.ref_eqp().shoot(p, true, false);
 	}
 	return true;
 }
@@ -448,10 +494,13 @@ void AI_RotationControl::update(AI_Drone& dr, std::optional<vec2fp> view_target,
 			tmo = std::min(tmo, AI_Const::fixed_rotation_length);
 			reset(ST_WAIT_VIEW);
 		}
-		else {
+		else if (!tmo.is_positive())
+		{
+			tmo = AI_Const::fixed_rotation_length;
 			set_tar((*mov_target - dr.ent.get_pos()).fastangle(), {});
 			state = ST_TAR_MOV;
 		}
+		else tmo = std::min(tmo, AI_Const::fixed_rotation_length);
 	}
 	else if (state == ST_TAR_MOV)
 	{

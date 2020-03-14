@@ -44,6 +44,7 @@ protected:
 	friend class GamePresenter_Impl;
 	virtual void render(const EC_RenderPos& p, TimeSpan passed) = 0;
 	virtual bool allow_immediate_rotation() {return false;}
+	virtual void on_vport_enter() {} ///< Called when stops being culled
 };
 
 
@@ -171,21 +172,25 @@ private:
 	float tar_next_t;
 	
 	void render(const EC_RenderPos& p, TimeSpan passed);
+	void on_vport_enter() {tar_next.reset();}
 };
 
 
 
 struct EC_Uberray : EC_RenderComp
 {
+	FColor clr = FColor(1, 0.3, 0.2);
+	TimeSpan left_max = TimeSpan::seconds(0.5);
+	
 	EC_Uberray(Entity& ent): EC_RenderComp(ent) {}
 	void trigger(vec2fp target);
 	
 private:
-	static constexpr auto left_max = TimeSpan::seconds(0.5);
 	TimeSpan left;
 	vec2fp b_last = {};
 	
 	void render(const EC_RenderPos& p, TimeSpan passed);
+	void on_vport_enter() {left = {};}
 };
 
 
@@ -206,6 +211,20 @@ private:
 	float t_ext = 1;
 	
 	void render(const EC_RenderPos& p, TimeSpan passed);
+};
+
+
+
+struct EC_RenderCustomDebug : EC_RenderComp
+{
+	std::function<void(Transform pos, TimeSpan passed)> f;
+	EC_RenderCustomDebug(Entity& ent, std::function<void(Transform pos, TimeSpan passed)> f)
+		: EC_RenderComp(ent), f(std::move(f)) {}
+	
+private:
+	void render(const EC_RenderPos& p, TimeSpan passed) {
+		if (f) f(p.get_cur(), passed);
+	}
 };
 
 #endif // EC_RENDER_HPP

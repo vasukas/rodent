@@ -6,7 +6,12 @@
 
 
 
-PathRequest::PathRequest(GameCore& core, vec2fp from, vec2fp to, std::optional<float> max_length, std::optional<Evade> evade)
+static_assert(std::is_same_v<PathSearch::WhoType, EntityIndex::Int>); // fix WhoType if fails
+
+PathRequest::PathRequest(GameCore& core, vec2fp from, vec2fp to,
+                         std::optional<float> max_length,
+                         std::optional<Evade> evade,
+                         EntityIndex who)
 {
 	auto& lc = core.get_lc();
 	vec2i pa = lc.to_nonwall_coord(from);
@@ -24,6 +29,7 @@ PathRequest::PathRequest(GameCore& core, vec2fp from, vec2fp to, std::optional<f
 	args.src = pa;
 	args.dst = pb;
 	args.max_length = std::ceil(*max_length / GameConst::cell_size);
+	args.who = who.to_int();
 	if (evade) {
 		args.evade = lc.to_cell_coord(evade->pos);
 		args.evade_radius = std::ceil(evade->radius / GameConst::cell_size);
@@ -57,6 +63,39 @@ std::optional<PathRequest::Result> PathRequest::result()
 	auto r = std::move(res);
 	res.reset();
 	return r;
+}
+
+
+
+LevelCtrTmpLock LevelCtrTmpLock::try_lock(Entity& who, vec2i at)
+{
+	auto& lc = who.core.get_lc();
+	if (lc.cref(at).is_tmplocked)
+		return {};
+	
+	lc.mut_cell(at).is_tmplocked = true;
+	lc.templocks.emplace_back(&who, at);
+	return LevelCtrTmpLock(who, at);
+}
+LevelCtrTmpLock::~LevelCtrTmpLock()
+{
+	if (who) {
+		auto& lc = who->core.get_lc();
+		lc.mut_cell(at).is_tmplocked = false;
+		erase_if(lc.templocks, [&](auto& v){ return v.first == who; });
+	}
+}
+LevelCtrTmpLock::LevelCtrTmpLock(LevelCtrTmpLock&& l) noexcept
+{
+	*this = std::move(l);
+}
+LevelCtrTmpLock& LevelCtrTmpLock::operator=(LevelCtrTmpLock&& l) noexcept
+{
+	(*this).~LevelCtrTmpLock();
+	who = l.who;
+	at = l.at;
+	l.who = nullptr;
+	return *this;
 }
 
 
@@ -200,6 +239,7 @@ void LevelControl::fin_init(const LevelTerrain& lt)
 LevelControl::Cell& LevelControl::mut_cell(vec2i pos)
 {
 	if (!is_valid(pos)) throw std::runtime_error("LevelControl::mut_cell() null");
+	aps_req_update = true;
 	return cells[pos.y * size.x + pos.x];
 }
 const LevelControl::Cell* LevelControl::cell(vec2i pos) const noexcept
@@ -276,14 +316,22 @@ void LevelControl::add_spawn(Spawn sp)
 {
 	spps.emplace_back(std::move(sp));
 }
-void LevelControl::update_aps()
+void LevelControl::update_aps(bool forced)
 {
+	if (!forced && !aps_req_update) return;
+	aps_req_update = false;
+	
 	std::vector<uint8_t> aps_ps;
 	aps_ps.resize( cells.size() );
 	for (size_t i=0; i < cells.size(); ++i)
 		aps_ps[i] = cells[i].is_wall ? 0 : 1;
 	
-	aps->update(size, std::move(aps_ps));
+	std::vector<std::pair<EntityIndex::Int, vec2i>> locks;
+	locks.reserve(templocks.size());
+	for (auto& p : templocks)
+		locks.emplace_back(p.first->index.to_int(), p.second);
+	
+	aps->update(size, std::move(aps_ps), std::move(locks));
 }
 void LevelControl::set_wall(vec2i pos, bool is_wall)
 {

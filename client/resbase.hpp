@@ -98,6 +98,7 @@ enum FreeEffect
 	FE_WPN_CHARGE,
 	FE_CIRCLE_AURA,
 	FE_EXPLOSION_FRAG,
+	FE_FIRE_SPREAD, ///< 'power' is distance, 'rad' is spread angle (half)
 	
 	FE_TOTAL_COUNT_INTERNAL ///< Do not use
 };
@@ -134,7 +135,7 @@ struct PGG_Pointer
 	PGG_Pointer(ParticleGroupGenerator* p): p(p) {}
 	PGG_Pointer(ModelType model, ModelEffect effect): p(ResBase::get().get_eff(model, effect)) {}
 	PGG_Pointer(FreeEffect effect): p(ResBase::get().get_eff(effect)) {}
-	operator bool() const {return p;}
+	explicit operator bool() const {return p;}
 };
 
 #endif // RESBASE_HPP

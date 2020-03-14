@@ -4,6 +4,7 @@
 #version 330
 
 uniform mat4 proj;
+uniform vec2 offset;
 
 layout(location = 0) in vec4 data;
 
@@ -12,7 +13,7 @@ out vec2 tc;
 void main()
 {
 	tc = data.zw;
-	gl_Position = proj * vec4(data.xy, 0, 1);
+	gl_Position = proj * vec4(data.xy + offset, 0, 1);
 }
 
 

@@ -274,7 +274,7 @@ public:
 	}
 	void set_pui(std::unique_ptr<PlayerUI> pui) override
 	{
-		if (pui) pui->message("The First and Only Level", TimeSpan::seconds(1));
+//		if (pui) pui->message("The First and Only Level", TimeSpan::seconds(1));
 		this->pui = std::move(pui);
 	}
 	

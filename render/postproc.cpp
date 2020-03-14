@@ -435,6 +435,10 @@ public:
 		PP_Graph::get().render();
 		RenImm::get().render_post();
 	}
+	void render_reset()
+	{
+		RenImm::get().render_post();
+	}
 };
 
 

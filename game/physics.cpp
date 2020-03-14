@@ -358,19 +358,29 @@ public:
 		auto eb = getptr(ct->GetFixtureB()->GetBody());
 		if (!ea->ev_contact.has_conn() && !eb->ev_contact.has_conn()) return;
 		
-		reserve_more_block(phw.col_evs, 256);
-		auto& ev = phw.col_evs.emplace_back();
+		auto fill = [&](auto& ev)
+		{
+			ev.ea = &ea->ent;
+			ev.eb = &eb->ent;
+			
+			CollisionEvent& ce = ev.ce;
+			ce.type = type;
+			ce.imp = imp;
+			ce.point = avg_point(ct);
+			
+			ce.fix_phy = ct->GetFixtureA();
+			ev.fb = ct->GetFixtureB();
+		};
 		
-		ev.ia = ea->ent.index;
-		ev.ib = eb->ent.index;
-		
-		CollisionEvent& ce = ev.ce;
-		ce.type = type;
-		ce.imp = imp;
-		ce.point = avg_point(ct);
-		
-		ce.fix_phy = ct->GetFixtureA();
-		ev.fb = ct->GetFixtureB();
+		if (phw.world.IsLocked()) {
+			reserve_more_block(phw.col_evs, 256);
+			fill(phw.col_evs.emplace_back());
+		}
+		else {
+			PhysicsWorld::Event ev;
+			fill(ev);
+			ev.dispatch();
+		}
 	}
 	void BeginContact(b2Contact* ct) {
 		report(CollisionEvent::T_BEGIN, ct, 0.f);
@@ -393,6 +403,18 @@ public:
 
 
 
+void PhysicsWorld::Event::dispatch()
+{
+	ce.other = eb;
+	ce.fix_this  = get_info(ce.fix_phy);
+	ce.fix_other = get_info(fb);
+	ea->ref_phobj().ev_contact.signal(ce);
+	
+	ce.other = ea;
+	ce.fix_phy = fb;
+	std::swap(ce.fix_this, ce.fix_other);
+	eb->ref_phobj().ev_contact.signal(ce);
+}
 bool PhysicsWorld::CastFilter::is_ok(b2Fixture& f)
 {
 	if (ignore_sensors && f.IsSensor()) return false;
@@ -421,21 +443,7 @@ void PhysicsWorld::step()
 	world.Step(core.step_len.seconds(), 8, 3);
 	
 	for (auto& ev : col_evs)
-	{
-		auto ea = core.get_ent(ev.ia);
-		auto eb = core.get_ent(ev.ib);
-		if (!ea || !eb) continue;
-		
-		ev.ce.other = eb;
-		ev.ce.fix_this  = get_info(ev.ce.fix_phy);
-		ev.ce.fix_other = get_info(ev.fb);
-		ea->ref_phobj().ev_contact.signal(ev.ce);
-		
-		ev.ce.other = ea;
-		ev.ce.fix_phy = ev.fb;
-		std::swap(ev.ce.fix_this, ev.ce.fix_other);
-		eb->ref_phobj().ev_contact.signal(ev.ce);
-	}
+		ev.dispatch();
 	col_evs.clear();
 }
 std::optional<float> PhysicsWorld::los_check(vec2fp from, Entity& target, std::optional<float> width, bool is_bullet)

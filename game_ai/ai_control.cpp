@@ -26,14 +26,16 @@ void AI_Group::report_seen()
 	last_seen = core.get_step_time();
 	last_pos = core.ent_ref(tar_eid).get_pos();
 }
-bool AI_Group::init_search(GameCore& core, const std::vector<AI_Drone*>& drones, vec2fp target_pos, bool was_in_battle)
+bool AI_Group::init_search(GameCore& core, const std::vector<AI_Drone*>& drones, vec2fp target_pos,
+                           bool was_in_battle, std::optional<vec2fp> real_target_pos)
 {
 	size_t num = 0;
 	for (auto& d : drones) {if (!d->is_camper()) ++num;}
 	if (!num)
 		return false;
 	
-	auto rings = calc_search_rings(core, target_pos);
+	bool real_inside = false;
+	auto rings = calc_search_rings(core, target_pos, real_target_pos.value_or(vec2fp{}), real_inside);
 	if (rings.empty())
 		return false;
 	
@@ -42,6 +44,9 @@ bool AI_Group::init_search(GameCore& core, const std::vector<AI_Drone*>& drones,
 	
 	std::vector<uint8_t> used;
 	used.resize(num);
+	
+	AI_Drone* real_ptr = nullptr;
+	float real_dist = std::numeric_limits<float>::max();
 	
 	while (!drones.empty())
 	{
@@ -102,16 +107,34 @@ bool AI_Group::init_search(GameCore& core, const std::vector<AI_Drone*>& drones,
 			{
 				if (was_in_battle)
 					d->replace_state( AI_Drone::Search{ std::move(ps), AI_Const::chase_search_delay } );
+				else continue;
 			}
 			else
 				d->add_state( AI_Drone::Search{ std::move(ps), AI_Const::chase_search_delay } );
+			
+			if (real_inside) {
+				float dist = pos.dist_squ(*real_target_pos);
+				if (dist < real_dist) {
+					real_ptr = d;
+					real_dist = dist;
+				}
+			}
 		}
+	}
+	
+	if (real_ptr) {
+		auto& st = std::get<AI_Drone::Search>(real_ptr->get_state());
+		st.pts[0] = *real_target_pos;
 	}
 	return true;
 }
 void AI_Group::init_search()
 {
-	if (!init_search(core, drones, last_pos, true))
+	std::optional<vec2fp> real_tar;
+	if (auto tar = core.get_ent(tar_eid))
+		real_tar = tar->get_pos();
+	
+	if (!init_search(core, drones, last_pos, true, real_tar))
 	{
 		while (!drones.empty())
 			drones.back()->set_idle_state();
@@ -265,6 +288,7 @@ public:
 			the_only_group->update();
 		}
 		
+		debug_batle_number = the_only_group ? the_only_group->drones.size() : 0;
 		if (the_only_group && show_aos_debug)
 			the_only_group->aos->debug_draw();
 		
