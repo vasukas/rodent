@@ -54,6 +54,10 @@ struct TimeSpan
 		if (!t.mks_value) return 0;
 		return double(mks_value) / t.mks_value;
 	}
+	constexpr double tmod ( const TimeSpan& t ) const {
+		if (!t.mks_value) return 0;
+		return double(mks_value % t.mks_value) / t.mks_value;
+	}
 	
 	bool operator < ( const TimeSpan& t ) const { return mks_value <  t.mks_value; }
 	bool operator > ( const TimeSpan& t ) const { return mks_value >  t.mks_value; }

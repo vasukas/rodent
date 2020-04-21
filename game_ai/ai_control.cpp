@@ -1,6 +1,8 @@
 #include "game/game_core.hpp"
+#include "game/game_info_list.hpp"
 #include "game/physics.hpp"
 #include "game/player_mgr.hpp"
+#include "game_objects/objs_creature.hpp"
 #include "utils/noise.hpp"
 #include "vaslib/vas_log.hpp"
 #include "ai_algo.hpp"
@@ -150,34 +152,55 @@ TimeSpan AI_Group::passed_since_seen() const
 }
 void AI_Group::update()
 {
+	bool all_campers = [&]{
+		for (auto& d : drones) if (!d->is_camper()) return false;
+		return true;
+	}();
+	
 	// update radio
 	
-	if (drones.size() < AI_Const::msg_engage_max_bots)
+	bool battle_call = drones.size() < AI_Const::msg_engage_max_bots;
+	if (battle_call)
+	{
+		battle_call = false;
+		for (auto& d : drones) {
+			if (!std::get<AI_Drone::Battle>(d->get_state()).used_radiocall) {
+				battle_call = true;
+				break;
+			}
+		}
+		if (battle_call) {
+			for (auto& d : drones)
+				std::get<AI_Drone::Battle>(d->get_state()).used_radiocall = true;
+		}
+	}
+	if (battle_call)
 	{
 		auto& lc = core.get_lc();
-		std::vector<std::pair<const LevelCtrRoom*, int>> rooms;
+		std::vector<std::pair<const LevelCtrRoom*, bool>> rooms; // flag - is relay
 		
 		for (auto& d : drones)
 		{
 			auto r = &lc.ref_room( lc.cref( lc.to_cell_coord(d->ent.get_pos()) ).room_nearest );
 			if (rooms.end() == std::find_if( rooms.begin(), rooms.end(), [&](auto& v){return v.first == r;} ))
 			{
-				int dist = std::get<AI_Drone::Battle>(d->get_state()) .not_visible.is_positive()
-						   ? AI_Const::msg_engage_relay_dist
-						   : AI_Const::msg_engage_dist;
+				int dist = std::get<AI_Drone::Battle>(d->get_state()).not_visible.is_positive();
 				rooms.push_back({ r, dist });
 			}
 		}
 		
 		for (auto& rp : rooms)
 		{
-			room_flood( core, rp.first->area.center(), rp.second + msg_range_extend, false,
+			int dist = rp.second ? AI_Const::msg_engage_relay_dist : AI_Const::msg_engage_dist;
+			bool allow_adj = !rp.second;
+			
+			room_radio_flood( core, rp.first->area.center(), dist + msg_range_extend, false, allow_adj,
 			[&](auto& rm, auto)
-			{	
-				room_query(core, rm, 
+			{
+				room_query(core, rm,
 				[&](AI_Drone& d)
 				{
-					if (!std::holds_alternative<AI_Drone::Battle>( d.get_state() ))
+					if (d.is_online && !std::holds_alternative<AI_Drone::Battle>( d.get_state() ))
 						d.set_battle_state();
 					return true;
 				});
@@ -185,10 +208,6 @@ void AI_Group::update()
 			});
 		}
 		
-		bool all_campers = [&]{
-			for (auto& d : drones) if (!d->is_camper()) return false;
-			return true;
-		}();
 		if (all_campers) ++msg_range_extend;
 		else msg_range_extend = 0;
 	}
@@ -234,6 +253,13 @@ void AI_Group::update()
 	{
 		for (auto& d : drones)
 			std::get<AI_Drone::Battle>(d->get_state()).placement = {};
+		
+		if (all_campers && passed_since_seen() > TimeSpan::seconds(2)) {
+			while (!drones.empty()) {
+				auto st = AI_Drone::Suspect{ drones.back()->ent.get_pos(), AI_Const::suspect_max_level };
+				drones.back()->set_single_state(st);
+			}
+		}
 	}
 }
 
@@ -273,9 +299,13 @@ public:
 	TimeSpan check_tmo; // online area check
 	
 	b2DynamicTree res_tree;
+	std::vector<std::unique_ptr<AI_SimResource>> res_list;
 	
 	std::optional<AI_Group> the_only_group;
 	TimeSpan group_check_tmo;
+	
+	std::vector<EntityIndex> hunters;
+	TimeSpan hunter_resp_tmo = {};
 	
 	
 	
@@ -309,7 +339,15 @@ public:
 			
 			for (auto& d : drs)
 			{
-				if (d->is_online & 6)
+				if (d->always_online)
+				{
+					if (!(d->is_online & 1)) {
+						d->is_online = 0;
+						d->set_online(true);
+					}
+					else d->is_online = 1;
+				}
+				else if (d->is_online & 6)
 				{
 					if (d->is_online & 4) {
 						d->is_online &= 1;
@@ -320,6 +358,34 @@ public:
 				else {
 					d->is_online &= 1;
 					d->set_online(false);
+				}
+			}
+		}
+		
+		if (hunter_resp_tmo.is_positive()) {
+			hunter_resp_tmo -= core.step_len;
+		}
+		if (hunters.size() < AI_Const::hunter_max_count && !hunter_resp_tmo.is_positive() && core.spawn_hunters)
+		{
+			auto& list = core.get_info().get_assembler_list();
+			if (!list.empty()) {
+				auto ent = new EHunter(core, core.get_random().random_el(list).prod_pos);
+				hunters.push_back(ent->index);
+				hunter_resp_tmo = AI_Const::hunter_respawn_tmo;
+			}
+		}
+		for (auto it = hunters.begin(); it != hunters.end(); )
+		{
+			auto ent = core.get_ent(*it);
+			if (!ent) it = hunters.erase(it);
+			else {
+				++it;
+				
+				if (the_only_group)
+				if (auto gst = std::get_if<AI_Drone::Idle>(&ent->ref_ai_drone().get_state()))
+				{
+					auto& st = std::get<AI_Drone::IdleChasePlayer>(gst->ist);
+					st.after = std::min(st.after, TimeSpan::seconds(7));
 				}
 			}
 		}
@@ -334,7 +400,7 @@ public:
 		int dist = high_prio ? AI_Const::msg_helpcall_highprio_dist : AI_Const::msg_helpcall_dist;
 		vec2fp pos = target ? *target : drone.ent.get_pos();
 		
-		room_flood_p(core, pos, dist, true,
+		room_radio_flood(core, core.get_lc().to_cell_coord(pos), dist, true, true,
 		[&](auto& room, int)
 		{
 			bool ret = true;
@@ -343,7 +409,7 @@ public:
 			room_query(core, room,
 			[&](AI_Drone& d)
 			{
-				if (&d == &drone || d.is_camper() || d.get_pars().helpcall == AI_DroneParams::HELP_NEVER)
+				if (!d.is_online || &d == &drone || d.is_camper() || d.get_pars().helpcall == AI_DroneParams::HELP_NEVER)
 					return true;
 				
 				if (auto st = std::get_if<AI_Drone::Suspect>( &d.get_state() ))
@@ -398,6 +464,8 @@ public:
 	}
 	int ref_resource(Rectfp p, AI_SimResource* r) override
 	{
+		reserve_more_block(res_list, 128);
+		res_list.emplace_back(r);
 		return res_tree.CreateProxy({conv(p.lower()), conv(p.upper())}, r);
 	}
 	void find_resource(Rectfp p, callable_ref<void(AI_SimResource&)> f) override

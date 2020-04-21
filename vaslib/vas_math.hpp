@@ -43,8 +43,8 @@ template <typename T1, typename T2, typename T3>
 typename std::common_type_t<T1, T2>
 lerp (T1 a, T2 b, T3 t) {return a * (1 - t) + b * t;}
 
-template <typename T1, typename T2>
-T1 inv_lerp(T2 a, T2 b, T2 v) {return (v - a) / (b - a);}
+template <typename T1>
+T1 inv_lerp(T1 a, T1 b, T1 v) {return (v - a) / (b - a);}
 
 template <typename T>
 int int_round(T value) {return static_cast<int>(std::round(value));}
@@ -328,6 +328,7 @@ struct Rectfp
 	void size  (vec2fp v) {b = v + a;}
 	
 	static Rectfp from_center(vec2fp ctr, vec2fp half_size) {return {ctr - half_size, ctr + half_size, false};}
+	void offset(vec2fp v) {a += v; b += v;}
 	
 	/// Returns points representing same rectangle rotated around center
 	std::array <vec2fp, 4> rotate( float cs, float sn ) const;

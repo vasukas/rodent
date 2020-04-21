@@ -3,7 +3,9 @@
 #include "client/presenter.hpp"
 #include "client/replay.hpp"
 #include "game/game_core.hpp"
+#include "game/game_mode.hpp"
 #include "game/level_ctr.hpp"
+#include "game/level_gen.hpp"
 #include "game/player_mgr.hpp"
 #include "vaslib/vas_log.hpp"
 #include "game_control.hpp"
@@ -36,16 +38,19 @@ public:
 	
 	// game control
 	std::atomic<bool> pause_on = true;
+	int pause_steps = 0;
 	
 	std::mutex post_step_lock;
 	PostStep post_step;
 	
 	std::mutex state_lock;
-	CoreState cur_state = CS_Init{"Loading..."};
+	CoreState cur_state;
 	
 	// game
 	std::unique_ptr<GamePresenter> pres;
 	std::unique_ptr<GameCore> core;
+	
+	std::shared_ptr<LevelTerrain> terrain;
 	
 	// playback
 	std::unique_ptr<ReplayReader> replay_rd;
@@ -57,14 +62,14 @@ public:
 	GameControl_Impl(std::unique_ptr<InitParams> pars)
 	{
 		auto lock = core_lock();
-		
 		replay_rd = std::move(pars->replay_rd);
 		replay_wr = std::move(pars->replay_wr);
 		
-		init(std::move(pars));
-		VLOGI("Game initialized");
-		
-		thr = std::thread([this]{ thr_func(); });
+		thr = std::thread([this](auto pars){
+			init(std::move(pars));
+			VLOGI("Game initialized");
+			thr_func();
+		}, std::move(pars));
 	}
 	~GameControl_Impl()
 	{
@@ -74,21 +79,28 @@ public:
 	}
 	void init(std::unique_ptr<InitParams> p_pars)
 	{
-		TimeSpan t0 = TimeSpan::since_start();
 		auto& pars = *p_pars;
 		
+		cur_state = CS_Init{"Generating..."};
+		terrain = std::shared_ptr<LevelTerrain>(pars.terrgen(pars.rndg));
+		
+		TimeSpan t0 = TimeSpan::since_start();
+		
 		GameCore::InitParams gci;
-		gci.lc.reset( LevelControl::create(*pars.lt) );
+		gci.lc.reset( LevelControl::create(*terrain) );
+		gci.gmc = std::move(pars.mode_ctr);
 		core.reset( GameCore::create(std::move(gci)) );
 		
-		core->spawn_drop = true;
+		core->spawn_drop = !pars.disable_drop;
+		core->spawn_hunters = !pars.disable_hunters;
 		core->get_random() = std::move(pars.rndg);
 		
 		if (pars.init_presenter)
-			pres.reset(GamePresenter::init({ core.get(), pars.lt.get() }));
+			pres.reset(GamePresenter::init({ core.get(), terrain.get() }));
 		
-		pars.spawner(*core, *pars.lt);
-		core->get_lc().fin_init(*pars.lt);
+		pars.spawner(*core, *terrain);
+		core->get_lc().fin_init(*terrain);
+		core->get_gmc().init(*core);
 		
 		VLOGI("GameControl::init() finished in {:.3f} seconds", (TimeSpan::since_start() - t0).seconds());
 		
@@ -163,11 +175,17 @@ public:
 				if (pres) pres->playback_hack = !!sleep_time_k;
 				
 				core->step(t0);
+				
+				if (pause_steps && --pause_steps == 0)
+					pause_on = true;
 			}
 			
-			if (core->get_pmg().is_game_finished())
+			auto mode_state = core->get_gmc().get_state();
+			if (mode_state == GameModeCtr::State::Won  ||
+			    mode_state == GameModeCtr::State::Lost ||
+			    mode_state == GameModeCtr::State::TutComplete)
 			{
-				set_state(CS_End{});
+				set_state(CS_End{{}, false, mode_state});
 				break;
 			}
 			set_state(CS_Run{pause_on});
@@ -175,7 +193,7 @@ public:
 			auto dt = TimeSpan::since_start() - t0;
 			if (!pause_on) {
 				std::unique_lock lock(post_step_lock);
-				post_step(dt);
+				if (post_step) post_step(dt);
 			}
 			
 			TimeSpan t_sleep = core->step_len;
@@ -202,6 +220,9 @@ public:
 		std::unique_lock lock(post_step_lock);
 		post_step = std::move(f);
 	}
+	std::shared_ptr<LevelTerrain> get_terrain() {
+		return terrain;
+	}
 	std::unique_lock<std::mutex> core_lock() {
 		return std::unique_lock(ren_lock);
 	}
@@ -213,6 +234,10 @@ public:
 	}
 	void set_speed(std::optional<float> k) {
 		speed_k = k;
+	}
+	void step_paused(int steps) {
+		pause_on = false;
+		pause_steps = steps;
 	}
 	ReplayReader* get_replay_reader() {
 		return replay_rd.get();

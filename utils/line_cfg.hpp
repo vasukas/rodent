@@ -144,6 +144,7 @@ struct LineCfgOption {
 	LineCfgOption& vfloat(float&       v) {args.emplace_back(v); return *this;}
 	LineCfgOption& vbool (bool&        v) {args.emplace_back(v); return *this;}
 	LineCfgOption& vstr  (std::string& v) {args.emplace_back(v); return *this;}
+	LineCfgOption& descr (std::string  v) {descr_v = std::move(v); return *this;}
 	
 	template<typename T>
 	LineCfgOption& venum(T& v, std::shared_ptr<LineCfgEnumType> type) {
@@ -160,6 +161,7 @@ private:
 	std::function<bool()> check;
 	std::vector<LineCfgArg> args;
 	int line = 0;
+	std::string descr_v;
 };
 
 

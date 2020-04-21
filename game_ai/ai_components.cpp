@@ -22,7 +22,6 @@ bool AI_Movement::set_target(std::optional<vec2fp> new_tar, AI_Speed speed, std:
 		preq.reset();
 		path.reset();
 		preq_failed = false;
-		patrol_reset = {};
 		return true;
 	}
 	else
@@ -33,10 +32,8 @@ bool AI_Movement::set_target(std::optional<vec2fp> new_tar, AI_Speed speed, std:
 			preq.reset();
 			path.reset();
 			preq_failed = false;
-			patrol_reset = {};
 			return true;
 		}
-		if (patrol_reset && same(*patrol_reset)) return true;
 		if (path && same(path->ps.back())) return false;
 		if (preq && same(preq->target)) return false;
 		
@@ -50,7 +47,10 @@ bool AI_Movement::set_target(std::optional<vec2fp> new_tar, AI_Speed speed, std:
 			path.reset();
 			auto& p = preq.emplace();
 			p.target = *new_tar;
-			p.req = PathRequest( ent.core, ent.get_pos(), *new_tar, {}, evade );
+			
+			std::optional<float> max_len;
+			if (hack_allow_unlimited_path) max_len = GameConst::cell_size * ent.core.get_lc().get_size().minmax().y;
+			p.req = PathRequest( ent.core, ent.get_pos(), *new_tar, max_len, evade );
 		}
 		else
 		{
@@ -60,7 +60,6 @@ bool AI_Movement::set_target(std::optional<vec2fp> new_tar, AI_Speed speed, std:
 			p.next = 0;
 		}
 		preq_failed = false;
-		patrol_reset = {};
 	}
 	return false;
 }
@@ -93,102 +92,42 @@ void AI_Movement::on_unreg()
 {
 	ent.ref_phobj().body.SetLinearVelocity({0, 0});
 	ent.ref_phobj().body.SetAngularVelocity(0);
-	
-	rare_pos = vec2fp::one(-1000);
-	path_lock = {};
 }
-std::optional<vec2fp> AI_Movement::calc_avoidance()
+float AI_Movement::calc_avoidance()
 {
-	const float ray_width = std::max(0.2, ent.ref_pc().get_radius() - 0.1);
-	const float side_ray_width = 1.5;
+	const float ray_width = 1.5;
 	const float min_tar_dist = ent.ref_pc().get_radius() + 0.5;
-	const float max_ray_dist = GameConst::cell_size * 2;
-	const float side_ray_angle = deg_to_rad(30);
-	const float headon_hack_angle = deg_to_rad(15);
-	const float side_ray_dist = GameConst::cell_size * 2;
+	const float max_ray_dist = GameConst::cell_size * 1.5;
+	const float min_mul = 0.3;
 	
 	auto tar = get_next_point();
-	if (!tar) return {};
+	if (!tar) return 1;
 	
 	vec2fp self = ent.get_pos();
 	vec2fp dir = *tar - self;
-	if (dir.len_squ() < min_tar_dist * min_tar_dist) return {};
+	if (dir.len_squ() < min_tar_dist * min_tar_dist) return 1;
 	
 	const float ray_dist = std::min( dir.fastlen(), max_ray_dist );
 	dir.norm();
 	
 	auto rc = ent.core.get_phy().raycast_nearest( conv(self), conv(self + dir * ray_dist), {}, ray_width );
-	if (!rc) return {};
+	if (!rc || !rc->ent->get_ai_drone()) return 1;
+	if (rc->ent->index.to_int() < ent.index.to_int()) return 1; // won't need to avoid
 	
-	bool is_patrol = (cur_spd == AI_Speed::Patrol) && path
-	                 && path->ps.back().dist_squ( ent.get_pos() ) < AI_Const::move_patrol_reset_distance_squ;
+	auto mov = rc->ent->ref_ai_drone().mov;
+	if (!mov) return 1;
 	
-	// ignore drone moving in same direction
-	if (auto drone = rc->ent->get_ai_drone();
-		drone && drone->mov)
-	{
-		auto& drmov = *drone->mov;
-		
-		if ([&]{
-			if (is_patrol && drmov.cur_spd == AI_Speed::Patrol)
-			{
-				if (drmov.path) {
-					if (is_same( path->ps.back(), drmov.path->ps.back()) )
-					    return true;
-				}
-				else if (is_same( path->ps.back(), drone->ent.get_pos() ))
-					return true;
-				else if (drmov.patrol_reset && is_same( path->ps.back(), *drmov.patrol_reset ))
-					return true;
-			}
-			return false;
-		}()) {
-			patrol_reset = path->ps.back();
-			path = {};
-			return {};
-		}
-		
-		if (auto next = drmov.get_next_point())
-		{
-			vec2fp d_dir = *next - drone->ent.get_pos();
-			d_dir.norm();
-			
-			float cmp = dot(d_dir, dir);
-			if (cmp > 0 && drmov.get_set_speed() > get_set_speed() - 0.5)
-				return {};
-		}
-	}
+	auto next = mov->get_next_point();
+	if (!next) return 1;
 	
-	// path search should already go around static drones and other obstacles
-	if (rc->ent->ref_phobj().body.GetType() == b2_staticBody)
-		return {};
+	vec2fp d_dir = *next - rc->ent->get_pos();
+	d_dir.norm();
 	
-	// avoid left or right?
+	float cmp = dot(d_dir, dir);
+	if (cmp > 0 && mov->get_set_speed() > get_set_speed() - 0.5)
+		return 1;
 	
-	float l_dist = std::numeric_limits<float>::max();
-	float r_dist = std::numeric_limits<float>::max();
-	
-	PhysicsWorld::CastFilter cf{ [&](Entity& ent, auto&){ return &ent != rc->ent; } };
-	
-	if (auto rc = ent.core.get_phy().raycast_nearest( conv(self), // right far
-			conv(self + vec2fp(dir).fastrotate( side_ray_angle) * side_ray_dist), cf, side_ray_width ))
-		r_dist = rc->distance;
-	
-	if (auto rc = ent.core.get_phy().raycast_nearest( conv(self), // left far
-			conv(self + vec2fp(dir).fastrotate(-side_ray_angle) * side_ray_dist), cf, side_ray_width ))
-		l_dist = rc->distance;
-	
-	//
-	
-	float t = 1 - rc->distance / ray_dist;
-	float spd = get_set_speed() * clampf_n(t);
-	
-	dir.rot90ccw();
-	dir *= spd;
-	if (r_dist < l_dist) dir = -dir;
-	
-	dir.fastrotate(headon_hack_angle);
-	return dir;
+	return std::max(min_mul, rc->distance / ray_dist);
 }
 vec2fp AI_Movement::step_path()
 {
@@ -196,7 +135,6 @@ vec2fp AI_Movement::step_path()
 	{
 		if (++path->next == path->ps.size())
 		{
-			if (cur_spd == AI_Speed::Patrol) patrol_reset = path->ps.back();
 			path.reset();
 			return {};
 		}
@@ -215,48 +153,10 @@ vec2fp AI_Movement::step_path()
 	
 	return dt;
 }
-void AI_Movement::lock_check()
-{
-	if (ent.get_pos().dist_squ(rare_pos) >= AI_Const::move_lock_distance * AI_Const::move_lock_distance)
-	{
-		rare_pos = ent.get_pos();
-		rare_last = ent.core.get_step_time();
-		path_lock = {};
-	}
-	if (path)
-	{
-		if (path_lock)
-			return;
-		
-		// check if standing still too long
-		float t_still = (ent.core.get_step_time() - rare_last).seconds();
-		float t_max = AI_Const::move_lock_distance / get_set_speed();
-		if (t_still < t_max + AI_Const::move_lock_tolerance.seconds())
-			return; // no, not yet
-		
-		// lock if possible
-		path_lock = LevelCtrTmpLock::try_lock(ent, ent.core.get_lc().to_cell_coord(ent.get_pos()));
-		
-		// retrigger pathfinding
-		if (!path_lock) {
-			vec2fp tar = path->ps.back();
-			path.reset();
-			
-			auto& p = preq.emplace();
-			p.target = tar;
-			p.req = PathRequest(ent.core, ent.get_pos(), tar, {}, {});
-		}
-		
-		// for lock | don't overwhelm with pathfinding requests
-		rare_pos = ent.get_pos();
-		rare_last = ent.core.get_step_time();
-	}
-}
 void AI_Movement::step()
 {
 	vec2fp fvel = {};
 	
-	lock_check();
 	if (preq)
 	{
 		if (auto res = preq->req.result())
@@ -274,10 +174,7 @@ void AI_Movement::step()
 	else if (path)
 		fvel = step_path();
 	
-	if (auto s = calc_avoidance())
-		fvel += *s;
-	
-	fvel.limit_to( get_set_speed() );
+	fvel.limit_to(get_set_speed() * calc_avoidance());
 	b2Vec2 f = conv(fvel);
 	if (locked) f = {0,0};
 	

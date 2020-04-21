@@ -1,4 +1,5 @@
 #include "game/game_core.hpp"
+#include "game/game_mode.hpp"
 #include "game/level_ctr.hpp"
 #include "game/level_gen.hpp"
 #include "game/player_mgr.hpp"
@@ -145,11 +146,12 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 	
 	TimeSpan time_decor = TimeSpan::since_start();
 	
-	const float res_fail_chance = 0.45; // chance to fail spawning resource
+	float res_fail_chance = 0.45; // chance to fail spawning resource
 	
 	for (auto& r : lt.rooms)
 	{
 		bool isolation_check_init = false;
+		int minidock_spawned_count = 0;
 		
 		auto is_ok = [&](vec2i p, bool check_isol = true)
 		{
@@ -222,6 +224,9 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 		};
 		auto add_mdock = [&](vec2i at, std::optional<bool> horiz = {})
 		{
+			if (minidock_spawned_count >= 1) return;
+			++minidock_spawned_count;
+			
 			if (auto rot = get_rot(at, horiz)) {
 				new EMinidock( core, lc.to_center_coord(at), *rot );
 				lt_cref(at).decor_used = true;
@@ -398,6 +403,9 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 		}
 		else if (r.type == LevelTerrain::RM_FACTORY)
 		{
+			const int max_assemblers = 3;
+			int current_assemblers = 0;
+			
 			// generate conveyor lines
 			
 			struct BigCell
@@ -507,17 +515,26 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 				
 				auto& bigc = *bc(bcp);
 				bigc.is_conv = true;
+				
 				if (!check()) bigc.is_conv = false;
 				else {
 					float rot = bigc.is_hor ? M_PI/2 : 0;
 					if (rnd.flag()) rot += M_PI;
 					
+					rnd.shuffle(bigc.line);
 					for (auto& p : bigc.line)
 					{
 						float t = rnd.range_n();
-						if		(t < 0.4) new EDecor( core, "Conveyor",  {p, {1,1}, true}, rot, MODEL_CONVEYOR );
-						else if (t < 0.7) new EDecor( core, "Assembler", {p, {1,1}, true}, rot, MODEL_ASSEMBLER );
-						else              mk_abox(p, rot);
+						if		(t < 0.4) new EDecor(core, "Conveyor", {p, {1,1}, true}, rot, MODEL_CONVEYOR);
+						else if (t < 0.7 && current_assemblers < max_assemblers && [&]{
+							vec2fp pp = lc.to_center_coord(p) + vec2fp(GameConst::cell_size, 0).fastrotate(rot);
+							vec2i c = lc.to_cell_coord(pp);
+							return lt_cref(c).room == &r && is_ok(c, false);
+						}()) {
+							new EAssembler(core, p, rot);
+							++current_assemblers;
+						}
+						else mk_abox(p, rot);
 						lt_cref(p).is_wall = true;
 					}
 				}
@@ -573,14 +590,44 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 		}
 		else if (r.type == LevelTerrain::RM_TERMINAL)
 		{
+			float saved = res_fail_chance;
+			res_fail_chance = 0.1;
+			
+			const auto cs = normalize_chances<std::function<void(vec2i)>, 4>({{
+				{[&](vec2i p) {add_decor(p, mk_cont, true);}, 0.5},
+				{[&](vec2i p) {add_disp(p, {}, true);}, 1},
+				{[&](vec2i p) {add_mdock(p);}, 0.6},
+				{[&](vec2i) {}, 1}
+			}});
+			
+			minidock_spawned_count = -2; // allow more docks than usual
 			r.area.map([&](vec2i p) {
 				auto& c = lt_cref(p);
-				if (c.structure && rnd.range_n() < 0.6 && get_rot(p)) {
-					add_decor( p, mk_cont, true );
+				if (c.structure) {
+					for (auto& d : sg_dirs)
+						rnd.random_el(cs)(p + d);
 				}
-				else if (c.structure == LevelTerrain::STR_RIB_IN)  add_disp (p, true);
-				else if (c.structure == LevelTerrain::STR_RIB_OUT) add_mdock(p, true);
 			});
+			
+			r.area.map_inner([&](vec2i p)
+			{
+				for (auto& d : sg_dirs)
+				{
+					vec2i at = p + d;
+					while (true) {
+						if (lt_cref(at).is_wall)
+							break;
+						at += d;
+					}
+					if (!lt_cref(at).structure)
+						continue;
+					
+					add_decor(p, mk_mk({}, MODEL_TELEPAD, true), false);
+					core.get_gmc().add_teleport(lc.to_center_coord(p));
+				}
+			});
+			
+			res_fail_chance = saved;
 		}
 		else if (r.type == LevelTerrain::RM_TRANSIT)
 		{
@@ -641,10 +688,18 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 	for (auto& r : lt.rooms)
 	{
 		if		(r.type == LevelTerrain::RM_KEY)     {++key_count; spawn_key(r);}
-		else if (r.type == LevelTerrain::RM_TERMINAL) {
-			vec2fp p = room_ctr(r);
-			new EFinalTerminal(core, p);
-			lt_cref(lc.to_cell_coord(p)).decor_used = true;
+		else if (r.type == LevelTerrain::RM_TERMINAL)
+		{
+			vec2fp p = GameConst::cell_size * r.area.fp_center();
+			p = lc.to_center_coord(lc.to_cell_coord(p)); // snap to grid
+			auto& c = lt_cref(lc.to_cell_coord(p));
+			float rad = (new EFinalTerminal(core, p))->ref_pc().get_radius();
+			c.decor_used = true;
+			
+			for (auto& d : sg_dirs) {
+				int n = AI_SimResource::max_capacity;
+				new AI_SimResource(core, {AI_SimResource::T_LEVELTERM, true, n, n}, p + d * (rad + 1), p);
+			}
 		}
 		else if (r.type == LevelTerrain::RM_LIVING)   key_rooms.push_back(&r);
 	}
@@ -659,40 +714,6 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 	// prepare enemy spawn
 	
 	TimeSpan time_enemies = TimeSpan::since_start();
-	
-	auto pars_workr = std::make_shared<AI_DroneParams>();
-	pars_workr->set_speed(2, 3, 4);
-	pars_workr->dist_minimal = 3;
-	pars_workr->dist_optimal = 10;
-	pars_workr->dist_visible = 14;
-	pars_workr->dist_suspect = 16;
-	pars_workr->rot_speed = deg_to_rad(90);
-	pars_workr->helpcall = AI_DroneParams::HELP_LOW;
-	
-	auto pars_drone = std::make_shared<AI_DroneParams>();
-	pars_drone->set_speed(4, 7, 9);
-	pars_drone->dist_minimal = 8;
-	pars_drone->dist_optimal = 14;
-	pars_drone->dist_visible = 20;
-	pars_drone->dist_suspect = 22;
-	pars_drone->rot_speed = deg_to_rad(240);
-	pars_drone->fov = std::make_pair(deg_to_rad(45), deg_to_rad(90));
-	pars_drone->placement_prio = 5;
-	
-	auto pars_campr = std::make_shared<AI_DroneParams>();
-	pars_campr->set_speed(5, 6, 8);
-	pars_campr->dist_panic   = 6;
-	pars_campr->dist_minimal = 12;
-	pars_campr->dist_optimal = 18;
-	pars_campr->dist_visible = 24;
-	pars_campr->dist_suspect = 28;
-	pars_campr->dist_battle = 50;
-	pars_campr->rot_speed = deg_to_rad(180);
-	pars_campr->is_camper = true;
-	pars_campr->fov = {};
-	pars_campr->helpcall = AI_DroneParams::HELP_NEVER;
-	pars_campr->placement_prio = 30;
-	pars_campr->placement_freerad = 1;
 	
 	// random enemy spawn
 	
@@ -846,11 +867,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 			float rnd_k = core.get_random().range_n();
 			if		(rnd_k < dl_work)
 			{
-				static const auto cs = normalize_chances<Weapon*(*)(), 2>({{
-					{[]()->Weapon*{return new WpnRocket;}, 1},
-					{[]()->Weapon*{return new WpnRifleBot;}, 0.05}
-				}});
-				new EEnemyDrone(core, at, {pars_workr, MODEL_WORKER, rnd.random_el(cs)(), new AtkPat_Burst, 0.4, true});
+				new EEnemyDrone(core, at, EEnemyDrone::def_workr(core));
 			}
 			else if (rnd_k < dl_drone)
 			{
@@ -869,15 +886,13 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 				std::rotate( patrol.begin(), patrol.begin() + rnd.range_index( patrol.size() ), patrol.end() );
 				if (rnd.flag()) std::reverse( patrol.begin(), patrol.end() );
 				
-				static const auto cs = normalize_chances<Weapon*(*)(), 2>({{
-					{[]()->Weapon*{return new WpnRocket;}, 0.6},
-					{[]()->Weapon*{return new WpnRifleBot;}, 0.4}
-				}});
-				new EEnemyDrone(core, at, {pars_drone, MODEL_DRONE, rnd.random_el(cs)(), {}, 0.7, false, std::move(patrol)});
+				auto init = EEnemyDrone::def_drone(core);
+				init.patrol = std::move(patrol);
+				new EEnemyDrone(core, at, std::move(init));
 			}
 			else //if (rnd_k < dl_camper)
 			{
-				new EEnemyDrone(core, at, {pars_campr, MODEL_CAMPER, new WpnElectro(WpnElectro::T_CAMPER), new AtkPat_Sniper, 1});
+				new EEnemyDrone(core, at, EEnemyDrone::def_campr(core));
 			}
 		}
 		
@@ -982,32 +997,36 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 	VLOGD("                 enemies: {:.3f} seconds", (time_doors   - time_enemies).seconds());
 	VLOGD("                 doors:   {:.3f} seconds", (time_end     - time_doors  ).seconds());
 }
-void level_spawn_debug(GameCore& core, LevelTerrain& lt)
+
+
+
+LevelTerrain* drone_test_terrain()
 {
-	auto& lc = core.get_lc();
+	auto lt = new LevelTerrain;
+	lt->grid_size = {20, 16};
+	lt->cs.resize(lt->grid_size.area());
+	
+	auto& rm = lt->rooms.emplace_back();
+	rm.area = Rect({1,1}, lt->grid_size - vec2i::one(1), false);
+	rm.type = LevelTerrain::RM_CONNECT;
+	
+	rm.area.map([&](vec2i p){
+		auto& c = lt->cs[p.x + p.y * lt->grid_size.x];
+		c.is_wall = false;
+		c.room = &rm;
+	});
+	
+	lt->ls_grid = lt->gen_grid();
+	lt->ls_wall = lt->vectorize();
+	return lt;
+}
+void drone_test_spawn(GameCore& core, LevelTerrain& lt)
+{
 	new EWall(core, lt.ls_wall);
-	
-	EEnemyDrone::Init drone;
-	drone.pars = std::make_shared<AI_DroneParams>();
-	//
-	drone.pars->speed = {2, 4, 7, 9};
-	drone.pars->dist_minimal = 8;
-	drone.pars->dist_optimal = 14;
-	drone.pars->dist_visible = 20;
-	drone.pars->dist_suspect = 25;
-	
-	for (auto& sp : lt.dbg_spawns)
-	{
-		vec2fp pos = lc.to_center_coord(sp.first);
-		switch (sp.second)
-		{
-		case LevelTerrain::DBG_SPAWN_PLAYER:
-			lc.add_spawn({ LevelControl::SP_PLAYER, pos });
-			break;
-			
-		case LevelTerrain::DBG_SPAWN_DRONE:
-			new EEnemyDrone( core, pos, drone );
-			break;
-		}
-	}
+	auto pos = [](vec2i p){
+		return vec2fp(p) * GameConst::cell_size + vec2fp::one(GameConst::cell_size /2);
+	};
+	core.get_lc().add_spawn({LevelControl::SP_PLAYER, pos({1,1})});
+	new ETutorialDummy(core, pos({4,1}));
+	new EHunter(core, pos(lt.grid_size - vec2i::one(2)));
 }

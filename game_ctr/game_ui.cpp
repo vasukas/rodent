@@ -8,21 +8,26 @@
 #include "client/presenter.hpp"
 #include "client/replay.hpp"
 #include "core/hard_paths.hpp"
+#include "core/main_loop.hpp"
 #include "core/vig.hpp"
 #include "game/game_core.hpp"
+#include "game/game_mode.hpp"
 #include "game/player_mgr.hpp"
 #include "render/camera.hpp"
 #include "render/control.hpp"
 #include "render/ren_aal.hpp"
 #include "render/ren_imm.hpp"
 #include "render/texture.hpp"
+#include "utils/time_utils.hpp"
 #include "vaslib/vas_log.hpp"
 
+#include "core/settings.hpp"
 #include "game/damage.hpp"
 #include "game/game_info_list.hpp"
 #include "game/physics.hpp"
 #include "game_ai/ai_drone.hpp"
 #include "game_objects/objs_basic.hpp"
+#include "game_objects/weapon_all.hpp"
 #include "render/postproc.hpp"
 #include "render/ren_text.hpp"
 #include "utils/path_search.hpp"
@@ -35,8 +40,9 @@ struct WinrarAnim
 	static const int off = 100;
 	vec2fp pos, spd;
 	FColor clr;
+	bool is_win;
 	
-	WinrarAnim() {gen();}
+	WinrarAnim(bool is_win): is_win(is_win) {gen();}
 	void draw()
 	{
 		float t = RenderControl::get().get_passed().seconds();
@@ -53,11 +59,22 @@ struct WinrarAnim
 	}
 	void gen()
 	{
-		pos.x = rnd_stat().range(-off, RenderControl::get_size().x + off);
-		pos.y = RenderControl::get_size().y + off;
-		
-		spd.x = rnd_stat().range_n2() * 70;
-		spd.y = -rnd_stat().range(150, 400);
+		if (is_win)
+		{
+			pos.x = rnd_stat().range(-off, RenderControl::get_size().x + off);
+			pos.y = RenderControl::get_size().y + off;
+			
+			spd.x = rnd_stat().range_n2() * 70;
+			spd.y = -rnd_stat().range(150, 400);
+		}
+		else
+		{
+			pos.x = rnd_stat().range(-off, RenderControl::get_size().x + off);
+			pos.y = -off;
+			
+			spd.x = rnd_stat().range_n2() * 15;
+			spd.y = rnd_stat().range(20, 300);
+		}
 		
 		clr.r = rnd_stat().range(0.5, 1);
 		clr.g = rnd_stat().range(0.6, 1);
@@ -74,6 +91,11 @@ struct CameraControl
 	bool is_far_cam = false;
 	TimeSpan cam_telep_tmo;
 	
+	CameraControl()
+	{
+		auto& cam = RenderControl::get().get_world_camera();
+		cam.mut_state().pos = vec2fp::one(-1000);
+	}
 	void update(vec2fp target, TimeSpan passed)
 	{
 		auto& cam = RenderControl::get().get_world_camera();
@@ -129,6 +151,7 @@ public:
 	// main
 	
 	GameControl& gctr;
+	bool gctr_inited = false;
 	
 	std::optional<float> replay_speed_k;
 	bool is_playback = false;
@@ -140,6 +163,8 @@ public:
 	bool is_ren_paused = false; ///< Is paused be window becoming non-visible
 	TimeSpan hide_pause_until; ///< Pause stub is not drawn until after that time
 	bool is_first_frame = true;
+	
+	std::shared_ptr<LevelTerrain> level_terrain;
 	
 	// interface
 	
@@ -154,6 +179,13 @@ public:
 	PlayerUI* pmg_ui;
 	bool menu_pause = false;
 	
+	TimeSpan since_victory;
+	
+	SmoothBlink boot_blink;
+	float prev_boot_level = 2; // >1, to flash on appear
+	
+	bool is_tutorial = false;
+	
 	// debug controls
 	
 	bool allow_cheats = false;
@@ -163,9 +195,13 @@ public:
 	EntityIndex dbg_select;
 	bool ui_dbg_puppet_switch = false;
 	
+	bool free_camera_enabled = false;
+	vec2fp free_camera_shift = {};
+	bool dbg_paused = false;
+	
 	// debug stats
 	
-	RAII_Guard dbg_serv_g;
+	RAII_Guard dbg_serv_g, dbg_rend_g;
 	std::optional<vigAverage> dbg_serv_avg;
 	
 	double serv_avg_total = 0;
@@ -174,7 +210,7 @@ public:
 	
 	struct DebugAPS {
 		float time;
-		size_t reqs, locks;
+		size_t reqs;
 	};
 	std::array<DebugAPS, int(TimeSpan::seconds(5) / GameCore::step_len)> dbg_aps = {};
 	size_t i_dbg_aps = 0;
@@ -187,16 +223,29 @@ public:
 		PlayerInput::get().set_context(PlayerInput::CTX_GAME);
 		init_greet = std::move(pars.init_greet);
 		allow_cheats = pars.allow_cheats;
-		
-		RenAAL::get().draw_grid = true;
-		Postproc::get().tint_seq({}, FColor(0,0,0,0));
+		is_tutorial = pars.is_tutorial;
 		
 		crosshair_tex.reset(Texture::load(HARDPATH_CROSSHAIR_IMG));
-		if (pars.lt)
-			lmap.reset( LevelMap::init(*pars.lt) );
 		
 		if (pars.debug_menu)
 		{
+			dbg_rend_g = vig_reg_menu(VigMenu::DebugRenderer, [this]
+			{
+				auto& t = AppSettings::get_mut().aal_type;
+				auto bt = [&](auto type, auto text){
+					if (vig_button(text, 0, t == type)) {
+						t = type;
+						RenAAL::get().reinit_glow();
+						GamePresenter::get()->reinit_resources(*level_terrain);
+					}
+				};
+				vig_label("AAL glow");
+				bt(AppSettings::AAL_OldFuzzy, "OldFuzzy");
+				bt(AppSettings::AAL_CrispGlow, "CrispGlow");
+				bt(AppSettings::AAL_Clear, "Clear");
+				vig_lo_next();
+			});
+			
 			dbg_serv_avg.emplace(5.f, GameCore::time_mul);
 			
 			dbg_serv_g = vig_reg_menu(VigMenu::DebugGame, [this]
@@ -215,6 +264,7 @@ public:
 				vig_checkbox(pmg_ui->full_info, "Additional HUD info");
 				vig_checkbox(ignore_ren_pause, "Ignore render pause");
 				vig_checkbox(core.get_aic().show_aos_debug, "Show AOS");
+				vig_checkbox(core.get_aic().show_states_debug, "See AI stats");
 				vig_checkbox(RenParticles::get().enabled, "Show particles");
 				vig_lo_next();
 				
@@ -231,7 +281,6 @@ public:
 				for (auto& p : dbg_aps) {
 					ad_time  = std::max(ad_time,  p.time);
 					ad_reqs  = std::max(ad_reqs,  p.reqs);
-					ad_locks = std::max(ad_locks, p.locks);
 				}
 				
 				vig_label_a("Time: {:2.3f}\nReqs:  {:3}\nLocks: {:3}\n",
@@ -245,7 +294,6 @@ public:
 					
 					dbg_aps[i_dbg_aps].time = aps.debug_time.seconds();
 					dbg_aps[i_dbg_aps].reqs = aps.debug_request_count;
-					dbg_aps[i_dbg_aps].locks = aps.debug_lock_count;
 					i_dbg_aps = (i_dbg_aps + 1) % dbg_aps.size();
 					
 					last_step = core.get_step_counter();
@@ -277,48 +325,82 @@ public:
 						upd_cheats |= vig_checkbox(core.get_pmg().cheat_godmode, "God mode");
 						upd_cheats |= vig_checkbox(core.get_pmg().is_superman, "Superman (requires respawn)");
 						if (upd_cheats) core.get_pmg().update_cheats();
-						
 						vig_lo_next();
+						
 						if (vig_button("Get all keys")) {
 							for (int i=0; i<3; ++i)
-								core.get_pmg().inc_objective();
+								core.get_gmc().inc_objective();
 						}
 						if (vig_button("Get 500 armor")) {
 							new EPickable(core, pos, EPickable::ArmorShard{500});
 						}
+						if (vig_button("Get ALL ammo")) {
+							for (int i=0; i<int(AmmoType::TOTAL_COUNT); ++i)
+								new EPickable(core, pos, EPickable::AmmoPack{AmmoType(i), 100});
+						}
 						vig_checkbox(ent->ref_eqp().no_overheat, "No overheat");
+						vig_lo_next();
+						
+						vig_label("WEAPONS! (replaces 6)\n");
+						Weapon* new_wpn = nullptr;
+						if (vig_button("Normal"))  new_wpn = new WpnUber;
+						if (vig_button("Turret"))  new_wpn = new WpnMinigunTurret;
+						if (vig_button("SMG"))     new_wpn = new WpnSMG;
+						if (vig_button("Barrage")) new_wpn = new WpnBarrage;
+						if (vig_button("E Oneshot")) new_wpn = new WpnElectro(WpnElectro::T_ONESHOT);
+						if (vig_button("E Worker"))  new_wpn = new WpnElectro(WpnElectro::T_WORKER);
+						if (vig_button("E Camper"))  new_wpn = new WpnElectro(WpnElectro::T_CAMPER);
+						if (new_wpn) ent->ref_eqp().replace_wpn(5, std::unique_ptr<Weapon>(new_wpn));
 					}
-					else vig_label("\nCheats disabled");
+					else {
+						vig_lo_next();
+						vig_label("Cheats disabled");
+					}
 					vig_lo_next();
 				}
 			});
 		}
-		
-		auto lock = gctr.core_lock();
-		gctr.set_post_step([this](TimeSpan dt)
-		{
-			if (dt > GameCore::step_len) {
-				VLOGD("Server lag: {:.3f} seconds on step {}", dt.seconds(), serv_avg_count);
-				++serv_overmax_count;
-			}
-			
-			if (dbg_serv_avg)
-				dbg_serv_avg->add(dt.seconds());
-			
-			++serv_avg_count;
-			serv_avg_total += (dt.seconds() * 1000 - serv_avg_total) / serv_avg_count;
-		});
-		
-		is_playback = gctr.get_replay_reader();
-		pmg_ui = PlayerUI::create();
-		pmg_ui->debug_mode = allow_cheats;
-		gctr.get_core().get_pmg().set_pui( std::unique_ptr<PlayerUI>(pmg_ui) );
 	}
 	~GameUI_Impl()
 	{
 		gctr.set_post_step({});
 		VLOGI("Average logic frame length: {} ms, {} samples", serv_avg_total, serv_avg_count);
 		VLOGI("Logic frame length > sleep time: {} samples", serv_overmax_count);
+	}
+	void init()
+	{
+		std::shared_ptr<LevelTerrain> lt;
+		{
+			auto lock = gctr.core_lock();
+			lt = gctr.get_terrain();
+			
+			gctr.set_post_step([this](TimeSpan dt)
+			{
+				if (dt > GameCore::step_len) {
+					VLOGD("Server lag: {:.3f} seconds on step {}", dt.seconds(), serv_avg_count);
+					++serv_overmax_count;
+				}
+				
+				if (dbg_serv_avg)
+					dbg_serv_avg->add(dt.seconds());
+				
+				++serv_avg_count;
+				serv_avg_total += (dt.seconds() * 1000 - serv_avg_total) / serv_avg_count;
+			});
+			
+			is_playback = gctr.get_replay_reader();
+			pmg_ui = PlayerUI::create();
+			pmg_ui->debug_mode = allow_cheats;
+			gctr.get_core().get_pmg().set_pui( std::unique_ptr<PlayerUI>(pmg_ui) );
+		}
+		
+		RenAAL::get().draw_grid = true;
+		Postproc::get().tint_seq({}, FColor(0,0,0,0));
+		
+		if (lt) {
+			lmap.reset( LevelMap::init(*lt) );
+			level_terrain = std::move(lt);
+		}
 	}
 	void on_leave()
 	{
@@ -397,6 +479,21 @@ public:
 				else if (k == SDL_SCANCODE_LSHIFT || k == SDL_SCANCODE_RSHIFT) {
 					ui_dbg_mode = false;
 				}
+				else if (k == SDL_SCANCODE_H) {
+					dbg_paused = !dbg_paused;
+					auto lock = gctr.core_lock();
+					gctr.set_pause(dbg_paused);
+				}
+				else if (k == SDL_SCANCODE_J) {
+					auto lock = gctr.core_lock();
+					gctr.step_paused(1);
+				}
+				else if (k == SDL_SCANCODE_K) {
+					free_camera_enabled = !free_camera_enabled;
+				}
+				else if (k == SDL_SCANCODE_L) {
+					free_camera_shift = {};
+				}
 				else if (ui_dbg_mode)
 				{
 					if (k == SDL_SCANCODE_P)
@@ -417,7 +514,12 @@ public:
 	void render(TimeSpan frame_time, TimeSpan passed)
 	{
 		auto gstate = gctr.get_state();
-		if		(auto st = std::get_if<GameControl::CS_Init>(&gstate))
+		if (!gctr_inited && !std::holds_alternative<GameControl::CS_Init>(gstate)) {
+			gctr_inited = true;
+			init();
+		}
+		
+		if (auto st = std::get_if<GameControl::CS_Init>(&gstate))
 		{
 			draw_text_message(st->stage + "\n\n" + init_greet);
 		}
@@ -434,14 +536,45 @@ public:
 			}
 			
 			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
-			GamePresenter::get()->render(frame_time, {});
-			//
+			GamePresenter::get()->render(frame_time, passed);
 			RenImm::get().set_context(RenImm::DEFCTX_UI);
-			RenImm::get().draw_rect({{}, RenderControl::get_size(), false}, 0xa0);
 			
-			winrars.resize(40);
-			for (auto& w : winrars) w.draw();
-			draw_text_message("Game completed.\n\nA WINRAR IS YOU.");
+			if (st->won == GameModeCtr::State::TutComplete) {
+				if (!since_victory.is_positive()) {
+					Postproc::get().tint_reset();
+					Postproc::get().tint_seq(TimeSpan::seconds(3), FColor(0,0,0));
+				}
+				draw_text_message("Training session completed");
+			}
+			else {
+				RenImm::get().draw_rect({{}, RenderControl::get_size(), false}, 0xa0);
+				
+				bool is_win = (st->won == GameModeCtr::State::Won);
+				
+				if (winrars.empty()) {
+					for (int i=0; i<40; ++i)
+						winrars.emplace_back(is_win);
+				}
+				for (auto& w : winrars) w.draw();
+				
+				if (is_win)
+					draw_text_message("Game completed.\n\nA WINRAR IS YOU.");
+				else
+					draw_text_message("Terminal destroyed.\n\nYOU LOST.");
+			}
+			
+			since_victory += passed;
+			if (since_victory > TimeSpan::seconds(2)) {
+				draw_text_hud(vec2i{RenderControl::get_size().x /2, -1}, "Press ESCAPE to EXIT", -1, true, 2);
+			}
+			
+			auto& pinp = PlayerInput::get();
+			pinp.set_context(PlayerInput::CTX_MENU);
+			pinp.update(PlayerInput::CTX_MENU);
+			if (pinp.get_state(PlayerInput::CTX_MENU).is[PlayerInput::A_MENU_EXIT]) {
+				delete MainLoop::current;
+				return;
+			}
 		}
 		else if (!RenderControl::get().is_visible() && !ignore_ren_pause)
 		{
@@ -458,7 +591,7 @@ public:
 			auto& core = gctr.get_core();
 			
 //			bool is_core_paused = std::get<GameControl::CS_Run>(gctr.get_state()).paused;
-			gctr.set_pause(is_ren_paused || menu_pause);
+			gctr.set_pause(is_ren_paused || menu_pause || dbg_paused);
 			gctr.set_speed(replay_speed_k);
 			
 			if (is_first_frame)
@@ -492,6 +625,11 @@ public:
 					vec2fp tar_d = (tar - pos);
 					if		(tar_d.len() < tar_min) tar = pos;
 					else if (tar_d.len() > tar_max) tar = pos + tar_d.get_norm() * tar_max;
+				}
+				if (free_camera_enabled)
+				{
+					free_camera_shift += inpst.mov * 50 * passed.seconds();
+					tar += free_camera_shift;
 				}
 				
 				cctr.is_close_cam = inpst.is[PlayerInput::A_CAM_CLOSE_SW];
@@ -543,6 +681,31 @@ public:
 				}
 			}
 			
+			// draw objective state
+			
+			if (core.get_gmc().get_state() == GameModeCtr::State::Booting)
+			{
+				float lvl = core.get_gmc().get_boot_level();
+				float t_lvl = boot_blink.get_sine(lvl < prev_boot_level);
+				prev_boot_level = lvl;
+				
+				Rectfp at = {};
+				float lht = RenText::get().line_height(FontIndex::Mono);
+				at.a.set(RenderControl::get_size().x/4, 0);
+				at.b.set(RenderControl::get_size().x - RenderControl::get_size().x/4, lht + 4);
+				vec2fp ctr = at.center();
+				
+				FColor clr = FColor(1, 0.2, 0, 0.8);
+				at.size({ at.size().x * lvl, at.size().y });
+				RenImm::get().draw_rect(at, (clr * (1 + 0.5 * (t_lvl - 1))).to_px());
+				at.a.x = at.b.x;
+				at.b.x = RenderControl::get_size().x - RenderControl::get_size().x/4;
+				RenImm::get().draw_rect(at, (clr * t_lvl * 0.7).to_px());
+				
+				int secs = core.get_gmc().get_boot_left().seconds();
+				RenImm::get().draw_text(ctr, FMT_FORMAT("{:3} seconds @ {:3}%", secs, int(100 * lvl)), 0x00c0c0ff, true);
+			}
+			
 			// teleport menu / map
 			
 			if (!gctr.get_replay_reader()) {
@@ -568,7 +731,9 @@ public:
 						vig_lo_pop();
 						
 						auto& pcst = pinp.get_state(PlayerInput::CTX_MENU);
-						if (pcst.is[ PlayerInput::A_MENU_EXIT ]) {
+						if (pcst.is[PlayerInput::A_MENU_EXIT] ||
+						    pcst.is[PlayerInput::A_INTERACT])
+						{
 							exit();
 						}
 						else if (pcst.is[ PlayerInput::A_MENU_SELECT ])
@@ -591,6 +756,144 @@ public:
 					lmap->draw(passed, plr_p, inpst.is[PlayerInput::A_SHOW_MAP]);
 					menu_pause = inpst.is[PlayerInput::A_SHOW_MAP];
 				}
+			}
+			
+			// object highlight
+			
+			if (auto plr = core.get_pmg().get_ent();
+				plr && inpst.is[PlayerInput::A_HIGHLIGHT])
+			{
+				RenImm::get().set_context(RenImm::DEFCTX_WORLD);
+				
+				if (is_tutorial) {
+					core.foreach([](auto& ent){
+						if (typeid(ent) == typeid(ETutorialMsg)) {
+							RenImm::get().draw_circle(ent.get_pos(), 1,   0xff40'40c0, 16);
+							RenImm::get().draw_circle(ent.get_pos(), 0.5, 0x60ff'80ff, 8);
+						}
+					});
+				}
+				else {
+					auto area = Rectfp::from_center(plr->get_pos(), vec2fp::one(36));
+					core.get_phy().query_aabb(area, [&](Entity& ent, b2Fixture& fix)
+					{
+						auto allow_sensor = [&]{
+							return typeid(ent) == typeid(EPickable)
+								|| typeid(ent) == typeid(EDispenser)
+								|| typeid(ent) == typeid(ETeleport)
+								|| typeid(ent) == typeid(EMinidock);
+						};
+						auto allow_never = [&]{
+							return typeid(ent) == typeid(EWall)
+								|| typeid(ent) == typeid(EDoor);
+						};
+						if (fix.IsSensor()) {
+							if (!allow_sensor())
+								return;
+						}
+						else if (allow_never())
+							return;
+						
+						float dist;
+						if (fix.IsSensor()) {
+							auto r = core.get_phy().raycast_nearest(conv(plr->get_pos()), conv(ent.get_pos()));
+							if (r) return;
+							dist = (ent.get_pos() - plr->get_pos()).fastlen();
+						}
+						else {
+							auto d = core.get_phy().los_check(plr->get_pos(), ent, 3);
+							if (!d) return;
+							dist = *d;
+						}
+						
+						std::string info;
+						info.reserve(1024);
+						bool show_hp = false;
+						
+						if (ent.ui_descr) info += ent.ui_descr;
+						else info += "Unknown";
+						info += FMT_FORMAT("\nDist: {:.1f}\nSpeed: {:.0f}\n", dist, ent.ref_pc().get_vel().fastlen());
+						
+						if (ent.is_creature())
+						{
+							if (ent.get_hlc())
+								show_hp = true;
+							
+							if (auto drone = ent.get_ai_drone()) {
+								if (std::holds_alternative<AI_Drone::Battle>(drone->get_state()))
+									info += "State: COMBAT\n";
+								else if (std::holds_alternative<AI_Drone::Idle>(drone->get_state()))
+									info += "State: idle\n";
+								else
+									info += "State:\n";
+							}
+						}
+						else {
+							if (auto hc = ent.get_hlc(); hc && hc->get_hp().t_state() < 0.99)
+								show_hp = true;
+						}
+						
+						vec2fp dir = (ent.get_pos() - plr->get_pos()).norm();
+						RenAAL::get().draw_line(
+							plr->get_pos() + dir * plr->ref_pc().get_radius(),
+							plr->get_pos() + dir * (dist - ent.ref_pc().get_radius()),
+							FColor(0, 0.8, 0.6, 0.5).to_px(), 0.2, 1.5);
+						
+//						auto& b_aabb = fix.GetAABB(0);
+//						Rectfp aabb = {conv(b_aabb.lowerBound), conv(b_aabb.upperBound), false};
+//						aabb.offset(ent.get_pos());
+						Rectfp aabb = Rectfp::from_center(ent.get_pos(), vec2fp::one(ent.ref_pc().get_radius()));
+						
+						RenImm::get().draw_frame(aabb, 0x00ff'4080, 0.2);
+						RenImm::get().draw_text({aabb.lower().x, aabb.upper().y + 0.5f}, info, 0xc0ff'ffc0);
+						
+						if (show_hp)
+						{
+							float ht = (RenText::get().line_height(FontIndex::Mono) + 2) /
+									   RenderControl::get().get_world_camera().get_state().mag;
+							vec2fp at = aabb.lower();
+							float x100 = 2;
+							
+							auto draw = [&](HealthPool& hp, int type){
+								std::string str;
+								uint32_t clr = 0;
+								float t, wid;
+								
+								if (type == -1) {
+									str = "Unknown";
+									clr = 0xff0000;
+									t = 1;
+									wid = 2 * x100;
+								}
+								else {
+									str = std::to_string(hp.exact().first);
+									if		(type == 0) clr = 0xc0c000;
+									else if (type == 1) clr = 0x2020ff;
+									else if (type == 2) clr = 0x00ff40;
+									t = hp.t_state();
+									wid = x100 * hp.exact().second / 100;
+								}
+								
+								at.y -= ht;
+								clr <<= 8;
+								float x1 = t * wid;
+								RenImm::get().draw_rect({at, {x1, ht}, true}, clr | 0xa0);
+								RenImm::get().draw_rect({{at.x + x1, at.y}, {wid - x1, ht}, true}, clr | 0x60);
+								RenImm::get().draw_text(at, str, 0xffff'ffc0);
+							};
+							
+							auto& hc = ent.ref_hlc();
+							draw(hc.get_hp(), 0);
+							hc.foreach_filter([&](DamageFilter& ft){
+								if      (auto f = dynamic_cast<DmgShield*>(&ft)) draw(f->get_hp(), 1);
+								else if (auto f = dynamic_cast<DmgArmor *>(&ft)) draw(f->get_hp(), 2);
+								else draw(hc.get_hp(), -1);
+							});
+						}
+					});
+				}
+				
+				RenImm::get().set_context(RenImm::DEFCTX_UI);
 			}
 			
 			// debug UI

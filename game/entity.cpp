@@ -68,7 +68,7 @@ EC_Physics& Entity::ref_phobj()
 
 std::string Entity::dbg_id() const
 {
-	return FMT_FORMAT("eid {}, descr \"{}\"", index.to_int(), ui_descr);
+	return FMT_FORMAT("eid {}, descr \"{}\"", index.to_int(), ui_descr ? ui_descr : "");
 }
 void Entity::destroy()
 {

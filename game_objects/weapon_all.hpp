@@ -29,7 +29,9 @@ struct StdProjectile : EComp
 		bool trail = false; ///< If true, leaves particle trail
 		
 		float size = GameConst::hsz_proj; ///< Projectile radius
-		bool friendly_fire = false;
+		float friendly_fire = 0; ///< Damage multiplier
+		float particles_power = 1; ///< Multiplier for graphics
+		std::optional<std::type_index> ignore_hack; ///< Entities with such types are not damaged
 	};
 	
 	/// Note: 'src' currently ignored
@@ -39,7 +41,8 @@ struct StdProjectile : EComp
 	static void explode(GameCore& core, size_t src_team, EntityIndex src_eid,
 	                    b2Vec2 self_vel, PhysicsWorld::RaycastResult hit, const Params& pars);
 	
-	/// Returns fixed ray hit point. Direction must be normalized
+	/// Returns fixed ray hit point. Direction must be normalized. 
+	/// 'step' callback parameter is in range [0; shoot_through] (including!)
 	static std::optional<vec2fp> multiray(GameCore& core, vec2fp pos, vec2fp dir,
 	                                      callable_ref<void(PhysicsWorld::RaycastResult& hit, int step)> on_hit,
 	                                      float full_width, float max_distance, int shoot_through, EntityIndex src_eid);
@@ -80,15 +83,18 @@ class ElectroCharge : public Entity
 {
 public:
 	static constexpr float radius = 10;
-	static constexpr float angle_lim = -0.2;
-	static constexpr size_t max_tars = 2;
-	static constexpr float damage = 20;
+	static inline const float angle_lim = std::cos(deg_to_rad(80));
+	static constexpr int max_tars = 2;
+	static constexpr float damage = 16;
+	
+	static constexpr int last_generation = 2; // + initial
+	static constexpr TimeSpan left_init = TimeSpan::seconds(0.3); // time between generations
 	
 	struct SrcParams
 	{
 		size_t team;
 		EntityIndex src_eid;
-		int gener = 0; // generation
+		int generation = 0;
 		std::vector <Entity*> prev = {};
 		
 		bool ignore(Entity* ent);
@@ -97,8 +103,6 @@ public:
 	static bool generate(GameCore& core, vec2fp pos, SrcParams src, std::optional<vec2fp> dir_lim);
 	
 private:
-	static constexpr int last_generation = 2; // 3 gens
-	static constexpr TimeSpan left_init = TimeSpan::seconds(0.3);
 	TimeSpan left = left_init;
 	EC_VirtualBody phy;
 	SrcParams src;
@@ -147,7 +151,7 @@ private:
 class FireletProjectile : public Entity
 {
 	EC_Physics phy;
-	TimeSpan left, tmo, particle_tmo;
+	TimeSpan left, tmo;
 	size_t team;
 	float charge = 1;
 	EntityIndex src_eid;
@@ -220,6 +224,34 @@ private:
 
 
 
+class BarrageMissile : public Entity
+{
+public:
+	BarrageMissile(GameCore& core, vec2fp pos, vec2fp dir, EntityIndex target, bool armed_start = false);
+	~BarrageMissile();
+	
+	EC_Position& ref_pc()  override {return phy;}
+	EC_Health*   get_hlc() override {return &hlc;}
+	size_t get_team() const override {return TEAM_BOTS;}
+	
+private:
+	static constexpr float speed = 20;
+	
+	EVS_SUBSCR;
+	EC_Physics phy;
+	EC_Health hlc;
+	EntityIndex target;
+	TimeSpan left;
+	bool armed = false;
+	vec2fp shift = {};
+	TimeSpan min_spd_tmo;
+	
+	void on_cnt(const CollisionEvent& ev);
+	void step() override;
+};
+
+
+
 class WpnMinigun : public Weapon
 {
 public:
@@ -253,6 +285,24 @@ public:
 private:
 	StdProjectile::Params pp;
 	std::optional<ShootResult> shoot(ShootParams pars) override;
+};
+
+
+
+class WpnBarrage : public Weapon
+{
+public:
+	WpnBarrage();
+	~WpnBarrage();
+	
+private:
+	bool left = false;
+	std::optional<ShootResult> shoot(ShootParams pars) override;
+	
+	EVS_SUBSCR;
+	b2Fixture* detect = nullptr;
+	int cnt_num = 0;
+	void on_cnt(const CollisionEvent& ev);
 };
 
 
@@ -311,10 +361,10 @@ private:
 
 
 
-class WpnRifleBot : public Weapon
+class WpnSMG : public Weapon
 {
 public:
-	WpnRifleBot();
+	WpnSMG();
 	
 private:
 	StdProjectile::Params pp;

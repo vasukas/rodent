@@ -70,6 +70,7 @@ public:
 	
 	TimeSpan wpn_ring_reload;
 	TimeSpan wpn_ring_charge;
+	SmoothBlink wpn_ring_lowammo;
 	
 	WpnMsgRep wpn_msgrep;
 	
@@ -101,12 +102,14 @@ public:
 	};
 	struct WeaponIndicator
 	{
+		const float critical = 0.2; // warning threshold
 		SmoothBlink blink;
 		TimeSpan t_label;
-		int ammo_value = -1;
+		int ammo_prev = -1;
 		bool is_cur = false;
+		FColor last_flash_clr = {};
 		
-		void draw(Weapon& wpn, EC_Equipment& eqp, size_t index)
+		void draw(Weapon& wpn, EC_Equipment& eqp, size_t index, bool& trigger_low_ammo)
 		{
 			const TimeSpan label_period = TimeSpan::seconds(2);
 			const vec2i el_size = {60, 60};
@@ -145,9 +148,17 @@ public:
 						blink.force_reset();
 						return FColor(0.7, 0, 0, a).to_px();
 					}
-					if (ammo_value < ammo->value) blink.trigger();
-					ammo_value = ammo->value;
-					return (FColor(1, 1, 0, a) * blink.get_blink()).to_px();
+					if (ammo_prev < ammo->value) {
+						blink.trigger();
+						last_flash_clr = FColor(1, 1, 0, a);
+					}
+					else if (ammo_prev > ammo->value && float(ammo->value) / ammo->max < critical) {
+						blink.trigger();
+						last_flash_clr = FColor(1, 1, 1, a);
+						trigger_low_ammo = true;
+					}
+					ammo_prev = ammo->value;
+					return (last_flash_clr * blink.get_blink()).to_px();
 				}
 				return uint32_t(a * 255);
 			}();
@@ -279,6 +290,7 @@ public:
 	enum FlareStat {
 		FLARE_SHIELD,
 		FLARE_HEALTH,
+		FLARE_NO_SHIELD,
 		FLARE_TOTAL_COUNT_INTERNAL
 	};
 	std::array<Flare, FLARE_TOTAL_COUNT_INTERNAL> flares;
@@ -294,7 +306,8 @@ public:
 		ind_stat[INDST_ACCEL].clr     = FColor(0xd07010ff);
 		ind_stat[INDST_ACCEL].alt_clr = FColor(0x706060ff);
 		//
-		ind_stat[INDST_ARMOR].clr = FColor(0x10c000ff);
+		ind_stat[INDST_ARMOR].clr     = FColor(0x80a020ff);
+		ind_stat[INDST_ARMOR].alt_clr = FColor(0x10c000ff);
 		ind_stat[INDST_ARMOR].thr = 0;
 		ind_stat[INDST_PERS_SHIELD].clr = FColor(0x4040d0ff);
 		//
@@ -311,6 +324,8 @@ public:
 		flares[FLARE_SHIELD].clr = FColor(0.4, 0.9, 1);
 		flares[FLARE_HEALTH].clr = FColor(0.4, 0, 0);
 		flares[FLARE_HEALTH].flare_decr = 1.f / 3;
+		flares[FLARE_NO_SHIELD].clr = FColor(0.4, 0.4, 0);
+		flares[FLARE_NO_SHIELD].flare_decr = flares[FLARE_NO_SHIELD].flare_incr;
 		
 		flare_g = RenderControl::get().add_size_cb([this]
 		{
@@ -383,8 +398,12 @@ public:
 						break;
 				}
 				
-				if (hlc.get_hp().t_state() < 0.95)
+				if (hlc.get_hp().t_state() < 0.95) {
 					flares[FLARE_HEALTH].trigger(1 - hlc.get_hp().t_state()/2);
+				}
+				else if (!log.pers_shld->get_hp().is_alive()) {
+					flares[FLARE_NO_SHIELD].trigger(0.6);
+				}
 				
 				FColor clr = {0,0,0,0};
 				for (auto& f : flares) {
@@ -419,7 +438,8 @@ public:
 			{	auto& hp = log.armor->get_hp();
 				auto& ind = ind_stat[INDST_ARMOR];
 				if (hp.t_state() > ind.prev_value) ind.blink_upd.trigger();
-				ind.draw(FMT_FORMAT("Armor  {:3}/{}", hp.exact().first, hp.exact().second), hp.t_state());
+				ind.draw(FMT_FORMAT("Armor  {:3}/{}", hp.exact().first, hp.exact().second),
+				         hp.t_state(), hp.t_state() >= log.armor->maxmod_t);
 			}
 			vig_lo_next();
 			
@@ -481,8 +501,12 @@ public:
 			{	auto& wpns = eqp.raw_wpns();
 				ind_wpns.resize( wpns.size() );
 				
+				bool trigger_low_ammo = false;
 				for (size_t i=0; i < wpns.size(); ++i)
-					ind_wpns[i].draw( *wpns[i], eqp, i );
+					ind_wpns[i].draw( *wpns[i], eqp, i, trigger_low_ammo );
+				
+				if (trigger_low_ammo)
+					wpn_ring_lowammo.trigger();
 			}
 			
 			const TimeSpan wmr_max = TimeSpan::seconds(1.5);
@@ -492,15 +516,21 @@ public:
 				uint32_t clr = 0xffffff00 | lerp(0, 255, 1 - wmr_passed / wmr_max);
 				RenImm::get().draw_text(vec2fp(mou_pos.x, mou_pos.y + 30), wpn_msgrep.str, clr, true);
 			}
-			if (!eqp.has_ammo( eqp.get_wpn() ))
+			if (!eqp.has_ammo( eqp.get_wpn() )) {
 				RenImm::get().draw_text(vec2fp(mou_pos.x, mou_pos.y - 30), "Ammo: 0", 0xffff'ffc0, true);
+			}
+			if (float t = wpn_ring_lowammo.get_blink(); t > 0.01) {
+				int left = eqp.get_ammo(eqp.get_wpn().info->ammo).value;
+				RenImm::get().draw_text(vec2fp(mou_pos.x, mou_pos.y + 30), FMT_FORMAT("LOW AMMO ({})", left), 0xffff'ffc0, true);
+			}
 			
 			// Cursor
 			
 //			int cursor_rings_x = 0;
 			if (AppSettings::get().cursor_info_flags & 1)
 			{
-				float radius = 20;
+				const float base_radius = 20;
+				float radius = base_radius;
 				const float width = 6;
 				const int alpha = 0xc0;
 				
@@ -631,7 +661,7 @@ public:
 				if (auto c = lc.cell( lc.to_cell_coord( pinp.get_state(PlayerInput::CTX_GAME).tar_pos ) ))
 					stat_str += FMT_FORMAT("{} {}x{}\n", c->is_wall ? "Wall" : "Cell", c->pos.x, c->pos.y);
 			}
-			stat_str += FMT_FORMAT("Objective: {}", dstate.objective);
+			stat_str += FMT_FORMAT("Objective: {}", objective);
 			draw_text_hud({0, -1}, stat_str);
 			
 			//

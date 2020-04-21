@@ -4,13 +4,16 @@
 #include "client/resbase.hpp"
 #include "game/entity.hpp"
 #include "render/ren_particles.hpp"
+#include "render/ren_text.hpp"
+
+struct TextRenderInfo;
 
 
 
 struct EC_RenderPos : EDynComp
 {
 	static constexpr int interp_depth = 3;
-	bool disable_culling = false; ///< If true, never culled
+	int8_t disable_culling = 0; ///< If true, never culled (counter for use by components)
 	bool immediate_rotation = false; ///< If true, rotation isn't interpolated (only for some components)
 	
 	const Transform& get_cur() const {return pos;}
@@ -45,6 +48,8 @@ protected:
 	virtual void render(const EC_RenderPos& p, TimeSpan passed) = 0;
 	virtual bool allow_immediate_rotation() {return false;}
 	virtual void on_vport_enter() {} ///< Called when stops being culled
+	
+	void tmp_cull(bool& state, bool disable_culling);
 };
 
 
@@ -146,6 +151,8 @@ struct EC_ParticleEmitter : EC_RenderComp
 	/// Creates new emitter
 	std::unique_ptr<Channel> new_channel();
 	
+	void resource_reinit_hack();
+	
 private:
 	std::vector<Emit> ems;
 	SubresRoot<Channel, EC_ParticleEmitter> chs;
@@ -165,11 +172,13 @@ struct EC_LaserDesigRay : EC_RenderComp
 	
 	EC_LaserDesigRay(Entity& ent, FColor clr = FColor(1, 0, 0, 0.6))
 	    : EC_RenderComp(ent), clr(clr) {}
+	~EC_LaserDesigRay() {tmp_cull(cull_state, false);}
 	
 private:
 	vec2fp tar_ray = {};
 	std::optional<std::pair<vec2fp, vec2fp>> tar_next;
 	float tar_next_t;
+	bool cull_state = false;
 	
 	void render(const EC_RenderPos& p, TimeSpan passed);
 	void on_vport_enter() {tar_next.reset();}
@@ -183,11 +192,13 @@ struct EC_Uberray : EC_RenderComp
 	TimeSpan left_max = TimeSpan::seconds(0.5);
 	
 	EC_Uberray(Entity& ent): EC_RenderComp(ent) {}
+	~EC_Uberray() {tmp_cull(cull_state, false);}
 	void trigger(vec2fp target);
 	
 private:
 	TimeSpan left;
 	vec2fp b_last = {};
+	bool cull_state = false;
 	
 	void render(const EC_RenderPos& p, TimeSpan passed);
 	void on_vport_enter() {left = {};}
@@ -225,6 +236,26 @@ private:
 	void render(const EC_RenderPos& p, TimeSpan passed) {
 		if (f) f(p.get_cur(), passed);
 	}
+};
+
+
+
+/// Text appearing only when camera is close
+struct EC_RenderFadeText : EC_RenderComp
+{
+	vec2fp offset;
+	
+	EC_RenderFadeText(Entity& ent, std::string_view text, vec2fp offset = {});
+	~EC_RenderFadeText();
+	
+	void set_text(std::string_view text);
+	
+private:
+	TimeSpan left;
+	TextRenderInfo tri;
+	
+	void render(const EC_RenderPos& p, TimeSpan passed);
+	void on_vport_enter() {left = {};}
 };
 
 #endif // EC_RENDER_HPP

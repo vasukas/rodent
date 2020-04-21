@@ -182,6 +182,12 @@ void EC_Equipment::add_wpn(std::unique_ptr<Weapon> wpn)
 		wpn_cur = 0;
 	}
 }
+void EC_Equipment::replace_wpn(size_t index, std::unique_ptr<Weapon> new_wpn)
+{
+	auto& wpn = wpns.at(index);
+	wpn = std::move(new_wpn);
+	wpn->equip = this;
+}
 bool EC_Equipment::has_ammo(Weapon& w, std::optional<int> amount)
 {
 	if (infinite_ammo) return true;

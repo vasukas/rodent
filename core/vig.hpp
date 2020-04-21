@@ -434,13 +434,16 @@ struct vigTableLC
 	vigTableLC() = default;
 	vigTableLC(vec2i size) {set_size(size);}
 	
-	/// Calculates element positions from sizes. 
-	/// If place is true, places total size in current zone. 
-	/// Returns total size
-	vec2i calc(bool place = true);
+	/// Calculates element positions from sizes
+	void calc();
+	
+	/// Place as element (should be calculated inbefore). 
+	/// Returns placement position
+	vec2i place();
 	
 	void set_size(vec2i new_size);
-	vec2i get_size() const {return size;}
+	vec2i get_size() const {return size;} ///< Returns table size (cells)
+	vec2i get_screen_size() const {return maxsz;} ///< Returns calculated size (pixels)
 	
 	Element& get(vec2i pos); ///< Throws on error
 	std::vector<Element>& get_all() {return els;}
@@ -448,6 +451,7 @@ struct vigTableLC
 private:
 	std::vector<Element> els;
 	vec2i size = {};
+	vec2i maxsz = {};
 };
 
 #endif // VIG_HPP

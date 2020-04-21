@@ -21,7 +21,7 @@ struct PlayerMovement : EComp
 	std::pair<bool, float> get_t_accel() const {return {acc_flag, clampf_n(acc_val)};}
 	
 	/// Resets speed gain
-	void battle_trigger() {peace_tmo = TimeSpan::seconds(18);}
+	void battle_trigger() {peace_tmo = TimeSpan::seconds(16);}
 	
 	///
 	bool is_infinite_accel() const {return cheat_infinite || !peace_tmo.is_positive();}
@@ -48,6 +48,9 @@ private:
 	vec2fp tar_dir = {};
 	float inert_t = 0;
 	
+	float inert_reduce = 0;
+	const float inert_reduce_decr = 0.5; // per second
+	
 	friend struct EC_PlayerLogic;
 	void upd_vel(Entity& ent, vec2fp dir, bool is_accel, vec2fp look_pos); ///< Must be called exactly once per step
 	void step() override;
@@ -58,7 +61,7 @@ private:
 struct ShieldControl
 {
 	static constexpr TimeSpan activate_time = TimeSpan::seconds(0.7);
-	static constexpr TimeSpan dead_time     = TimeSpan::seconds(5);
+	static constexpr TimeSpan dead_time     = TimeSpan::seconds(6);
 	
 	enum State
 	{
@@ -103,17 +106,15 @@ private:
 	const float min_tar_dist = 1.2; // minimal target distance
 	vec2fp prev_tar; // used if current dist < minimal
 	
-	const float col_dmg_radius = 1; // additional radius for collision sensor
-	const int   col_dmg_val = 60; // base collision damage
-	const float col_dmg_spd_min = 15; // minimal speed for collision damage
-	const float col_dmg_spd_mul = 1 / 10.f; // speed -> damage increase multiplier
-	const int   col_dmg_restore = 120; // base shield restore
+	const int   col_dmg_val = 90; // base collision damage
+	const float col_dmg_spd_min = 20; // minimal speed for collision damage
+	const int   col_dmg_restore = 90; // shield restore
 	
 	float shld_restore_left = 0;
-	float shld_restore_rate = 100; // per second
+	float shld_restore_rate = 120; // per second
 	b2Fixture* ram_sensor;
 	
-	void on_cnt(const CollisionEvent& ev);
+	void on_cnt(const CollisionEvent& ev); // ram
 	void on_dmg(const DamageQuant& dq);
 	
 	friend class PlayerManager_Impl;

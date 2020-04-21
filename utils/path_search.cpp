@@ -19,7 +19,6 @@ public:
 	{
 		bool is_pass;
 		uint_fast8_t closed; // counter
-		uint_fast8_t who_index; // wholocks or 255
 #if USE_DIAG
 		uint_fast8_t dir_mask;
 #endif
@@ -51,8 +50,6 @@ public:
 	const PathCost dirs_diff = 1 << path_cost_bits; ///< same as 1.0 (always)
 	const PathCost dirs_diag = std::sqrt(2) * dirs_diff;
 	
-	std::vector<WhoType> wholocks;
-	
 	
 	
 	PathCost calc_dist(const vec2i& pt, size_t ix)
@@ -64,7 +61,7 @@ public:
 		return dirs_diff * (mm.second - mm.first) + dirs_diag * mm.first;
 	}
 	
-	void update(vec2i size, std::vector<uint8_t> cost_grid, std::vector<std::pair<WhoType, vec2i>> locks) override
+	void update(vec2i size, std::vector<uint8_t> cost_grid) override
 	{
 		f_size = size;
 		f_ns.resize (cost_grid.size());
@@ -73,7 +70,6 @@ public:
 		{
 			f_ns[i].is_pass = (cost_grid[i] != 0);
 			f_ns[i].closed = 0;
-			f_ns[i].who_index = 255;
 #if USE_DIAG
 			f_ns[i].dir_mask = 0;
 #endif
@@ -108,16 +104,6 @@ public:
 							 { pt, dirs_diff}
 		}};
 #endif
-		
-		wholocks.resize(std::min(size_t(255), locks.size()));
-		for (size_t i=0; i<locks.size(); ++i)
-		{
-			wholocks[i] = locks[i].first;
-			auto p = locks[i].second;
-			cell(p.x, p.y).who_index = i;
-		}
-		
-		debug_lock_count = locks.size();
 	}
 	Result rebuild_path(size_t i, size_t len)
 	{
@@ -187,7 +173,6 @@ public:
 				size_t n_ix = qn.index + d.offset;
 				auto& n = f_ns[n_ix];
 				if (!n.is_pass || n.closed == closed_cou) continue;
-				if (!wholocks.empty() && args.who && n.who_index != 255 && wholocks[n.who_index] != args.who) continue;
 				
 				n.closed = closed_cou;
 				n.prev = qn.index;

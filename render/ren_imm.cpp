@@ -75,8 +75,6 @@ public:
 	GLuint white_tex; ///< White rectangle texture
 	Rectfp white_tc; ///< White rectangle texcoord
 	
-	GLint vp[4] = {0,0,1,1}; // for restoring after clip rects
-	
 	std::unique_ptr<Shader> sh_default, sh_default_text;
 	
 	
@@ -159,7 +157,8 @@ public:
 		size_t shad = is_text ? SHAD_TEXT : SHAD_MAIN; // which shader index draw with
 		
 		// check if can just extend previous object instead of creating another draw call
-		if (cx.last_os != size_t_inval && cx.last_tex == tex && cx.last_clr == clr && cx.last_shad == shad)
+		if (cx.last_os != size_t_inval && cx.last_tex == tex && cx.last_clr == clr && cx.last_shad == shad
+		    && (cx.cmds.empty() || cx.cmds.back().type != Cmd::T_HACK_CURSOR))
 		{
 			auto& b = objs[ cx.last_os ];
 			if (b.off + b.count == objs_off)
@@ -456,10 +455,17 @@ public:
 		add_obj(white_tex, clr, IS_TEXT_WHITE);
 	}
 
+	void fix_text_size_k(float& k)
+	{
+		auto& ctx = ctxs[ctx_cur].ctx;
+		if (ctx.const_text_size)
+			k /= ctx.cam->get_state().mag;
+	}
 	void draw_text (vec2fp at, TextRenderInfo& tri, uint32_t clr, bool center, float size_k)
 	{
 		if (tri.cs.empty()) return;
 		if (!can_add( true )) return;
+		fix_text_size_k(size_k);
 		if (center) at -= tri.size * size_k / 2;
 		
 		// reduce number of texture switches for multiple atlases
@@ -480,6 +486,7 @@ public:
 			vec2fp p = c.pos.lower();
 			add_rect({ p * size_k + at, c.pos.size() * size_k, true }, c.tex.tc);
 		}
+		
 		add_obj( prev->get_obj(), clr, true );
 	}
 	void draw_text (vec2fp at, std::string_view str, uint32_t clr, bool center, float size_k, FontIndex font)
@@ -496,7 +503,8 @@ public:
 	void draw_text (vec2fp at, std::vector<std::pair<FColor, std::string>> strs)
 	{
 		if (!can_add(true) || strs.empty()) return;
-		const float size_k = 1.f;
+		float size_k = 1.f;
+		fix_text_size_k(size_k);
 		
 		std::string tmp;
 		tmp.reserve(4096);
@@ -626,7 +634,7 @@ public:
 	void render_pre()
 	{
 		vao.bufs[0]->update( data.size(), data.data() );
-		glGetIntegerv( GL_VIEWPORT, vp );
+		if (!clips.empty()) glEnable(GL_SCISSOR_TEST);
 	}
 	void render(CtxIndex cx_id)
 	{
@@ -640,6 +648,12 @@ public:
 		vao.bind();
 		glActiveTexture( GL_TEXTURE0 );
 		
+		GLint vp[4];
+		if (!clips.empty()) {
+			glGetIntegerv(GL_VIEWPORT, vp);
+			glScissor(vp[0], vp[1], vp[2], vp[3]);
+		}
+		
 		bool hack_cursor = false;
 		
 		for (auto& cmd : cx.cmds)
@@ -647,8 +661,7 @@ public:
 			switch (cmd.type)
 			{
 			case Cmd::T_OBJ:
-				if (hack_cursor)
-					sh->set2f("offset", RenderControl::get().get_current_cursor());
+				if (hack_cursor) sh->set2f("offset", RenderControl::get().get_current_cursor());
 				{
 					auto& obj = objs[ cmd.index ];
 					glDrawArrays( GL_TRIANGLES, obj.off, obj.count );
@@ -691,7 +704,7 @@ public:
 	}
 	void render_post()
 	{
-		glScissor( vp[0], vp[1], vp[2], vp[3] );
+		if (!clips.empty()) glDisable(GL_SCISSOR_TEST);
 		
 		data.clear();
 		objs_off = 0;

@@ -53,7 +53,7 @@ public:
 	struct InitParams
 	{
 		GameCore* core; ///< Must be non-null
-		LevelTerrain* lvl; ///< Must be non-null
+		const LevelTerrain* lvl; ///< Must be non-null
 	};
 	
 	bool playback_hack = false; ///< Disables interpolation
@@ -82,6 +82,9 @@ public:
 	
 	/// Performs debug screenshot on following rendering step
 	virtual void dbg_screenshot() = 0;
+	
+	/// Must be called from rendering thread
+	virtual void reinit_resources(const LevelTerrain& lvl) = 0;
 	
 protected:
 	friend EC_RenderPos;

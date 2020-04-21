@@ -62,6 +62,7 @@ public:
 		{
 			at = ft.at;
 			tri.str_a = ft.str.data();
+			tri.length = ft.str.length();
 			tri.build();
 			size = ft.size;
 			
@@ -96,7 +97,7 @@ public:
 	TimeSpan last_passed;
 	TimeSpan prev_frame;
 	
-	vec2fp vport_offset = {4, 3}; ///< Occlusion rect size offset
+	vec2fp vport_offset = {10, 10}; ///< Occlusion rect size offset
 	std::optional<std::pair<int, ImageInfo>> dbg_sshot_img;
 	
 	int max_interp_frames = 0;
@@ -107,29 +108,9 @@ public:
 	GamePresenter_Impl(const InitParams& pars)
 	{
 		core = pars.core;
+		reinit_resources(*pars.lvl);
 		
-		RenderControl::get().exec_task([&]{
-			RenAAL::get().inst_begin( GameConst::cell_size );
-		});
-		
-		for (auto& l : pars.lvl->ls_grid) RenAAL::get().inst_add({l.first, l.second}, false, 0.07f, 1.5f);
-		RenAAL::get().inst_add_end();
-		
-		for (auto& l : pars.lvl->ls_wall) RenAAL::get().inst_add(l, false);
-		RenAAL::get().inst_add_end();
-		
-		try {ResBase::get().init_ren_wait();}
-		catch (std::exception& e) {
-			THROW_FMTSTR("GamePresenter::init() ResBase failed: {}", e.what());
-		}
-		
-		RenderControl::get().exec_task([]
-		{
-			RenAAL::get().inst_end();
-			effects_init();
-		});
-		
-		menu_g = vig_reg_menu(VigMenu::DebugGame, [this]{
+		menu_g = vig_reg_menu(VigMenu::DebugRenderer, [this]{
 			vig_label_a("Interp frames (max): {}\n", max_interp_frames);
 		});
 	}
@@ -293,8 +274,6 @@ public:
 		
 		//
 		
-		float text_k = 1.f / RenderControl::get().get_world_camera().get_state().mag;
-		
 		for (auto i = ef_fs.begin(); i != ef_fs.end(); ++i)
 		{
 			if ((*i)->is_first) {
@@ -309,7 +288,7 @@ public:
 		{
 			uint32_t clr = it->clr;
 			clr |= std::min(it->base_a, int_round(it->base_a * it->t));
-			RenImm::get().draw_text(it->at, it->tri, clr, true, text_k * it->size);
+			RenImm::get().draw_text(it->at, it->tri, clr, true, it->size);
 			
 			it->at += it->dps * passed.seconds();
 			it->t  -= it->tps * passed.seconds();
@@ -321,7 +300,7 @@ public:
 		for (auto& d : dbg_rs) RenImm::get().draw_rect(d.dst, d.clr);
 		for (auto& d : dbg_ls) RenImm::get().draw_line(d.a, d.b, d.clr, d.wid);
 		
-		for (auto& d : dbg_ts) RenImm::get().draw_text(d.at, d.str, d.clr, false, text_k);
+		for (auto& d : dbg_ts) RenImm::get().draw_text(d.at, d.str, d.clr);
 		
 		if (dbg_sshot_img && dbg_sshot_img->first == 2)
 		{
@@ -337,6 +316,66 @@ public:
 	void dbg_screenshot() override
 	{
 		dbg_sshot_img = {0, {}};
+	}
+	
+	void reinit_resources(const LevelTerrain& lvl) override
+	{
+		RenderControl::get().exec_task([&]{
+			RenAAL::get().inst_begin( GameConst::cell_size );
+		});
+		
+		float kw_grid, ka_grid;
+		float kw_wall, ka_wall;
+		//
+		switch (AppSettings::get().aal_type)
+		{
+		case AppSettings::AAL_OldFuzzy:
+		case AppSettings::AAL_Clear:
+			kw_grid = 0.07; ka_grid = 1.5;
+			kw_wall = 0.1;  ka_wall = 3; // RenAAL defaults
+			break;
+			
+		case AppSettings::AAL_CrispGlow:
+			kw_grid = 0.03;  ka_grid = 0.5;
+			kw_wall = 0.005; ka_wall = 1.2;
+			break;
+		}
+		
+		for (auto& l : lvl.ls_grid) RenAAL::get().inst_add({l.first, l.second}, false, kw_grid, ka_grid);
+		RenAAL::get().inst_add_end();
+		
+		for (auto& l : lvl.ls_wall) RenAAL::get().inst_add(l, false, kw_wall, ka_wall);
+		RenAAL::get().inst_add_end();
+		
+		try {ResBase::get().init_ren_wait();}
+		catch (std::exception& e) {
+			THROW_FMTSTR("GamePresenter::init() ResBase failed: {}", e.what());
+		}
+		
+		RenderControl::get().exec_task([]
+		{
+			RenAAL::get().inst_end();
+			effects_init();
+		});
+		
+		// remove all references to particle generators (invalidated)
+		part_del.clear();
+		for (auto& cmd : cmds_queue)
+		{
+			if (auto c = std::get_if<PresCmdParticles>(&cmd))
+				c->gen = nullptr;
+		}
+		for (auto& ei : regs)
+		{
+			if (!ei.pos) continue;
+			for (auto& s : ei.subs)
+			{
+				if (auto c = dynamic_cast<EC_ParticleEmitter*>(s)) {
+					c->resource_reinit_hack();
+					break;
+				}
+			}
+		}
 	}
 	
 	

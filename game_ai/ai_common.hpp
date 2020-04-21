@@ -205,13 +205,14 @@ const float suspect_on_damage = suspect_chase_thr;
 
 
 // Message distances (in rooms)
+// if changed - fix values in LevelControl::LevelControl() accordingly
 const int msg_engage_dist = 4;
 const int msg_engage_relay_dist = 0;
 const int msg_helpcall_dist = 5;
 const int msg_helpcall_highprio_dist = 8;
 
 /// Engage message sent only if group has less bots
-const int msg_engage_max_bots = 18;
+const int msg_engage_max_bots = 12;
 
 
 
@@ -223,6 +224,22 @@ const TimeSpan search_point_wait_last = TimeSpan::seconds(8);
 
 /// Search rings distances
 const std::array<int, 2> search_ring_dist = {8, 24};
+
+
+
+/// Max alive hunters at one time
+const size_t hunter_max_count = 2;
+
+/// Between spawns
+const TimeSpan hunter_respawn_tmo = TimeSpan::seconds(120);
+
+// Scans for player - distance and timeout
+const std::pair<float, TimeSpan> hunter_scan_min = {40,  TimeSpan::seconds(20)};
+const std::pair<float, TimeSpan> hunter_scan_max = {120, TimeSpan::seconds(60)};
+
+/// Retry timeout if can't find path
+const TimeSpan hunter_scan_failed_tmo = TimeSpan::seconds(2);
+
 }
 
 #endif // AI_COMMON_HPP

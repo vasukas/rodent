@@ -47,6 +47,13 @@ struct GRE_Lighting : GameRenderEffect
 			constexpr float min_len = 0.7;
 			constexpr float min_squ = min_len * min_len;
 			
+			if (rnd_stat().range_n() < 0.3) {
+				float t = rnd_stat().range_n();
+				tps *= lerp(0.3, 0.6, t);
+				clr += 0.15 * t;
+				clr.a = lerp(3, 1.5, t);
+			}
+			
 			float total_squ = a.dist_squ(b);
 			ls.reserve( 6 + 1.f / ((min_len /2) * fast_invsqrt(total_squ)) );
 			

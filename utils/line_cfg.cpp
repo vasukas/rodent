@@ -221,6 +221,12 @@ std::string LineCfg::write_s(std::string str) const
 			{
 				if (has_opt) str += '\n'; // 'line' must not be increased
 				
+				if (!p.line && !p.descr_v.empty()) {
+					str += "# ";
+					str += p.descr_v;
+					str += '\n';
+				}
+				
 				str += p.name;
 				for (auto& arg : p.args) {
 					str += ' ';

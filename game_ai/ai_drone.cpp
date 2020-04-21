@@ -1,6 +1,8 @@
 ﻿#include "client/presenter.hpp"
 #include "game/game_core.hpp"
+#include "game/player_mgr.hpp"
 #include "utils/noise.hpp"
+#include "vaslib/vas_log.hpp"
 #include "ai_drone.hpp"
 
 
@@ -9,6 +11,11 @@ void AI_Drone::IdlePatrol::next()
 {
 	at = (at + 1) % pts.size();
 	tmo = {};
+}
+AI_Drone::IdlePatrol::~IdlePatrol()
+{
+	if (reg)
+		--reg->ai_patrolling;
 }
 
 
@@ -79,11 +86,41 @@ std::string AI_Drone::get_dbg_state() const
 	for (auto& state : state_stack)
 	{
 		std::visit(overloaded{
-			[&s](const Idle   &){ s += "STATE: IDLE\n"; },
-			[&s](const Battle &){ s += "STATE: BATTLE\n"; },
-			[&s](const Suspect&){ s += "STATE: SUSPECT\n"; },
-			[&s](const Search &){ s += "STATE: SEARCHING\n"; },
-			[&s](const Puppet &){ s += "STATE: PUPPET\n"; }
+			[&](const Idle& st){
+				std::visit(overloaded{
+					[&](const IdlePoint&) {s += "State: IDLE POINT\n";},
+					[&](const IdleResource&) {s += "State: IDLE resource\n";},
+					[&](const IdlePatrol& p) {
+						s += "State: IDLE PATROL\n";
+						s += FMT_FORMAT("  Next {:.0f}x{:.0f}  {}/{}\n",
+						                p.pts[p.at].x, p.pts[p.at].y, p.at, p.pts.size());
+					},
+					[&](const IdleChasePlayer& st) {
+						s += "State: CHASE PLAYER";
+						s += FMT_FORMAT("  timeout: {:.1f}\n", (ent.core.get_step_time()).seconds());
+						s += FMT_FORMAT("  failed: {}\n", st.has_failed);
+					}
+				}, st.ist);
+			},
+			[&](const Battle& st){
+				s += "STATE: BATTLE\n";
+				s += FMT_FORMAT("  no vis: {:.1f}\n", st.not_visible.seconds());
+				if (st.placement) s += FMT_FORMAT("  place: {:.0f}x{:.0f}\n", st.placement->x, st.placement->y);
+				else s += "  place: NONE\n";
+			},
+			[&](const Suspect& st){
+				s += "STATE: suspect\n";
+				s += FMT_FORMAT("  type: {}\n", st.prio == Suspect::PRIO_NORMAL ? "Normal" :
+		                        (st.prio == Suspect::PRIO_HELPCALL? "HELP" : "HELPHIGH"));
+				s += FMT_FORMAT("  pos: {:.0f}x{:.0f}\n", st.pos.x, st.pos.y);
+				s += FMT_FORMAT("  visible: {}\n", st.was_visible);
+			},
+			[&](const Search& p) {
+				s += "STATE: SEARCHING\n";
+				s += FMT_FORMAT("  Next {:.0f}x{:.0f} / {}\n",
+				                p.pts[p.at].x, p.pts[p.at].y, p.pts.size());
+			},
+			[&](const Puppet&) {s += "STATE: PUPPET\n";}
 		}, state);
 	}
 	return s;
@@ -112,6 +149,11 @@ void AI_Drone::set_single_state(State new_state)
 		state_stack.pop_back();
 	}
 	add_state(std::move(new_state));
+}
+void AI_Drone::set_battle_state()
+{
+	if (!ignore_battle)
+		set_single_state(Battle{*this});
 }
 void AI_Drone::set_idle_state()
 {
@@ -163,6 +205,14 @@ void AI_Drone::state_on_leave(State& state)
 		if (atk.atkpat)
 			atk.atkpat->reset(ent);
 	}
+	else if (auto gst = std::get_if<Idle>(&state))
+	{
+		if (auto st = std::get_if<IdlePatrol>(&gst->ist))
+		{
+			if (st->reg) --st->reg->ai_patrolling;
+			st->reg = nullptr;
+		}
+	}
 }
 void AI_Drone::helpcall(std::optional<vec2fp> target, bool high_prio)
 {
@@ -175,6 +225,9 @@ void AI_Drone::helpcall(std::optional<vec2fp> target, bool high_prio)
 }
 void AI_Drone::step()
 {
+	if (ent.core.get_aic().show_states_debug)
+		GamePresenter::get()->dbg_text(ent.get_pos(), get_dbg_state(), 0xffff'ff80);
+	
 	std::optional<float> tar_dist; ///< Set if seen
 	bool damaged_by_tar = false;
 	
@@ -423,6 +476,7 @@ void AI_Drone::step()
 		}
 		else if (auto st = std::get_if<IdleResource>(&gst.ist))
 		{
+			st->is_working_now = false;
 			if (st->reg.is_reg())
 			{
 				auto res = st->reg.process( st->val, ent.get_pos() );
@@ -463,6 +517,7 @@ void AI_Drone::step()
 				                }
 							}
 						}
+						st->is_working_now = true;
 					}
 				}, res);
 			}
@@ -492,21 +547,32 @@ void AI_Drone::step()
 			const vec2fp npt = st->pts[st->at];
 			const vec2fp tar = pos + AI_Const::patrol_raycast_length * (npt - pos).norm();
 			
-			// prevent crowding
 			bool stop = false;
-			if (auto rc = ent.core.get_phy().raycast_nearest( conv(pos), conv(tar), {}, AI_Const::patrol_raycast_width ))
+			if (!st->reg)
 			{
-				if (auto d = rc->ent->get_ai_drone())
-				{
-					if (auto d_st = std::get_if<Idle>(&d->get_state()))
-					{
-						if (auto os = std::get_if<IdlePatrol>(&d_st->ist);
-						    os && os->pts[os->at].equals( npt, GameConst::cell_size ))
-						{
-							stop = true;
-						}
+				auto rm = ent.core.get_lc().ref_room(pos);
+				if (rm) {
+					if (rm->ai_patrolling < (int) st->pts.size()) {
+						st->reg = const_cast<LevelCtrRoom*>(rm);
+						++ st->reg->ai_patrolling;
 					}
-					
+					else stop = true;
+				}
+			}
+			
+			// prevent crowding
+			if (!stop) {
+				auto cf = [](Entity& ent, auto&) {
+					return !!ent.get_ai_drone();
+				};
+				if (auto rc = ent.core.get_phy().raycast_nearest( conv(pos), conv(tar), {cf}, AI_Const::patrol_raycast_width ))
+				{
+					if (auto d_st = std::get_if<Idle>(&rc->ent->ref_ai_drone().get_state()))
+					if (auto os = std::get_if<IdlePatrol>(&d_st->ist);
+						os && os->pts[os->at].equals( npt, GameConst::cell_size ))
+					{
+						stop = true;
+					}
 				}
 			}
 			
@@ -517,11 +583,41 @@ void AI_Drone::step()
 				else st->next();
 			}
 		}
+		else if (auto st = std::get_if<IdleChasePlayer>(&gst.ist))
+		{
+			auto now = ent.core.get_step_time();
+			if (!st->has_failed && mov->has_failed()) {
+				st->after = now + AI_Const::hunter_scan_failed_tmo;
+				st->has_failed = true;
+			}
+			
+			if (now >= st->after)
+			if (auto tar = ent.core.get_pmg().get_ent())
+			if (auto rm = ent.core.get_lc().ref_room(tar->get_pos());
+			    !rm || rm->type != LevelCtrRoom::T_TRANSIT)
+			{
+				mov->hack_allow_unlimited_path = true;
+				mov->set_target(tar->get_pos(), AI_Speed::Patrol);
+				mov->hack_allow_unlimited_path = false;
+
+				float dist = ent.get_pos().dist(tar->get_pos());
+				float t = inv_lerp(AI_Const::hunter_scan_min.first, AI_Const::hunter_scan_max.first, dist);
+				t = clampf_n(t);
+				
+				st->after = now + lerp(AI_Const::hunter_scan_min.second, AI_Const::hunter_scan_max.second, t);
+				st->has_failed = false;
+			}
+		}
 	}
 	
-	//
+	// rotate
 	
 	rot_ctl.update(*this, rot_target, mov ? mov->get_next_point() : std::optional<vec2fp>{});
+	
+	auto& body = ent.ref_phobj().body;
+	float nextAngle = body.GetAngle() + body.GetAngularVelocity() * GameCore::time_mul;
+	float tar_torq = angle_delta(*ent.ref_pc().rot_override, nextAngle);
+	body.ApplyAngularImpulse( body.GetInertia() * tar_torq / GameCore::time_mul, true );
 }
 void AI_Drone::text_alert(std::string s, bool important, size_t num)
 {

@@ -9,9 +9,11 @@
 
 
 
-void room_flood(GameCore& core, vec2i pos, int max_depth, bool random_dirs, callable_ref<bool(const LevelCtrRoom&, int)> f)
+void room_radio_flood(GameCore& core, vec2i pos, int max_depth, bool random_dirs, bool always_visit_adjacent,
+                      callable_ref<bool(const LevelCtrRoom&, int)> f)
 {
 	if (!max_depth) return;
+	always_visit_adjacent = false; // hack
 	
 	auto& lc = core.get_lc();
 	auto& rnd = core.get_random();
@@ -41,7 +43,7 @@ void room_flood(GameCore& core, vec2i pos, int max_depth, bool random_dirs, call
 			if (depth == max_depth - 1) continue;
 			
 			int cost = rm->tmp + rm->ai_radio_cost;
-			if (cost >= max_depth) continue;
+			if (cost >= max_depth && (!always_visit_adjacent || rm->tmp)) continue;
 			
 			auto foo = [&](auto& is)
 			{
@@ -67,11 +69,6 @@ void room_flood(GameCore& core, vec2i pos, int max_depth, bool random_dirs, call
 		next.clear();
 		++depth;
 	}
-}
-void room_flood_p(GameCore& core, vec2fp pos, int max_depth, bool random_dirs, callable_ref<bool(const LevelCtrRoom&, int)> f)
-{
-	auto p = core.get_lc().to_cell_coord(pos);
-	room_flood(core, p, max_depth, random_dirs, std::move(f));
 }
 void room_query(GameCore& core, const LevelCtrRoom& rm, callable_ref<bool(AI_Drone&)> f)
 {

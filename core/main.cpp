@@ -80,15 +80,9 @@ int main( int argc, char *argv[] )
 	
 	std::string log_filename = AppSettings::get().path_log; // init settings
 	bool cfg_override = false;
-	bool is_debug_mode = false;
 	
-	auto show_error_msg = [&](std::string_view text, const char *title = "Error"){
-		if (!is_debug_mode)
-			SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title, text.data(), nullptr);
-	};
-	auto show_internal_error = [&](std::string text = "Your PC is gonna EXPLODE!"){
-		show_error_msg(FMT_FORMAT("{}\n\nShow log (user/app.log) to developer", text), "Internal error");
-	};
+	MainLoop::startup_date = date_time_fn();
+	bool log_filename_default = true;
 
 	ArgvParse arg;
 	arg.set(argc-1, argv+1);
@@ -106,9 +100,10 @@ Options:
   --cfg    <FILE> override default config path
   --res    <DIR>  override default resources dir
 
-  -v0 -v -vv  different log verbosity levels, from default (info) to verbose
-  --gldbg     create debug OpenGL context and log all GL messages as verbose
-  --debugmode enables various debug options
+  -v0 -v -vv   different log verbosity levels, from default (info) to verbose
+  --gldbg      create debug OpenGL context and log all GL messages as verbose
+  --debugmode  enables various debug options
+  --no-fndate  don't save logs and replays to files created using current time
 
 Modes:
   --game      [default]
@@ -117,11 +112,21 @@ Mode options (--game):
   --rndseed   use random level seed
   --seed <N>  use specified level seed
   --no-ffwd   disable fast-forwarding world on init
-  --superman  enable enhanced godmode for player
-  --dbg-ai-rect  enable smaller AI online rects (for performance)
+  --tutorial  launch tutorial level
+  --nodrop    disable enemy item drop
+  --nohunt    disable hunters
 
-  --no-demo-record     disables record-by-default ("user/last.ratdemo")
+  --lvl-size <W> <H>  generate level of that size instead of the default
+
+  --superman     enable enhanced godmode for player
+  --dbg-ai-rect  enable smaller AI online rects (for performance)
+  --save-terr    save generated terrain data
+
+  --no-demo-record     disables default demo record (if no option specified)
   --demo-record        record replay to "user/replay_DATETIME.ratdemo"
+                       default if '--no-fndate' not specified
+  --last-record        record replay to "user/last.ratdemo"
+                       default if '--no-fndate' is specified
   --demo-write <FILE>  record replay to specified file (adds extension)
   --demo-play  <FILE>  playback replay from file
   --demo-last          same as '--demo-play user/last.ratdemo'
@@ -135,7 +140,10 @@ Mode options (--game):
 #endif
 				return 1;
 			}
-			else if (arg.is("--log")) log_filename = arg.str();
+			else if (arg.is("--log")) {
+				log_filename = arg.str();
+				log_filename_default = false;
+			}
 			else if (arg.is("--logclr")) cli_logclr = arg.flag();
 			else if (arg.is("--cfg")) {
 				AppSettings::get_mut().path_settings  = arg.str();
@@ -146,22 +154,23 @@ Mode options (--game):
 			else if (arg.is("-v"))  cli_verb = LogLevel::Debug;
 			else if (arg.is("-vv")) cli_verb = LogLevel::Verbose;
 			else if (arg.is("--gldbg")) RenderControl::opt_gldbg = true;
-			else if (arg.is("--debugmode")) is_debug_mode = true;
+			else if (arg.is("--debugmode")) MainLoop::is_debug_mode = true;
+			else if (arg.is("--no-fndate")) MainLoop::startup_date = {};
 			else if (arg.is("--game"))
 			{
 				if (MainLoop::current) {
 					printf("Invalid argument: mode already selected\n");
-					show_error_msg("Invalid command-line option: mode already selected");
+					MainLoop::show_error_msg("Invalid command-line option: mode already selected");
 					return 1;
 				}
-				MainLoop::create(MainLoop::INIT_GAME);
+				MainLoop::create(MainLoop::INIT_GAME, false);
 			}
 			else {
-				if (!MainLoop::current) MainLoop::create(MainLoop::INIT_DEFAULT);
+				if (!MainLoop::current) MainLoop::create(MainLoop::INIT_DEFAULT_CLI, false);
 				if (MainLoop::current->parse_arg(arg)) continue;
 				
 				printf("Invalid option: %s\n", arg.cur().c_str());
-				show_error_msg(FMT_FORMAT("Invalid command-line option: {}", arg.cur()));
+				MainLoop::show_error_msg(FMT_FORMAT("Invalid command-line option: {}", arg.cur()));
 				return 1;
 			}
 		}
@@ -169,7 +178,7 @@ Mode options (--game):
 	catch (std::exception& e)
 	{
 		printf("%s\nFailed to parse arguments\n", e.what());
-		show_error_msg("Failed to parse command-line options");
+		MainLoop::show_error_msg("Failed to parse command-line options");
 		return 1;
 	}
 	
@@ -183,9 +192,14 @@ Mode options (--game):
 	if (log_filename.empty()) VLOGW("Log not written to file! (no name set)");
 	else
     {
+		if (log_filename_default && MainLoop::startup_date) {
+			log_filename = fmt::format(AppSettings::get().path_log_date, *MainLoop::startup_date);
+		}
+		VLOGI("Log filename: {}", log_filename);
+		
 		LoggerSettings lsets = LoggerSettings::current();
 		lsets.file.reset( File::open( log_filename.c_str(), File::OpenCreate | File::OpenDisableBuffer ) );
-		if (!lsets.file) log_write_str(LogLevel::Warning, "Log not written to file! (error)");
+		if (!lsets.file) VLOGW("Log not written to file! (opening error)");
 		
 		if (cli_verb) lsets.level = *cli_verb;
 		if (cli_logclr) lsets.use_clr = *cli_logclr;
@@ -231,10 +245,6 @@ Mode options (--game):
 		
 		if (!cfg_override)
 		{
-			AppSettings::get_mut().path_settings = HARDPATH_SETTINGS_DEFAULT;
-			if (AppSettings::get_mut().load()) VLOGI("Settings: defaults - loaded");
-			else VLOGW("Settings: defaults - FAILED");
-			
 			AppSettings::get_mut().path_settings = HARDPATH_SETTINGS_USER;
 			if (AppSettings::get_mut().load()) VLOGI("Settings: user override - loaded");
 			else VLOGW("Settings: user override - FAILED");
@@ -283,7 +293,7 @@ Mode options (--game):
 	
 	log_write_str(LogLevel::Critical, "=== Starting renderer initialization ===");
 	if (!RenderControl::init()) {
-		show_internal_error("Renderer init failed.");
+		MainLoop::show_internal_error("Renderer init failed");
 		return 1;
 	}
 	log_write_str(LogLevel::Critical, "=== Renderer initialization finished ===");
@@ -302,17 +312,12 @@ Mode options (--game):
 	
 	
 	
-	if (!MainLoop::current) MainLoop::create(MainLoop::INIT_DEFAULT);
+	if (!MainLoop::current) MainLoop::create(MainLoop::INIT_DEFAULT, false);
 	try {MainLoop::current->init();}
 	catch (std::exception& e) {
 		VLOGE("MainLoop::init() failed: {}", e.what());
-		show_internal_error("Menu init failed.");
+		MainLoop::show_internal_error("Menu init failed");
 		return 1;
-	}
-	if (is_debug_mode) {
-		ArgvParse arg;
-		arg.args.emplace_back("--debugmode");
-		MainLoop::current->parse_arg(arg);
 	}
 	
 	VLOGI("Full initialization finished in {:.3f} seconds", (TimeSpan::since_start() - time_init).seconds());
@@ -375,7 +380,7 @@ Mode options (--game):
 	
 	bool log_shown = false;
 	bool debug_key_combo = false;
-	bool fpscou_shown = is_debug_mode;
+	bool fpscou_shown = MainLoop::is_debug_mode;
 	
 	bool run = true;
 	while (run)
@@ -433,7 +438,7 @@ Mode options (--game):
 			catch (std::exception& e) {
 				VLOGE("MainLoop::on_event() exception: {}", e.what());
 				run = false;
-				show_internal_error("Event handling error.");
+				MainLoop::show_internal_error("Event handling error");
 				break;
 			}
 			if (!MainLoop::current) {
@@ -454,7 +459,7 @@ Mode options (--game):
 		try {MainLoop::current->render( loop_0, passed );}
 		catch (std::exception& e) {
 			VLOGE("MainLoop::render() exception: {}", e.what());
-			show_internal_error("Menu render failed.");
+			MainLoop::show_internal_error("Menu render failed");
 			break;
 		}
 		if (!MainLoop::current) break;
@@ -503,7 +508,7 @@ Mode options (--game):
 		if (!RenderControl::get().render( passed ))
 		{
 			VLOGC("Critical rendering error");
-			show_internal_error("Rendering failed.");
+			MainLoop::show_internal_error("Rendering failed");
 			break;
 		}
 		

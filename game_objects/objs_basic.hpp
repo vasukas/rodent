@@ -140,10 +140,6 @@ class EFinalTerminal final : public EInteractive
 	void step() override;
 	
 public:
-	bool enabled = false;
-	bool is_activated = false;
-	TimeSpan timer_end = {};
-	
 	EFinalTerminal(GameCore& core, vec2fp at);
 	EC_Position& ref_pc() override {return phy;}
 	
@@ -163,7 +159,7 @@ class EDispenser final : public EInteractive
 	
 	size_t left;
 	
-public:
+public:	
 	EDispenser(GameCore& core, vec2fp at, float rot, bool increased_amount);
 	EC_Position& ref_pc() override {return phy;}
 	
@@ -180,7 +176,6 @@ class ETeleport final : public EInteractive
 	
 	EVS_SUBSCR;
 	void on_cnt(const CollisionEvent& ev);
-	void activate(bool menu);
 	
 public:
 	ETeleport(GameCore& core, vec2fp at);
@@ -189,6 +184,7 @@ public:
 	std::pair<bool, std::string> use_string() override;
 	void use(Entity* by) override;
 	
+	void activate(bool menu);
 	void teleport_player();
 };
 
@@ -238,7 +234,7 @@ class EMiningDrill final : public EInteractive
 public:
 	EMiningDrill(GameCore& core, vec2fp at, float rot);
 	EC_Position&  ref_pc()  override {return phy;}
-	EC_Equipment& ref_eqp() override {return eqp;}
+	EC_Equipment* get_eqp() override {return &eqp;}
 	bool is_creature() override {return false;}
 	
 	std::pair<bool, std::string> use_string() override {return {true, {}};}
@@ -247,13 +243,37 @@ public:
 
 
 
-class EDecor final : public Entity
+class EDecor : public Entity
 {
+protected:
 	EC_Physics phy;
 public:
 	/// 'ui_name' is NOT copied
 	EDecor(GameCore& core, const char *ui_name, Rect at, float rot, ModelType model, FColor clr = FColor(0.7, 0.7, 0.7));
 	EC_Position& ref_pc() override {return phy;}
+};
+
+
+
+class EDecorDestructible : public EDecor
+{
+protected:
+	EC_Health  hlc;
+public:
+	/// 'ui_name' is NOT copied
+	EDecorDestructible(GameCore& core, const char *ui_name, int hp_amount,
+	                   Rect at, float rot, ModelType model, FColor clr = FColor(0.7, 0.7, 0.7));
+	EC_Health* get_hlc() override {return &hlc;}
+};
+
+
+
+class EAssembler final : public EDecorDestructible
+{
+public:
+	EAssembler(GameCore& core, vec2i at, float rot);
+	~EAssembler();
+	size_t get_team() const override {return TEAM_BOTS;}
 };
 
 
@@ -264,6 +284,30 @@ class EDecorGhost final : public Entity
 public:
 	EDecorGhost(GameCore& core, Transform at, ModelType model, FColor clr = FColor(0.3, 0.3, 0.3));
 	EC_Position& ref_pc() override {return phy;}
+};
+
+
+
+class ETutorialMsg final : public Entity
+{
+	EC_VirtualBody phy;
+public:
+	ETutorialMsg(GameCore& core, vec2fp pos, std::string msg);
+	EC_Position& ref_pc() override {return phy;}
+};
+
+
+
+class ETutorialDummy final : public Entity
+{
+	EVS_SUBSCR;
+	EC_Physics phy;
+	EC_Health  hlc;
+	void on_dmg(const DamageQuant& q);
+public:
+	ETutorialDummy(GameCore& core, vec2fp pos);
+	EC_Position& ref_pc()  override {return phy;}
+	EC_Health*   get_hlc() override {return &hlc;}
 };
 
 #endif // OBJS_BASIC_HPP

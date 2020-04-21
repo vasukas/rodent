@@ -21,6 +21,7 @@ public:
 		AI_SimResource::WorkerReg reg = {};
 		TimeSpan reg_try_tmo = {}; // before trying to find one again
 		bool is_loading = true; // is acquiring resources
+		bool is_working_now = false;
 		TimeSpan particle_tmo = {}; // initial delay before showing particles
 	};
 	
@@ -29,11 +30,19 @@ public:
 		std::vector<vec2fp> pts;
 		size_t at = 0;
 		TimeSpan tmo = {};
+		LevelCtrRoom* reg = nullptr;
 		
 		void next();
+		~IdlePatrol();
 	};
 	
-	using IdleState = std::variant<IdlePoint, IdleResource, IdlePatrol>;
+	struct IdleChasePlayer
+	{
+		TimeSpan after = {};
+		bool has_failed = false;
+	};
+	
+	using IdleState = std::variant<IdlePoint, IdleResource, IdlePatrol, IdleChasePlayer>;
 	
 	// main (battle) states
 	
@@ -45,6 +54,7 @@ public:
 	struct Battle
 	{
 		AI_GroupPtr grp;
+		bool used_radiocall = false;
 		
 		TimeSpan not_visible; ///< For how long (by this drone)
 		TimeSpan firstshot_time; ///< GameCore time after which can shoot
@@ -89,6 +99,8 @@ public:
 	
 	AI_Movement* mov = nullptr; ///< May be null
 	uint8_t is_online = 0;
+	bool always_online = false;
+	bool ignore_battle = false;
 	
 	
 	
@@ -97,7 +109,7 @@ public:
 	
 	void set_online(bool is);
 	
-	bool is_camper() const {return pars->is_camper || !mov;}
+	bool is_camper() const {return pars->is_camper || !mov || ignore_battle;}
 	const AI_DroneParams& get_pars() const {return *pars;}
 	
 	State& get_state() {return state_stack.back();}
@@ -108,7 +120,7 @@ public:
 	void remove_state();
 	
 	void set_single_state(State new_state); ///< Removes all states except idle before adding
-	void set_battle_state() {set_single_state(Battle{*this});}
+	void set_battle_state();
 	void set_idle_state(); ///< Removes all states except idle
 	
 	AI_RotationControl& get_rot_ctl() {return rot_ctl;}

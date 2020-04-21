@@ -31,6 +31,7 @@ public:
 		
 		A_LASER_DESIG,
 		A_SHOW_MAP,
+		A_HIGHLIGHT,
 		
 		A_WPN_PREV,
 		A_WPN_NEXT,
@@ -97,6 +98,7 @@ public:
 		
 		virtual ~InputMethod() = default;
 		virtual bool set_from(const SDL_Event& ev) = 0; ///< Returns false if can't
+		virtual void set_from(const InputMethod& m) = 0; ///< Type must be same
 		virtual bool is_same(const InputMethod& m) = 0; ///< Type must be same
 		virtual void upd_name() = 0;
 	};
@@ -106,6 +108,7 @@ public:
 		static Name get_name(SDL_Scancode v);
 		void operator=(SDL_Scancode v);
 		bool set_from(const SDL_Event& ev);
+		void set_from(const InputMethod& m) {*this = dynamic_cast<const std::remove_reference_t<decltype(*this)>&>(m);}
 		bool is_same(const InputMethod& m);
 		void upd_name() {name = get_name(v);}
 	};
@@ -115,6 +118,7 @@ public:
 		static Name get_name(int v);
 		void operator=(int v);
 		bool set_from(const SDL_Event& ev);
+		void set_from(const InputMethod& m) {*this = dynamic_cast<const std::remove_reference_t<decltype(*this)>&>(m);}
 		bool is_same(const InputMethod& m);
 		static int get_value(const SDL_Event& ev); ///< Returns same value as 'v' or 0
 		void upd_name() {name = get_name(v);}
@@ -149,9 +153,11 @@ public:
 	
 	static const char* get_sys_name(Action v);
 	static const char* get_sys_name(ContextMode v);
-	std::vector<LineCfgOption> gen_cfg_opts();
+	std::vector<LineCfgOption> gen_cfg_opts(); ///< Call after_load() after successful loading
 	
 	static PlayerInput& get(); ///< Returns singleton. Initializes default binds
+	void set_defaults();
+	void after_load();
 	
 	[[nodiscard]] auto lock() {return std::unique_lock(mutex);} ///< Not used internally
 	void on_event(const SDL_Event& ev);

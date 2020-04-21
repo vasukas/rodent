@@ -1,5 +1,7 @@
 #include "client/ec_render.hpp"
 #include "game/game_core.hpp"
+#include "game/game_mode.hpp"
+#include "game/player_mgr.hpp"
 #include "game_ai/ai_algo.hpp"
 #include "utils/noise.hpp"
 #include "objs_basic.hpp"
@@ -112,6 +114,76 @@ void AtkPat_Burst::reset(Entity&)
 
 
 
+void AtkPat_Boss::shoot(Entity& target, float, Entity& self)
+{
+	if (passed(self, t_reset)) set_stage(self, 0);
+	
+	seen_at = self.core.get_step_time();
+	if (!pause && !stages[i_st].continious)
+		self.ref_eqp().shoot(target.get_pos(), true, false);
+}
+void AtkPat_Boss::idle(Entity& self)
+{
+	if (passed(self, t_reset)) set_stage(self, 0);
+	
+	tmo -= self.core.step_len;
+	if (pause)
+	{
+		if (tmo.is_negative())
+			set_stage(self, i_st + 1);
+	}
+	else if (tmo.is_negative())
+	{
+		pause = true;
+		tmo = stages[i_st].wait;
+		self.ref_ai_drone().get_rot_ctl().speed_override.reset();
+		
+		auto& next = stages[(i_st + 1) % stages.size()];
+		set_dist(self, next.opt_dist);
+	}
+	else if (stages[i_st].continious && !passed(self, t_stop))
+	{
+		vec2fp at;
+		if (stages[i_st].targeted) {
+			auto eid = std::get<AI_Drone::Battle>(self.ref_ai_drone().get_state()).grp->tar_eid;
+			if (auto e = self.core.get_ent(eid)) at = e->get_pos();
+			else {
+				return;
+			}
+		}
+		else {
+			at = self.get_pos() + self.ref_pc().get_norm_dir() * 100; // don't shoot inside self
+		}
+		self.ref_eqp().shoot(at, true, false);
+	}
+}
+void AtkPat_Boss::reset(Entity& self)
+{
+	self.ref_ai_drone().get_rot_ctl().speed_override.reset();
+}
+void AtkPat_Boss::set_dist(Entity& self, std::optional<float> dist)
+{
+	if (dist) const_cast<AI_DroneParams&>(self.ref_ai_drone().get_pars()).dist_optimal = *dist;
+}
+bool AtkPat_Boss::passed(Entity& self, TimeSpan t)
+{
+	return self.core.get_step_time() - seen_at > t;
+}
+void AtkPat_Boss::set_stage(Entity& self, size_t i)
+{
+	i_st = i % stages.size();	
+	auto& stage = stages[i_st];
+	
+	pause = false;
+	tmo = stage.len;
+	self.ref_eqp().set_wpn(stage.i_wpn, true);
+	
+	self.ref_ai_drone().get_rot_ctl().speed_override = stage.rot_limit;
+	set_dist(self, stage.opt_dist);
+}
+
+
+
 static std::shared_ptr<AI_DroneParams> pars_turret()
 {
 	static std::shared_ptr<AI_DroneParams> pars;
@@ -139,6 +211,102 @@ ETurret::ETurret(GameCore& core, vec2fp at, size_t team)
 
 
 
+
+EEnemyDrone::Init EEnemyDrone::def_workr(GameCore& core)
+{
+	auto pars = []{
+		static std::shared_ptr<AI_DroneParams> pars;
+		if (!pars) {
+			pars = std::make_shared<AI_DroneParams>();
+			pars->set_speed(2, 3, 4);
+			pars->dist_minimal = 3;
+			pars->dist_optimal = 10;
+			pars->dist_visible = 14;
+			pars->dist_suspect = 16;
+			pars->rot_speed = deg_to_rad(90);
+			pars->helpcall = AI_DroneParams::HELP_LOW;
+		}
+		return pars;
+	};
+	
+	Init init;
+	init.pars = pars();
+	init.model = MODEL_WORKER;
+	
+	static const auto cs = normalize_chances<Weapon*(*)(), 2>({{
+		{[]()->Weapon*{return new WpnRocket;}, 1},
+		{[]()->Weapon*{return new WpnSMG;}, 0.05}
+	}});
+	init.wpn.reset(core.get_random().random_el(cs)());
+	
+	init.atk_pat.reset(new AtkPat_Burst);
+	init.drop_value = 0.4;
+	init.is_worker = true;
+	return init;
+}
+EEnemyDrone::Init EEnemyDrone::def_drone(GameCore& core)
+{
+	auto pars = []{
+		static std::shared_ptr<AI_DroneParams> pars;
+		if (!pars) {
+			pars = std::make_shared<AI_DroneParams>();
+			pars->set_speed(4, 7, 9);
+			pars->dist_minimal = 8;
+			pars->dist_optimal = 14;
+			pars->dist_visible = 20;
+			pars->dist_suspect = 22;
+			pars->rot_speed = deg_to_rad(240);
+			pars->fov = std::make_pair(deg_to_rad(45), deg_to_rad(90));
+			pars->placement_prio = 5;
+		}
+		return pars;
+	};
+	
+	Init init;
+	init.pars = pars();
+	init.model = MODEL_DRONE;
+	
+	static const auto cs = normalize_chances<Weapon*(*)(), 2>({{
+		{[]()->Weapon*{return new WpnRocket;}, 0.6},
+		{[]()->Weapon*{return new WpnSMG;}, 0.4}
+	}});
+	init.wpn.reset(core.get_random().random_el(cs)());
+	
+	init.drop_value = 0.7;
+	return init;
+}
+EEnemyDrone::Init EEnemyDrone::def_campr(GameCore&)
+{
+	auto pars = []{
+		static std::shared_ptr<AI_DroneParams> pars;
+		if (!pars) {
+			pars = std::make_shared<AI_DroneParams>();
+			pars->set_speed(5, 6, 8);
+			pars->dist_panic   = 6;
+			pars->dist_minimal = 12;
+			pars->dist_optimal = 18;
+			pars->dist_visible = 24;
+			pars->dist_suspect = 28;
+			pars->dist_battle = 50;
+			pars->rot_speed = deg_to_rad(180);
+			pars->is_camper = true;
+			pars->fov = {};
+			pars->helpcall = AI_DroneParams::HELP_NEVER;
+			pars->placement_prio = 30;
+			pars->placement_freerad = 1;
+		}
+		return pars;
+	};
+	
+	Init init;
+	init.pars = pars();
+	init.model = MODEL_CAMPER;
+	init.wpn.reset(new WpnElectro(WpnElectro::T_CAMPER));
+	init.atk_pat.reset(new AtkPat_Sniper);
+	init.drop_value = 1;
+	return init;
+}
+
 static AI_Drone::IdleState init_idle(EEnemyDrone::Init& init)
 {
 	if (init.is_worker) return AI_Drone::IdleResource{{ AI_SimResource::T_ROCK, false, 0, 20 }};
@@ -151,7 +319,7 @@ EEnemyDrone::EEnemyDrone(GameCore& core, vec2fp at, Init init)
 	phy(*this, bodydef(at, true)),
 	hlc(*this, 70),
 	eqp(*this),
-	logic(*this, init.pars, init_idle(init), std::unique_ptr<AI_AttackPattern>(init.atk_pat)),
+	logic(*this, init.pars, init_idle(init), std::move(init.atk_pat)),
 	mov(logic),
 	drop_value(init.drop_value)
 {
@@ -164,10 +332,140 @@ EEnemyDrone::EEnemyDrone(GameCore& core, vec2fp at, Init init)
 //	hlc.ph_k = 0.2;
 //	hlc.hook(phy);
 	
-	eqp.add_wpn( std::unique_ptr<Weapon>(init.wpn) );
+	eqp.add_wpn(std::move(init.wpn));
 }
 EEnemyDrone::~EEnemyDrone()
 {
 	if (!core.is_freeing() && core.spawn_drop)
 		EPickable::create_death_drop(core, get_pos(), drop_value);
+}
+
+
+
+EHunter::EHunter(GameCore& core, vec2fp at)
+    :
+	Entity(core),
+	phy(*this, bodydef(at, true)),
+	hlc(*this, 350),
+	eqp(*this),
+    logic(*this
+	, []{
+		// mutated by attack pattern
+		/*static*/ std::shared_ptr<AI_DroneParams> pars;
+		if (!pars) {
+			pars = std::make_shared<AI_DroneParams>();
+			pars->set_speed(5, 6, 9);
+			pars->dist_minimal = 6;
+			pars->dist_optimal = 14;
+			pars->dist_visible = 24;
+			pars->dist_suspect = 32;
+			pars->rot_speed = deg_to_rad(120);
+			pars->fov = {M_PI_2, M_PI};
+			pars->helpcall = AI_DroneParams::HELP_NEVER;
+			pars->placement_prio = 60;
+			pars->placement_freerad = 4;
+		}
+		return pars;
+	}()
+	, AI_Drone::IdleChasePlayer{}
+	, []{
+		auto pat = std::make_unique<AtkPat_Boss>();
+		{	auto& st = pat->stages.emplace_back();
+			st.len  = TimeSpan::seconds(4);
+			st.wait = TimeSpan::seconds(4);
+			st.i_wpn = 1;
+			st.rot_limit = deg_to_rad(45);
+			st.opt_dist = 9;
+		}
+		{	auto& st = pat->stages.emplace_back();
+			st.len  = TimeSpan::seconds(3);
+			st.wait = TimeSpan::seconds(5);
+			st.targeted = true;
+			st.opt_dist = 16;
+		}
+		return pat;
+	}()),
+	mov(logic)
+{
+	ui_descr = "Hunter Drone";
+	add_new<EC_RenderModel>(MODEL_HUNTER, FColor(1, 0, 0, 1), EC_RenderModel::DEATH_AND_EXPLOSION);
+	phy.add(FixtureCreate::circle( fixtdef(0.2, 0.2), GameConst::hsz_drone_hunter, 80 ));
+	
+	hlc.add_filter(std::make_unique<DmgArmor>(300, 300));
+	hlc.add_filter(std::make_unique<DmgShield>(250, 30, TimeSpan::seconds(6)));
+	
+	eqp.add_wpn(std::make_unique<WpnBarrage>());
+	eqp.add_wpn(std::make_unique<WpnUber>());
+	eqp.no_overheat = true;
+	
+	logic.always_online = true;
+	
+	ref<EC_RenderPos>().parts(FE_SPAWN, {{}, GameConst::hsz_drone_hunter});
+	ref<EC_RenderModel>().parts(ME_AURA, {{}, 1, FColor(0, 0, 1, 2)});
+}
+EHunter::~EHunter()
+{
+	if (!core.is_freeing() && core.spawn_drop)
+	{
+		for (int i=0; i<8; ++i) {
+			float rot = core.get_random().range_n2() * M_PI;
+			float len = core.get_random().range(0, GameConst::cell_size /2);
+			EPickable::create_death_drop(core, get_pos() + vec2fp(len, 0).rotate(rot), 2);
+		}
+		
+		ref<EC_RenderPos>().parts(FE_WPN_EXPLOSION, {{}, 3.f});
+		ref<EC_RenderPos>().parts(FE_CIRCLE_AURA,   {{}, 6.f, FColor(0.2, 0.8, 1, 1.5)});
+		ref<EC_RenderModel>().parts(ME_AURA, {{}, 1, FColor(0, 1, 1, 2)});
+	}
+}
+
+
+
+EHacker::EHacker(GameCore& core, vec2fp at)
+    :
+	Entity(core),
+	phy(*this, bodydef(at, true)),
+	hlc(*this, 50),
+	eqp(*this),
+    logic(*this
+	, []{
+		static std::shared_ptr<AI_DroneParams> pars;
+		if (!pars) {
+			pars = std::make_shared<AI_DroneParams>();
+			pars->set_speed(5, 5, 5);
+			pars->dist_minimal = 0;
+			pars->dist_optimal = 0;
+			pars->dist_visible = 0;
+			pars->dist_suspect = 0;
+			pars->helpcall = AI_DroneParams::HELP_NEVER;
+		}
+		return pars;
+	}()
+	, []{
+		return AI_Drone::IdleResource{{ AI_SimResource::T_LEVELTERM, false, 0, AI_SimResource::max_capacity }};
+	}()
+	, {}),
+	mov(logic)
+{
+	ui_descr = "Hacker";
+	add_new<EC_RenderModel>(MODEL_HACKER, FColor(1, 0, 1, 1), EC_RenderModel::DEATH_AND_EXPLOSION);
+	phy.add(FixtureCreate::circle( fixtdef(0.2, 0.2), GameConst::hsz_drone, 40 ));
+	
+	hlc.add_filter(std::make_unique<DmgShield>(200, 50, TimeSpan::seconds(4)));
+	
+	eqp.add_wpn(std::make_unique<WpnSMG>());
+	
+	logic.always_online = true;
+	logic.ignore_battle = true;
+	reg_this();
+}
+void EHacker::step()
+{
+	if (auto gst = std::get_if<AI_Drone::Idle>(&logic.get_state()))
+	{
+		auto& st = std::get<AI_Drone::IdleResource>(gst->ist);
+		if (st.is_working_now)
+		    core.get_gmc().hacker_work();
+	}
+	else logic.set_idle_state();
 }

@@ -5,6 +5,7 @@
 
 class  AI_Controller;
 class  GameInfoList;
+class  GameModeCtr;
 class  LevelControl;
 class  PhysicsWorld;
 class  PlayerManager;
@@ -20,11 +21,15 @@ public:
 	{
 		std::string random_init;
 		std::unique_ptr<LevelControl> lc;
+		std::unique_ptr<GameModeCtr> gmc;
 	};
 	
+	bool dbg_break_now = false;
 	bool dbg_ai_attack; ///< Is AI attack enabled
 	bool dbg_ai_see_plr; ///< Is AI seeing player
+	
 	bool spawn_drop; ///< From destroyed enemies
+	bool spawn_hunters;
 	
 	static GameCore* create(InitParams pars); ///< Creates empty handler and inits all systems
 	virtual ~GameCore() = default; ///< Destroys all systems
@@ -39,6 +44,7 @@ public:
 	
 	virtual AI_Controller& get_aic() noexcept = 0;
 	virtual GameInfoList&  get_info()noexcept = 0;
+	virtual GameModeCtr&   get_gmc() noexcept = 0;
 	virtual LevelControl&  get_lc()  noexcept = 0;
 	virtual PhysicsWorld&  get_phy() noexcept = 0;
 	virtual PlayerManager& get_pmg() noexcept = 0;

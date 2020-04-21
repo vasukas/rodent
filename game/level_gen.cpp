@@ -89,7 +89,8 @@ struct Gen1
 		OBS_CRYSTAL,
 		OBS_CRYSTAL_CLEARED,
 		OBS_COLUMN,
-		OBS_RIBS
+		OBS_RIBS,
+		OBS_COLUMN_EDGE
 	};
 	
 	struct RoomClass
@@ -287,7 +288,7 @@ struct Gen1
 			r.dbg_color = 0xc000c0;
 			
 			r.kch = 0.1;
-			r.obs_t = OBS_RIBS;
+			r.obs_t = OBS_COLUMN_EDGE;
 			r.rsz_types = {{RSZ_HUGE, 1}};
 			
 			r.k_wall_protect = 1;
@@ -302,7 +303,7 @@ struct Gen1
 			r.dbg_color = 0xc000c0;
 			
 			r.kch = 0.2;
-			r.rsz_types = {{RSZ_SMALL, 0.7}, {RSZ_MIDDLE, 0.3}};
+			r.rsz_types = {{RSZ_SMALL, 1}};
 			
 			r.k_wall_protect = 1;
 			r.k_has_doors = 2;
@@ -1075,8 +1076,16 @@ struct Gen1
 				}
 				
 				if (!i || !any) return;
-				if (cref(p -   next).cor_i) return;
-				if (cref(p + i*next).cor_i) return;
+				bool fix_wide = r.r_class->k_has_doors > 0.9;
+				
+				if (cref(p -   next).cor_i) {
+					if (fix_wide) cref(p -   next).cor_i.reset();
+					else return;
+				}
+				if (cref(p + i*next).cor_i) {
+					if (fix_wide) cref(p + i*next).cor_i.reset();
+					else return;
+				}
 				if (rnd.range_n() >= r.r_class->k_has_doors) return;
 				
 				for (; i >= 0; --i)
@@ -1111,7 +1120,7 @@ struct Gen1
 			int c_wid; // claw width (y)
 			
 			int c_len_max = 6;
-			int c_wid_max = 8;
+			int c_wid_max = 6;
 			
 			switch (r.r_szt->type)
 			{
@@ -1130,15 +1139,15 @@ struct Gen1
 				
 			case RSZ_HUGE:
 			case RSZ_TOTAL_COUNT: // suppress warning
-				w_off = 2;
-				c_len = 6;
-				c_wid = 4;
+				w_off = 3;
+				c_len = 5;
+				c_wid = 3;
 				break;
 			}
 			
 			int x_left = r.area.sz.x - (c_len*2 + w_off*3);
 			int y_left = r.area.sz.y - (c_wid*2 + w_off*3);
-			if (x_left < 0 || y_left < 0) return false;
+			bool failed = (x_left < 0 || y_left < 0);
 			
 			auto set = [&](vec2i p)
 			{
@@ -1162,10 +1171,17 @@ struct Gen1
 			{
 				mirror(off, set);
 			};
-			auto claw = [&](vec2i off, vec2i size, bool draw_rib)
+			auto claw = [&](vec2i off, vec2i size)
 			{
 				size.x = std::min(size.x, c_len_max);
 				size.y = std::min(size.y, c_wid_max);
+				
+				if (failed) {
+					for (int x=0; x < size.x; ++x) {
+						mirror_set(off + vec2i(x, size.y / 2));
+					}
+					return;
+				}
 				
 				for (int x=0; x < size.x; ++x)
 				{
@@ -1178,25 +1194,16 @@ struct Gen1
 					mirror_set(off + vec2i(1, y));
 					mirror(off + vec2i(2, y), [&](vec2i p){ cref( r.area.off + p ).structure = LevelTerrain::STR_RIB_IN; });
 				}
-				
-				if (draw_rib)
-				{
-					for (int y=0; y < size.y; ++y)
-						mirror_set(off + vec2i(size.x + w_off, y));
-				}
 			};
 			
-			bool draw_ribs = false;
 			if (x_left >= (w_off + 1)*2)
-			{
 				x_left -= (w_off + 1)*2;
-				draw_ribs = true;
-			}
-			claw({ w_off, w_off }, vec2i(c_len + x_left /2, c_wid + y_left /2), draw_ribs);
+			
+			claw({ w_off, w_off }, vec2i(c_len + x_left /2, c_wid + y_left /2));
 			return true;
 		};
 		
-		auto obs_gen_cols = [&](Room& r)
+		auto obs_gen_cols = [&](Room& r, bool is_edge_type)
 		{
 			// 1 + space between columns
 			int x_spc, y_spc;
@@ -1217,12 +1224,21 @@ struct Gen1
 			case RSZ_TOTAL_COUNT: // suppress warning
 				x_spc = 1 + 4;
 				y_spc = 1 + 3;
+				if (is_edge_type) {
+					x_spc -= 2;
+					y_spc -= 1;
+				}
 				break;
 			}
 			
 			int xn = r.area.sz.x / x_spc;
 			int yn = r.area.sz.y / y_spc;
 			if (!xn || !yn) return false;
+			
+			if (is_edge_type) {
+				xn = std::min(xn, 4);
+				yn = std::min(yn, 3);
+			}
 			
 			if (xn > 1 && r.area.sz.x < x_spc*2 + 1) xn = 1;
 			if (yn > 1 && r.area.sz.y < y_spc*2 + 1) yn = 1;
@@ -1267,8 +1283,17 @@ struct Gen1
 			for (int yc = 0; yc <= yn /2; ++yc)
 			for (int xc = 0; xc <= xn /2; ++xc)
 			{
-				int x0 = x_ctr - x_spc*xc; int x1 = r.area.sz.x - 1 - (x_ctr - x_spc*xc);
-				int y0 = y_ctr - y_spc*yc; int y1 = r.area.sz.y - 1 - (y_ctr - y_spc*yc);
+				int x0, y0;
+				if (!is_edge_type) {
+					x0 = x_ctr - x_spc*xc;
+					y0 = y_ctr - y_spc*yc;
+				}
+				else {
+					x0 = x_spc * (xc + 1);
+					y0 = y_spc * (yc + 1);
+				}
+				int x1 = r.area.sz.x - 1 - x0;
+				int y1 = r.area.sz.y - 1 - y0;
 				
 				set({ x0, y0 });
 				set({ x1, y0 });
@@ -1281,8 +1306,9 @@ struct Gen1
 		
 		for (auto& r : g_rooms)
 		{
-			if		(r.r_class->obs_t == OBS_RIBS)   obs_gen_ribs(r);
-			else if (r.r_class->obs_t == OBS_COLUMN) obs_gen_cols(r);
+			if		(r.r_class->obs_t == OBS_RIBS) obs_gen_ribs(r);
+			else if (r.r_class->obs_t == OBS_COLUMN) obs_gen_cols(r, false);
+			else if (r.r_class->obs_t == OBS_COLUMN_EDGE) obs_gen_cols(r, true);
 		}
 		
 		// set isolated
@@ -1338,6 +1364,13 @@ struct Gen1
 					else --*c.room_i;
 				}
 			}
+		}
+		
+		// remove doors in the walls
+		
+		for (auto& c : cs) {
+			if ((!c.cor_i && !c.room_i) || c.isolated)
+				c.is_door = false;
 		}
 		
 		// fin
@@ -1716,51 +1749,6 @@ LevelTerrain* LevelTerrain::generate(const GenParams& pars)
 	
 	return lt_ptr.release();
 }
-LevelTerrain* LevelTerrain::load_test(const char *filename)
-{
-	ImageInfo img;
-	if (!img.load(filename, ImageInfo::FMT_RGB))
-		THROW_FMTSTR("LevelTerrain::load_test() can't load \"{}\"", filename);
-	
-	auto lt_ptr = std::make_unique<LevelTerrain>();
-	LevelTerrain& lt = *lt_ptr;
-	
-	lt.grid_size = img.get_size();
-	lt.cs.resize( lt.grid_size.area() );
-	for (auto& c : lt.cs) c.is_wall = false;
-	
-	for (int y=0; y < lt.grid_size.y; ++y)
-	for (int x=0; x < lt.grid_size.x; ++x)
-	{
-		auto& cell = lt.cs[y * lt.grid_size.x + x];
-		uint32_t clr = img.get_pixel_fast({x,y});
-		switch (clr)
-		{
-		case 0xffffff:
-			break;
-		
-		case 0x000000:
-			cell.is_wall = true;
-			break;
-			
-		case 0x00ff00:
-			lt.dbg_spawns.push_back({ {x,y}, DBG_SPAWN_PLAYER });
-			break;
-			
-		case 0xff0000:
-			lt.dbg_spawns.push_back({ {x,y}, DBG_SPAWN_DRONE });
-			break;
-			
-		default:
-			THROW_FMTSTR("LevelTerrain::load_test() file \"{}\", unknown color {:#6x} at {}x{} (0-based)",
-			             filename, clr, x, y);
-		}
-	}
-	
-	lt.ls_wall = lt.vectorize();
-	lt.ls_grid = lt.gen_grid();
-	return lt_ptr.release();
-}
 
 
 
@@ -2030,7 +2018,7 @@ ImageInfo LevelTerrain::draw_grid(bool is_debug) const
 	
 	return img;
 }
-void LevelTerrain::test_save(const char *prefix, bool img_line, bool img_grid) const
+void LevelTerrain::debug_save(const char *prefix, bool img_line, bool img_grid) const
 {
 	std::string fn_line = std::string(prefix) + "_line.png";
 	std::string fn_grid = std::string(prefix) + "_grid.png";

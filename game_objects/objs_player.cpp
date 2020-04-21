@@ -18,7 +18,7 @@ PlayerMovement::PlayerMovement(PlayerEntity& ent)
 void PlayerMovement::upd_vel(Entity& ent, vec2fp dir, bool is_accel, vec2fp look_pos)
 {
 	const float zero_thr = 0.001;
-	const float slide_k = 0.2;
+	const float slide_k = 0.3;
 	
 	auto& self = static_cast<PlayerEntity&>(ent);
 	
@@ -101,13 +101,12 @@ void PlayerMovement::upd_vel(Entity& ent, vec2fp dir, bool is_accel, vec2fp look
 	// check & slide
 	
 	vec2fp vd = look_pos - ent.get_pos();
-	if (vd.len_squ() > zero_thr) vd.norm_to( slide_k );
-	else vd = {};
+	vec2fp slide = {};
 	
-	if (dir.x >  zero_thr && side_col[0]) dir.y += vd.y;
-	if (dir.y >  zero_thr && side_col[1]) dir.x += vd.x;
-	if (dir.x < -zero_thr && side_col[2]) dir.y += vd.y;
-	if (dir.y < -zero_thr && side_col[3]) dir.x += vd.x;
+	if (dir.x >  zero_thr && side_col[0]) slide.y += vd.y;
+	if (dir.y >  zero_thr && side_col[1]) slide.x += vd.x;
+	if (dir.x < -zero_thr && side_col[2]) slide.y += vd.y;
+	if (dir.y < -zero_thr && side_col[3]) slide.x += vd.x;
 	
 	if (dir.x >  zero_thr && side_col[0]) dir.x = 0;
 	if (dir.x < -zero_thr && side_col[2]) dir.x = 0;
@@ -120,9 +119,14 @@ void PlayerMovement::upd_vel(Entity& ent, vec2fp dir, bool is_accel, vec2fp look
 	if (is_accel) inert_t = std::min(1.f, inert_t + in_tps);
 	else inert_t = std::max(0.f, inert_t - in_tps);
 	
-	if (dir.len_squ() > zero_thr)
+	inert_t *= 1.f - inert_reduce;
+	inert_reduce = std::max(0.f, inert_reduce - inert_reduce_decr);
+	
+	bool dir_ok = dir.len_squ() > zero_thr;
+	if (dir_ok || slide.len_squ() > zero_thr)
 	{
-		dir.norm_to(*spd);
+		if (dir_ok) dir.norm_to(*spd);
+		else dir = slide.norm_to(*spd * slide_k);
 		tar_dir = prev_dir = dir;
 	}
 	else tar_dir = {};
@@ -161,7 +165,7 @@ ShieldControl::ShieldControl(Entity& ent)
 	fd.filter.maskBits = EC_Physics::CF_BULLET;
 	fd.isSensor = true;
 	
-	sh = new DmgShield(500, 200/5.f, TimeSpan::seconds(3), FixtureCreate::box(fd, GameConst::hsz_pshl, tr, 0.1f));
+	sh = new DmgShield(500, 500/12.f, TimeSpan::seconds(3), FixtureCreate::box(fd, GameConst::hsz_pshl, tr, 0.1f));
 	ent.ref_hlc().add_phys( std::unique_ptr<DmgShield>(sh) );
 }
 bool ShieldControl::step(bool sw_state)
@@ -230,9 +234,9 @@ EC_PlayerLogic::EC_PlayerLogic(PlayerEntity& ent)
 {
 	prev_tar = ent.get_pos() + vec2fp(1, 0);
 	
-	b2FixtureDef fd;
-	fd.isSensor = true;
-	ram_sensor = &ent.phy.add( FixtureCreate::circle(fd, GameConst::hsz_rat + col_dmg_radius, 0) );
+	vec2fp ram_ext{0.7, 1.2};
+	Transform ram_pos{{GameConst::hsz_rat + ram_ext.x, 0}};
+	ram_sensor = &ent.phy.add (FixtureCreate::box (fixtsensor(), ram_ext, ram_pos, 0));
 	
 	EVS_CONNECT1(ent.phy.ev_contact, on_cnt);
 	EVS_CONNECT1(ent.hlc.on_damage , on_dmg);
@@ -243,14 +247,26 @@ void EC_PlayerLogic::on_cnt(const CollisionEvent& ev)
 	{
 		if (auto hc = ev.other->get_hlc())
 		{
-			float spd = ent.ref_phobj().get_vel().len_squ();
+			auto& body = ent.ref_phobj().body;
+			b2Vec2 vel = body.GetLinearVelocity();
+			float spd = vel.LengthSquared();
+			
 			if (spd > col_dmg_spd_min * col_dmg_spd_min)
 			{
-				spd = std::sqrt(spd);
-				float t = 1 + (spd - col_dmg_spd_min) * col_dmg_spd_mul;
+				hc->apply({DamageType::Direct, col_dmg_val});
+				shld_restore_left += col_dmg_restore;
 				
-				hc->apply({DamageType::Direct, int_round( col_dmg_val * t )});
-				shld_restore_left += col_dmg_restore * t;
+				pmov.acc_val = 1;
+				pmov.inert_reduce = 1;
+				
+				const float min = 1.2 * pmov.spd_accel;
+				if (spd < min * min) {
+					if (spd > 5) vel *= min / b2Sqrt(spd);
+					else vel = conv(vec2fp(pmov.prev_dir).norm_to(min));
+					body.SetLinearVelocity(vel);
+				}
+				
+				ent.ref<EC_RenderModel>().parts(ME_AURA, {Transform{{2, 0}}, 0.5, FColor(0, 1, 0.2)});
 			}
 		}
 	}
@@ -318,7 +334,7 @@ void EC_PlayerLogic::m_step()
 		tar = prev_tar;
 	prev_tar = tar;
 	
-	pmov.upd_vel(ent, cst.mov, accel, prev_tar);
+	pmov.upd_vel(ent, cst.mov, accel, tar);
 	
 	eqp.shoot(tar, cst.is[PlayerInput::A_SHOOT], cst.is[PlayerInput::A_SHOOT_ALT] );
 	
@@ -350,18 +366,18 @@ PlayerEntity::PlayerEntity(GameCore& core, vec2fp pos, bool is_superman)
 	:
 	Entity(core),
 	phy(*this, bodydef(pos, true)),
-	hlc(*this, 150),
+	hlc(*this, 250),
 	eqp(*this),
 	log(*this)
 {
 	ui_descr = "The Rat";
-	phy.add(FixtureCreate::circle( fixtdef(0.3, 0.5), GameConst::hsz_rat, is_superman ? 1500 : 15 ));
+	phy.add(FixtureCreate::circle( fixtdef(0.3, 0.4), GameConst::hsz_rat, is_superman ? 1500 : 15 ));
 	
 	// rendering
 	
 	ensure<EC_RenderPos>().immediate_rotation = true;
 	ensure<EC_RenderPos>().disable_culling = true;
-	add_new<EC_RenderModel>(MODEL_PC_RAT, FColor(0.4, 0.9, 1, 1));
+	add_new<EC_RenderModel>(MODEL_PC_RAT, FColor(0.4, 0.9, 1, 1), EC_RenderModel::DEATH_AND_EXPLOSION);
 	add_new<EC_RenderEquip>();
 	add_new<EC_LaserDesigRay>();
 	
@@ -395,13 +411,15 @@ PlayerEntity::PlayerEntity(GameCore& core, vec2fp pos, bool is_superman)
 	hp.regen_wait = TimeSpan::seconds(12);
 	hlc.upd_reg();
 	
-	log.pers_shld = new DmgShield (150, 10, TimeSpan::seconds(2));
-	hlc.add_filter(std::unique_ptr<DamageFilter>( log.pers_shld ));
-	
 	log.armor = new DmgArmor(300);
+	log.armor->get_hp().apply(40);
 	hlc.add_filter(std::unique_ptr<DamageFilter>( log.armor ));
+	
+	log.pers_shld = new DmgShield (250, 25, TimeSpan::seconds(8));
+	hlc.add_filter(std::unique_ptr<DamageFilter>( log.pers_shld ));
 }
 PlayerEntity::~PlayerEntity()
 {
+	ref<EC_RenderModel>().parts(ME_AURA, {{}, 2, FColor(1, 0.4, 0.1, 2)});
 	PlayerInput::get().set_switch(PlayerInput::CTX_GAME, PlayerInput::A_SHIELD_SW, false);
 }

@@ -49,7 +49,10 @@ struct SmoothBlink
 		Note: disabled if AppSettings::plr_status_blink is false
 	*/
 	
-	TimeSpan full_period = TimeSpan::seconds(0.9);
+	TimeSpan full_period;
+	
+	SmoothBlink(TimeSpan full_period = TimeSpan::seconds(0.9))
+	    : full_period(full_period) {}
 	
 	/// Returns [t_min, t_max], changing by sine
 	float get_sine(bool enabled);

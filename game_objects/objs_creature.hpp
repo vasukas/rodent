@@ -44,6 +44,37 @@ private:
 	int crowd_bots = 0;
 };
 
+struct AtkPat_Boss : AI_AttackPattern
+{
+	struct Stage {
+		TimeSpan len; ///< Attack length
+		TimeSpan wait; ///< Pause after attack
+		
+		size_t i_wpn = 0;
+		bool continious = true; ///< Attack even if target isn't visible
+		bool targeted = false; ///< If true, shoots to target position even if not visible
+		
+		std::optional<float> rot_limit; ///< Rotation speed limit while attacking
+		std::optional<float> opt_dist; ///< Optimal distance
+	};
+	std::vector<Stage> stages;
+	
+	void shoot(Entity& target, float distance, Entity& self) override;
+	void idle(Entity& self) override;
+	void reset(Entity& self) override;
+	
+private:
+	static constexpr TimeSpan t_stop  = TimeSpan::seconds(1); // stop continious attack
+	static constexpr TimeSpan t_reset = TimeSpan::seconds(8); // reset attack pattern
+	size_t i_st = 0;
+	bool pause = true;
+	TimeSpan tmo, seen_at;
+	
+	void set_dist(Entity& self, std::optional<float> dist);
+	bool passed(Entity& self, TimeSpan t);
+	void set_stage(Entity& self, size_t i);
+};
+
 
 
 class ETurret final : public Entity
@@ -80,15 +111,62 @@ public:
 	{
 		std::shared_ptr<AI_DroneParams> pars;
 		ModelType model = MODEL_DRONE;
-		Weapon* wpn; // owning
-		AI_AttackPattern* atk_pat = {}; // owning
+		std::unique_ptr<Weapon> wpn;
+		std::unique_ptr<AI_AttackPattern> atk_pat; // optional
 		float drop_value = 0;
 		bool is_worker = false;
 		std::vector<vec2fp> patrol = {};
 	};
 	
+	static Init def_workr(GameCore& core);
+	static Init def_drone(GameCore& core);
+	static Init def_campr(GameCore& core);
+	
 	EEnemyDrone(GameCore& core, vec2fp at, Init init);
 	~EEnemyDrone();
+	
+	EC_Position&   ref_pc() override  {return  phy;}
+	EC_Health*     get_hlc() override {return &hlc;}
+	EC_Equipment*  get_eqp() override {return &eqp;}
+	AI_Drone* get_ai_drone() override {return &logic;}
+	size_t        get_team() const override {return TEAM_BOTS;}
+};
+
+
+
+class EHunter final : public Entity
+{
+	EC_Physics phy;
+	EC_Health hlc;
+	EC_Equipment eqp;
+	AI_Drone logic;
+	AI_Movement mov;
+	
+public:
+	EHunter(GameCore& core, vec2fp at);
+	~EHunter();
+	
+	EC_Position&   ref_pc() override  {return  phy;}
+	EC_Health*     get_hlc() override {return &hlc;}
+	EC_Equipment*  get_eqp() override {return &eqp;}
+	AI_Drone* get_ai_drone() override {return &logic;}
+	size_t        get_team() const override {return TEAM_BOTS;}
+};
+
+
+
+class EHacker final : public Entity
+{
+	EC_Physics phy;
+	EC_Health hlc;
+	EC_Equipment eqp;
+	AI_Drone logic;
+	AI_Movement mov;
+	
+	void step() override;
+	
+public:
+	EHacker(GameCore& core, vec2fp at);
 	
 	EC_Position&   ref_pc() override  {return  phy;}
 	EC_Health*     get_hlc() override {return &hlc;}

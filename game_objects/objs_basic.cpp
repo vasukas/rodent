@@ -3,6 +3,7 @@
 #include "game/level_ctr.hpp"
 #include "game/game_core.hpp"
 #include "game/game_info_list.hpp"
+#include "game/game_mode.hpp"
 #include "game/player_mgr.hpp"
 #include "utils/noise.hpp"
 #include "vaslib/vas_log.hpp"
@@ -194,21 +195,15 @@ void EPickable::on_cnt(const CollisionEvent& ce)
 		},
 		[&](ArmorShard& v)
 		{
-			bool ret = false;
-			ce.other->ref_hlc().foreach_filter([&](DamageFilter& f)
-			{
-				if (ret) return;
+			ce.other->ref_hlc().foreach_filter([&](DamageFilter& f) {
 				if (auto p = dynamic_cast<DmgArmor*>(&f))
-				{
-					p->get_hp().apply(v.amount);
-					ret = true;
-				}
+					v.amount -= p->get_hp().apply(v.amount);
 			});
-			return ret;
+			return !v.amount;
 		},
 		[&](SecurityKey&)
 		{
-			core.get_pmg().inc_objective();
+			core.get_gmc().inc_objective();
 			return true;
 		}
 	}, val);
@@ -355,41 +350,41 @@ EFinalTerminal::EFinalTerminal(GameCore& core, vec2fp at)
 }
 void EFinalTerminal::step()
 {
-	float t = (timer_end - core.get_step_time()).seconds();
-	GamePresenter::get()->dbg_text(get_pos(), FMT_FORMAT("Boot-up in progress: {:2.1f}", t));
-	
-	if (timer_end < core.get_step_time() || is_activated)
+	if (core.get_gmc().get_state() != GameModeCtr::State::Booting) {
 		unreg_this();
+	}
+	else {
+		float t = core.get_gmc().get_boot_left().seconds();
+		GamePresenter::get()->dbg_text(get_pos(), FMT_FORMAT("Boot-up in progress: {:2.1f}", t));
+	}
 }
 std::pair<bool, std::string> EFinalTerminal::use_string()
 {
-	if (!enabled)
-		return {0, "Security tokens required"};
-	if (!timer_end.is_positive())
-		return {1, "Activate control terminal"};
-	if (timer_end < core.get_step_time()) 
-		return {1, "Gain level control"};
-	else
-		return {0, "Boot-up in progress"};
+	auto state = core.get_gmc().get_state();
+	if		(state == GameModeCtr::State::NoTokens)  return {0, "Security tokens required"};
+	else if (state == GameModeCtr::State::HasTokens) return {1, "Activate control terminal"};
+	else if (state == GameModeCtr::State::Booting)   return {0, "Boot-up in progress"};
+	else if (state == GameModeCtr::State::Cleanup)   return {0, "Hostile elements detected"};
+	else if (state == GameModeCtr::State::Final)     return {1, "Gain level control"};
+	return {};
 }
 void EFinalTerminal::use(Entity* by)
 {
 	if (!by || !core.get_pmg().is_player(*by))
 		return;
 	
-	if (!enabled) {
+	auto state = core.get_gmc().get_state();
+	if		(state == GameModeCtr::State::NoTokens) {
 		GamePresenter::get()->add_float_text({ get_pos(), "Access denied" });
 	}
-	else if (!timer_end.is_positive())
-	{
-		timer_end = core.get_step_time() + TimeSpan::seconds(5);
+	else if (state == GameModeCtr::State::HasTokens) {
 		GamePresenter::get()->add_float_text({ get_pos(), "Boot sequence initialized" });
 		reg_this();
+		core.get_gmc().terminal_use();
 	}
-	else if (timer_end <core.get_step_time())
-	{
-		is_activated = true;
+	else if (state == GameModeCtr::State::Final) {
 		GamePresenter::get()->add_float_text({ get_pos(), "Terminal active" });
+		core.get_gmc().terminal_use();
 	}
 }
 
@@ -469,7 +464,7 @@ void ETeleport::activate(bool menu)
 	{
 		i = core.get_info().find_teleport(*this);
 		core.get_info().set_menu_teleport(i);
-		core.get_pmg().on_teleport_activation();
+		core.get_gmc().on_teleport_activation();
 	}
 	else if (!activated)
 		i = core.get_info().find_teleport(*this);
@@ -516,7 +511,7 @@ void EMinidock::step()
 	float charge_inc = wait / recharge;
 	float charge_dec = wait / TimeSpan::seconds(8);
 	
-	TimeSpan dmg_tmo = TimeSpan::seconds(2);
+	TimeSpan dmg_tmo = TimeSpan::seconds(4); // heal only if not damaged for that long
 	
 	//
 	
@@ -586,12 +581,14 @@ EStorageBox::EStorageBox(GameCore& core, vec2fp at)
 	:
 	Entity(core),
     phy(*this, bodydef(at, false)),
-    hlc(*this, 800)
+    hlc(*this, 500)
 {
 	ui_descr = "Autobox";
 	add_new<EC_RenderModel>(MODEL_STORAGE, FColor(0.7, 0.9, 0.7), EC_RenderModel::DEATH_AND_EXPLOSION);
 	phy.add(FixtureCreate::box( fixtdef(0.15, 0.1), ResBase::get().get_size(MODEL_STORAGE).size() /2, 0,
 	                            FixtureInfo{FixtureInfo::TYPEFLAG_OPAQUE | FixtureInfo::TYPEFLAG_WALL} ));
+	
+	hlc.add_filter(std::make_unique<DmgShield>(100, 20, TimeSpan::seconds(15)));
 }
 EStorageBox::~EStorageBox()
 {
@@ -682,10 +679,80 @@ EDecor::EDecor(GameCore& core, const char *ui_name, Rect at, float rot, ModelTyp
 	phy.add(FixtureCreate::box( fixtdef(0.15, 0.1), ResBase::get().get_size(model).size() /2, 0,
 	                            FixtureInfo{FixtureInfo::TYPEFLAG_OPAQUE | FixtureInfo::TYPEFLAG_WALL} ));
 }
+EDecorDestructible::EDecorDestructible(GameCore& core, const char *ui_name, int hp_amount,
+                                       Rect at, float rot, ModelType model, FColor clr)
+    :
+	EDecor(core, ui_name, at, rot, model, clr),
+	hlc(*this, hp_amount)
+{}
+
+
+
+EAssembler::EAssembler(GameCore& core, vec2i at, float rot)
+    : EDecorDestructible(core, "Assembler", 240, Rect{at, {1,1}, true}, rot, MODEL_ASSEMBLER, FColor(0.8, 0.6, 0.6))
+{
+	hlc.add_filter(std::make_unique<DmgShield>(60, 10, TimeSpan::seconds(15)));
+	
+	vec2fp prod_pos = core.get_lc().to_center_coord(at) + vec2fp(GameConst::cell_size, 0).rotate(rot + M_PI); // wtf?
+	core.get_info().get_assembler_list().push_back({ index, prod_pos });
+	
+	ensure<EC_ParticleEmitter>().effect({MODEL_ASSEMBLER, ME_AURA}, {{}, 0.3, FColor(0.9, 0.7, 1, 0.05)},
+	                                    TimeSpan::seconds(rnd_stat().range(0.5, 0.6)), TimeSpan::nearinfinity);
+}
+EAssembler::~EAssembler()
+{
+	if (!core.is_freeing()) {
+		auto& list = core.get_info().get_assembler_list();
+		erase_if(list, [&](auto& v) {return v.eid == index;});
+		
+		bool msg = true;
+		for (auto& p : list) {
+			if (core.get_lc().ref_room(p.prod_pos) == core.get_lc().ref_room(get_pos())) {
+				msg = false;
+				break;
+			}
+		}
+		if (msg) core.get_gmc().factory_down(list.empty());
+	}
+}
+
+
+
 EDecorGhost::EDecorGhost(GameCore& core, Transform at, ModelType model, FColor clr)
     :
 	Entity(core),
 	phy(*this, at)
 {
 	add_new<EC_RenderModel>(model, clr);
+}
+
+
+
+ETutorialMsg::ETutorialMsg(GameCore& core, vec2fp pos, std::string msg)
+    : Entity(core), phy(*this, Transform{pos})
+{
+	add_new<EC_RenderFadeText>(std::move(msg));
+}
+
+
+
+ETutorialDummy::ETutorialDummy(GameCore& core, vec2fp pos)
+    :
+	Entity(core),
+	phy(*this, bodydef(pos, false, core.get_random().range_n2() * M_PI)),
+	hlc(*this, 350)
+{
+	ui_descr = "Dummy";
+	phy.add(FixtureCreate::circle(fixtdef(0.5, 0.2), GameConst::hsz_box_small, 0));
+	add_new<EC_RenderModel>(MODEL_WORKER, FColor(1, 0.5, 0, 1));
+	EVS_CONNECT1(hlc.on_damage, on_dmg);
+}
+void ETutorialDummy::on_dmg(const DamageQuant& q)
+{
+	FloatText text;
+	text.at = q.wpos.value_or(get_pos());
+	text.str = std::to_string(q.amount);
+	text.color = 0x40ff'ffff;
+	text.size = 2;
+	GamePresenter::get()->add_float_text(std::move(text));
 }

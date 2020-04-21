@@ -12,6 +12,7 @@
 struct AI_Movement final : EComp
 {
 	bool locked = false;
+	bool hack_allow_unlimited_path = false;
 	
 	AI_Movement(AI_Drone& drone); ///< Adds self!
 	
@@ -44,16 +45,10 @@ private:
 	std::optional<Path> path;
 	AI_Speed cur_spd = AI_Speed::Slow;
 	bool preq_failed = false;
-	std::optional<vec2fp> patrol_reset;
-	
-	vec2fp rare_pos = vec2fp::one(-1000);
-	TimeSpan rare_last;
-	LevelCtrTmpLock path_lock;
 	
 	
-	std::optional<vec2fp> calc_avoidance(); // collision avoidance vector
+	float calc_avoidance(); // speed multiplier
 	vec2fp step_path();
-	void lock_check();
 	void step() override;
 	
 	static float inert_k(AI_Speed speed);

@@ -23,6 +23,7 @@ public:
 	virtual Entity* get_ent() = 0; ///< If exists
 	virtual Entity& ref_ent() = 0; ///< Throws if doesn't exist
 	virtual bool is_player(Entity& ent) const = 0;
+	virtual PlayerUI* get_pui() = 0;
 	
 	virtual void render(TimeSpan passed, vec2i cursor_pos) = 0;
 	
@@ -31,15 +32,6 @@ public:
 	
 	/// Current AI activation and deactivation rects
 	virtual std::pair<Rectfp, Rectfp> get_ai_rects() = 0;
-	
-	/// Increments objective count
-	virtual void inc_objective() = 0;
-	
-	///
-	virtual void on_teleport_activation() = 0;
-	
-	///
-	virtual bool is_game_finished() = 0;
 	
 	/// Expected to be called only once
 	virtual void set_pui(std::unique_ptr<PlayerUI> pui) = 0;

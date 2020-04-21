@@ -10,12 +10,13 @@
 #include "replay.hpp"
 
 constexpr const char* stream_header = "ratdemo";
-const uint32_t stream_version = 6;
+const uint32_t stream_version = 7;
 
 struct Header {
 	SerialType_Void signature_hack;
 	uint32_t version;
 	std::string platform;
+	std::string comment;
 };
 struct Frame {
 	PlayerInput::ContextMode ctx;
@@ -47,7 +48,8 @@ SERIALFUNC_PLACEMENT_1(Replay_UseTransitTeleport,
 SERIALFUNC_PLACEMENT_1(Header,
 	SER_FDT(signature_hack, Signature<stream_header>),
 	SER_FD(version),
-	SER_FD(platform));
+	SER_FD(platform),
+	SER_FD(comment));
 
 SERIALFUNC_PLACEMENT_1(Frame,
 	SER_FDT(ctx, Enum< PlayerInput::CTX_TOTAL_COUNT_INTERNAL >),
@@ -61,6 +63,14 @@ static void write_header(File& f, const ReplayInitData& init)
 	Header h;
 	h.version = stream_version;
 	h.platform = get_full_platform_version();
+	
+	h.comment += "\n\n===== COMMENT =====\n\n";
+	h.comment += FMT_FORMAT("Date: {}\n", date_time_str());
+	h.comment += FMT_FORMAT("Stream version: {}\n", stream_version);
+	h.comment += FMT_FORMAT("Platform: {}\n", get_full_platform_version());
+	h.comment += FMT_FORMAT("Terrain seed: {}\n", init.rnd_init);
+	h.comment += "\n\n===== COMMENT =====\n\n";
+	
 	SERIALFUNC_WRITE(h, f);
 	SERIALFUNC_WRITE(init, f);
 }
@@ -227,7 +237,7 @@ public:
 		
 		if		(frms.size() > fn_skip_thr) return RET_OK{ 0.f, std::move(evs) };
 		else if (frms.size() > fn_ffwd_thr)
-			return RET_OK{ 1.f - inv_lerp<float,float>(fn_ffwd_thr, fn_skip_thr, frms.size()), std::move(evs) };
+			return RET_OK{ 1.f - inv_lerp<float>(fn_ffwd_thr, fn_skip_thr, frms.size()), std::move(evs) };
 		
 		return RET_OK{ {}, std::move(evs) };
 	}
@@ -256,7 +266,8 @@ public:
 	}
 	void update_client(PlayerInput& pc) override {
 		frm.ctx = pc.get_context();
-		frm.st = pc.get_state(frm.ctx);
+		if (frm.ctx == PlayerInput::CTX_GAME) frm.st = pc.get_state(frm.ctx);
+		else frm.st = {};
 		thr.write(std::move(frm));
 		frm.evs.clear();
 	}
@@ -282,7 +293,8 @@ public:
 	}
 	void update_client(PlayerInput& pc) override {
 		frm.ctx = pc.get_context();
-		frm.st = pc.get_state(frm.ctx);
+		if (frm.ctx == PlayerInput::CTX_GAME) frm.st = pc.get_state(frm.ctx);
+		else frm.st = {};
 		SERIALFUNC_WRITE(frm, *f);
 		frm.evs.clear();
 	}

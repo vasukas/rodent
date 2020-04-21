@@ -1340,14 +1340,14 @@ void vigTextbox::allow_name(bool unicode) {
 
 
 
-vec2i vigTableLC::calc(bool place)
+void vigTableLC::calc()
 {
 	const int space = use_space ? SPACE : 0;
 	
 	std::vector<int> cmax;
 	cmax.resize(size.x);
 	
-	vec2i maxsz = {space, 0};
+	maxsz = {space, 0};
 	int y_cur = space;
 	
 	for (int y=0; y<size.y; ++y)
@@ -1384,12 +1384,12 @@ vec2i vigTableLC::calc(bool place)
 		}
 		maxsz.x += cmax[x];
 	}
-		
-	if (place) {
-		vec2i p, sz = maxsz;
-		vig_lo_place(p, sz);
-	}
-	return maxsz;
+}
+vec2i vigTableLC::place()
+{
+	vec2i p, sz = maxsz;
+	vig_lo_place(p, sz);
+	return p;
 }
 void vigTableLC::set_size(vec2i new_size)
 {

@@ -130,6 +130,8 @@ struct PPF_Tint : PP_Filter
 
 struct PPF_Shake : PP_Filter
 {
+	const float decr_spd = 1. / 0.7; // per second
+	const float max_len = 2.5; // seconds
 	float t = 0, str = 0, str_tar = 0;
 	
 	PPF_Shake()
@@ -154,7 +156,7 @@ struct PPF_Shake : PP_Filter
 			}
 			else str += dt;
 		}
-		else str -= ps / 0.7;
+		else str -= ps * decr_spd;
 		t += ps;
 		
 		vec2i sz = RenderControl::get_size();
@@ -169,7 +171,7 @@ struct PPF_Shake : PP_Filter
 	void add(float power)
 	{
 		if (str <= 0) t = 0;
-		str_tar = std::min(str + power, 5.f);
+		str_tar = std::min(str + power, max_len * decr_spd);
 	}
 };
 

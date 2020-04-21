@@ -45,7 +45,7 @@ struct HealthPool
 	float t_state() const; ///< Returns hp value in range [0; 1]
 	std::pair<int, int> exact() const {return {hp, hp_max};}
 	
-	void apply(int amount, bool limited = true);
+	int apply(int amount, bool limited = true); ///< Returns amount actually applied
 	void renew(std::optional<int> new_max = {}); ///< Sets current hp to max
 	
 	void set_hps(int hps); ///< Sets healing per second with half-second cooldown
@@ -131,10 +131,10 @@ private:
 struct DmgArmor : DamageFilter
 {
 	// Only for kinetic damage
-	float k_self = 0.15; ///< Damage to armor multiplier (before mod)
-	float k_mod_min = 0.7; ///< Received damage multiplier (min health)
-	float k_mod_max = 0.2; ///< Received damage multiplier (full health)
-//	int dmg_thr = 5; ///< If damage below this, it's ignored (after mod)
+	float k_self; ///< Damage to armor multiplier (before mod)
+	float k_mod_min; ///< Received damage multiplier (min health)
+	float k_mod_max; ///< Received damage multiplier (full health)
+	float maxmod_t; ///< HP percentage after which full multiplier applied
 	
 	DmgArmor(int hp_max, int hp = 0);
 	void proc(EC_Health&, DamageQuant& q);

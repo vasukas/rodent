@@ -1,6 +1,8 @@
 #include "game/game_core.hpp"
 #include "game/physics.hpp"
+#include "game/player_mgr.hpp"
 #include "render/ren_aal.hpp"
+#include "render/ren_imm.hpp"
 #include "utils/time_utils.hpp"
 #include "ec_render.hpp"
 #include "effects.hpp"
@@ -34,6 +36,13 @@ EC_RenderComp::EC_RenderComp(Entity& ent)
 EC_RenderComp::~EC_RenderComp()
 {
 	GamePresenter::get()->on_rem(*this);
+}
+void EC_RenderComp::tmp_cull(bool& state, bool disable_culling)
+{
+	if (state != disable_culling) {
+		ent.ref<EC_RenderPos>().disable_culling += disable_culling ? 1 : -1;
+		state = disable_culling;
+	}
 }
 
 
@@ -152,6 +161,12 @@ void EC_ParticleEmitter::render(const EC_RenderPos& p, TimeSpan passed)
 			c->em.reset();
 	}
 }
+void EC_ParticleEmitter::resource_reinit_hack()
+{
+	ems.clear();
+	for (auto& c : chs)
+		c->em.reset();
+}
 
 
 
@@ -184,6 +199,7 @@ void EC_LaserDesigRay::find_target(vec2fp dir)
 }
 void EC_LaserDesigRay::render(const EC_RenderPos& ecp, TimeSpan passed)
 {
+	tmp_cull(cull_state, enabled);
 	if (!enabled) return;
 	vec2fp src = ecp.get_cur().pos;
 	
@@ -214,6 +230,7 @@ void EC_Uberray::trigger(vec2fp target)
 }
 void EC_Uberray::render(const EC_RenderPos& p, TimeSpan passed)
 {
+	tmp_cull(cull_state, left.is_positive());
 	if (!left.is_positive()) return;
 	
 	vec2fp a = p.get_cur().pos;
@@ -261,4 +278,43 @@ void EC_RenderDoor::render(const EC_RenderPos& p, TimeSpan)
 	RenAAL::get().draw_line(p1,         p1 - o_len,         l_clr.to_px(), l_wid, l_aa);
 	RenAAL::get().draw_line(p1 - o_wid, p1 - o_len - o_wid, l_clr.to_px(), l_wid, l_aa);
 	RenAAL::get().draw_line(p1 - o_len, p1 - o_len - o_wid, l_clr.to_px(), l_wid, l_aa);
+}
+
+
+
+EC_RenderFadeText::EC_RenderFadeText(Entity& ent, std::string_view text, vec2fp offset)
+    : EC_RenderComp(ent), offset(offset)
+{
+	set_text(text);
+}
+EC_RenderFadeText::~EC_RenderFadeText() = default;
+void EC_RenderFadeText::set_text(std::string_view text)
+{
+	tri.str_a = text.data();
+	tri.length = text.length();
+	tri.build();
+}
+void EC_RenderFadeText::render(const EC_RenderPos& p, TimeSpan passed)
+{
+	constexpr float dist = GameConst::cell_size * 3.5;
+	constexpr TimeSpan t_full = TimeSpan::seconds(1.5);
+	constexpr float shadow = 0.05;
+	
+	if (auto e = ent.core.get_pmg().get_ent();
+	    (e && e->get_pos().dist_squ( ent.get_pos() ) < dist*dist))
+	{
+		left = std::min(left + passed, t_full);
+	}
+	else if (left.is_positive()) {
+		left -= passed;
+	}
+	
+	if (left.is_positive())
+	{
+		FColor c = FColor(1,1,1);
+		c.a = left / t_full;
+		RenImm::get().draw_text(p.get_cur().pos + vec2fp(-shadow, shadow), tri, 0xff * c.a, true, 1.5);
+		RenImm::get().draw_text(p.get_cur().pos + vec2fp(shadow, -shadow), tri, 0xff * c.a, true, 1.5);
+		RenImm::get().draw_text(p.get_cur().pos, tri, c.to_px(), true, 1.5);
+	}
 }

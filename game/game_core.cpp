@@ -5,6 +5,7 @@
 #include "vaslib/vas_log.hpp"
 #include "game_core.hpp"
 #include "game_info_list.hpp"
+#include "game_mode.hpp"
 #include "level_ctr.hpp"
 #include "player_mgr.hpp"
 #include "physics.hpp"
@@ -21,6 +22,7 @@ public:
 	std::unique_ptr<PlayerManager> pmg;
 	std::unique_ptr<AI_Controller> aic;
 	GameInfoList infolist;
+	std::unique_ptr<GameModeCtr> gmc;
 	
 	std::array<SparseArray<EComp*>, static_cast<size_t>(ECompType::TOTAL_COUNT)> cs_list;
 	SparseArray<Entity*> es_list;
@@ -43,7 +45,9 @@ public:
 	{
 		dbg_ai_attack = true;
 		dbg_ai_see_plr = true;
+		
 		spawn_drop = false;
+		spawn_hunters = true;
 		
 		ents.block_size = 256;
 		
@@ -52,6 +56,7 @@ public:
 		
 		pmg.reset(PlayerManager::create(*this));
 		aic.reset(AI_Controller::create(*this));
+		gmc = std::move(pars.gmc);
 		
 		if (!pars.random_init.empty())
 			rndg.load(pars.random_init);
@@ -62,6 +67,7 @@ public:
 	
 	AI_Controller& get_aic()    noexcept {return *aic;}
 	GameInfoList&  get_info()   noexcept {return infolist;}
+	GameModeCtr&   get_gmc()    noexcept {return *gmc;}
 	LevelControl&  get_lc()     noexcept {return *lc ;}
 	PhysicsWorld&  get_phy()    noexcept {return *phy;}
 	PlayerManager& get_pmg()    noexcept {return *pmg;}
@@ -133,6 +139,7 @@ public:
 		step_sys(*phy, "physics");
 		step_sys(*pmg, "plr_mgr");
 		step_sys(*aic, "ai_ctr");
+		step_sys(*gmc, "game_mode");
 		
 		if (auto gp = GamePresenter::get()) {
 			try {gp->sync(now);}
@@ -143,8 +150,11 @@ public:
 		
 		// finish
 		
-		for (auto e : e_todel) delete e;
-		e_todel.clear();
+		while (!e_todel.empty()) {
+			auto p = e_todel.back();
+			e_todel.pop_back();
+			delete p;
+		}
 		
 		lc->update_aps(false);
 		

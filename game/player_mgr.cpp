@@ -1,7 +1,5 @@
-#include "client/level_map.hpp"
 #include "client/player_ui.hpp"
 #include "client/plr_input.hpp"
-#include "client/presenter.hpp"
 #include "game/game_core.hpp"
 #include "game/level_ctr.hpp"
 #include "game_objects/objs_basic.hpp"
@@ -22,15 +20,6 @@ public:
 	
 	TimeSpan plr_resp; // respawn timeout
 	vec2fp last_plr_pos = {}; // for AI rects
-	
-	// objective
-	
-	const size_t obj_need = 3;
-	size_t obj_count = 0;
-	
-	EFinalTerminal* obj_term = nullptr;
-	bool obj_msg = false;
-	bool lct_found = false;
 	
 	// entity
 	
@@ -70,6 +59,10 @@ public:
 	{
 		return ent.index == plr_eid;
 	}
+	PlayerUI* get_pui() override
+	{
+		return pui.get();
+	}
 	
 	
 	
@@ -81,21 +74,6 @@ public:
 		uis.resp_left = plr_resp;
 		uis.lookat = pui_lookat;
 		uis.einter = dynamic_cast<EInteractive*>(core.valid_ent(pui_einter));
-		
-		if (obj_count < obj_need) {
-			uis.objective += FMT_FORMAT("collect security tokens ({} left)", obj_need - obj_count);
-		}
-		else if (obj_term)
-		{
-			if (obj_term->timer_end.is_positive())
-			{
-				TimeSpan left = obj_term->timer_end - core.get_step_time();
-				if (left.is_negative()) uis.objective += "use control terminal";
-				else uis.objective += FMT_FORMAT("wait for control terminal to boot - {:.1f} seconds", left.seconds());
-			}
-			else if (!lct_found) uis.objective += "find control terminal";
-			else uis.objective += "activate control terminal";
-		}
 		
 		pui->render(*this, uis, passed, cursor_pos);
 	}
@@ -134,19 +112,6 @@ public:
 		{
 			auto& pcst = PlayerInput::get().get_state(PlayerInput::CTX_GAME);
 			plr_ent->log.m_step();
-			
-			// objective
-			
-			if (!lct_found)
-			{
-				auto room = core.get_lc().ref_room(plr_ent->get_pos());
-				if (room && room->type == LevelCtrRoom::T_FINAL_TERM)
-				{
-					lct_found = true;
-					add_msg("You have found\ncontrol room");
-					LevelMap::get().mark_final_term(*room);
-				}
-			}
 			
 			// update lookat string
 			
@@ -200,21 +165,6 @@ public:
 			}
 			else pui_einter = {};
 		}
-		
-		// objective
-		if (!obj_term)
-		{
-			core.foreach([this](Entity& e)
-			{
-				if (auto p = dynamic_cast<EFinalTerminal*>(&e))
-					obj_term = p;
-			});
-		}
-		if (!obj_msg && obj_term && obj_term->timer_end.is_positive() && obj_term->timer_end < core.get_step_time())
-		{
-			obj_msg = true;
-			add_msg("Terminal is ready");
-		}
 	}
 	std::pair<Rectfp, Rectfp> get_ai_rects() override
 	{
@@ -225,7 +175,7 @@ public:
 		}
 		
 		// halfsizes
-		const vec2fp hsz_on = debug_ai_rect ? vec2fp{48, 35} : vec2fp{80, 65};
+		const vec2fp hsz_on = debug_ai_rect ? vec2fp{48, 35} : vec2fp{100, 80};
 		const vec2fp hsz_off = hsz_on * 1.25;
 		
 		if (auto ent = core.get_ent(plr_eid))
@@ -236,41 +186,6 @@ public:
 			{ctr - hsz_on,  ctr + hsz_on,  false},
 			{ctr - hsz_off, ctr + hsz_off, false}
 		};
-	}
-	void inc_objective() override
-	{
-		++obj_count;
-		if (obj_count == obj_need)
-		{
-			if (lct_found) add_msg("Activate control terminal");
-			else add_msg("Find control terminal");
-			obj_term->enabled = true;
-		}
-		else /*if (obj_count < 3)*/ // this bug is funny
-		{
-			size_t n = obj_need - obj_count;
-			GamePresenter::get()->add_float_text({ plr_ent->get_pos(), FMT_FORMAT("Security token!\nNeed {} more", n) });
-		}
-	}
-	bool is_game_finished() override
-	{
-		return obj_term && obj_term->is_activated && obj_term->timer_end < core.get_step_time();
-	}
-	void on_teleport_activation() override
-	{
-		if (!lct_found && obj_count >= obj_need)
-		{
-			lct_found = true;
-			add_msg("Map updated.\nActivate control terminal");
-			
-			LevelMap::get().mark_final_term([&]{
-				for (auto& r : core.get_lc().get_rooms()) {
-					if (r.type == LevelCtrRoom::T_FINAL_TERM)
-						return r;
-				}
-				throw std::runtime_error("PlayerManager::on_teleport_activation() no final term room");
-			}());
-		}
 	}
 	void set_pui(std::unique_ptr<PlayerUI> pui) override
 	{

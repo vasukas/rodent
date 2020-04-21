@@ -143,6 +143,7 @@ list(APPEND SRC_LIST
 	game/entity
 	game/game_core
 	game/game_info_list
+	game/game_mode
 	game/level_ctr
 	game/level_gen
 	game/physics
@@ -163,6 +164,7 @@ list(APPEND SRC_LIST
 	game_objects/objs_creature
 	game_objects/objs_player
 	game_objects/spawners
+	game_objects/tutorial
 	game_objects/weapon_all
 
 	render/camera

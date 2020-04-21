@@ -70,6 +70,7 @@ class AI_Controller
 {
 public:
 	bool show_aos_debug = false;
+	bool show_states_debug = false;
 	size_t debug_batle_number = 0;
 	
 	static AI_Controller* create(GameCore& core);

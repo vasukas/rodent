@@ -14,7 +14,8 @@ class AI_SimResource
 public:
 	enum Type
 	{
-		T_ROCK
+		T_ROCK,
+		T_LEVELTERM
 	};
 	
 	static constexpr int max_capacity = 65535;

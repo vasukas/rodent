@@ -1,4 +1,5 @@
 #include <future>
+#include "core/settings.hpp"
 #include "client/resbase.hpp"
 #include "utils/noise.hpp"
 #include "vaslib/vas_cpp_utils.hpp"
@@ -279,25 +280,53 @@ public:
 		sh      = Shader::load("aal", {}, true);
 		sh_inst = Shader::load("aal_inst", {}, true);
 		
+		reinit_glow();
+		
+		// for grid
+		
+		fbo_sh = Shader::load("pp/aal_grid", {[](Shader& sh){ sh.set1i("noi", 1); }});
+		fbo_g = RenderControl::get().add_size_cb([this]{ fbo_clr.set(GL_RGBA, RenderControl::get_size(), 0, 4); }, true);
+
+		fbo.bind();
+		fbo.attach_tex(GL_COLOR_ATTACHMENT0, fbo_clr);
+	}
+	void reinit_glow()
+	{
 		const int n = 200;
 		float data[n];
 		
-		float c = 0.2;
-		float a = 1.f / (c * sqrt(2 * M_PI));
-		float w = 2 * c * sqrt(2 * log(2));
-		c = 2 * c * c;
-		
-		auto f = [&](float x){
-			x = (1 - x) / w;
-			return a * exp(-(x*x) / c);
+		auto init = [&](auto f) {
+			float x1 = f(1);
+			for (int i=0; i<n; ++i) {
+				float x = (i + 1); x /= n;
+				float y = f(x) / x1;
+				data[i] = y;
+			}
 		};
-		float x1 = f(1);
+		auto init_old = [&](float c){
+			float a = 1.f / (c * sqrt(2 * M_PI));
+			float w = 2 * c * sqrt(2 * log(2));
+			c = 2 * c * c;
+			init([&](float x){
+				x = (1 - x) / w;
+				return a * exp(-(x*x) / c);
+			});
+		};
+		switch (AppSettings::get().aal_type)
+		{
+		case AppSettings::AAL_OldFuzzy:
+			init_old(0.2);
+			break;
 		
-		for (int i=0; i<n; ++i) {
-			float x = (i + 1); x /= n;
-			float y = f(x) / x1;
-			data[i] = y;//std::min(255.f, 255 * y);
+		case AppSettings::AAL_CrispGlow:
+			init([](float x){ return x*x; });
+			break;
+			
+		case AppSettings::AAL_Clear:
+			init_old(0.17);
+			break;
 		}
+
 		tex.bind();
 		glTexImage2D(tex.target, 0, GL_R8, n, 1, 0, GL_RED, GL_FLOAT, data);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -307,14 +336,6 @@ public:
 		
 //		Texture::debug_save(tex.tex, "test.png", Texture::FMT_SINGLE);
 //		exit(1);
-		
-		// for grid
-		
-		fbo_sh = Shader::load("pp/aal_grid", {[](Shader& sh){ sh.set1i("noi", 1); }});
-		fbo_g = RenderControl::get().add_size_cb([this]{ fbo_clr.set(GL_RGBA, RenderControl::get_size(), 0, 4); }, true);
-
-		fbo.bind();
-		fbo.attach_tex(GL_COLOR_ATTACHMENT0, fbo_clr);
 	}
 	void draw_line(vec2fp p0, vec2fp p1, uint32_t clr, float width, float aa_width, float clr_mul)
 	{

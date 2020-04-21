@@ -110,16 +110,15 @@ public:
 	
 	
 	
+	virtual EC_Position&  ref_pc() = 0;
 	virtual AI_Drone*     get_ai_drone() {return nullptr;}
 	virtual EC_Equipment* get_eqp() {return nullptr;}
 	virtual EC_Health*    get_hlc() {return nullptr;}
 	
-	virtual AI_Drone&     ref_ai_drone();
-	virtual EC_Equipment& ref_eqp();
-	virtual EC_Health&    ref_hlc();
-	
-	virtual EC_Physics&   ref_phobj();
-	virtual EC_Position&  ref_pc() = 0;
+	AI_Drone&     ref_ai_drone();
+	EC_Equipment& ref_eqp();
+	EC_Health&    ref_hlc();
+	EC_Physics&   ref_phobj();
 	
 	virtual size_t get_team() const {return TEAM_ENVIRON;}
 	vec2fp get_pos() {return ref_pc().get_pos();}

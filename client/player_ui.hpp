@@ -14,11 +14,12 @@ class PlayerUI
 public:
 	bool full_info = false;
 	bool debug_mode = false;
+	std::string objective;
 	
 	static PlayerUI* create();
 	virtual ~PlayerUI() = default;
 	
-	virtual void message(std::string s, TimeSpan show, TimeSpan fade = TimeSpan::seconds(1.5)) = 0;
+	virtual void message(std::string s, TimeSpan show = TimeSpan::seconds(1.5), TimeSpan fade = TimeSpan::seconds(1.5)) = 0;
 	
 protected:
 	friend class PlayerManager_Impl;
@@ -26,7 +27,6 @@ protected:
 	struct DrawState
 	{
 		TimeSpan resp_left;
-		std::string objective;
 		std::string lookat;
 		EInteractive* einter = {};
 	};

@@ -6,12 +6,9 @@
 
 
 
-static_assert(std::is_same_v<PathSearch::WhoType, EntityIndex::Int>); // fix WhoType if fails
-
 PathRequest::PathRequest(GameCore& core, vec2fp from, vec2fp to,
                          std::optional<float> max_length,
-                         std::optional<Evade> evade,
-                         EntityIndex who)
+                         std::optional<Evade> evade)
 {
 	auto& lc = core.get_lc();
 	vec2i pa = lc.to_nonwall_coord(from);
@@ -29,7 +26,6 @@ PathRequest::PathRequest(GameCore& core, vec2fp from, vec2fp to,
 	args.src = pa;
 	args.dst = pb;
 	args.max_length = std::ceil(*max_length / GameConst::cell_size);
-	args.who = who.to_int();
 	if (evade) {
 		args.evade = lc.to_cell_coord(evade->pos);
 		args.evade_radius = std::ceil(evade->radius / GameConst::cell_size);
@@ -63,39 +59,6 @@ std::optional<PathRequest::Result> PathRequest::result()
 	auto r = std::move(res);
 	res.reset();
 	return r;
-}
-
-
-
-LevelCtrTmpLock LevelCtrTmpLock::try_lock(Entity& who, vec2i at)
-{
-	auto& lc = who.core.get_lc();
-	if (lc.cref(at).is_tmplocked)
-		return {};
-	
-	lc.mut_cell(at).is_tmplocked = true;
-	lc.templocks.emplace_back(&who, at);
-	return LevelCtrTmpLock(who, at);
-}
-LevelCtrTmpLock::~LevelCtrTmpLock()
-{
-	if (who) {
-		auto& lc = who->core.get_lc();
-		lc.mut_cell(at).is_tmplocked = false;
-		erase_if(lc.templocks, [&](auto& v){ return v.first == who; });
-	}
-}
-LevelCtrTmpLock::LevelCtrTmpLock(LevelCtrTmpLock&& l) noexcept
-{
-	*this = std::move(l);
-}
-LevelCtrTmpLock& LevelCtrTmpLock::operator=(LevelCtrTmpLock&& l) noexcept
-{
-	(*this).~LevelCtrTmpLock();
-	who = l.who;
-	at = l.at;
-	l.who = nullptr;
-	return *this;
 }
 
 
@@ -151,7 +114,7 @@ LevelControl::LevelControl(const LevelTerrain& lt)
 		else if (typenm) nr.name = FMT_FORMAT("{}-{}", typenm, ++rm_cou[lr.type]);
 		else nr.name = FMT_FORMAT("Unknown [{}{}]", int('A' + lr.type), ++rm_cou[lr.type]);
 		
-// see AI_Const
+// see AI_Const::msg_engage_dist
 		if (lr.type == LevelTerrain::RM_FACTORY || lr.type == LevelTerrain::RM_LAB || lr.type == LevelTerrain::RM_STORAGE)
 			nr.ai_radio_cost = 4;
 		else if (lr.area.size().area() > 20*18)
@@ -326,12 +289,7 @@ void LevelControl::update_aps(bool forced)
 	for (size_t i=0; i < cells.size(); ++i)
 		aps_ps[i] = cells[i].is_wall ? 0 : 1;
 	
-	std::vector<std::pair<EntityIndex::Int, vec2i>> locks;
-	locks.reserve(templocks.size());
-	for (auto& p : templocks)
-		locks.emplace_back(p.first->index.to_int(), p.second);
-	
-	aps->update(size, std::move(aps_ps), std::move(locks));
+	aps->update(size, std::move(aps_ps));
 }
 void LevelControl::set_wall(vec2i pos, bool is_wall)
 {

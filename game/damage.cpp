@@ -13,12 +13,13 @@ float HealthPool::t_state() const
 {
 	return clampf_n( static_cast<float>(hp) / hp_max );
 }
-void HealthPool::apply(int amount, bool limited)
+int HealthPool::apply(int amount, bool limited)
 {
-	if (limited) hp = std::min(hp + amount, std::max(hp, hp_max));
-	else hp += amount;
+	if (limited) amount = std::min(amount, std::max(hp, hp_max) - hp);
+	hp += amount;
 	if (hp < 0) hp = 0;
 	if (amount < 0) tmo = regen_wait;
+	return amount;
 }
 void HealthPool::renew(std::optional<int> new_max)
 {
@@ -49,7 +50,7 @@ EC_Health::EC_Health(Entity& ent, int hp)
 bool EC_Health::apply(DamageQuant q)
 {
 	DamageType orig_type = q.type;
-	last_damaged = GameCore::step_len;
+	last_damaged = ent.core.get_step_time();
 	
 	if (q.amount < 0) hp.apply(-q.amount); // heal
 	else
@@ -251,14 +252,19 @@ void DmgShield::step(EC_Health& hlc)
 
 DmgArmor::DmgArmor(int hp_max, int hp)
 	: hp(hp, hp_max)
-{}
+{
+	k_self = 0.08;
+	k_mod_min = 1; // 0% blocked
+	k_mod_max = 0.3; // 70% blocked
+	maxmod_t = 0.4;
+}
 void DmgArmor::proc(EC_Health&, DamageQuant& q)
 {
 	if (!hp.is_alive()) return;
 	if (q.type != DamageType::Kinetic) return;
 	
 	int orig = q.amount;
-	q.amount *= lerp(k_mod_min, k_mod_max, hp.t_state());
+	q.amount *= lerp(k_mod_min, k_mod_max, std::min(1.f, hp.t_state() / maxmod_t));
 	
 	/*if (q.amount < dmg_thr) q.amount = 0;
 	else*/ hp.apply(-orig * k_self);

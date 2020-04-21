@@ -115,6 +115,7 @@ const char* PlayerInput::get_sys_name(Action v)
 	
 	case A_LASER_DESIG: return "desig";
 	case A_SHOW_MAP: return "map";
+	case A_HIGHLIGHT: return "highlight";
 	
 	case A_WPN_PREV: return "wpn_prev";
 	case A_WPN_NEXT: return "wpn_next";
@@ -199,6 +200,25 @@ PlayerInput& PlayerInput::get() {
 }
 PlayerInput::PlayerInput()
 {
+	set_defaults();
+	
+	// load settings
+	
+	if (LineCfg(gen_cfg_opts()).read(HARDPATH_KEYBINDS)) {
+		VLOGI("User keybinds loaded");
+		
+		for (auto& c : ctxs)
+		for (auto& b : c.binds)
+		for (auto& i : b.ims())
+			i->upd_name();
+	}
+	else
+		VLOGW("Using default keybinds");
+	
+	after_load();
+}
+void PlayerInput::set_defaults()
+{
 	// MENU
 	{
 		auto& binds = ctxs[CTX_MENU].binds;
@@ -217,6 +237,10 @@ PlayerInput::PlayerInput()
 			b.action = A_MENU_EXIT;
 			b.name = "Menu: exit";
 			b.im_key = SDL_SCANCODE_ESCAPE;
+		}{
+			auto& b = binds.emplace_back();
+			b.action = A_INTERACT;
+			b.name = "Menu: exit (use)";
 		}
 	}
 	
@@ -300,6 +324,13 @@ PlayerInput::PlayerInput()
 			b.im_key = SDL_SCANCODE_M;
 		}{
 			auto& b = binds.emplace_back();
+			b.action = A_HIGHLIGHT;
+			b.name = "Highlight";
+			b.descr = "Highlights objects and show stats";
+			b.type = BT_HELD;
+			b.im_key = SDL_SCANCODE_TAB;
+		}{
+			auto& b = binds.emplace_back();
 			b.action = A_WPN_PREV;
 			b.name = "Previous weapon";
 			b.type = BT_TRIGGER;
@@ -349,19 +380,17 @@ PlayerInput::PlayerInput()
 			b.im_key = SDL_SCANCODE_D;
 		}
 	}
-	
-	// load settings
-	
-	if (LineCfg(gen_cfg_opts()).read(HARDPATH_KEYBINDS)) {
-		VLOGI("User keybinds loaded");
-		
-		for (auto& c : ctxs)
-		for (auto& b : c.binds)
-		for (auto& i : b.ims())
-			i->upd_name();
-	}
-	else
-		VLOGW("Using default keybinds");
+}
+void PlayerInput::after_load()
+{
+	auto copy = [this](auto c1, auto a1, auto c2, auto a2){
+		Bind* b1 = ctxs[c1].get(a1);
+		Bind* b2 = ctxs[c2].get(a2);
+		if (!b1 || !b2) return;
+		for (size_t i=0; i<Bind::ims_num; ++i)
+			(b1->ims()[i])->set_from(*(b2->ims()[i]));
+	};
+	copy(CTX_MENU, A_INTERACT, CTX_GAME, A_INTERACT);
 }
 void PlayerInput::on_event(const SDL_Event& ev)
 {

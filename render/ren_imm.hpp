@@ -40,6 +40,7 @@ public:
 		Camera* cam = nullptr; ///< Camera pointer; if null context isn't used
 		Shader* sh  = nullptr; ///< Main shader; if null context isn't used
 		Shader* sh_text = nullptr; ///< Required for draw_text(), may be null
+		bool const_text_size = true; ///< If true, text size is not affected by camera zoom
 	};
 	
 	static const uint32_t White = static_cast<uint32_t>(-1);
@@ -97,6 +98,8 @@ public:
 	virtual void draw_text (vec2fp at, TextRenderInfo& tri, uint32_t clr, bool centered = false, float size_k = 1.f) = 0;
 	
 	
+	
+	// Note: coefficient is corrected for world context
 	
 	/// Draw ASCII string at specified coordinates
 	virtual void draw_text (vec2fp at, std::string_view str, uint32_t clr = White, bool centered = false, float size_k = 1.f, FontIndex font = static_cast<FontIndex>(0)) = 0;

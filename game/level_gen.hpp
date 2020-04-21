@@ -52,6 +52,7 @@ struct LevelTerrain
 		Room* room = nullptr; ///< To which room belongs (if any)
 		
 		int tmp; ///< May be used for various algorithms
+		int custom_id = 0; ///< Set from image color (RGB; always zero if not loaded from image)
 	};
 	struct Corridor
 	{
@@ -68,13 +69,6 @@ struct LevelTerrain
 	std::vector<std::vector<vec2fp>> ls_wall; ///< Line segment loops representing walls
 	std::vector<std::pair<vec2fp, vec2fp>> ls_grid; ///< Line segments representing background grid
 	
-	enum DbgSpawn
-	{
-		DBG_SPAWN_PLAYER,
-		DBG_SPAWN_DRONE
-	};
-	std::vector<std::pair<vec2i, DbgSpawn>> dbg_spawns; ///< If set, normal spawning doesn't happen
-	
 	
 	
 	struct GenParams
@@ -86,16 +80,13 @@ struct LevelTerrain
 	/// Generates level, never returns null
 	static LevelTerrain* generate(const GenParams& pars);
 	
-	/// Loads debug level from image. Throws on error. Never returns null
-	static LevelTerrain* load_test(const char *filename);
-	
 	///
 	ImageInfo draw_grid(bool is_debug) const;
 	
 	/// Saves level as image
-	void test_save(const char *prefix = "level_test", bool img_line = true, bool img_grid = true) const;
-	
-private:
+	void debug_save(const char *prefix = "level_test", bool img_line = true, bool img_grid = true) const;
+
+// internal
 	void find_corridors();
 	std::vector<std::vector<vec2fp>> vectorize() const;
 	std::vector<std::pair<vec2fp, vec2fp>> gen_grid() const;

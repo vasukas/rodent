@@ -7,33 +7,37 @@
 struct AppSettings
 {
 	std::string path_log; ///< Log filename
+	std::string path_log_date; ///< Log filename template for date
 	std::string path_resources; ///< Set as current dir; includes trailing slash
 	std::string path_settings; ///< Config filename
 	
-	// renderer options
-	vec2i wnd_size = {1024, 600};
-	bool wnd_size_max = false;
-	int fscreen = 0;
+	int userdata_size_limit; ///< kilobytes
 	
-	//
-	int target_fps = 30;
-	int set_vsync = 1;
+	// renderer options
+	vec2i wnd_size;
+	bool wnd_size_max;
+	int fscreen;
+	int target_fps;
+	int set_vsync;
 	
 	// font options
-	std::string font_path = "font.ttf";
-	std::string font_dbg_path = {};
-	float font_pt = 16;
-	float font_dbg_pt = 16;
-	int font_supersample = 2;
+	std::string font_path;
+	std::string font_dbg_path;
+	float font_pt;
+	float font_dbg_pt;
+	int font_supersample;
 	
 	// renderer effects etc
-	float cam_pp_shake_str = 0.01;
-	int interp_depth = 3;
+	float cam_pp_shake_str;
+	int interp_depth;
+	
+	enum AAL_Type {AAL_OldFuzzy, AAL_CrispGlow, AAL_Clear};
+	AAL_Type aal_type;
 	
 	// game
-	int cursor_info_flags = 1;
-	bool plr_status_blink = false;
-	bool plr_status_flare = false;
+	int cursor_info_flags;
+	bool plr_status_blink;
+	bool plr_status_flare;
 	
 	
 	
@@ -41,6 +45,7 @@ struct AppSettings
 	static AppSettings& get_mut();
 	
 	bool load();
+	void init_default();
 	
 private:
 	AppSettings();

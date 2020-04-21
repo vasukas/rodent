@@ -195,8 +195,6 @@ public:
 		glDisable(GL_CULL_FACE);
 		glDisable(GL_DEPTH_TEST);
 		
-		glEnable(GL_SCISSOR_TEST);
-		
 		
 		
 		ndc_screen2_obj = new GLA_VertexArray;
@@ -234,6 +232,9 @@ public:
 		SDL_GL_DeleteContext( glctx );
 		SDL_DestroyWindow( wnd );
 		if (wnd) SDL_QuitSubSystem( SDL_INIT_VIDEO );
+		
+		tasks_interrupted = true;
+		task_cv.notify_all();
 		
 		rct = nullptr;
 	}
@@ -427,43 +428,38 @@ public:
 	
 	
 	
-	std::vector<std::pair<bool, std::function<void()>>> tasks;
+	std::vector<std::pair<bool, callable_ref<void()>*>> tasks;
 	std::condition_variable task_cv;
 	std::mutex task_m;
+	bool tasks_interrupted = false;
 	
-	Task exec_task(std::function<void()> f)
+	void exec_task(callable_ref<void()> f)
 	{
 		if (mainthr_id == std::this_thread::get_id()) {
 			f();
-			return {};
+			return;
 		}
-		std::unique_lock lock(task_m);
-		
 		size_t i=0;
-		for (; i < tasks.size(); ++i) if (!tasks[i].second) break;
-		if (i == tasks.size()) tasks.emplace_back();
+		{
+			std::unique_lock lock(task_m);
+			for (; i < tasks.size(); ++i) if (!tasks[i].second) break;
+			if (i == tasks.size()) tasks.emplace_back();
+			tasks[i] = std::make_pair(false, &f);
+		}
 		
-		tasks[i] = std::make_pair(false, std::move(f));
-		return i;
-	}
-	bool task_check(size_t i, bool do_lock)
-	{
-		std::unique_lock<std::mutex> lock;
-		if (do_lock) lock = std::unique_lock(task_m);
-		
-		if (tasks[i].first) {
-			tasks[i] = {};
+		std::unique_lock lock(task_m);
+		task_cv.wait(lock, [&]
+		{
+			if (tasks_interrupted) return true;
+			if (!tasks[i].first) return false;
 			
+			tasks[i].second = nullptr;
 			for (auto& t : tasks) if (t.second) return true;
 			tasks.clear();
 			return true;
-		}
-		return false;
-	}
-	void task_wait(size_t i)
-	{
-		std::unique_lock lock(task_m);
-		task_cv.wait(lock, [&]{ return task_check(i, false); });
+		});
+		if (tasks_interrupted)
+			throw std::runtime_error("RenderControl::exec_task() interrupted");
 	}
 	void proc_tasks()
 	{
@@ -471,7 +467,7 @@ public:
 		for (auto& t : tasks)
 		{
 			if (t.second && !t.first) {
-				t.second();
+				(*t.second)();
 				t.first = true;
 			}
 		}
@@ -511,29 +507,4 @@ vec2i RenderControl::get_size()
 	int w, h;
 	SDL_GetWindowSize(rct->wnd, &w, &h);
 	return {w, h};
-}
-
-
-
-bool RenderControl::Task::is_ready()
-{
-	if (!i) return true;
-	if (RenderControl::get().task_check(*i)) {
-		i.reset();
-		return true;
-	}
-	return false;
-}
-void RenderControl::Task::wait()
-{
-	if (i) RenderControl::get().task_wait(*i);
-}
-RenderControl::Task::Task(Task&& t)
-{
-	i = t.i;
-	t.i.reset();
-}
-RenderControl::Task::~Task()
-{
-	wait();
 }

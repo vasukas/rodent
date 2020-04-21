@@ -171,6 +171,7 @@ struct EC_Equipment : EComp
 	
 	Weapon& get_wpn(); ///< Returns current weapon
 	void add_wpn(std::unique_ptr<Weapon> wpn);
+	void replace_wpn(size_t index, std::unique_ptr<Weapon> new_wpn); ///< Meant for debug
 	auto& raw_wpns() {return wpns;} ///< Do NOT erase anything
 	
 	Ammo& get_ammo(AmmoType type) {return ammos[static_cast<size_t>(type)];}

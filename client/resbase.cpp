@@ -1,5 +1,6 @@
 #include <future>
 #include "core/hard_paths.hpp"
+#include "core/settings.hpp"
 #include "game/common_defs.hpp"
 #include "render/control.hpp"
 #include "render/ren_aal.hpp"
@@ -92,13 +93,28 @@ ResBase_Impl::ResBase_Impl()
 }
 void ResBase_Impl::init_ren_wait()
 {
-	if (!future_init.valid()) return;
+	if (!future_init.valid()) {
+		future_init = std::async(std::launch::async, [this]{ return init_func(); });
+	}
 	auto mlns = future_init.get();
+	
+	float kw, ka;
+	switch (AppSettings::get().aal_type)
+	{
+	case AppSettings::AAL_OldFuzzy:
+	case AppSettings::AAL_Clear:
+		kw = 1; ka = 3;
+		break;
+		
+	case AppSettings::AAL_CrispGlow:
+		kw = 0.1; ka = 1.5;
+		break;
+	}
 	
 	auto& ren = RenAAL::get();
 	for (size_t i = MODEL_LEVEL_STATIC + 1; i < MODEL_TOTAL_COUNT_INTERNAL; ++i)
 	{
-		for (auto& s : mlns[i].ls) ren.inst_add(s, false, mlns[i].width);
+		for (auto& s : mlns[i].ls) ren.inst_add(s, false, mlns[i].width * kw, ka);
 		if (i != ren.inst_add_end())
 			throw std::logic_error(std::to_string(i) + " - index mismatch (internal error)");
 	}
@@ -576,6 +592,7 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 	    {MODEL_WORKER, "worker"},
 	    {MODEL_CAMPER, "camper"},
 	    {MODEL_HUNTER, "hunter"},
+	    {MODEL_HACKER, "hacker"},
 	    
 	    {MODEL_ARMOR, "armor"},
 	    {MODEL_TERMINAL_KEY, "term_key"},
@@ -755,7 +772,8 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 	scale_to(MODEL_DRONE, hsz_drone);
 	scale_to(MODEL_WORKER, hsz_drone_big);
 	scale_to(MODEL_CAMPER, hsz_drone_big);
-	scale_to(MODEL_HUNTER, hsz_drone_big);
+	scale_to(MODEL_HACKER, hsz_drone_big);
+	scale_to(MODEL_HUNTER, hsz_drone_hunter);
 	
 	scale_to(MODEL_ARMOR, hsz_supply);
 	scale_to(MODEL_TERMINAL_KEY, hsz_supply_big);
@@ -857,7 +875,9 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 	const int parts_aura[] = {
 	    MODEL_PC_RAT,
         MODEL_PC_SHLD,
-        MODEL_TELEPAD
+        MODEL_TELEPAD,
+	    MODEL_HUNTER,
+	    MODEL_ASSEMBLER
 	};
 	for (auto& i : parts_aura) {
 		ld_me[i][ME_AURA].reset( new Aura(mlns[i].ls) );
