@@ -74,10 +74,12 @@ public:
 			
 			dps.set(std::min(0.5, 1 / (ft.show_len + ft.fade_len).seconds()), 0);
 			dps.fastrotate( rnd_stat().range_n2() * M_PI );
+			dps *= ft.spread_strength;
 		}
 	};
 	
 	GameCore* core;
+	const LevelTerrain* terrain;
 	std::vector<PresCommand> cmds_queue;
 	std::vector<PartDelay> part_del;
 	
@@ -102,13 +104,17 @@ public:
 	
 	int max_interp_frames = 0;
 	RAII_Guard menu_g;
+	RAII_Guard sett_g;
 	
 	
 	
 	GamePresenter_Impl(const InitParams& pars)
 	{
 		core = pars.core;
-		reinit_resources(*pars.lvl);
+		terrain = pars.lvl;
+		sett_g = AppSettings::get_mut().add_cb([this]{
+			reinit_resources(*terrain);
+		});
 		
 		menu_g = vig_reg_menu(VigMenu::DebugRenderer, [this]{
 			vig_label_a("Interp frames (max): {}\n", max_interp_frames);
@@ -196,6 +202,7 @@ public:
 			else {
 				std::thread thr([](ImageInfo img)
 				{
+					set_this_thread_name("screenshot");
 					img.convert(ImageInfo::FMT_RGB);
 					img.vflip();
 					std::string s = FMT_FORMAT("debug_{}.png", date_time_fn());

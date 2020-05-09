@@ -3,6 +3,7 @@
 #include "core/hard_paths.hpp"
 #include "game/game_core.hpp"
 #include "game/game_info_list.hpp"
+#include "game/game_mode.hpp"
 #include "game/level_ctr.hpp"
 #include "game/level_gen.hpp"
 #include "utils/image_utils.hpp"
@@ -73,42 +74,6 @@ void EDeathRay::step()
 
 
 
-class ETutorialRespawner : public Entity
-{
-	EC_VirtualBody phy;
-	EntityIndex child;
-	TimeSpan tmo;
-	void step() override;
-	
-public:
-	std::function<Entity*()> f;
-	TimeSpan period = TimeSpan::seconds(8);
-	
-	ETutorialRespawner(GameCore& core, vec2fp pos, std::function<Entity*()> f);
-	EC_Position& ref_pc() override {return phy;}
-};
-ETutorialRespawner::ETutorialRespawner(GameCore& core, vec2fp pos, std::function<Entity*()> f_in)
-    : Entity(core), phy(*this, Transform{pos}), f(std::move(f_in))
-{
-	child = f()->index;
-	reg_this();
-}
-void ETutorialRespawner::step()
-{
-	if (!child) {
-		tmo -= core.step_len;
-		if (tmo.is_negative()) {
-			child = f()->index;
-			GamePresenter::get()->effect(FE_SPAWN, {Transform{get_pos()}});
-		}
-	}
-	else if (!core.valid_ent(child)) {
-		tmo = period;
-	}
-}
-
-
-
 class ETutorialScript : public Entity
 {
 	EVS_SUBSCR;
@@ -150,6 +115,38 @@ void ETutorialScript::on_cnt(const CollisionEvent& ev)
 		tele2->activate(false);
 		destroy();
 	}
+}
+
+
+
+class ETutorialFinal final : public EInteractive
+{
+	EC_Physics phy;
+	
+public:
+	ETutorialFinal(GameCore& core, vec2fp at);
+	EC_Position& ref_pc() override {return phy;}
+	
+	std::pair<bool, std::string> use_string() override;
+	void use(Entity* by) override;
+};
+ETutorialFinal::ETutorialFinal(GameCore& core, vec2fp at)
+    :
+	EInteractive(core),
+    phy(*this, bodydef(at, false))
+{
+	phy.add(FixtureCreate::circle( fixtdef(0.5, 0), GameConst::hsz_termfin, 0,
+	                               FixtureInfo{FixtureInfo::TYPEFLAG_INTERACTIVE | FixtureInfo::TYPEFLAG_OPAQUE}));
+	add_new<EC_RenderModel>(MODEL_TERMINAL_FIN, FColor(1, 0.8, 0.4));
+	ui_descr = "Control terminal";
+}
+std::pair<bool, std::string> ETutorialFinal::use_string()
+{
+	return {true, "Exit simulation"};
+}
+void ETutorialFinal::use(Entity*)
+{
+	dynamic_cast<GameMode_Tutorial&>(core.get_gmc()).terminal_use();
 }
 
 
@@ -326,7 +323,7 @@ void tutorial_spawn(GameCore& core, LevelTerrain& lt)
 				break;
 				
 			case 0xffff00: // dummy
-				new ETutorialRespawner(core, pos, [core = &core, pos = pos]{return new ETutorialDummy(*core, pos);});
+				new ERespawnFunc(core, pos, [core = &core, pos = pos]{return new ETutorialDummy(*core, pos);});
 				break;
 				
 			case 0xff00ff: // ammo
@@ -350,7 +347,7 @@ void tutorial_spawn(GameCore& core, LevelTerrain& lt)
 				break;
 				
 			case 0x0000ff: // turret
-				new ETutorialRespawner(core, pos, [core = &core, pos = pos]{return new ETurret(*core, pos, TEAM_BOTS);});
+				new ERespawnFunc(core, pos, [core = &core, pos = pos]{return new ETurret(*core, pos, TEAM_BOTS);});
 				break;
 				
 			default:
@@ -402,7 +399,7 @@ void tutorial_spawn(GameCore& core, LevelTerrain& lt)
 			break;
 			
 		case 0xff00ff: // objective
-			new EFinalTerminal(core, pos);
+			new ETutorialFinal(core, pos);
 			break;
 			
 		case 0x00ff00: // player door
@@ -499,7 +496,9 @@ void tutorial_spawn(GameCore& core, LevelTerrain& lt)
 	    
 	    {8, "Dummy. Displays amount of damage on being hit."},
 	    
-	    {9, "Hold 'TAB' to highlight nearby message projectors"},
+	    {9, "Hold 'TAB' to show info about nearby objects.\n"},
+	    
+	    // 10
 	    
 	    {11, "Ammo packs"},
 	    
@@ -521,7 +520,9 @@ void tutorial_spawn(GameCore& core, LevelTerrain& lt)
 			 "If you do it while it's looking in opposite direction,\n"
 			 "it won't detect you."},
 	    
-	    {16, "Level map can also be viewed by pressing 'M'"},
+	    {16, "Level map can be viewed by pressing 'M'.\n"
+	         "Hold TAB while looking to highlight visited rooms.\n"
+			 "Drag with mouse to scroll."},
 	    
 	    {17, "There's another teleport - but you can't use it\n"
 			 "until you've activated it. To do that,\n"
@@ -534,7 +535,8 @@ void tutorial_spawn(GameCore& core, LevelTerrain& lt)
 			 "When you're done, next stage is available with teleporter.\n\n"
 			 "Reminder: left/right button to shoot in primary/secondary mode,\n"
 			 "mouse wheel or 1-6 keys to change current weapon,\n"
-			 "charge shots where possible by holding fire button."},
+			 "charge shots where possible by holding fire button.\n\n"
+			 "Press 'R' to switch laser designator."},
 	    
 	    {20, "Simulation of real combat conditions.\n"
 	         "Get to the small room on the other side and activate control terminal.\n"

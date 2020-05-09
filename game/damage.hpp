@@ -60,7 +60,7 @@ private:
 
 struct EC_Health : EComp
 {
-	ev_signal<DamageQuant> on_damage; ///< Contains original type and calculated damage (sent on damage >= 0)
+	ev_signal<DamageQuant> on_damage; ///< Contains original type and calculated damage (even if zero)
 	
 	
 	EC_Health(Entity& ent, int hp);

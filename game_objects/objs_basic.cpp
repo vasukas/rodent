@@ -203,7 +203,7 @@ void EPickable::on_cnt(const CollisionEvent& ce)
 		},
 		[&](SecurityKey&)
 		{
-			core.get_gmc().inc_objective();
+			dynamic_cast<GameMode_Normal&>(core.get_gmc()).inc_objective();
 			return true;
 		}
 	}, val);
@@ -350,22 +350,23 @@ EFinalTerminal::EFinalTerminal(GameCore& core, vec2fp at)
 }
 void EFinalTerminal::step()
 {
-	if (core.get_gmc().get_state() != GameModeCtr::State::Booting) {
+	auto& gmc = dynamic_cast<GameMode_Normal&>(core.get_gmc());
+	if (gmc.get_state() != GameMode_Normal::State::Booting) {
 		unreg_this();
 	}
 	else {
-		float t = core.get_gmc().get_boot_left().seconds();
+		float t = gmc.get_boot_left().seconds();
 		GamePresenter::get()->dbg_text(get_pos(), FMT_FORMAT("Boot-up in progress: {:2.1f}", t));
 	}
 }
 std::pair<bool, std::string> EFinalTerminal::use_string()
 {
-	auto state = core.get_gmc().get_state();
-	if		(state == GameModeCtr::State::NoTokens)  return {0, "Security tokens required"};
-	else if (state == GameModeCtr::State::HasTokens) return {1, "Activate control terminal"};
-	else if (state == GameModeCtr::State::Booting)   return {0, "Boot-up in progress"};
-	else if (state == GameModeCtr::State::Cleanup)   return {0, "Hostile elements detected"};
-	else if (state == GameModeCtr::State::Final)     return {1, "Gain level control"};
+	auto state = dynamic_cast<GameMode_Normal&>(core.get_gmc()).get_state();
+	if		(state == GameMode_Normal::State::NoTokens)  return {0, "Security tokens required"};
+	else if (state == GameMode_Normal::State::HasTokens) return {1, "Activate control terminal"};
+	else if (state == GameMode_Normal::State::Booting)   return {0, "Boot-up in progress"};
+	else if (state == GameMode_Normal::State::Cleanup)   return {0, "Hostile elements detected"};
+	else if (state == GameMode_Normal::State::Final)     return {1, "Gain level control"};
 	return {};
 }
 void EFinalTerminal::use(Entity* by)
@@ -373,18 +374,20 @@ void EFinalTerminal::use(Entity* by)
 	if (!by || !core.get_pmg().is_player(*by))
 		return;
 	
-	auto state = core.get_gmc().get_state();
-	if		(state == GameModeCtr::State::NoTokens) {
+	auto& gmc = dynamic_cast<GameMode_Normal&>(core.get_gmc());
+	auto state = gmc.get_state();
+	
+	if		(state == GameMode_Normal::State::NoTokens) {
 		GamePresenter::get()->add_float_text({ get_pos(), "Access denied" });
 	}
-	else if (state == GameModeCtr::State::HasTokens) {
+	else if (state == GameMode_Normal::State::HasTokens) {
 		GamePresenter::get()->add_float_text({ get_pos(), "Boot sequence initialized" });
 		reg_this();
-		core.get_gmc().terminal_use();
+		gmc.terminal_use();
 	}
-	else if (state == GameModeCtr::State::Final) {
+	else if (state == GameMode_Normal::State::Final) {
 		GamePresenter::get()->add_float_text({ get_pos(), "Terminal active" });
-		core.get_gmc().terminal_use();
+		gmc.terminal_use();
 	}
 }
 
@@ -464,7 +467,9 @@ void ETeleport::activate(bool menu)
 	{
 		i = core.get_info().find_teleport(*this);
 		core.get_info().set_menu_teleport(i);
-		core.get_gmc().on_teleport_activation();
+		
+		if (auto p = dynamic_cast<GameMode_Normal*>(&core.get_gmc()))
+			p->on_teleport_activation();
 	}
 	else if (!activated)
 		i = core.get_info().find_teleport(*this);
@@ -707,12 +712,15 @@ EAssembler::~EAssembler()
 		
 		bool msg = true;
 		for (auto& p : list) {
-			if (core.get_lc().ref_room(p.prod_pos) == core.get_lc().ref_room(get_pos())) {
+			if (core.get_lc().get_room(p.prod_pos) == core.get_lc().get_room(get_pos())) {
 				msg = false;
 				break;
 			}
 		}
-		if (msg) core.get_gmc().factory_down(list.empty());
+		if (msg) dynamic_cast<GameMode_Normal&>(core.get_gmc()).factory_down(list.empty());
+		
+		ref<EC_RenderPos>().parts(FE_CIRCLE_AURA,   {{}, 3.f, FColor(0.8, 1, 1, 1.5)});
+		ref<EC_RenderPos>().parts(FE_WPN_EXPLOSION, {{}, 2.f});
 	}
 }
 
@@ -752,7 +760,34 @@ void ETutorialDummy::on_dmg(const DamageQuant& q)
 	FloatText text;
 	text.at = q.wpos.value_or(get_pos());
 	text.str = std::to_string(q.amount);
-	text.color = 0x40ff'ffff;
+	text.color = hlc.get_hp().is_alive() ? 0x40ff'ffff : 0xff40'40ff;
 	text.size = 2;
+	text.spread_strength = 5;
 	GamePresenter::get()->add_float_text(std::move(text));
+}
+
+
+
+ERespawnFunc::ERespawnFunc(GameCore& core, vec2fp pos,
+                           std::function<Entity*()> f_in, TimeSpan initial_delay)
+    : Entity(core), phy(*this, Transform{pos}), f(std::move(f_in))
+{
+	tmo = initial_delay;
+	if (!tmo.is_positive()) {
+		child = f()->index;
+	}
+	reg_this();
+}
+void ERespawnFunc::step()
+{
+	if (!child) {
+		tmo -= core.step_len;
+		if (tmo.is_negative()) {
+			child = f()->index;
+			GamePresenter::get()->effect(FE_SPAWN, {Transform{get_pos()}});
+		}
+	}
+	else if (!core.valid_ent(child)) {
+		tmo = period;
+	}
 }

@@ -121,6 +121,7 @@ void ResBase_Impl::init_ren_wait()
 }
 ResBase_Impl::InitResult ResBase_Impl::init_func()
 {
+	set_this_thread_name("resbase init");
 	InitResult initres;
 	
 	struct Explosion : ParticleGroupGenerator
@@ -919,6 +920,7 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 	
 	tex_async = std::async(std::launch::async, [this, mlns = std::move(mlns)] ()->Texture*
 	{
+		set_this_thread_name("resbase glow");
 		TimeSpan time0 = TimeSpan::since_start();
 	        
 		struct Info

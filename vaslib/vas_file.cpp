@@ -378,9 +378,9 @@ public:
 		return true;
 	}
 };
-std::unique_ptr<File> File::open_ptr( const char *filename, int flags )
+std::unique_ptr<File> File::open_ptr( const char *filename, int flags, bool throw_on_error )
 {
-	return std::unique_ptr<File> (open(filename, flags, true));
+	return std::unique_ptr<File> (open(filename, flags, throw_on_error));
 }
 File* File::open( const char *filename, int flags, bool throw_on_error )
 {
@@ -542,7 +542,7 @@ File* File::proxy_region( uint64_t from, uint64_t length, bool writeable )
 
 MemoryFile::MemoryFile( size_t res_size )
 {
-	mem = static_cast<uint8_t*> (malloc(res_size));
+	mem = static_cast<uint8_t*> (std::malloc(res_size));
 	size = 0;
 	cap = res_size;
 	ptr = 0;
@@ -606,10 +606,20 @@ MemoryFile* MemoryFile::from_copy( const MemoryFile& file, size_t offset, size_t
 	f->a_write = writeable;
 	return f;
 }
+MemoryFile* MemoryFile::from_malloc( void *mem, size_t size, ssize_t capacity )
+{
+	MemoryFile* f = new MemoryFile;
+	f->mem = static_cast<uint8_t*>(mem);
+	f->size = size;
+	f->cap = capacity < 0 ? size : capacity;
+	f->a_write = true;
+	f->a_expand = true;
+	return f;
+}
 MemoryFile::~MemoryFile()
 {
 	if (a_expand)
-		free( mem );
+		std::free( mem );
 }
 MemoryFile::MemoryFile( MemoryFile&& f ) noexcept
 {
@@ -719,6 +729,11 @@ std::unique_ptr <uint8_t[], MemoryFile::malloc_deleter> MemoryFile::release( siz
 	reset( true );
 	
 	return std::unique_ptr <uint8_t[], malloc_deleter>( ret );
+}
+void MemoryFile::shrink_to_fit()
+{
+	if (a_expand)
+		realloc(size);
 }
 bool MemoryFile::realloc(size_t n_cap)
 {

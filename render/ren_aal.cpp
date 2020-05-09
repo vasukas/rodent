@@ -29,8 +29,10 @@ struct Noise
 		
 		tex_async = std::async(std::launch::async, [this]
 		{
+			set_this_thread_name("aal grid gen");
+			
 			std::vector<uint8_t> img_px( size * size * depth * 3 );
-			TimeSpan time0 = TimeSpan::since_start();
+			TimeSpan time0 = TimeSpan::current();
 			
 			std::vector<float> prev_vals( size * size * 2 );
 			RandomGen rnd;
@@ -75,7 +77,7 @@ struct Noise
 				px[2] = px_val >> 8;
 			}
 			
-			VLOGI("RenAAL generation time: {:.3f} seconds", (TimeSpan::since_start() - time0).seconds());
+			VLOGI("RenAAL generation time: {:.3f} seconds", (TimeSpan::current() - time0).seconds());
 			return img_px;
 		});
 	}
@@ -175,6 +177,9 @@ public:
 	std::unique_ptr<Shader> fbo_sh;
 	RAII_Guard fbo_g;
 	Noise fbo_noi;
+	
+	//
+	RAII_Guard sett_g;
 	
 	
 	
@@ -280,7 +285,9 @@ public:
 		sh      = Shader::load("aal", {}, true);
 		sh_inst = Shader::load("aal_inst", {}, true);
 		
-		reinit_glow();
+		sett_g = AppSettings::get_mut().add_cb([this]{
+			reinit_glow();
+		});
 		
 		// for grid
 		

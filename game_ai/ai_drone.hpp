@@ -30,7 +30,7 @@ public:
 		std::vector<vec2fp> pts;
 		size_t at = 0;
 		TimeSpan tmo = {};
-		LevelCtrRoom* reg = nullptr;
+		const LevelCtrRoom* reg = nullptr;
 		
 		void next();
 		~IdlePatrol();
@@ -111,6 +111,7 @@ public:
 	
 	bool is_camper() const {return pars->is_camper || !mov || ignore_battle;}
 	const AI_DroneParams& get_pars() const {return *pars;}
+	AI_DroneParams& mut_pars(); ///< Throws if params are not unique
 	
 	State& get_state() {return state_stack.back();}
 	std::string get_dbg_state() const;

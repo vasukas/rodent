@@ -6,7 +6,7 @@
 
 TeleportInfo::TeleportInfo(ETeleport& ent)
     : ent(ent), room(*[&]{
-		auto r = ent.core.get_lc().ref_room(ent.get_pos());
+		auto r = ent.core.get_lc().get_room(ent.get_pos());
 		if (!r) throw std::runtime_error("TeleportInfo:: no room");
 		return r;
 	}())

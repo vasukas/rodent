@@ -164,8 +164,6 @@ public:
 	TimeSpan hide_pause_until; ///< Pause stub is not drawn until after that time
 	bool is_first_frame = true;
 	
-	std::shared_ptr<LevelTerrain> level_terrain;
-	
 	// interface
 	
 	CameraControl cctr;
@@ -181,10 +179,10 @@ public:
 	
 	TimeSpan since_victory;
 	
-	SmoothBlink boot_blink;
-	float prev_boot_level = 2; // >1, to flash on appear
+	SmoothBlink gm_status_blink;
+	float gm_prev_level = 2; // >1, to flash on appear
 	
-	bool is_tutorial = false;
+	std::optional<vec2i> mouse_drag_prev;
 	
 	// debug controls
 	
@@ -223,20 +221,18 @@ public:
 		PlayerInput::get().set_context(PlayerInput::CTX_GAME);
 		init_greet = std::move(pars.init_greet);
 		allow_cheats = pars.allow_cheats;
-		is_tutorial = pars.is_tutorial;
 		
 		crosshair_tex.reset(Texture::load(HARDPATH_CROSSHAIR_IMG));
 		
 		if (pars.debug_menu)
 		{
-			dbg_rend_g = vig_reg_menu(VigMenu::DebugRenderer, [this]
+			dbg_rend_g = vig_reg_menu(VigMenu::DebugRenderer, []
 			{
 				auto& t = AppSettings::get_mut().aal_type;
 				auto bt = [&](auto type, auto text){
 					if (vig_button(text, 0, t == type)) {
 						t = type;
-						RenAAL::get().reinit_glow();
-						GamePresenter::get()->reinit_resources(*level_terrain);
+						AppSettings::get_mut().trigger_cbs();
 					}
 				};
 				vig_label("AAL glow");
@@ -329,7 +325,7 @@ public:
 						
 						if (vig_button("Get all keys")) {
 							for (int i=0; i<3; ++i)
-								core.get_gmc().inc_objective();
+								dynamic_cast<GameMode_Normal&>(core.get_gmc()).inc_objective();
 						}
 						if (vig_button("Get 500 armor")) {
 							new EPickable(core, pos, EPickable::ArmorShard{500});
@@ -369,7 +365,7 @@ public:
 	}
 	void init()
 	{
-		std::shared_ptr<LevelTerrain> lt;
+		const LevelTerrain* lt;
 		{
 			auto lock = gctr.core_lock();
 			lt = gctr.get_terrain();
@@ -397,10 +393,8 @@ public:
 		RenAAL::get().draw_grid = true;
 		Postproc::get().tint_seq({}, FColor(0,0,0,0));
 		
-		if (lt) {
-			lmap.reset( LevelMap::init(*lt) );
-			level_terrain = std::move(lt);
-		}
+		if (true)
+			lmap.reset(LevelMap::init(gctr.get_core(), *lt));
 	}
 	void on_leave()
 	{
@@ -525,43 +519,32 @@ public:
 		}
 		else if (auto st = std::get_if<GameControl::CS_End>(&gstate))
 		{
-			if (st->is_error) {
-				LOG_THROW("Game exception - {}", st->message);
+			if (!st->err_msg.empty()) {
+				LOG_THROW("Game exception - {}", st->err_msg);
 				// exits
-			}
-			if (!st->message.empty())
-			{
-				draw_text_message(st->message);
-				return;
 			}
 			
 			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
 			GamePresenter::get()->render(frame_time, passed);
 			RenImm::get().set_context(RenImm::DEFCTX_UI);
 			
-			if (st->won == GameModeCtr::State::TutComplete) {
+			if (st->fs.type == GameModeCtr::FinalState::End) {
 				if (!since_victory.is_positive()) {
 					Postproc::get().tint_reset();
 					Postproc::get().tint_seq(TimeSpan::seconds(3), FColor(0,0,0));
 				}
-				draw_text_message("Training session completed");
 			}
 			else {
 				RenImm::get().draw_rect({{}, RenderControl::get_size(), false}, 0xa0);
 				
-				bool is_win = (st->won == GameModeCtr::State::Won);
-				
 				if (winrars.empty()) {
+					bool is_win = (st->fs.type == GameModeCtr::FinalState::Won);
 					for (int i=0; i<40; ++i)
 						winrars.emplace_back(is_win);
 				}
 				for (auto& w : winrars) w.draw();
-				
-				if (is_win)
-					draw_text_message("Game completed.\n\nA WINRAR IS YOU.");
-				else
-					draw_text_message("Terminal destroyed.\n\nYOU LOST.");
 			}
+			draw_text_message(st->fs.msg);
 			
 			since_victory += passed;
 			if (since_victory > TimeSpan::seconds(2)) {
@@ -605,6 +588,17 @@ public:
 			auto& pinp = PlayerInput::get();
 			pinp.update(PlayerInput::CTX_MENU);
 			auto& inpst = pinp.get_state(PlayerInput::CTX_GAME);
+			
+			auto upd_mouse_drag = [&](PlayerInput::ContextMode ctx, PlayerInput::Action act) {
+				vec2i diff = {};
+				auto& st = pinp.get_state(ctx);
+				if (!st.is[act]) mouse_drag_prev.reset();
+				else {
+					if (mouse_drag_prev) diff = st.cursor - mouse_drag_prev.value_or(st.cursor);
+					mouse_drag_prev = st.cursor;
+				}
+				return diff;
+			};
 			
 			// set camera
 			
@@ -683,11 +677,9 @@ public:
 			
 			// draw objective state
 			
-			if (core.get_gmc().get_state() == GameModeCtr::State::Booting)
+			auto draw_objective_line = [&](float level, bool do_blink, std::string_view text, bool alt_clr = false)
 			{
-				float lvl = core.get_gmc().get_boot_level();
-				float t_lvl = boot_blink.get_sine(lvl < prev_boot_level);
-				prev_boot_level = lvl;
+				float t_lvl = gm_status_blink.get_sine(do_blink);
 				
 				Rectfp at = {};
 				float lht = RenText::get().line_height(FontIndex::Mono);
@@ -696,17 +688,49 @@ public:
 				vec2fp ctr = at.center();
 				
 				FColor clr = FColor(1, 0.2, 0, 0.8);
-				at.size({ at.size().x * lvl, at.size().y });
+				if (alt_clr) clr = FColor(0.1, 0.6, 0.1, 0.8);
+				
+				at.size({ at.size().x * level, at.size().y });
 				RenImm::get().draw_rect(at, (clr * (1 + 0.5 * (t_lvl - 1))).to_px());
 				at.a.x = at.b.x;
 				at.b.x = RenderControl::get_size().x - RenderControl::get_size().x/4;
 				RenImm::get().draw_rect(at, (clr * t_lvl * 0.7).to_px());
 				
-				int secs = core.get_gmc().get_boot_left().seconds();
-				RenImm::get().draw_text(ctr, FMT_FORMAT("{:3} seconds @ {:3}%", secs, int(100 * lvl)), 0x00c0c0ff, true);
+				RenImm::get().draw_text(ctr, text, 0x00c0c0ff, true);
+			};
+			
+			if (auto gmc = dynamic_cast<GameMode_Normal*>(&core.get_gmc()))
+			if (gmc->get_state() == GameMode_Normal::State::Booting)
+			{
+				float lvl = gmc->get_boot_level();
+				draw_objective_line(lvl, lvl < gm_prev_level,
+				                    FMT_FORMAT("{:3} seconds @ {:3}%",
+				                               int(gmc->get_boot_left().seconds()),
+				                               int(100 * lvl)));
+				gm_prev_level = lvl;
+			}
+			
+			if (auto gmc = dynamic_cast<GameMode_Survival*>(&core.get_gmc()))
+			{
+				auto st = gmc->get_state();
+				if (st.current_wave) {
+					int secs = st.total.seconds();
+					draw_objective_line(1, float(st.current_wave) != gm_prev_level,
+										FMT_FORMAT("Wave {}   {:3} seconds to next   {:02}:{:02} total   {} drones",
+					                               st.current_wave,
+					                               int(st.tmo.seconds()),
+					                               secs/60, secs%60,
+					                               st.alive),
+					                    !st.alive);
+					gm_prev_level = st.current_wave;
+				}
 			}
 			
 			// teleport menu / map
+			
+			if (auto ent = core.get_pmg().get_ent())
+			if (auto room = core.get_lc().get_room(ent->get_pos()))
+				lmap->mark_visited(*room);
 			
 			if (!gctr.get_replay_reader()) {
 				if (auto i_cur = core.get_info().get_menu_teleport())
@@ -723,7 +747,8 @@ public:
 					if (core.get_pmg().get_ent())
 					{
 						const auto& list = core.get_info().get_teleport_list();
-						auto sel = lmap->draw_transit(g_mpos, &list[*i_cur], list);
+						const auto cur = &list[*i_cur];
+						auto sel = lmap->draw_transit(g_mpos, cur);
 						
 						vig_lo_toplevel({ {}, RenderControl::get_size(), true });
 						for (auto& t : list)
@@ -738,7 +763,10 @@ public:
 						}
 						else if (pcst.is[ PlayerInput::A_MENU_SELECT ])
 						{
-							if (sel) {
+							if (sel == cur) {
+								exit();
+							}
+							else if (sel) {
 								if (auto rw = gctr.get_replay_writer())
 									rw->add_event(Replay_UseTransitTeleport{ sel->ent.index });
 								
@@ -751,9 +779,11 @@ public:
 				}
 				else
 				{
+					vec2i m_drag = upd_mouse_drag(PlayerInput::CTX_GAME, PlayerInput::A_SHOOT);
 					std::optional<vec2fp> plr_p;
 					if (auto ent = core.get_pmg().get_ent()) plr_p = ent->get_pos();
-					lmap->draw(passed, plr_p, inpst.is[PlayerInput::A_SHOW_MAP]);
+					lmap->draw(m_drag, plr_p, passed,
+					           inpst.is[PlayerInput::A_SHOW_MAP], inpst.is[PlayerInput::A_HIGHLIGHT]);
 					menu_pause = inpst.is[PlayerInput::A_SHOW_MAP];
 				}
 			}
@@ -765,133 +795,135 @@ public:
 			{
 				RenImm::get().set_context(RenImm::DEFCTX_WORLD);
 				
-				if (is_tutorial) {
+				auto& gmc = core.get_gmc();
+				if (typeid(gmc) == typeid(GameMode_Tutorial)) {
 					core.foreach([](auto& ent){
 						if (typeid(ent) == typeid(ETutorialMsg)) {
-							RenImm::get().draw_circle(ent.get_pos(), 1,   0xff40'40c0, 16);
-							RenImm::get().draw_circle(ent.get_pos(), 0.5, 0x60ff'80ff, 8);
+							vec2fp p = ent.get_pos();
+							RenImm::get().draw_circle(p, 0.3, 0xff40'40c0, 8);
+							RenImm::get().draw_circle(p, 0.1, 0x60ff'80ff, 3);
+							RenImm::get().draw_text(p, "Holoprojector", 0xc0ff'ffc0, true);
 						}
 					});
 				}
-				else {
-					auto area = Rectfp::from_center(plr->get_pos(), vec2fp::one(36));
-					core.get_phy().query_aabb(area, [&](Entity& ent, b2Fixture& fix)
-					{
-						auto allow_sensor = [&]{
-							return typeid(ent) == typeid(EPickable)
-								|| typeid(ent) == typeid(EDispenser)
-								|| typeid(ent) == typeid(ETeleport)
-								|| typeid(ent) == typeid(EMinidock);
-						};
-						auto allow_never = [&]{
-							return typeid(ent) == typeid(EWall)
-								|| typeid(ent) == typeid(EDoor);
-						};
-						if (fix.IsSensor()) {
-							if (!allow_sensor())
-								return;
-						}
-						else if (allow_never())
+				
+				auto area = Rectfp::from_center(plr->get_pos(), vec2fp::one(36));
+				core.get_phy().query_aabb(area, [&](Entity& ent, b2Fixture& fix)
+				{
+					auto allow_sensor = [&]{
+						return typeid(ent) == typeid(EPickable)
+							|| typeid(ent) == typeid(EDispenser)
+							|| typeid(ent) == typeid(ETeleport)
+							|| typeid(ent) == typeid(EMinidock);
+					};
+					auto allow_never = [&]{
+						return typeid(ent) == typeid(EWall)
+							|| typeid(ent) == typeid(EDoor);
+					};
+					if (fix.IsSensor()) {
+						if (!allow_sensor())
 							return;
+					}
+					else if (allow_never())
+						return;
+					
+					float dist;
+					if (fix.IsSensor()) {
+						auto r = core.get_phy().raycast_nearest(conv(plr->get_pos()), conv(ent.get_pos()));
+						if (r) return;
+						dist = (ent.get_pos() - plr->get_pos()).fastlen();
+					}
+					else {
+						auto d = core.get_phy().los_check(plr->get_pos(), ent, 3);
+						if (!d) return;
+						dist = *d;
+					}
+					
+					std::string info;
+					info.reserve(1024);
+					bool show_hp = false;
+					
+					if (ent.ui_descr) info += ent.ui_descr;
+					else info += "Unknown";
+					info += FMT_FORMAT("\nDist: {:.1f}\nSpeed: {:.0f}\n", dist, ent.ref_pc().get_vel().fastlen());
+					
+					if (ent.is_creature())
+					{
+						if (ent.get_hlc())
+							show_hp = true;
 						
-						float dist;
-						if (fix.IsSensor()) {
-							auto r = core.get_phy().raycast_nearest(conv(plr->get_pos()), conv(ent.get_pos()));
-							if (r) return;
-							dist = (ent.get_pos() - plr->get_pos()).fastlen();
+						if (auto drone = ent.get_ai_drone()) {
+							if (std::holds_alternative<AI_Drone::Battle>(drone->get_state()))
+								info += "State: COMBAT\n";
+							else if (std::holds_alternative<AI_Drone::Idle>(drone->get_state()))
+								info += "State: idle\n";
+							else
+								info += "State:\n";
 						}
-						else {
-							auto d = core.get_phy().los_check(plr->get_pos(), ent, 3);
-							if (!d) return;
-							dist = *d;
-						}
-						
-						std::string info;
-						info.reserve(1024);
-						bool show_hp = false;
-						
-						if (ent.ui_descr) info += ent.ui_descr;
-						else info += "Unknown";
-						info += FMT_FORMAT("\nDist: {:.1f}\nSpeed: {:.0f}\n", dist, ent.ref_pc().get_vel().fastlen());
-						
-						if (ent.is_creature())
-						{
-							if (ent.get_hlc())
-								show_hp = true;
-							
-							if (auto drone = ent.get_ai_drone()) {
-								if (std::holds_alternative<AI_Drone::Battle>(drone->get_state()))
-									info += "State: COMBAT\n";
-								else if (std::holds_alternative<AI_Drone::Idle>(drone->get_state()))
-									info += "State: idle\n";
-								else
-									info += "State:\n";
-							}
-						}
-						else {
-							if (auto hc = ent.get_hlc(); hc && hc->get_hp().t_state() < 0.99)
-								show_hp = true;
-						}
-						
-						vec2fp dir = (ent.get_pos() - plr->get_pos()).norm();
-						RenAAL::get().draw_line(
-							plr->get_pos() + dir * plr->ref_pc().get_radius(),
-							plr->get_pos() + dir * (dist - ent.ref_pc().get_radius()),
-							FColor(0, 0.8, 0.6, 0.5).to_px(), 0.2, 1.5);
-						
+					}
+					else {
+						if (auto hc = ent.get_hlc(); hc && hc->get_hp().t_state() < 0.99)
+							show_hp = true;
+					}
+					
+					vec2fp dir = (ent.get_pos() - plr->get_pos()).norm();
+					RenAAL::get().draw_line(
+						plr->get_pos() + dir * plr->ref_pc().get_radius(),
+						plr->get_pos() + dir * (dist - ent.ref_pc().get_radius()),
+						FColor(0, 0.8, 0.6, 0.5).to_px(), 0.2, 1.5);
+					
 //						auto& b_aabb = fix.GetAABB(0);
 //						Rectfp aabb = {conv(b_aabb.lowerBound), conv(b_aabb.upperBound), false};
 //						aabb.offset(ent.get_pos());
-						Rectfp aabb = Rectfp::from_center(ent.get_pos(), vec2fp::one(ent.ref_pc().get_radius()));
+					Rectfp aabb = Rectfp::from_center(ent.get_pos(), vec2fp::one(ent.ref_pc().get_radius()));
+					
+					RenImm::get().draw_frame(aabb, 0x00ff'4080, 0.2);
+					RenImm::get().draw_text({aabb.lower().x, aabb.upper().y + 0.5f}, info, 0xc0ff'ffc0);
+					
+					if (show_hp)
+					{
+						float ht = (RenText::get().line_height(FontIndex::Mono) + 2) /
+								   RenderControl::get().get_world_camera().get_state().mag;
+						vec2fp at = aabb.lower();
+						float x100 = 2;
 						
-						RenImm::get().draw_frame(aabb, 0x00ff'4080, 0.2);
-						RenImm::get().draw_text({aabb.lower().x, aabb.upper().y + 0.5f}, info, 0xc0ff'ffc0);
+						auto draw = [&](HealthPool& hp, int type){
+							std::string str;
+							uint32_t clr = 0;
+							float t, wid;
+							
+							if (type == -1) {
+								str = "Unknown";
+								clr = 0xff0000;
+								t = 1;
+								wid = 2 * x100;
+							}
+							else {
+								str = std::to_string(hp.exact().first);
+								if		(type == 0) clr = 0xc0c000;
+								else if (type == 1) clr = 0x2020ff;
+								else if (type == 2) clr = 0x00ff40;
+								t = hp.t_state();
+								wid = x100 * hp.exact().second / 100;
+							}
+							
+							at.y -= ht;
+							clr <<= 8;
+							float x1 = t * wid;
+							RenImm::get().draw_rect({at, {x1, ht}, true}, clr | 0xa0);
+							RenImm::get().draw_rect({{at.x + x1, at.y}, {wid - x1, ht}, true}, clr | 0x60);
+							RenImm::get().draw_text(at, str, 0xffff'ffc0);
+						};
 						
-						if (show_hp)
-						{
-							float ht = (RenText::get().line_height(FontIndex::Mono) + 2) /
-									   RenderControl::get().get_world_camera().get_state().mag;
-							vec2fp at = aabb.lower();
-							float x100 = 2;
-							
-							auto draw = [&](HealthPool& hp, int type){
-								std::string str;
-								uint32_t clr = 0;
-								float t, wid;
-								
-								if (type == -1) {
-									str = "Unknown";
-									clr = 0xff0000;
-									t = 1;
-									wid = 2 * x100;
-								}
-								else {
-									str = std::to_string(hp.exact().first);
-									if		(type == 0) clr = 0xc0c000;
-									else if (type == 1) clr = 0x2020ff;
-									else if (type == 2) clr = 0x00ff40;
-									t = hp.t_state();
-									wid = x100 * hp.exact().second / 100;
-								}
-								
-								at.y -= ht;
-								clr <<= 8;
-								float x1 = t * wid;
-								RenImm::get().draw_rect({at, {x1, ht}, true}, clr | 0xa0);
-								RenImm::get().draw_rect({{at.x + x1, at.y}, {wid - x1, ht}, true}, clr | 0x60);
-								RenImm::get().draw_text(at, str, 0xffff'ffc0);
-							};
-							
-							auto& hc = ent.ref_hlc();
-							draw(hc.get_hp(), 0);
-							hc.foreach_filter([&](DamageFilter& ft){
-								if      (auto f = dynamic_cast<DmgShield*>(&ft)) draw(f->get_hp(), 1);
-								else if (auto f = dynamic_cast<DmgArmor *>(&ft)) draw(f->get_hp(), 2);
-								else draw(hc.get_hp(), -1);
-							});
-						}
-					});
-				}
+						auto& hc = ent.ref_hlc();
+						draw(hc.get_hp(), 0);
+						hc.foreach_filter([&](DamageFilter& ft){
+							if      (auto f = dynamic_cast<DmgShield*>(&ft)) draw(f->get_hp(), 1);
+							else if (auto f = dynamic_cast<DmgArmor *>(&ft)) draw(f->get_hp(), 2);
+							else draw(hc.get_hp(), -1);
+						});
+					}
+				});
 				
 				RenImm::get().set_context(RenImm::DEFCTX_UI);
 			}
@@ -1034,7 +1066,7 @@ public:
 				}
 			}
 		}
-		GamePresenter::get()->sync( TimeSpan::since_start() );
+		GamePresenter::get()->sync( TimeSpan::current() );
 		
 		frm.mag = 8;
 		cam.set_state(frm);
@@ -1063,7 +1095,7 @@ public:
 			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
 			
 			cam.set_state(frm);
-			GamePresenter::get()->render( TimeSpan::since_start(), {} );
+			GamePresenter::get()->render( TimeSpan::current(), {} );
 			RenderControl::get().render({});
 			
 			Texture::debug_save(tex->get_obj(), tmp, Texture::FMT_RGBA);

@@ -55,9 +55,8 @@ public:
 	
 	/// Core lock not required during this stage, core thread is already terminated
 	struct CS_End {
-		std::string message;
-		bool is_error = false; ///< If true, message is exception string
-		GameModeCtr::State won = GameModeCtr::State::Won;
+		std::string err_msg; ///< Exception description, if not empty
+		GameModeCtr::FinalState fs;
 	};
 	
 	using CoreState = std::variant<CS_Init, CS_Run, CS_End>;
@@ -68,8 +67,8 @@ public:
 	using PostStep = std::function<void(TimeSpan)>; ///< Receives actual execution time
 	virtual void set_post_step(PostStep f) = 0; ///< Called after logic step, if set and not paused
 	
-	/// Safe to call after init state ended
-	virtual std::shared_ptr<LevelTerrain> get_terrain() = 0;
+	/// Pointer is valid from finishing init to the end of object lifetime
+	virtual const LevelTerrain* get_terrain() = 0;
 	
 	
 	

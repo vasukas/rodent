@@ -60,6 +60,6 @@ void RandomGen::set_seed(uint32_t s)
 
 RandomGen& rnd_stat()
 {
-	static RandomGen g;
+	thread_local RandomGen g;
 	return g;
 }

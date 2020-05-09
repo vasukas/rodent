@@ -3,7 +3,31 @@
 
 #include "entity.hpp"
 
+
+
 class GameModeCtr
+{
+public:
+	struct FinalState {
+		enum Type {
+			Won,
+			Lost,
+			End // fades screen
+		};
+		Type type;
+		std::string msg;
+	};
+	
+	virtual ~GameModeCtr() = default;
+	
+	virtual void init(GameCore& core) = 0;
+	virtual void step() = 0;
+	virtual std::optional<FinalState> get_final_state() = 0;
+};
+
+
+
+class GameMode_Normal : public GameModeCtr
 {
 public:
 	enum class State
@@ -15,16 +39,10 @@ public:
 		Final,
 		
 		Won,
-		Lost,
-		TutComplete
+		Lost
 	};
 	
-	static GameModeCtr* create();
-	static GameModeCtr* create_tutorial();
-	virtual ~GameModeCtr() = default;
-	
-	virtual void init(GameCore& core) = 0;
-	virtual void step() = 0;
+	static GameMode_Normal* create();
 	
 	virtual State get_state() = 0;
 	virtual TimeSpan get_boot_left() = 0;
@@ -36,6 +54,41 @@ public:
 	virtual void hacker_work() = 0;
 	virtual void add_teleport(vec2fp at) = 0;
 	virtual void factory_down(bool is_last) = 0;
+};
+
+
+
+class GameMode_Tutorial : public GameModeCtr
+{
+public:
+	GameMode_Tutorial() = default;
+	
+	void init(GameCore& core) override;
+	void step() override;
+	std::optional<FinalState> get_final_state() override;
+	
+	void terminal_use();
+	
+private:
+	GameCore* core;
+	int state = 0;
+};
+
+
+
+class GameMode_Survival : public GameModeCtr
+{
+public:
+	struct State {
+		int current_wave; // 0 if not started
+		TimeSpan tmo; // till next
+		int alive; // all drones
+		TimeSpan total; // total time
+	};
+	
+	static GameMode_Survival* create();
+	virtual State get_state() = 0;
+	virtual void add_teleport(vec2fp at) = 0;
 };
 
 #endif // GAME_MODE_HPP

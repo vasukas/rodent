@@ -42,13 +42,7 @@ public:
 	{}
 	Entity* get_ent() override
 	{
-		if (!core.get_ent(plr_eid))
-		{
-			plr_ent = nullptr;
-			invinc = nullptr;
-			return nullptr;
-		}
-		return plr_ent;
+		return core.get_ent(plr_eid);
 	}
 	Entity& ref_ent() override
 	{
@@ -192,6 +186,10 @@ public:
 //		if (pui) pui->message("The First and Only Level", TimeSpan::seconds(1));
 		this->pui = std::move(pui);
 	}
+	vec2fp get_last_pos() override
+	{
+		return last_plr_pos;
+	}
 	
 	
 	
@@ -203,6 +201,7 @@ public:
 		if (plr_ent)
 		{
 			plr_ent = nullptr;
+			invinc = nullptr;
 			if (pui)
 			{
 				auto fade = TimeSpan::seconds(0.5);

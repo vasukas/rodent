@@ -80,6 +80,9 @@ const TimeSpan group_update_timeout = TimeSpan::seconds(0.5);
 /// How often drone can call for help
 const TimeSpan helpcall_timeout = TimeSpan::seconds(5);
 
+/// For how long target can be not seen in battle mode before reset (hack)
+const TimeSpan battle_reset_timeout = TimeSpan::seconds(15);
+
 
 
 /// Max distance between points considered same when using SlowPrecise (squared)

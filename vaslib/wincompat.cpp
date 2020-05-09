@@ -117,10 +117,11 @@ bool winc_mkdir( const char *fn )
 
 
 
+#if !USE_SDL_MAIN
+
 #include <vector>
 #include <shellapi.h>
-#include <SDL2/SDL_main.h>
-//int main(int, char*[]);
+int main(int, char*[]);
 
 int __stdcall WinMain(HINSTANCE, HINSTANCE, char *, int) {
 	if (AttachConsole(ATTACH_PARENT_PROCESS)) {
@@ -156,4 +157,5 @@ int __stdcall WinMain(HINSTANCE, HINSTANCE, char *, int) {
 	return main(argc, argv.data());
 }
 
+#endif
 #endif

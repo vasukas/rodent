@@ -4,14 +4,12 @@
 #include <string>
 #include "vaslib/vas_math.hpp"
 
+struct LineCfg;
+
 struct AppSettings
 {
-	std::string path_log; ///< Log filename
-	std::string path_log_date; ///< Log filename template for date
-	std::string path_resources; ///< Set as current dir; includes trailing slash
+	std::string path_log; ///< If not set (empty), template name is used
 	std::string path_settings; ///< Config filename
-	
-	int userdata_size_limit; ///< kilobytes
 	
 	// renderer options
 	vec2i wnd_size;
@@ -44,10 +42,18 @@ struct AppSettings
 	static const AppSettings& get();
 	static AppSettings& get_mut();
 	
-	bool load();
-	void init_default();
+	LineCfg gen_cfg();
+	bool load(); ///< Re-loads from file, triggers callbacks
+	void init_default(); ///< Triggers callbacks
+	void trigger_cbs();
+	
+	/// Adds callback which called on option change. Returns callback deleter
+	[[nodiscard]] RAII_Guard add_cb(std::function<void()> cb, bool call_now = true);
+	
+	void clear_old() const; ///< Deletes old log and replay files
 	
 private:
+	std::vector<std::function<void()>> cbs;
 	AppSettings();
 };
 

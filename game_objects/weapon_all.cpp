@@ -34,7 +34,7 @@ PhysicsWorld::CastFilter StdProjectile::make_cf(EntityIndex)
 }
 void StdProjectile::explode(GameCore& core, size_t src_team, EntityIndex src_eid,
                             b2Vec2 self_vel, PhysicsWorld::RaycastResult hit, const Params& pars)
-{	
+{
 	auto apply = [&](Entity& tar, float k, b2Vec2 at, b2Vec2 v, std::optional<size_t> armor)
 	{
 		if (pars.ignore_hack && std::type_index(typeid(tar)) == *pars.ignore_hack) return;
@@ -374,7 +374,7 @@ std::optional<Weapon::ShootResult> WpnMinigunTurret::shoot(ShootParams pars)
 
 
 
-WpnRocket::WpnRocket()
+WpnRocket::WpnRocket(bool is_player)
     : Weapon([]{
 		static std::optional<Info> info;
 		if (!info) {
@@ -399,6 +399,7 @@ WpnRocket::WpnRocket()
 	pp.aoe_min_k = 20.f / pp.dq.amount;
 	pp.particles_power = 3 / pp.rad;
 	pp.trail = true;
+	if (is_player) pp.size = 0.7;
 }
 std::optional<Weapon::ShootResult> WpnRocket::shoot(ShootParams pars)
 {
@@ -1153,6 +1154,7 @@ void GrenadeProjectile::on_event(const CollisionEvent& ev)
 {
 	if (ev.type == CollisionEvent::T_BEGIN)
 	{
+		if (ev.fix_other->IsSensor()) return;
 		if (ev.other->get_team() != TEAM_ENVIRON && ignore_tmo.is_negative())
 		{
 			vec2fp dir = phy.get_vel();
@@ -1204,7 +1206,7 @@ WpnRifle::WpnRifle()
 			info->ammo = AmmoType::Bullet;
 			info->def_ammo = 1;
 			info->def_delay = TimeSpan::seconds(0.15);
-			info->bullet_speed = 25;
+			info->bullet_speed = 35;
 			info->set_origin_from_model();
 		}
 		return &*info;

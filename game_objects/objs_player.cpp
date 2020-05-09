@@ -1,6 +1,7 @@
 #include "client/plr_input.hpp"
 #include "client/presenter.hpp"
 #include "game/game_core.hpp"
+#include "game_ai/ai_control.hpp"
 #include "vaslib/vas_log.hpp"
 #include "objs_player.hpp"
 #include "weapon_all.hpp"
@@ -358,6 +359,17 @@ void EC_PlayerLogic::m_step()
 	laser.enabled = cst.is[PlayerInput::A_LASER_DESIG] && tar.len_squ() > 0.1;
 	if (laser.enabled)
 		laser.find_target( tar.norm() );
+	
+	// check if any enemies are nearby
+	
+	if (!ent.core.get_aic().is_targeted(ent) &&
+	    ent.core.get_phy().query_aabb(
+			Rectfp::from_center(ent.get_pos(), enemy_radius),
+	        [](auto& ent, auto&) {return !ent.get_ai_drone();}
+		))
+	{
+		pmov.peace_tmo = std::min(pmov.peace_tmo, pmov.c_peace_tmo_short);
+	}
 }
 
 
@@ -395,7 +407,7 @@ PlayerEntity::PlayerEntity(GameCore& core, vec2fp pos, bool is_superman)
 	eqp.get_ammo(AmmoType::FoamCell).add(30);
 	
 	eqp.add_wpn(std::make_unique<WpnMinigun>());
-	eqp.add_wpn(std::make_unique<WpnRocket>());
+	eqp.add_wpn(std::make_unique<WpnRocket>(true));
 	eqp.add_wpn(std::make_unique<WpnElectro>(is_superman ? WpnElectro::T_ONESHOT : WpnElectro::T_PLAYER));
 	eqp.add_wpn(std::make_unique<WpnFoam>());
 	eqp.add_wpn(std::make_unique<WpnRifle>());

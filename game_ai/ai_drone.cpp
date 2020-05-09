@@ -80,6 +80,11 @@ void AI_Drone::set_online(bool is)
 		}
 	}
 }
+AI_DroneParams& AI_Drone::mut_pars()
+{
+	if (pars.use_count() > 1) THROW_FMTSTR("AI_Drone::mut_pars() use_count > 1");
+	return *pars;
+}
 std::string AI_Drone::get_dbg_state() const
 {
 	std::string s;
@@ -550,10 +555,10 @@ void AI_Drone::step()
 			bool stop = false;
 			if (!st->reg)
 			{
-				auto rm = ent.core.get_lc().ref_room(pos);
+				auto rm = ent.core.get_lc().get_room(pos);
 				if (rm) {
 					if (rm->ai_patrolling < (int) st->pts.size()) {
-						st->reg = const_cast<LevelCtrRoom*>(rm);
+						st->reg = rm;
 						++ st->reg->ai_patrolling;
 					}
 					else stop = true;
@@ -593,7 +598,7 @@ void AI_Drone::step()
 			
 			if (now >= st->after)
 			if (auto tar = ent.core.get_pmg().get_ent())
-			if (auto rm = ent.core.get_lc().ref_room(tar->get_pos());
+			if (auto rm = ent.core.get_lc().get_room(tar->get_pos());
 			    !rm || rm->type != LevelCtrRoom::T_TRANSIT)
 			{
 				mov->hack_allow_unlimited_path = true;

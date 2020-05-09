@@ -42,13 +42,12 @@ struct CollisionEvent
 	};
 	Type type;
 	
-	Entity* other; ///< Another entity
-	FixtureInfo* fix_this; ///< Fixture usedata for this entity
-	FixtureInfo* fix_other; ///< Fixture userdata for another entity
+	// All pointers are valid
+	Entity* other; ///< With whom collided
+	b2Fixture* fix_phy; ///< For this entity
+	b2Fixture* fix_other; ///< For other entity
 	vec2fp point; ///< Averaged world point of impact
 	float imp; ///< Resolution impulse (set only for T_RESOLVE)
-	
-	b2Fixture* fix_phy; ///< Actual fixture for this entity
 };
 
 
@@ -188,7 +187,6 @@ class PhysicsWorld
 	struct Event {
 		Entity *ea, *eb;
 		CollisionEvent ce;
-		b2Fixture* fb;
 		
 		void dispatch();
 	};
@@ -270,8 +268,8 @@ public:
 	/// Returns non-sensor object in which point lays
 	std::optional<PointResult> point_cast(b2Vec2 ctr, float radius, CastFilter cf = {});
 	
-	/// Calls function for all objects inside rectangle
-	void query_aabb(Rectfp area, QueryCbRet f);
+	/// Calls function for all objects inside rectangle. Returns false if query was terminated
+	bool query_aabb(Rectfp area, QueryCbRet f);
 	
 	/// Calls function for all objects inside rectangle
 	void query_aabb(Rectfp area, QueryCb f);

@@ -7,22 +7,21 @@
 #include "game/physics.hpp"
 #include "game/player_mgr.hpp"
 #include "game_objects/objs_creature.hpp"
+#include "utils/noise.hpp"
 #include "vaslib/vas_log.hpp"
 #include "game_mode.hpp"
 
-constexpr size_t tokens_needed = 3;
-
-constexpr TimeSpan boot_length = TimeSpan::seconds(90);
-constexpr float level_decr = 0.03; // per second
-constexpr float level_incr = 0.025; // per second
-
-constexpr size_t max_bots = 22; // including bosses and hackers
 
 
-
-class GameModeCtr_Impl : public GameModeCtr
+class GameMode_Normal_Impl : public GameMode_Normal
 {
 public:
+	static constexpr size_t tokens_needed = 3;
+	static constexpr TimeSpan boot_length = TimeSpan::seconds(90);
+	static constexpr float level_decr = 0.03; // per second
+	static constexpr float level_incr = 0.025; // per second
+	static constexpr size_t max_bots = 22; // including bosses and hackers
+	
 	GameCore* core;
 	Rectfp term_area;
 	
@@ -40,8 +39,6 @@ public:
 		int used = 0;
 	};
 	std::vector<Teleport> teleps;
-	
-	//
 	
 	struct Wave
 	{
@@ -76,7 +73,7 @@ public:
 		return n;
 	}
 	
-	GameModeCtr_Impl()
+	GameMode_Normal_Impl()
 	{
 		{
 			auto& w = waves.emplace();
@@ -112,7 +109,7 @@ public:
 			w.n_hackers = 2;
 		}
 	}
-	void init(GameCore& p_core)
+	void init(GameCore& p_core) override
 	{
 		core = &p_core;
 		
@@ -124,7 +121,7 @@ public:
 			}
 		}
 	}
-	void step()
+	void step() override
 	{
 		if (state == State::NoTokens || state == State::HasTokens)
 		{
@@ -137,7 +134,7 @@ public:
 			}
 			if (ent && !term_found)
 			{
-				auto room = core->get_lc().ref_room(ent->get_pos());
+				auto room = core->get_lc().get_room(ent->get_pos());
 				if (room && room->type == LevelCtrRoom::T_FINAL_TERM)
 				{
 					term_found = true;
@@ -225,12 +222,22 @@ public:
 			}
 		}
 	}
+	std::optional<FinalState> get_final_state() override
+	{
+		if		(state == State::Won) {
+			return FinalState{FinalState::Won, "Game completed.\n\nA WINRAR IS YOU."};
+		}
+		else if (state == State::Lost) {
+			return FinalState{FinalState::Lost, "Terminal destroyed.\n\nYOU LOST."};
+		}
+		return {};
+	}
 	
-	State    get_state()      {return state;}
-	TimeSpan get_boot_left()  {return boot_at - core->get_step_time();}
-	float    get_boot_level() {return boot_level;}
+	State    get_state()      override {return state;}
+	TimeSpan get_boot_left()  override {return boot_at - core->get_step_time();}
+	float    get_boot_level() override {return boot_level;}
 	
-	void inc_objective()
+	void inc_objective() override
 	{
 		++token_count;
 		if (token_count == tokens_needed)
@@ -252,7 +259,7 @@ public:
 				ui_objective(FMT_FORMAT("collect security tokens ({} left)", tokens_needed - token_count));
 		}
 	}
-	void on_teleport_activation()
+	void on_teleport_activation() override
 	{
 		if (!term_found && state == State::HasTokens)
 		{
@@ -269,7 +276,7 @@ public:
 			}());
 		}
 	}
-	void terminal_use()
+	void terminal_use() override
 	{
 		if (state == State::HasTokens) {
 			state = State::Booting;
@@ -280,59 +287,163 @@ public:
 			state = State::Won;
 		}
 	}
-	void hacker_work()
+	void hacker_work() override
 	{
 		boot_level -= level_decr * core->time_mul;
 		hacker_working = true;
 	}
-	void add_teleport(vec2fp at)
+	void add_teleport(vec2fp at) override
 	{
 		teleps.emplace_back().at = at;
 	}
-	void factory_down(bool is_last)
+	void factory_down(bool is_last) override
 	{
-		ui_message(is_last? "All factories are down" : "Factory down");
+		ui_message(is_last? "All factories are down" : "Factory is down");
 	}
 };
-GameModeCtr* GameModeCtr::create() {
-	return new GameModeCtr_Impl;
+GameMode_Normal* GameMode_Normal::create() {
+	return new GameMode_Normal_Impl;
 }
 
 
 
-class GameModeCtr_Tutorial : public GameModeCtr
+void GameMode_Tutorial::init(GameCore& p_core)
+{
+	core = &p_core;
+}
+void GameMode_Tutorial::step()
+{
+	if (!state) {
+		auto ent = core->get_pmg().get_ent();
+		auto p = core->get_pmg().get_pui();
+		if (ent && p) {
+			state = 1;
+			p->message("Training simulation started");
+			p->objective = "activate control terminal";
+		}
+	}
+}
+std::optional<GameModeCtr::FinalState> GameMode_Tutorial::get_final_state()
+{
+	if (state == 2) return FinalState{FinalState::End, "Training session completed"};
+	return {};
+}
+void GameMode_Tutorial::terminal_use()
+{
+	state = 2;
+}
+
+
+
+class GameMode_Survival_Impl : public GameMode_Survival
 {
 public:
 	GameCore* core;
-	State state = State::Final;
-	bool first_message = false;
+	bool was_alive = false;
+	bool is_dead = false;
+	TimeSpan total;
 	
-	void init(GameCore& core) {this->core = &core;}
-	void step() {
-		if (!first_message) {
-			auto ent = core->get_pmg().get_ent();
+	TimeSpan wave_tmo = TimeSpan::seconds(10);
+	int wave = 0;
+	int wave_alive = 0;
+	
+	std::vector<vec2fp> teleps;
+	
+	
+	
+	void init(GameCore& p_core) override
+	{
+		core = &p_core;
+	}
+	void step() override
+	{
+		if (!core->get_pmg().get_ent()) {
+			if (was_alive) is_dead = true;
+		}
+		else if (!was_alive) {
+			was_alive = true;
+			
 			auto p = core->get_pmg().get_pui();
-			if (ent && p) {
-				first_message = true;
-				p->message("Training simulation started");
-				p->objective = "activate control terminal";
+			if (p) {
+				p->message("Survive for as long\nas possible");
+				p->objective = "survive!";
 			}
 		}
+		
+		total += core->step_len;
+		wave_tmo -= core->step_len;
+		if (!wave_tmo.is_positive())
+		{
+			wave_tmo = TimeSpan::seconds(std::min(15 + 10 * wave, 90));
+			int n_spawn = std::min(6 + wave * 3, 25);
+			++wave;
+			
+			core->get_random().shuffle(teleps);
+			vec2fp plr_pos = core->get_pmg().ref_ent().get_pos();
+			auto tel_end = std::partition(teleps.begin(), teleps.end(),
+			                              [&](auto& t) {return t.dist_squ(plr_pos) > std::pow(10, 2);});
+			n_spawn = std::min<int>(n_spawn, std::distance(teleps.begin(), tel_end));
+			
+			auto eff = [&](Entity* ent){
+				GamePresenter::get()->effect(FE_SPAWN, {{ent->ref_pc().get_trans()}, GameConst::hsz_drone_big});
+				auto& d = ent->ref_ai_drone();
+				d.always_online = true;
+				d.replace_state(AI_Drone::Idle{AI_Drone::IdleChasePlayer{}});
+				d.set_battle_state();
+			};
+			
+			auto cs = normalize_chances<std::function<void(vec2fp)>, 4>({{
+				{[&](vec2fp p) {eff(new EEnemyDrone(*core, p, EEnemyDrone::def_workr(*core)));},	10},
+				{[&](vec2fp p) {eff(new EEnemyDrone(*core, p, EEnemyDrone::def_drone(*core)));},	80},
+				{[&](vec2fp p) {
+					if (wave > 2) eff(new EEnemyDrone(*core, p, EEnemyDrone::def_campr(*core)));
+					else eff(new EEnemyDrone(*core, p, EEnemyDrone::def_workr(*core)));},			12},
+				{[&](vec2fp p) {
+					if (wave > 4) eff(new EHunter(*core, p));
+					else eff(new EEnemyDrone(*core, p, EEnemyDrone::def_workr(*core)));},			8}
+			}});
+			for (int i=0; i<n_spawn; ++i)
+				core->get_random().random_el(cs)(teleps[i]);
+		}
+		
+		wave_alive = 0;
+		core->foreach([&](auto& e)
+		{
+			if (AI_Drone* d = e.get_ai_drone())
+			{
+				++wave_alive;
+				
+				if (auto i = std::get_if<AI_Drone::Idle>(&d->get_state())) {
+					std::get<AI_Drone::IdleChasePlayer>(i->ist).after = {};
+				}
+				else if (auto st = std::get_if<AI_Drone::Search>(&d->get_state());
+				         st && st->at != 0)
+				{
+					d->set_idle_state();
+					auto& i = std::get<AI_Drone::Idle>(d->get_state());
+					std::get<AI_Drone::IdleChasePlayer>(i.ist).after = {};
+				}
+			}
+		});
 	}
-	
-	State get_state() {return state;}
-	TimeSpan get_boot_left() {return {};}
-	float get_boot_level() {return 0;}
-	
-	void inc_objective() {}
-	void on_teleport_activation() {}
-	void terminal_use() {
-		state = State::TutComplete;
+	std::optional<FinalState> get_final_state() override
+	{
+		if (is_dead) {
+			int ms = total.ms();
+			return FinalState{FinalState::End, FMT_FORMAT("You survived through {} waves.\nTotal time: {}:{:02}:{:02}.{:03}.",
+				                                          wave, ms/3600'000, (ms/60'000)%60, (ms/1000)%60, ms%1000)};
+		}
+		return {};
 	}
-	void hacker_work() {}
-	void add_teleport(vec2fp) {}
-	void factory_down(bool) {}
+	State get_state() override
+	{
+		return {wave, wave_tmo, wave_alive, total};
+	}
+	void add_teleport(vec2fp at) override
+	{
+		teleps.push_back(at);
+	}
 };
-GameModeCtr* GameModeCtr::create_tutorial() {
-	return new GameModeCtr_Tutorial;
+GameMode_Survival* GameMode_Survival::create() {
+	return new GameMode_Survival_Impl;
 }

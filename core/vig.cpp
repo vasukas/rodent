@@ -255,12 +255,6 @@ void vig_draw_end() {
 	vig_lo_reset(); // to pop scrolled zones
 	vec2i root_zone_size = RenderControl::get_size();
 	
-	// reset keys that was pressed and released on same cycle (see vig_on_event())
-	for (auto &k : keys) if (k.code && k.time == -1) k.code = 0;
-	
-	// reset mouse clicks
-	for (int i=1; i<vig_Mouse_ButtonCount; ++i) mouse_state &= ~vig_Mouse_ClickN(i);
-	
 	std::unique_lock msg_lock(msg_mutex);
 	
 	// draw message string
@@ -287,6 +281,12 @@ void vig_draw_end() {
 	}
 	
 	msg_lock.unlock();
+	
+	// reset keys that was pressed and released on same cycle (see vig_on_event())
+	for (auto &k : keys) if (k.code && k.time == -1) k.code = 0;
+	
+	// reset mouse clicks
+	for (int i=1; i<vig_Mouse_ButtonCount; ++i) mouse_state &= ~vig_Mouse_ClickN(i);
 	
 	// draw tooltip
 	if (!ttip_text.empty() && !input_locked) {
@@ -510,7 +510,7 @@ bool draw(vigWarnbox& b) {
 			}
 		}
 	}
-	if (vig_is_key('\033', true)) {
+	if (vig_is_key(vig_ScancodeFlag | SDL_SCANCODE_ESCAPE, true)) {
 		for (auto& b : b.buttons) {
 			if (b.is_escape) {
 				if (b.func) b.func();
@@ -606,6 +606,7 @@ struct Zone {
 			Rect is = calc_intersection(Rect{el_pos, el_size, true}, Rect{{}, orig_size, true});
 			ret = is.size() != vec2i{};
 			
+			el_pos += pos; // absolute pos
 			ttip_last_pos = pos + is.off; // set params for tooltip
 			ttip_last_size = is.sz;
 		}
@@ -794,11 +795,10 @@ void vig_space_line(int height) {
 
 
 
-/// Writes formatted string (as this buffer is thread_local, we can safely use it here)
-#define fmtstr(Format, ...)  log_fmt_buffer.clear(), fmt::format_to(log_fmt_buffer, FMT_STRING(Format), ##__VA_ARGS__)
-
-/// Returns formatted string
-#define getstr()  std::string_view(log_fmt_buffer.data(), log_fmt_buffer.size())
+static fmt::memory_buffer fmtstr_buf;
+#define fmtstr(Format, ...)\
+	(fmtstr_buf.clear(), fmt::format_to(fmtstr_buf, FMT_STRING(Format), ##__VA_ARGS__),\
+	 std::string_view(fmtstr_buf.data(), fmtstr_buf.size()))
 
 void vig_label(std::string_view text, vec2i pos, vec2i size) {
 	pos += (size - vig_text_size(text)) /2;
@@ -935,13 +935,13 @@ bool vig_slider(std::string_view text, int& value, int min, int max) {
 	
 	// compose string
 	int ds = 0; for (int k=max; k; k /= 10) ++ds;
-	fmtstr("{} [{:0{}}]", text, value, ds);
+	auto str = fmtstr("{} [{:0{}}]", text, value, ds);
 	
 	// draw & process
 	double t = (value - min);
 	t /= (max - min);
-	if (vig_slider_t(getstr(), t)) {
-		value = int(round(t)) * (max - min) + min;
+	if (vig_slider_t(str, t)) {
+		value = int_round(t * (max - min) + min);
 		return true;
 	}
 	return false;
@@ -952,12 +952,12 @@ bool vig_slider(std::string_view text, double& value, double min, double max, in
 	
 	// compose string
 	int ds = 0; for (int k=max; k; k /= 10) ++ds;
-	fmtstr("{} [{:{}.{}f}]", text, value, ds + precision + 1, precision);
+	auto str = fmtstr("{} [{:{}.{}f}]", text, value, ds + precision + 1, precision);
 	
 	// draw & process
 	double t = (value - min);
 	t /= (max - min);
-	if (vig_slider_t(getstr(), t)) {
+	if (vig_slider_t(str, t)) {
 		value = t * (max - min) + min;
 		return true;
 	}
@@ -1014,8 +1014,7 @@ bool vig_selector(size_t& index, const std::vector <std::string_view> &vals, int
 	// compose string
 	size_t len = 0;
 	for (auto &s : vals) len = std::max(len, s.length());
-	fmtstr("{:^{}}", vals[index], len);
-	auto str = getstr();
+	auto str = fmtstr("{:^{}}", vals[index], len);
 	
 	// calc subsizes
 	vec2i c_size = vig_element_size(str.data());
@@ -1066,8 +1065,7 @@ bool vig_num_selector(size_t& index, size_t num, int key_minus, int key_plus) {
 	
 	// compose string
 	int ds = 0; for (size_t k=num; k; k /= 10) ++ds;
-	fmtstr("{:{}}", index, ds);
-	auto str = getstr();
+	auto str = fmtstr("{:{}}", index, ds);
 	
 	// calc subsizes
 	vec2i c_size = vig_element_size(str);

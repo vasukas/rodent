@@ -2,6 +2,7 @@
 #include "client/plr_input.hpp"
 #include "client/replay.hpp"
 #include "core/hard_paths.hpp"
+#include "core/settings.hpp"
 #include "core/vig.hpp"
 #include "game/game_core.hpp"
 #include "game/game_mode.hpp"
@@ -73,12 +74,11 @@ public:
 	ML_MainMenu() {}
 	void init()
 	{
-		static auto start_game = [](std::vector<std::string> args)
+		static auto start_game = [](std::string_view args)
 		{
 			create(INIT_GAME, false);
 			
-			ArgvParse arg;
-			arg.args = std::move(args);
+			ArgvParse arg(args);
 			try {
 				while (!arg.ended())
 					if (!current->parse_arg(arg))
@@ -94,19 +94,27 @@ public:
 		if (!ml_prev)
 		{
 			lines.push_back({"MAIN MENU\n", {}});
-			lines.push_back({"Tutorial", {[]{ start_game({"--tutorial"}); }}});
+			lines.push_back({"", {}});
+			lines.push_back({"Tutorial", {[]{ start_game("--tutorial"); }}});
 			lines.push_back({"Default", {[]{ start_game({}); }}});
-			lines.push_back({"New game", {[]{ start_game({"--rndseed"}); }}});
+			lines.push_back({"New game", {[]{ start_game("--rndseed"); }}});
+			lines.push_back({"Survival", {[]{ start_game("--survival --no-ffwd --rndseed"); }}});
+			lines.push_back({"", {}});
 			lines.push_back({"Keybinds", {[]{ create(INIT_KEYBIND); }}});
+			lines.push_back({"Options", {[]{ create(INIT_OPTIONS); }}});
 			lines.push_back({"Controls", {[]{ create(INIT_HELP); }}});
+			lines.push_back({"", {}});
 			lines.push_back({"Exit", [this]{ delete this; }});
 		}
 		else
 		{
 			lines.push_back({"PAUSE MENU\n", {}});
-			lines.push_back({"Beware! Game is not saved!\n", {}});
+			lines.push_back({"Beware! Game is not saved!", {}});
+			lines.push_back({"", {}});
 			lines.push_back({"Keybinds", {[]{ create(INIT_KEYBIND); }}});
+			lines.push_back({"Options", {[]{ create(INIT_OPTIONS); }}});
 			lines.push_back({"Controls", {[]{ create(INIT_HELP); }}});
+			lines.push_back({"", {}});
 			lines.push_back({"Return to game", [this]{ delete this; }});
 			lines.push_back({"Exit to main menu", []{
 				while (current) delete current;
@@ -375,17 +383,20 @@ public:
 	
 	ML_Help() {
 		tri.str_a = R"(
-=== CONTROLS LIST ===				=== REPLAY PLAYBACK ===
+=== CONTROLS LIST ==========		=== REPLAY PLAYBACK ========
 
 F1       toggle this screen			1	increase speed x2
 ESC      open keybinds menu			2	decrease speed x2
 Pause	 pause game					3	reset speed to normal
 
-=== GAME ===						=== TELEPORT MENU ===
 
-See Keybinds menu					LMB	 select teleport
-									ESC	 exit menu
-=== DEBUG ===
+=== GAME ===================		=== MAP ====================		=== TELEPORT ===============
+
+See Keybinds menu					TAB		highlight visited			LMB	 select teleport
+									Mouse	scroll						ESC	 exit menu
+
+
+=== DEBUG ==========================================================================================
 
 B	toggle far camera			Shift (held) debug mode					H	toggle pause
 F4	toggle godmode				F7    toggle debug mode					J	step world once
@@ -393,7 +404,8 @@ F4	toggle godmode				F7    toggle debug mode					J	step world once
 								LMB   (debug mode) select object		L	reset free camera
 								RMB   (debug mode) teleport at			Arrows  control free camera
 								RMB   (puppet mode) move to
-=== APP DEBUG ===
+
+=== APP DEBUG ======================================================================================
 
 ~ + Q   exit immediatly				F2      toggle log
 ~ + R   reload shaders				F3      toggle fps counter
@@ -404,8 +416,7 @@ F4	toggle godmode				F7    toggle debug mode					J	step world once
 		tri.build();
 	}
 	void on_event(const SDL_Event& ev) {
-		if (ev.type == SDL_KEYDOWN && 
-		    !ev.key.repeat && (
+		if (ev.type == SDL_KEYDOWN && (
 			ev.key.keysym.scancode == SDL_SCANCODE_ESCAPE ||
 			ev.key.keysym.scancode == SDL_SCANCODE_F1))
 				delete this;
@@ -416,6 +427,87 @@ F4	toggle godmode				F7    toggle debug mode					J	step world once
 		vec2i offset, size = tri.size.int_ceil();
 		vig_lo_place(offset, size);
 		RenImm::get().draw_text(offset, tri, RenImm::White);
+		vig_lo_pop();
+	}
+};
+
+
+
+class ML_Options : public MainLoop
+{
+public:
+	AppSettings& sets;
+	LineCfg cfg;
+	bool changed = false;
+	vec2i zone_offset = {};
+	
+	ML_Options()
+	    : sets(AppSettings::get_mut()), cfg(sets.gen_cfg())
+	{
+		cfg.write_only_present = true;
+	}
+	~ML_Options() {
+		if (changed) {
+			VLOGI("Restoring settings...");
+			if (!AppSettings::get_mut().load())
+				vig_infobox("Failed to restore old settings");
+		}
+	}
+	void on_event(const SDL_Event& ev) {
+		if (ev.type == SDL_KEYDOWN && ev.key.keysym.scancode == SDL_SCANCODE_ESCAPE)
+			delete this;
+	}
+	void render(TimeSpan, TimeSpan)
+	{
+		if (vig_button("Exit without changes")) {
+			delete this;
+			return;
+		}
+		if (changed)
+		{
+			if (vig_button("Apply changes", 0, true))
+			{
+				VLOGI("Applying new settings...");
+				sets.trigger_cbs();
+				if (cfg.write(sets.path_settings.c_str()))
+				{
+					for (auto& p : cfg.get_opts()) p.changed = false;
+					changed = false;
+				}
+				else
+					vig_infobox("Failed to save new settings");
+			}
+			
+			vig_space_tab();
+			if (vig_button("Apply without saving"))
+				sets.trigger_cbs();
+		}
+		vig_space_line();
+		
+		vec2i size = RenderControl::get_size() - vig_element_decor()*2;
+		size.y -= vig_lo_get_next().y;
+		vig_lo_push_scroll(size, zone_offset);
+		
+		auto opt = [&](std::string_view name)-> LineCfgOption& {
+			for (auto& p : cfg.get_opts()) {
+				if (p.get_name() == name) {
+					p.changed = true;
+					return p;
+				}
+			}
+			THROW_FMTSTR("No such option - {}", name);
+		};
+		
+		// graphics
+		vig_label("Line type");
+		size_t ix = AppSettings::get_mut().aal_type;
+		if (vig_selector(ix, {"Fuzzy", "Glow", "Clear"})) {
+			auto& arg = std::get<LineCfgArg_Enum>(opt("aal_type").get_args()[0]);
+			arg.type->man_set(arg.p, ix);
+			changed = true;
+		}
+		vig_space_line();
+		
 		vig_lo_pop();
 	}
 };
@@ -437,7 +529,10 @@ public:
 	bool use_rndseed = false;
 	bool no_ffwd = false;
 	std::optional<uint32_t> use_seed;
+	
 	bool is_tutorial = false;
+	bool is_survival = false;
+	
 	bool nodrop = false;
 	bool nohunt = false;
 	vec2i lvl_size = {220, 140};
@@ -475,6 +570,9 @@ public:
 		else if (arg.is("--tutorial")) {
 			is_tutorial = true;
 			replay_write_default = false;
+		}
+		else if (arg.is("--survival")) {
+			is_survival = true;
 		}
 		else if (arg.is("--nodrop")) nodrop = true;
 		else if (arg.is("--nohunt")) nohunt = true;
@@ -571,6 +669,7 @@ public:
 			replay_dat.fastforward = gci.fastforward_time;
 			replay_dat.pmg_superman = is_superman_init;
 			replay_dat.pmg_dbg_ai_rect = debug_ai_rect_init;
+			replay_dat.mode_survival = is_survival;
 		}
 		
 		std::visit(overloaded{
@@ -600,27 +699,33 @@ public:
 		if (gci.replay_rd) {
 			gci.rndg.load( replay_dat.rnd_init );
 			gci.fastforward_time = replay_dat.fastforward;
-			is_superman_init   = replay_dat.pmg_superman;
-			debug_ai_rect_init = replay_dat.pmg_dbg_ai_rect;
+			is_superman_init     = replay_dat.pmg_superman;
+			debug_ai_rect_init   = replay_dat.pmg_dbg_ai_rect;
+			is_survival          = replay_dat.mode_survival;
 		}
 		
 		// init
 		
-		if (!is_tutorial) {
+		if (is_tutorial) {
+			gci.mode_ctr.reset(new GameMode_Tutorial);
+			gci.terrgen = [](auto&) {return tutorial_terrain();};
+			gci.spawner = tutorial_spawn;
+		}
+		else if (is_survival) {
+			gci.mode_ctr.reset(GameMode_Survival::create());
+			gci.terrgen = [](auto&) {return survival_terrain();};
+			gci.spawner = survival_spawn;
+		}
+		else {
 			gci.disable_drop = nodrop;
 			gci.disable_hunters = nohunt;
 			
-			gci.mode_ctr.reset(GameModeCtr::create());
+			gci.mode_ctr.reset(GameMode_Normal::create());
 			gci.terrgen = [&](auto& rnd) {return LevelTerrain::generate({&rnd, lvl_size});};
 			gci.spawner = level_spawn;
 			
 //			gci.terrgen = [](auto&) {return drone_test_terrain();};
 //			gci.spawner = drone_test_spawn;
-		}
-		else {
-			gci.mode_ctr.reset(GameModeCtr::create_tutorial());
-			gci.terrgen = [](auto&) {return tutorial_terrain();};
-			gci.spawner = tutorial_spawn;
 		}
 		gctr.reset( GameControl::create(std::move(p_gci)) );
 		
@@ -628,7 +733,6 @@ public:
 		pars.ctr = gctr.get();
 		pars.init_greet = std::move(init_greet);
 		pars.allow_cheats = MainLoop::is_debug_mode;
-		pars.is_tutorial = is_tutorial;
 		gui.reset( GameUI::create(std::move(pars)) );
 	}
 	void on_current()
@@ -713,6 +817,10 @@ void MainLoop::create(InitWhich which, bool do_init)
 			
 		case INIT_HELP:
 			current = new ML_Help;
+			break;
+			
+		case INIT_OPTIONS:
+			current = new ML_Options;
 			break;
 		}
 	}

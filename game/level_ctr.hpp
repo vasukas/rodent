@@ -61,9 +61,8 @@ struct LevelCtrRoom
 	std::vector<size_t> neis; ///< rooms
 	
 	int ai_radio_cost = 1;
-	int tmp; ///< for algorithms
-	
-	int ai_patrolling = 0;
+	mutable int tmp; ///< for algorithms
+	mutable int ai_patrolling = 0;
 	
 	Rectfp fp_area() const {
 		return area.to_fp(GameConst::cell_size);
@@ -108,9 +107,9 @@ public:
 	const Cell* cell(vec2i pos) const noexcept;
 	const Cell& cref(vec2i pos) const;
 	
-	const LevelCtrRoom* ref_room(vec2fp pos) const noexcept;
-	LevelCtrRoom& ref_room(size_t index);
-	const std::vector<LevelCtrRoom>& get_rooms() const {return rooms;}
+	const LevelCtrRoom* get_room(vec2fp pos) const noexcept;
+	const LevelCtrRoom& ref_room(size_t index) const;
+	const std::vector<LevelCtrRoom>& get_rooms() const {return rooms;} ///< Note: array is expected to be static
 	
 	vec2fp get_closest(SpawnType type, vec2fp from) const;
 	const std::vector<Spawn>& get_spawns() const {return spps;}

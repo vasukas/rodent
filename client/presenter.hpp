@@ -24,6 +24,7 @@ struct FloatText
 	float size = 1;
 	TimeSpan show_len = TimeSpan::seconds(1.0);
 	TimeSpan fade_len = TimeSpan::seconds(1.5);
+	float spread_strength = 1;
 };
 
 using PresCommand = std::variant
@@ -53,7 +54,7 @@ public:
 	struct InitParams
 	{
 		GameCore* core; ///< Must be non-null
-		const LevelTerrain* lvl; ///< Must be non-null
+		const LevelTerrain* lvl; ///< Must be non-null. Saved for reinit
 	};
 	
 	bool playback_hack = false; ///< Disables interpolation

@@ -21,7 +21,7 @@ struct PlayerMovement : EComp
 	std::pair<bool, float> get_t_accel() const {return {acc_flag, clampf_n(acc_val)};}
 	
 	/// Resets speed gain
-	void battle_trigger() {peace_tmo = TimeSpan::seconds(16);}
+	void battle_trigger() {peace_tmo = c_peace_tmo;}
 	
 	///
 	bool is_infinite_accel() const {return cheat_infinite || !peace_tmo.is_positive();}
@@ -35,6 +35,8 @@ private:
 	vec2fp prev_dir = {}; // last used move direction
 	SmoothSwitch accel_ss;
 	
+	static constexpr TimeSpan c_peace_tmo = TimeSpan::seconds(16);
+	static constexpr TimeSpan c_peace_tmo_short = TimeSpan::seconds(5); // when no enemies around
 	TimeSpan peace_tmo;
 	bool peace_tmo_was_zero = true;
 	std::unique_ptr<EC_ParticleEmitter::Channel> peace_parts;
@@ -113,6 +115,8 @@ private:
 	float shld_restore_left = 0;
 	float shld_restore_rate = 120; // per second
 	b2Fixture* ram_sensor;
+	
+	const vec2fp enemy_radius = {55.f, 45.f}; // radius in which enemies are detected
 	
 	void on_cnt(const CollisionEvent& ev); // ram
 	void on_dmg(const DamageQuant& dq);

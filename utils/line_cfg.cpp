@@ -6,24 +6,28 @@
 #undef is_space
 #define is_space linecfg_is_space
 
-bool LineCfgArg_Int::read(std::string_view s) {
-	return string_atoi(s, v);
+LineCfgArgError LineCfgArg_Int::read(std::string_view s) {
+	if (!string_atoi(s, v)) return LineCfgArgError::Fail;
+	if (v >= min && v <= max) return LineCfgArgError::Ok;
+	return LineCfgArgError::OutOfRange;
 }
-bool LineCfgArg_Float::read(std::string_view s) {
-	return string_atof(s, v);
+LineCfgArgError LineCfgArg_Float::read(std::string_view s) {
+	if (!string_atof(s, v)) return LineCfgArgError::Fail;
+	if (v > min - eps && v < max + eps) return LineCfgArgError::Ok;
+	return LineCfgArgError::OutOfRange;
 }
-bool LineCfgArg_Bool::read(std::string_view s) {
+LineCfgArgError LineCfgArg_Bool::read(std::string_view s) {
 	if (s == "0" || s == "false" || s == "False") {
 		v = false;
-		return true;
+		return LineCfgArgError::Ok;
 	}
 	else if (s == "1" || s == "true" || s == "True") {
 		v = true;
-		return true;
+		return LineCfgArgError::Ok;
 	}
-	return false;
+	return LineCfgArgError::Fail;
 }
-bool LineCfgArg_Str::read(std::string_view s) {
+LineCfgArgError LineCfgArg_Str::read(std::string_view s) {
 	v = s;
 	size_t i=0;
 	while (true) {
@@ -31,10 +35,10 @@ bool LineCfgArg_Str::read(std::string_view s) {
 		if (i == std::string::npos) break;
 		v.erase(i, 1);
 	}
-	return true;
+	return LineCfgArgError::Ok;
 }
-bool LineCfgArg_Enum::read(std::string_view s) {
-	return type->read(p, s);
+LineCfgArgError LineCfgArg_Enum::read(std::string_view s) {
+	return type->read(p, s) ? LineCfgArgError::Ok : LineCfgArgError::Fail;
 }
 
 void LineCfgArg_Int::write(std::string& s) const {
@@ -60,6 +64,18 @@ void LineCfgArg_Enum::write(std::string& s) const {
 	if (!type->write(p, s))
 		throw std::logic_error("LineCfgArg_Enum::write() invalid value");
 }
+
+LineCfgOption& LineCfgOption::vint(int& v, int max, int min) {
+	args.emplace_back(LineCfgArg_Int{v, max, min});
+	return *this;
+}
+LineCfgOption& LineCfgOption::vfloat(float& v, float max, float min) {
+	args.emplace_back(LineCfgArg_Float{v, max, min});
+	return *this;
+}
+LineCfgOption& LineCfgOption::vbool(bool&        v) {args.emplace_back(v); return *this;}
+LineCfgOption& LineCfgOption::vstr (std::string& v) {args.emplace_back(v); return *this;}
+LineCfgOption& LineCfgOption::descr(std::string  v) {descr_v = std::move(v); return *this;}
 
 void LineCfg::read_s(std::string_view str)
 {
@@ -118,8 +134,10 @@ void LineCfg::read_s(std::string_view str)
 				THROW_FMTSTR("LineCfg::read_s() too many arguments (option '{}', line {})", opt->name, line);
 			}
 			else {
-				if (!std::visit([&](auto& v){ return v.read(s); }, opt->args[i_arg]))
-					THROW_FMTSTR("LineCfg::read_s() failed to read argument (arg '{}', option '{}', line {})",
+				auto ret = std::visit([&](auto& v){ return v.read(s); }, opt->args[i_arg]);
+				if (ret != LineCfgArgError::Ok)
+					THROW_FMTSTR("LineCfg::read_s() {} (arg '{}', option '{}', line {})",
+					             ret == LineCfgArgError::OutOfRange ? "value out of range" : "invalid value",
 					             i_arg+1, opt->name, line);
 				++i_arg;
 			}
@@ -164,9 +182,6 @@ void LineCfg::read_s(std::string_view str)
 		if (opt) {
 			if (i_arg != opt->args.size())
 				THROW_FMTSTR("LineCfg::read_s() not enough arguments (option '{}', line {})", opt->name, line);
-			
-			if (opt->check && !opt->check())
-				THROW_FMTSTR("LineCfg::read_s() check failed (option '{}', line {})", opt->name, line);
 		}
 		
 		// end line
@@ -197,7 +212,7 @@ std::string LineCfg::write_s(std::string str) const
 	if (write_only_present) {
 		opts_left = 0;
 		for (auto& p : opts) {
-			if (p.line)
+			if (p.line || p.changed)
 				++opts_left;
 		}
 	}
@@ -217,12 +232,12 @@ std::string LineCfg::write_s(std::string str) const
 		bool has_opt = false;
 		for (auto& p : opts)
 		{
-			if (p.line == line || (first_line && !p.line))
+			if (p.line == line || p.changed || (first_line && !p.line))
 			{
 				if (has_opt) str += '\n'; // 'line' must not be increased
 				
 				if (!p.line && !p.descr_v.empty()) {
-					str += "# ";
+					str += "\n# ";
 					str += p.descr_v;
 					str += '\n';
 				}

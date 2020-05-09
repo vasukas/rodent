@@ -157,6 +157,14 @@ void AI_Group::update()
 		return true;
 	}();
 	
+	// check for hanging (usually when no path can be built)
+	
+	if (passed_since_seen() > AI_Const::battle_reset_timeout)
+	{
+		init_search();
+		return;
+	}
+	
 	// update radio
 	
 	bool battle_call = drones.size() < AI_Const::msg_engage_max_bots;
@@ -373,6 +381,7 @@ public:
 				hunters.push_back(ent->index);
 				hunter_resp_tmo = AI_Const::hunter_respawn_tmo;
 			}
+			else core.spawn_hunters = false;
 		}
 		for (auto it = hunters.begin(); it != hunters.end(); )
 		{
@@ -445,6 +454,10 @@ public:
 			}
 			return ret;
 		});
+	}
+	bool is_targeted(Entity& ent) override
+	{
+		return the_only_group && the_only_group->tar_eid == ent.index;
 	}
 	
 	

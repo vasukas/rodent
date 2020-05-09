@@ -15,6 +15,7 @@ struct ReplayInitData
 	TimeSpan fastforward;
 	bool pmg_superman;
 	bool pmg_dbg_ai_rect;
+	bool mode_survival;
 };
 
 struct Replay_DebugTeleport

@@ -124,7 +124,7 @@ public:
 	}
 	std::pair<NodeIndex, PathCost> find_path_internal(vec2i p_src, vec2i p_dst, const Args& args)
 	{
-		TimeSpan t0 = TimeSpan::since_start();
+		TimeSpan t0 = TimeSpan::current();
 		++debug_request_count;
 		
 		++closed_cou;
@@ -152,7 +152,7 @@ public:
 			open_q.pop();
 			
 			if (qn.index == i_dst) {
-				debug_time += TimeSpan::since_start() - t0;
+				debug_time += TimeSpan::current() - t0;
 				return {i_dst, (qn.cost >> path_cost_bits) + 2};
 			}
 			
@@ -183,7 +183,7 @@ public:
 			}
 		}
 		
-		debug_time += TimeSpan::since_start() - t0;
+		debug_time += TimeSpan::current() - t0;
 		return {(NodeIndex) -1, 0};
 	}
 	Result find_path(Args args) override

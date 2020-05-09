@@ -1,3 +1,5 @@
+#include <unordered_set>
+#include "game/game_core.hpp"
 #include "game/game_info_list.hpp"
 #include "game/level_ctr.hpp"
 #include "game/level_gen.hpp"
@@ -20,9 +22,15 @@ public:
 	std::optional<Rectfp> final_term;
 	TimeSpan final_marked_at;
 	
+	GameCore& core;
+	std::unordered_map<const LevelCtrRoom*, Rectfp> visited;
 	
-	LevelMap_Impl(const LevelTerrain& lt)
-		: e_sw(TimeSpan::seconds(0.15))
+	vec2fp prim_offset = {};
+	
+	
+	
+	LevelMap_Impl(GameCore& core, const LevelTerrain& lt)
+		: e_sw(TimeSpan::seconds(0.15)), core(core)
 	{
 		coord_k = vec2fp::one(1) / (vec2fp(lt.grid_size) * GameConst::cell_size);
 		
@@ -46,22 +54,56 @@ public:
 			tex.reset( Texture::create_from(img, Texture::FIL_LINEAR_MIPMAP) );
 		});
 	}
-	Rectfp draw_map(float t_alpha, std::optional<vec2fp> plr_pos, float scale, vec2fp offset)
+	Rectfp draw_map(float t_alpha, std::optional<vec2fp> plr_pos,
+	                float scale, vec2fp offset,
+	                bool is_primary, bool show_visited)
 	{
+		const int max_margin = 80;
 		const int clr_a = 255 * t_alpha;
+		float k_cell = 2 * GameConst::cell_size * scale;
 		
-		vec2i scr = RenderControl::get_size() /2;
-		vec2fp sz = tex->get_size() * scale;
+		const vec2i scr = RenderControl::get_size() /2;
+		const vec2fp sz = tex->get_size() * scale;
 		
 		vec2fp sp = scr;
 		if (plr_pos) {
 			plr_pos = (*plr_pos) * coord_k;
 			sp -= (*plr_pos - vec2fp::one(0.5)) * sz;
 		}
+		if (is_primary)
+		{
+			if (scr.x >= sz.x) prim_offset.x = 0;
+			else if (sp.x + prim_offset.x > sz.x + max_margin) {
+				prim_offset.x = (sz.x + max_margin) - sp.x;
+			}
+			else if (sp.x + prim_offset.x < -(sz.x - (scr.x*2 - max_margin))) {
+				prim_offset.x = -(sz.x - (scr.x*2 - max_margin)) - sp.x;
+			}
+			
+			if (scr.y >= sz.y) prim_offset.y = 0;
+			else if (sp.y + prim_offset.y > sz.y + max_margin) {
+				prim_offset.y = (sz.y + max_margin) - sp.y;
+			}
+			else if (sp.y + prim_offset.y < -(sz.y - (scr.y*2 - max_margin))) {
+				prim_offset.y = -(sz.y - (scr.y*2 - max_margin)) - sp.y;
+			}
+			
+			offset = prim_offset;
+		}
 		sp += offset;
 		
 		Rectfp dst = Rectfp::from_center(sp, sz);
 		RenImm::get().draw_rect({{}, RenderControl::get_size(), false}, 192 * t_alpha);
+		if (show_visited)
+		{
+			for (auto& p : visited)
+			{
+				Rectfp r = p.second;
+				r.a = r.a * scale + dst.lower();
+				r.b = r.b * scale + dst.lower() + vec2fp::one(scale * 1.05);
+				RenImm::get().draw_rect(r, 0x80ff4000 | int(128 * t_alpha));
+			}
+		}
 		RenImm::get().draw_image(dst, tex.get(), 0xffffff00 | clr_a);
 		
 		if (final_term)
@@ -83,6 +125,31 @@ public:
 			RenImm::get().draw_rect(r, 0x00ff4000 | int(64 * t));
 		}
 		
+		if (is_primary)
+		{
+			for (const auto& t : core.get_info().get_teleport_list())
+			{
+				if (!t.discovered) continue;
+				Rectfp r = t.room.area.to_fp(k_cell);
+				r.a += dst.lower();
+				r.b += dst.lower() + vec2fp::one(scale * 1.05);
+				RenImm::get().draw_rect(r, 0x6080ff00 | int(192 * t_alpha));
+			}
+			
+			std::unordered_set<const LevelCtrRoom*> asms;
+			for (const auto& t : core.get_info().get_assembler_list())
+			{
+				auto rm = core.get_lc().get_room(t.prod_pos); // not null
+				if (asms.emplace(rm).second && visited.find(rm) != visited.end())
+				{
+					Rectfp r = rm->area.to_fp(k_cell);
+					r.a += dst.lower();
+					r.b += dst.lower() + vec2fp::one(scale * 1.05);
+					RenImm::get().draw_rect(r, 0xff800000 | int(80 * t_alpha));
+				}
+			}
+		}
+		
 		if (plr_pos)
 		{
 			vec2fp p = dst.size() * (*plr_pos) + dst.lower();
@@ -90,34 +157,43 @@ public:
 			RenImm::get().draw_circle(p, 6.f, 0xc0f0ff00 | clr_a, 32);
 		}
 		
+		size_t n_ass = core.get_info().get_assembler_list().size();
+		if (n_ass) draw_text_hud({0, -50}, "Active assembling lines detected", 0xffc0a000 | clr_a);
+		else draw_text_hud({0, -50}, "No active assembling lines found", 0xa0ffa000 | clr_a);
+		
 		return dst;
 	}
-	void draw(TimeSpan passed, std::optional<vec2fp> plr_p, bool enabled)
+	void draw(vec2i add_offset, std::optional<vec2fp> plr_p, TimeSpan passed, bool enabled, bool show_visited) override
 	{
 		e_sw.step(passed, enabled);
 		float t_alpha = e_sw.value();
-		if (t_alpha > 1.f/256)
-			draw_map(t_alpha, plr_p, 1, {});
+		if (t_alpha > 1.f/256) {
+			prim_offset += add_offset;
+			draw_map(t_alpha, plr_p, 1, {}, true, show_visited);
+		}
 	}
-	const TeleportInfo* draw_transit(vec2i cur_pos, const TeleportInfo* cur, const std::vector<TeleportInfo>& teleps)
+	const TeleportInfo* draw_transit(vec2i cur_pos, const TeleportInfo* cur) override
 	{
 		auto [scale, offset] = fit_rect(tex->get_size() *2, RenderControl::get_size());
 		float k_cell = 2 * GameConst::cell_size * scale;
 		
-		Rectfp dst = draw_map(1, {}, scale, offset);
+		Rectfp dst = draw_map(1, {}, scale, offset, false, false);
 		vec2i cur_cell = ((vec2fp(cur_pos) - dst.lower()) / k_cell).int_floor();
 		
 		const TeleportInfo* hover = nullptr;
-		for (auto& t : teleps)
+		for (const auto& t : core.get_info().get_teleport_list())
 		{
 			if (!t.discovered) continue;
 			auto& room = t.room;
 			
 			uint32_t clr;
+			bool is_hov = room.area.contains_le(cur_cell);
+			
 			if (&t == cur) {
-				clr = room.area.contains_le(cur_cell) ? 0xb080'0000 : 0x6040'0000;
+				clr = is_hov ? 0xb080'0000 : 0x6040'0000;
+				if (is_hov) hover = &t;
 			}
-			else if (room.area.contains_le(cur_cell)) {
+			else if (is_hov) {
 				clr = 0xc0ff'ff80;
 				hover = &t;
 			}
@@ -132,18 +208,22 @@ public:
 		}
 		return hover;
 	}
-	void mark_final_term(const LevelCtrRoom& rm)
+	void mark_final_term(const LevelCtrRoom& rm) override
 	{
 		if (!final_term) {
 			final_term = rm.area.to_fp(2 * GameConst::cell_size);
 			final_marked_at = TimeSpan::since_start();
 		}
 	}
+	void mark_visited(const LevelCtrRoom& rm) override
+	{
+		visited.emplace(&rm, rm.area.to_fp(2 * GameConst::cell_size));
+	}
 };
 
 
 
 static LevelMap* rni;
-LevelMap* LevelMap::init(const LevelTerrain& lt) {return rni = new LevelMap_Impl (lt);}
+LevelMap* LevelMap::init(GameCore& core, const LevelTerrain& lt) {return rni = new LevelMap_Impl (core, lt);}
 LevelMap& LevelMap::get() {return *rni;}
 LevelMap::~LevelMap() {rni = nullptr;}

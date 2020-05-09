@@ -83,7 +83,7 @@ AI_SimResource::WorkerReg AI_SimResource::find(GameCore& core, vec2fp origin, fl
 {
 	const LevelCtrRoom* room = nullptr;
 	if (find_type & FIND_F_SAME_ROOM)
-		room = core.get_lc().ref_room(origin);
+		room = core.get_lc().get_room(origin);
 	
 	std::vector<std::pair<AI_SimResource*, float>> rs;
 	rs.reserve(64);
@@ -91,7 +91,7 @@ AI_SimResource::WorkerReg AI_SimResource::find(GameCore& core, vec2fp origin, fl
 	core.get_aic().find_resource( Rectfp::from_center(origin, vec2fp::one(radius)),
 	[&](AI_SimResource& p)
 	{
-		if (room && core.get_lc().ref_room(p.pos) != room) return;
+		if (room && core.get_lc().get_room(p.pos) != room) return;
 		if (p.val.type != type || !p.can_reg(rate)) return;
 		rs.emplace_back( &p, p.pos.dist_squ(origin) );
 	});

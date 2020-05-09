@@ -95,7 +95,7 @@ struct SerialFunc<std::bitset<N>, SerialTag_None>
 			uint8_t x = 0;
 			for (size_t i=b*8; i<std::min(N,(b+1)*8); ++i) {
 				x <<= 1;
-				x |= p[i];
+				x |= static_cast<uint8_t>(p[i]);
 			}
 			SERIALFUNC_WRITE(x, f);
 		}
@@ -266,10 +266,10 @@ struct SerialFunc<T, SerialTag_Int<N>> {
 
 
 
-template<auto& S>
+template<const char *S>
 struct SerialTag_Signature {};
 
-template<auto& S>
+template<const char *S>
 struct SerialFunc<SerialType_Void, SerialTag_Signature<S>> {
 	static constexpr size_t N = []{size_t i=0; while (S[i]) ++i; return i;}();
 	static void write(SerialType_Void, File& f) {f.write(S, N);}

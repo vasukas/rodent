@@ -15,9 +15,19 @@ inline bool linecfg_is_space(char c) {
 	return c == ' ' || c == '\t';
 }
 
+enum class LineCfgArgError {
+	Ok,
+	Fail,
+	OutOfRange
+};
+
 
 
 struct LineCfgEnumType {
+	using Base = int;
+	Base (*man_get)(const void*);
+	void (*man_set)(void*, Base);
+	
 	std::function<bool(void*, std::string_view)> read;
 	std::function<bool(const void*, std::string&)> write;
 	std::type_index type;
@@ -25,7 +35,7 @@ struct LineCfgEnumType {
 	template<typename T>
 	static std::shared_ptr<LineCfgEnumType> make(std::initializer_list<std::pair<T, std::string>> values)
 	{
-		static_assert(sizeof(T) <= sizeof(int));
+		static_assert(sizeof(T) <= sizeof(Base));
 		for (auto& v1 : values) {
 			int cou = 0;
 			for (auto& v2 : values) {
@@ -37,9 +47,12 @@ struct LineCfgEnumType {
 		}
 		
 		std::shared_ptr<LineCfgEnumType> t(new LineCfgEnumType(typeid(T)));
+		t->man_get = [](const void* p) {return static_cast<Base>(*static_cast<const T*>(p));};
+		t->man_set = [](void *p, Base v) {*static_cast<T*>(p) = static_cast<T>(v);};
+		
 		t->vps.reserve(values.size());
 		for (auto& val : values)
-			t->vps.emplace_back( static_cast<int>(val.first), std::move(val.second) );
+			t->vps.emplace_back(static_cast<Base>(val.first), std::move(val.second));
 		
 		t->read = [vps = &t->vps](void* p, std::string_view s){
 			for (auto& vp : *vps) {
@@ -52,7 +65,7 @@ struct LineCfgEnumType {
 		};
 		t->write = [vps = &t->vps](const void* p, std::string& s){
 			for (auto& vp : *vps) {
-				if (vp.first == static_cast<int>(*static_cast<const T*>(p))) {
+				if (vp.first == static_cast<Base>(*static_cast<const T*>(p))) {
 					s += vp.second;
 					return true;
 				}
@@ -67,7 +80,7 @@ struct LineCfgEnumType {
 		std::function<std::optional<T>(std::string_view)> get_value,
 		std::function<std::string_view(T)> get_name)
 	{
-		static_assert(sizeof(T) <= sizeof(int));
+		static_assert(sizeof(T) <= sizeof(Base));
 		std::shared_ptr<LineCfgEnumType> t(new LineCfgEnumType(typeid(T)));
 		t->read = [f = std::move(get_value)](void* p, std::string_view s){
 			if (s.front() == '"') s = s.substr(1, s.size() - 2);
@@ -95,40 +108,46 @@ struct LineCfgEnumType {
 		return t;
 	}
 	
+	/// May be empty
+	const std::vector<std::pair<Base, std::string>>& get_values() const {return vps;}
+	
 private:
-	std::vector<std::pair<int, std::string>> vps;
+	std::vector<std::pair<Base, std::string>> vps;
 	LineCfgEnumType(std::type_index type): type(type) {}
 };
 
 struct LineCfgArg_Int {
 	int& v;
-	LineCfgArg_Int(int& v): v(v) {}
-	bool read(std::string_view s);
+	int min, max;
+	LineCfgArg_Int(int& v, int max, int min): v(v), min(min), max(max) {}
+	LineCfgArgError read(std::string_view s);
 	void write(std::string& s) const;
 };
 struct LineCfgArg_Float {
+	static constexpr float eps = 1e-5; // used for comparison
 	float& v;
-	LineCfgArg_Float(float& v): v(v) {}
-	bool read(std::string_view s);
+	float min, max;
+	LineCfgArg_Float(float& v, float max, float min): v(v), min(min), max(max) {}
+	LineCfgArgError read(std::string_view s);
 	void write(std::string& s) const;
 };
 struct LineCfgArg_Bool {
 	bool& v;
 	LineCfgArg_Bool(bool& v): v(v) {}
-	bool read(std::string_view s);
+	LineCfgArgError read(std::string_view s);
 	void write(std::string& s) const;
 };
 struct LineCfgArg_Str {
 	std::string& v;
 	LineCfgArg_Str(std::string& v): v(v) {}
-	bool read(std::string_view s);
+	LineCfgArgError read(std::string_view s);
 	void write(std::string& s) const;
 };
 struct LineCfgArg_Enum {
 	void* p;
 	std::shared_ptr<LineCfgEnumType> type;
 	LineCfgArg_Enum(void* p,std::shared_ptr<LineCfgEnumType> type): p(p), type(std::move(type)) {}
-	bool read(std::string_view s);
+	LineCfgArgError read(std::string_view s);
 	void write(std::string& s) const;
 };
 using LineCfgArg = std::variant<LineCfgArg_Int, LineCfgArg_Float, LineCfgArg_Bool, LineCfgArg_Str, LineCfgArg_Enum>;
@@ -136,15 +155,17 @@ using LineCfgArg = std::variant<LineCfgArg_Int, LineCfgArg_Float, LineCfgArg_Boo
 
 
 struct LineCfgOption {
-	LineCfgOption(std::string name, bool optional = true, std::function<bool()> post_check = {})
-		: name(std::move(name)), optional(optional), check(std::move(post_check))
+	bool changed = false; ///< Not set internally; used for saving changes with LineCfg::write_only_present set
+	
+	LineCfgOption(std::string name, bool optional = true)
+		: name(std::move(name)), optional(optional)
 	{}
 	
-	LineCfgOption& vint  (int&         v) {args.emplace_back(v); return *this;}
-	LineCfgOption& vfloat(float&       v) {args.emplace_back(v); return *this;}
-	LineCfgOption& vbool (bool&        v) {args.emplace_back(v); return *this;}
-	LineCfgOption& vstr  (std::string& v) {args.emplace_back(v); return *this;}
-	LineCfgOption& descr (std::string  v) {descr_v = std::move(v); return *this;}
+	LineCfgOption& vint  (int&   v, int max = std::numeric_limits<int>::max(), int min = 0);
+	LineCfgOption& vfloat(float& v, float max = 1, float min = 0);
+	LineCfgOption& vbool (bool&  v);
+	LineCfgOption& vstr  (std::string& v);
+	LineCfgOption& descr (std::string  v);
 	
 	template<typename T>
 	LineCfgOption& venum(T& v, std::shared_ptr<LineCfgEnumType> type) {
@@ -154,11 +175,14 @@ struct LineCfgOption {
 		return *this;
 	}
 	
+	std::string_view get_name()  const {return name;}
+	std::string_view get_descr() const {return descr_v;}
+	std::vector<LineCfgArg>& get_args() {return args;}
+	
 private:
 	friend struct LineCfg;
 	std::string name;
 	bool optional;
-	std::function<bool()> check;
 	std::vector<LineCfgArg> args;
 	int line = 0;
 	std::string descr_v;
@@ -170,7 +194,7 @@ struct LineCfg
 {
 	bool save_comments = true; ///< If set, comments are preserved on reading and written on write()
 	bool ignore_unknown = false; ///< If set, doesn't fail on reading unknown option
-	bool write_only_present = false; ///< If set, writes only options which were read
+	bool write_only_present = false; ///< If set, writes only options which were read or which are marked as changed
 	
 	LineCfg(std::vector<LineCfgOption> opts): opts(std::move(opts)) {}
 	
@@ -179,6 +203,8 @@ struct LineCfg
 	
 	bool read(const char *filename); ///< Returns false on error
 	bool write(const char *filename) const; ///< Returns false on error
+	
+	std::vector<LineCfgOption>& get_opts() {return opts;}
 	
 private:
 	std::vector<LineCfgOption> opts;

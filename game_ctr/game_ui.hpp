@@ -13,7 +13,6 @@ public:
 		std::string init_greet;
 		bool debug_menu = true;
 		bool allow_cheats = false;
-		bool is_tutorial = false;
 	};
 	
 	static GameUI* create(InitParams pars); ///< Must be called from render thread

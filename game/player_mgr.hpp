@@ -36,6 +36,9 @@ public:
 	/// Expected to be called only once
 	virtual void set_pui(std::unique_ptr<PlayerUI> pui) = 0;
 	
+	///
+	virtual vec2fp get_last_pos() = 0;
+	
 protected:
 	friend class GameCore_Impl;
 	virtual void step() = 0;

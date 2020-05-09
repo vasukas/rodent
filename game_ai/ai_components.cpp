@@ -39,7 +39,7 @@ bool AI_Movement::set_target(std::optional<vec2fp> new_tar, AI_Speed speed, std:
 		
 		// check if target is behind wall
 		auto rc = ent.core.get_phy().raycast_nearest( conv(ent.get_pos()), conv(*new_tar),
-			{[](auto&, b2Fixture& f){ auto fi = get_info(f); return fi && (fi->typeflags & FixtureInfo::TYPEFLAG_WALL); }},
+			{[](auto&, b2Fixture& f) {return f.GetBody()->GetType() == b2_staticBody;}},
 			ent.ref_pc().get_radius() + 0.1 );
 		
 		if (rc)

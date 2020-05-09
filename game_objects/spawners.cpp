@@ -2,7 +2,6 @@
 #include "game/game_mode.hpp"
 #include "game/level_ctr.hpp"
 #include "game/level_gen.hpp"
-#include "game/player_mgr.hpp"
 #include "game_ai/ai_sim.hpp"
 #include "utils/noise.hpp"
 #include "vaslib/vas_log.hpp"
@@ -15,7 +14,7 @@
 
 void level_spawn(GameCore& core, LevelTerrain& lt)
 {
-	TimeSpan time_start = TimeSpan::since_start();
+	TimeSpan time_start = TimeSpan::current();
 	new EWall(core, lt.ls_wall);
 	
 	/// Square grid non-diagonal directions (-x, +x, -y, +y)
@@ -144,7 +143,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 	
 	// add resources and decor
 	
-	TimeSpan time_decor = TimeSpan::since_start();
+	TimeSpan time_decor = TimeSpan::current();
 	
 	float res_fail_chance = 0.45; // chance to fail spawning resource
 	
@@ -525,8 +524,8 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 					for (auto& p : bigc.line)
 					{
 						float t = rnd.range_n();
-						if		(t < 0.4) new EDecor(core, "Conveyor", {p, {1,1}, true}, rot, MODEL_CONVEYOR);
-						else if (t < 0.7 && current_assemblers < max_assemblers && [&]{
+						if		(t < 0.75) new EDecor(core, "Conveyor", {p, {1,1}, true}, rot, MODEL_CONVEYOR);
+						else if (t < 0.85 && current_assemblers < max_assemblers && [&]{
 							vec2fp pp = lc.to_center_coord(p) + vec2fp(GameConst::cell_size, 0).fastrotate(rot);
 							vec2i c = lc.to_cell_coord(pp);
 							return lt_cref(c).room == &r && is_ok(c, false);
@@ -623,7 +622,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 						continue;
 					
 					add_decor(p, mk_mk({}, MODEL_TELEPAD, true), false);
-					core.get_gmc().add_teleport(lc.to_center_coord(p));
+					dynamic_cast<GameMode_Normal&>(core.get_gmc()).add_teleport(lc.to_center_coord(p));
 				}
 			});
 			
@@ -657,7 +656,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 	
 	// add spawns
 	
-	TimeSpan time_spawns = TimeSpan::since_start();
+	TimeSpan time_spawns = TimeSpan::current();
 	
 	lc.add_spawn({ LevelControl::SP_PLAYER, GameConst::cell_size * lt.rooms[0].area.fp_center() });
 	
@@ -698,7 +697,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 			
 			for (auto& d : sg_dirs) {
 				int n = AI_SimResource::max_capacity;
-				new AI_SimResource(core, {AI_SimResource::T_LEVELTERM, true, n, n}, p + d * (rad + 1), p);
+				new AI_SimResource(core, {AI_SimResource::T_LEVELTERM, true, n, n}, p + d * (rad + 1.5), p);
 			}
 		}
 		else if (r.type == LevelTerrain::RM_LIVING)   key_rooms.push_back(&r);
@@ -713,7 +712,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 	
 	// prepare enemy spawn
 	
-	TimeSpan time_enemies = TimeSpan::since_start();
+	TimeSpan time_enemies = TimeSpan::current();
 	
 	// random enemy spawn
 	
@@ -903,7 +902,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 	
 	// spawn doors
 	
-	TimeSpan time_doors = TimeSpan::since_start();
+	TimeSpan time_doors = TimeSpan::current();
 	
 	for (int y=1; y < size.y - 1; ++y)
 	for (int x=1; x < size.x - 1; ++x)
@@ -989,7 +988,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 	
 	//
 	
-	TimeSpan time_end = TimeSpan::since_start();
+	TimeSpan time_end = TimeSpan::current();
 
 	VLOGD("LevelControl::() total:   {:.3f} seconds", (time_end     - time_start  ).seconds());
 	VLOGD("                 decor:   {:.3f} seconds", (time_spawns  - time_decor  ).seconds());

@@ -66,6 +66,7 @@ public:
 		replay_wr = std::move(pars->replay_wr);
 		
 		thr = std::thread([this](auto pars){
+			set_this_thread_name("game step");
 			init(std::move(pars));
 			VLOGI("Game initialized");
 			thr_func();
@@ -84,7 +85,7 @@ public:
 		cur_state = CS_Init{"Generating..."};
 		terrain = std::shared_ptr<LevelTerrain>(pars.terrgen(pars.rndg));
 		
-		TimeSpan t0 = TimeSpan::since_start();
+		TimeSpan t0 = TimeSpan::current();
 		
 		GameCore::InitParams gci;
 		gci.lc.reset( LevelControl::create(*terrain) );
@@ -102,12 +103,12 @@ public:
 		core->get_lc().fin_init(*terrain);
 		core->get_gmc().init(*core);
 		
-		VLOGI("GameControl::init() finished in {:.3f} seconds", (TimeSpan::since_start() - t0).seconds());
+		VLOGI("GameControl::init() finished in {:.3f} seconds", (TimeSpan::current() - t0).seconds());
 		
 		if (pars.fastforward_time.is_positive())
 		{
 			set_state(CS_Init{"Forwarding..."});
-			TimeSpan t1 = TimeSpan::since_start();
+			TimeSpan t1 = TimeSpan::current();
 	
 			core->get_pmg().fastforward = true;
 //			lvl->get_aps().set_forced_sync(true);
@@ -123,7 +124,7 @@ public:
 //			lvl->get_aps().set_forced_sync(false);
 			
 			VLOGI("GameControl::init() fastforwarded {:.3f} seconds in {:.3f}",
-				 pars.fastforward_time.seconds(), (TimeSpan::since_start() - t1).seconds());
+				 pars.fastforward_time.seconds(), (TimeSpan::current() - t1).seconds());
 		}
 	}
 	void thr_func()
@@ -131,7 +132,7 @@ public:
 	{
 		while (!thr_term)
 		{
-			auto t0 = TimeSpan::since_start();
+			auto t0 = TimeSpan::current();
 			std::optional<float> sleep_time_k;
 			
 			auto& pc_ctr = PlayerInput::get();
@@ -164,7 +165,7 @@ public:
 					else if (std::holds_alternative<ReplayReader::RET_END>(ret))
 					{
 						VLOGW("DEMO PLAYBACK FINISHED");
-						set_state(CS_End{"Playback finished"});
+						set_state(CS_End{"Playback finished", {}});
 						return;
 					}
 				}
@@ -180,17 +181,14 @@ public:
 					pause_on = true;
 			}
 			
-			auto mode_state = core->get_gmc().get_state();
-			if (mode_state == GameModeCtr::State::Won  ||
-			    mode_state == GameModeCtr::State::Lost ||
-			    mode_state == GameModeCtr::State::TutComplete)
+			if (auto mode_state = core->get_gmc().get_final_state())
 			{
-				set_state(CS_End{{}, false, mode_state});
+				set_state(CS_End{{}, *mode_state});
 				break;
 			}
 			set_state(CS_Run{pause_on});
 			
-			auto dt = TimeSpan::since_start() - t0;
+			auto dt = TimeSpan::current() - t0;
 			if (!pause_on) {
 				std::unique_lock lock(post_step_lock);
 				if (post_step) post_step(dt);
@@ -203,7 +201,7 @@ public:
 		
 	} catch (std::exception& e) {
 		thr_term = true;
-		set_state(CS_End{e.what(), true});
+		set_state(CS_End{e.what(), {}});
 	}
 	void set_state(CoreState state) {
 		std::unique_lock lock(state_lock);
@@ -220,8 +218,8 @@ public:
 		std::unique_lock lock(post_step_lock);
 		post_step = std::move(f);
 	}
-	std::shared_ptr<LevelTerrain> get_terrain() {
-		return terrain;
+	const LevelTerrain* get_terrain() {
+		return terrain.get();
 	}
 	std::unique_lock<std::mutex> core_lock() {
 		return std::unique_lock(ren_lock);

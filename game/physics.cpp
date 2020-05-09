@@ -368,8 +368,8 @@ public:
 			ce.imp = imp;
 			ce.point = avg_point(ct);
 			
-			ce.fix_phy = ct->GetFixtureA();
-			ev.fb = ct->GetFixtureB();
+			ce.fix_phy   = ct->GetFixtureA();
+			ce.fix_other = ct->GetFixtureB();
 		};
 		
 		if (phw.world.IsLocked()) {
@@ -406,13 +406,10 @@ public:
 void PhysicsWorld::Event::dispatch()
 {
 	ce.other = eb;
-	ce.fix_this  = get_info(ce.fix_phy);
-	ce.fix_other = get_info(fb);
 	ea->ref_phobj().ev_contact.signal(ce);
 	
 	ce.other = ea;
-	ce.fix_phy = fb;
-	std::swap(ce.fix_this, ce.fix_other);
+	std::swap(ce.fix_phy, ce.fix_other);
 	eb->ref_phobj().ev_contact.signal(ce);
 }
 bool PhysicsWorld::CastFilter::is_ok(b2Fixture& f)
@@ -683,17 +680,18 @@ std::optional<PhysicsWorld::PointResult> PhysicsWorld::point_cast(b2Vec2 ctr, fl
 	++ aabb_query_count;
 	return cb.res;
 }
-void PhysicsWorld::query_aabb(Rectfp area, QueryCbRet f)
+bool PhysicsWorld::query_aabb(Rectfp area, QueryCbRet f)
 {
 	class Cb : public b2QueryCallback {
 	public:
 		QueryCbRet& f;
+		bool ret = true;
 		
 		Cb(QueryCbRet& f): f(f) {}
 		bool ReportFixture(b2Fixture* fix) {
 			auto pc = getptr(fix->GetBody());
 			if (!pc) return false;
-			return f(pc->ent, *fix);
+			return ret = f(pc->ent, *fix);
 		}
 	};
 	Cb cb(f);
@@ -702,6 +700,7 @@ void PhysicsWorld::query_aabb(Rectfp area, QueryCbRet f)
 	box.upperBound = conv(area.upper());
 	world.QueryAABB(&cb, box);
 	++ aabb_query_count;
+	return cb.ret;
 }
 void PhysicsWorld::query_aabb(Rectfp area, QueryCb f)
 {

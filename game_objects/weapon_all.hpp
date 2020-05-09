@@ -280,7 +280,7 @@ private:
 class WpnRocket : public Weapon
 {
 public:
-	WpnRocket();
+	WpnRocket(bool is_player = false);
 	
 private:
 	StdProjectile::Params pp;

@@ -1,30 +1,29 @@
 cmake_minimum_required(VERSION 3.11)
 
-project(rodent VERSION 0.0.1
+project(rodent VERSION 0.1.0
                LANGUAGES CXX)
 
-add_executable(rodent)
+add_executable(rodent WIN32)
 set(TARGET rodent)
 
-set(default_build_type "MinSizeRel")
 
 
+option(USE_SANITIZERS "Compile with all sanitizers (GCC/clang only)" OFF)
 
-option(USE_RELEASE_PATHS "Use system-defined paths for user data instead of 'user' directory" OFF)
-option(USE_SANITIZERS "Compile with all sanitizers" OFF)
+# pass 'PKG_OUTPUT_DIR' with path to copy all runtime files to after compilation
+# pass 'USE_SDL_MAIN=1' to compile with SDL_main
 
-if (USE_RELEASE_PATHS)
-	target_compile_definitions(${TARGET} PRIVATE USE_RELEASE_PATHS=1)
+if (USE_SDL_MAIN)
+	target_compile_definitions(${TARGET} PRIVATE USE_SDL_MAIN=1)
 endif()
 
-if (NOT DEFINED OpenGL_GL_PREFERENCE)
-	set(OpenGL_GL_PREFERENCE "GLVND" CACHE STRING "")
-endif()
-
-if (NOT CMAKE_BUILD_TYPE)
-	message("No build type specified - set to ${default_build_type}")
+if ("${CMAKE_BUILD_TYPE}" STREQUAL "")
+	set(default_build_type "MinSizeRel")
 	set(CMAKE_BUILD_TYPE ${default_build_type})
+	message("No build type specified - set to ${default_build_type}")
 endif()
+
+set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}" "${CMAKE_SOURCE_DIR}/scripts")
 
 
 
@@ -33,6 +32,7 @@ target_compile_features(${TARGET} PUBLIC cxx_variadic_macros)
 set_target_properties(${TARGET} PROPERTIES CXX_EXTENSIONS OFF)
 set_target_properties(${TARGET} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+# Link-time optimization
 include(CheckIPOSupported)
 check_ipo_supported(RESULT ipo_res)
 if (ipo_res AND NOT "${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
@@ -55,7 +55,9 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 endif()
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-	target_compile_definitions(${TARGET} PRIVATE _ENABLE_ATOMIC_ALIGNMENT_FIX)
+	target_compile_options(${TARGET} PRIVATE /D_CRT_SECURE_NO_WARNINGS)  # unsafe C std functions
+	target_compile_options(${TARGET} PRIVATE /wd4244 /wd4267 /wd4305)  # int<->float type conversions
+	target_compile_options(${TARGET} PRIVATE /wd4005)  # repeated macro definitions
 endif()
 
 target_compile_definitions(${TARGET} PRIVATE _USE_MATH_DEFINES=1)
@@ -83,6 +85,7 @@ find_package(Freetype REQUIRED)
 find_package(GLEW     REQUIRED)
 find_package(OpenGL   REQUIRED)
 find_package(SDL2     REQUIRED)
+find_package(Threads  REQUIRED)
 
 set(BOX2D_BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
 set(BOX2D_BUILD_TESTBED    OFF CACHE BOOL "" FORCE)
@@ -107,12 +110,17 @@ target_link_libraries(${TARGET} PRIVATE
 	Freetype::Freetype
 	GLEW::GLEW
 	OpenGL::GL
+	SDL2::SDL2
+	Threads::Threads
+)
+list(APPEND DLL_NAMES
+	freetype
+	glew
+	SDL2
 )
 
-if(TARGET SDL2::SDL2)
-	target_link_libraries(${TARGET} PRIVATE SDL2::SDL2)
-else()
-	target_link_libraries(${TARGET} PRIVATE SDL2)
+if (USE_SDL_MAIN)
+	target_link_libraries(${TARGET} PRIVATE SDL2::SDL2main)
 endif()
 
 if (WIN32)
@@ -121,6 +129,7 @@ endif()
 
 
 
+# Source file list; no extension for cpp+hpp pairs
 list(APPEND SRC_LIST
 
 	client/ec_render
@@ -164,6 +173,7 @@ list(APPEND SRC_LIST
 	game_objects/objs_creature
 	game_objects/objs_player
 	game_objects/spawners
+	game_objects/spawners2.cpp
 	game_objects/tutorial
 	game_objects/weapon_all
 
@@ -195,7 +205,7 @@ list(APPEND SRC_LIST
 
 	vaslib/vas_atlas_packer
 	vaslib/vas_containers
-	vaslib/vas_cpp_utils.hpp
+	vaslib/vas_cpp_utils
 	vaslib/vas_file
 	vaslib/vas_font
 	vaslib/vas_log
@@ -207,6 +217,7 @@ list(APPEND SRC_LIST
 	vaslib/wincompat
 )
 
+# Add sources to target and source groups
 foreach(NAME ${SRC_LIST})
 	get_filename_component(NAME_EXT "${NAME}" EXT)
 	get_filename_component(NAME_DIR "${NAME}" DIRECTORY)
@@ -226,4 +237,34 @@ foreach(NAME ${SRC_LIST})
 		endif()
 	endif()
 endforeach()
+
+if (WIN32)
+	set(RC_FILE "${PROJECT_SOURCE_DIR}/scripts/win32_icon.rc")
+	target_sources(${TARGET} PRIVATE "${RC_FILE}")
+	set_source_files_properties("${RC_FILE}" PROPERTIES LANGUAGE RC)
+endif()
+
+
+
+# Copy 'data/' and DLLs to packaging dir
+if (PKG_OUTPUT_DIR)
+	function(postbuild_cmd)
+		add_custom_command(TARGET ${TARGET} POST_BUILD COMMAND "${CMAKE_COMMAND}" -E ${ARGV})
+	endfunction()
+	
+	get_filename_component(PKG_OUTPUT_DIR "${PKG_OUTPUT_DIR}" ABSOLUTE)
+	postbuild_cmd(make_directory "${PKG_OUTPUT_DIR}")
+	postbuild_cmd(copy $<TARGET_FILE:${TARGET}> "${PKG_OUTPUT_DIR}/$<TARGET_FILE_NAME:${TARGET}>")
+	postbuild_cmd(copy_directory "${PROJECT_SOURCE_DIR}/data" "${PKG_OUTPUT_DIR}/data")
+	postbuild_cmd(remove_directory "${PKG_OUTPUT_DIR}/user")
+	
+	if (WIN32)
+		foreach(NAME ${DLL_NAMES})
+			list(APPEND LIB_GLOBS "${CMAKE_PREFIX_PATH}/bin/*${NAME}*.dll")
+			list(APPEND LIB_GLOBS "${CMAKE_PREFIX_PATH}/lib/*${NAME}*.dll")
+		endforeach()
+		file(GLOB LIBS ${LIB_GLOBS})
+		postbuild_cmd(copy ${LIBS} "${PKG_OUTPUT_DIR}")
+	endif()
+endif()
 

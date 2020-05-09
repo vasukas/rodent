@@ -2,35 +2,37 @@
 
 Simple 2D top-down shooter with "neon wireframe"-style graphics using SDL2, OpenGL and Box2D.
 
-## Usage
-
-Press F1 to see a control summary, ESC to list all keybindings.
-
-Run `rodent --help` to list command-line options.
-
-Default settings are overriden by `user/settings.cfg`, if present. Use `data/settings.cfg.default` as a template.
+	Here will be screenshots
 
 ## Build
 
-Requires C++17 compiler with support for zero-argument variadic macros. Tested with GCC 9.1.0 and MSVC 2017.
+Requires git, CMake and compiler with full C++17 support.
 
 ### Linux
 
-Download binary dependecies:
+Install binary dependecies:
 
-	$ sudo apt-get install libfreetype6-dev libglew-dev libsdl2-dev  # Ubuntu/Debian (build)
-	$ sudo apt-get install libfreetype6 libglew libsdl2              # Ubuntu/Debian (only runtime)
-	$ sudo pacman -S --needed freetype2 glew sdl2                    # Arch Linux
+	$ sudo apt-get install libfreetype6-dev libglew-dev libopusfile-dev libsdl2-dev  # Ubuntu/Debian
+	$ sudo apt-get install libfreetype6 libglew libsdl2     # Ubuntu/Debian (only runtime)
+	$ sudo pacman -S --needed freetype2 glew opusfile sdl2  # Arch Linux
 
-Source dependecies (Box2D, fmt, stb) are downloaded by CMake.
+Source dependecies (Box2D, fmt, stb) are downloaded automatically by CMake.
 
-Run `scripts/build.sh` to build with CMake and copy all game files to `rodent` directory.
+Run `scripts/build.sh` from project root to build with CMake.
+Resulting file will be saved as `build/rodent`.
+You may copy it to another directory along with data by specifying `-DPKG_OUTPUT_DIR=` option
+with destination path.
 
 ### Windows
 
-* Run `scripts/load_deps.ps1` to download all dependecies.
-* Build using Visual Studio 2017 solution.
-* Run `scripts/pack.bat` to copy all game files (including DLLs) to `rodent` directory.
+Requires Visual C++ 2015/2017/2019 redistributable at runtime:
+	https://aka.ms/vs/16/release/vc_redist.x64.exe, 
+	https://aka.ms/vs/16/release/vc_redist.x86.exe
 
-Not tested, but should also build with CMake using `scripts/build.bat`.
+Run in PowerShell from project root:
+* if script execution is disabled, run `Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope Process`;
+* run `scripts/load_deps.ps1` to download binary dependecies;
+* run `scripts/build.ps1`:
+  * specify `-bits 32` option to build as 32-bit instead of default 64-bit;
+  * specify `-pack` option to write runtime files to `rodent.zip` in project root.
 

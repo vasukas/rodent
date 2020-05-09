@@ -78,17 +78,18 @@ bool EC_Health::apply(DamageQuant q)
 			GamePresenter::get()->effect(FE_HIT, {Transform{*q.wpos}, q.amount * 0.1f});
 		
 		hp.apply(-q.amount);
-		if (!hp.is_alive())
-		{
-			ent.destroy();
-			return false;
-		}
 zero_damage:
 		
 		DamageQuant ev = q;
 		ev.type = orig_type;
 		if (ev.amount < 0) ev.amount = 0;
 		on_damage.signal(ev);
+		
+		if (!hp.is_alive())
+		{
+			ent.destroy();
+			return false;
+		}
 	}
 	return true;
 }

@@ -110,6 +110,16 @@ bool erase_if(Cont& c, F f)
 	return false;
 }
 
+/// Fills 'out' container with converted values of 'in'
+template <typename ContIn, typename ContOut, typename UnaryF>
+void transform(const ContIn& in, ContOut& out, UnaryF f)
+{
+	out.reserve(out.size() + in.size());
+	auto it_end = std::end(in);
+	for (auto it = std::begin(in); it != it_end; ++it)
+		out.emplace_back(f(*it));
+}
+
 
 
 /// Non-owning reference to callable object
@@ -245,5 +255,10 @@ struct SubresRoot
 	auto begin() {return hns.begin();}
 	auto end()   {return hns.end();}
 };
+
+
+
+/// Platform-specific. Name is copied and limited to 16 symbols
+void set_this_thread_name(const char *name);
 
 #endif // VAS_CPP_UTILS_HPP

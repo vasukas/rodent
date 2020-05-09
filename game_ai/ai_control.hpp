@@ -80,6 +80,9 @@ public:
 	virtual AI_GroupPtr get_group(AI_Drone& drone) = 0;
 	virtual void help_call(AI_Drone& drone, std::optional<vec2fp> target, bool high_prio) = 0;
 	
+	/// Returns true if any group with such target exist
+	virtual bool is_targeted(Entity& ent) = 0;
+	
 protected:
 	friend AI_Drone;
 	friend AI_GroupPtr;

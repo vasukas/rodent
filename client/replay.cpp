@@ -9,7 +9,7 @@
 #include "vaslib/vas_log.hpp"
 #include "replay.hpp"
 
-constexpr const char* stream_header = "ratdemo";
+constexpr char stream_header[] = "ratdemo";
 const uint32_t stream_version = 7;
 
 struct Header {
@@ -37,7 +37,8 @@ SERIALFUNC_PLACEMENT_1(ReplayInitData,
 	SER_FDT(rnd_init, Array32),
 	SER_FD(fastforward),
 	SER_FD(pmg_superman),
-	SER_FD(pmg_dbg_ai_rect));
+	SER_FD(pmg_dbg_ai_rect),
+	SER_FD(mode_survival));
 
 SERIALFUNC_PLACEMENT_1(Replay_DebugTeleport,
 	SER_FD(target));
@@ -108,6 +109,7 @@ struct ReplayThread
 	{
 		return ReplayThread([f](ReplayThread* t_ptr)
 		{
+			set_this_thread_name("replay netwrite");
 			auto& t = *t_ptr;
 			while (true)
 			{
@@ -136,6 +138,7 @@ struct ReplayThread
 	{
 		return ReplayThread([f](ReplayThread* t_ptr)
 		{
+			set_this_thread_name("replay netread");
 			auto& t = *t_ptr;
 			while (!t.close)
 			{

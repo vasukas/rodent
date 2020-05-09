@@ -6,6 +6,7 @@
 #include "render/ren_imm.hpp"
 #include "render/ren_text.hpp"
 #include "render/texture.hpp" // debug stats
+#include "utils/line_cfg.hpp"
 #include "utils/res_image.hpp"
 #include "vaslib/vas_file.hpp"
 #include "vaslib/vas_log.hpp"
@@ -50,6 +51,12 @@ static void set_wnd_pars()
 
 static void platform_info()
 {
+#if USE_SDL_MAIN
+	VLOGI("USE_SDL_MAIN = 1");
+#else
+	VLOGI("USE_SDL_MAIN = 0");
+#endif
+	
 	SDL_version sv_comp;
 	SDL_version sv_link;
 	
@@ -65,24 +72,20 @@ static void platform_info()
 
 
 
+#if !USE_SDL_MAIN
+#undef main
+#endif
+
 int main( int argc, char *argv[] )
 {
 	printf("RAT game prototype (alpha)\n");
-#if !USE_RELEASE_PATHS
-	printf("Using local paths\n");
-#else
-	printf("Using $HOME paths\n");
-#endif
 	
-	TimeSpan time_init = TimeSpan::since_start();
-	std::optional<bool>     cli_logclr;
-	std::optional<LogLevel> cli_verb;
+	TimeSpan::since_start(); // start clock
+	std::optional<bool> cli_logclr;
+	LogLevel cli_verb = LogLevel::Debug;
 	
-	std::string log_filename = AppSettings::get().path_log; // init settings
 	bool cfg_override = false;
-	
 	MainLoop::startup_date = date_time_fn();
-	bool log_filename_default = true;
 
 	ArgvParse arg;
 	arg.set(argc-1, argv+1);
@@ -97,10 +100,11 @@ Usage: rodent [OPTIONS] [MODE [MODE_OPTS]]
 Options:
   --log    <FILE> override default log path
   --logclr <0/1>  enable colors in log
-  --cfg    <FILE> override default config path
-  --res    <DIR>  override default resources dir
+  -v0 -v -vv      logfile verbosity level: info (default), debug, verbose
+				                   
+  --cfg <FILE> override default config path
+  --dump-cfg   saves default config values to "user/default.cfg" and exits
 
-  -v0 -v -vv   different log verbosity levels, from default (info) to verbose
   --gldbg      create debug OpenGL context and log all GL messages as verbose
   --debugmode  enables various debug options
   --no-fndate  don't save logs and replays to files created using current time
@@ -112,7 +116,10 @@ Mode options (--game):
   --rndseed   use random level seed
   --seed <N>  use specified level seed
   --no-ffwd   disable fast-forwarding world on init
+
   --tutorial  launch tutorial level
+  --survival  launch survival mode
+
   --nodrop    disable enemy item drop
   --nohunt    disable hunters
 
@@ -141,21 +148,24 @@ Mode options (--game):
 				return 1;
 			}
 			else if (arg.is("--log")) {
-				log_filename = arg.str();
-				log_filename_default = false;
+				AppSettings::get_mut().path_log = arg.str();
 			}
 			else if (arg.is("--logclr")) cli_logclr = arg.flag();
 			else if (arg.is("--cfg")) {
 				AppSettings::get_mut().path_settings  = arg.str();
 				cfg_override = true;
 			}
-			else if (arg.is("--res")) AppSettings::get_mut().path_resources = arg.str();
 			else if (arg.is("-v0")) cli_verb = LogLevel::Info;
 			else if (arg.is("-v"))  cli_verb = LogLevel::Debug;
 			else if (arg.is("-vv")) cli_verb = LogLevel::Verbose;
 			else if (arg.is("--gldbg")) RenderControl::opt_gldbg = true;
 			else if (arg.is("--debugmode")) MainLoop::is_debug_mode = true;
 			else if (arg.is("--no-fndate")) MainLoop::startup_date = {};
+			else if (arg.is("--dump-cfg")) {
+				bool ok = AppSettings::get_mut().gen_cfg().write(HARDPATH_USR_PREFIX"default.cfg");
+				printf("--dump-cfg: %s\n", ok? "OK" : "FAILED");
+				return 1;
+			}
 			else if (arg.is("--game"))
 			{
 				if (MainLoop::current) {
@@ -188,20 +198,21 @@ Mode options (--game):
 	
 	if (!create_dir(HARDPATH_USR_PREFIX))
 		VLOGE("Can't create user directory");
-	
-	if (log_filename.empty()) VLOGW("Log not written to file! (no name set)");
-	else
     {
-		if (log_filename_default && MainLoop::startup_date) {
-			log_filename = fmt::format(AppSettings::get().path_log_date, *MainLoop::startup_date);
+		std::string log_fn = AppSettings::get().path_log;
+		if (log_fn.empty()) {
+			if (MainLoop::startup_date)
+				log_fn = fmt::format(HARDPATH_LOGFILE_FNDATE, *MainLoop::startup_date);
+			else
+				log_fn = HARDPATH_LOGFILE;
 		}
-		VLOGI("Log filename: {}", log_filename);
+		VLOGI("Log filename: {}", log_fn);
 		
 		LoggerSettings lsets = LoggerSettings::current();
-		lsets.file.reset( File::open( log_filename.c_str(), File::OpenCreate | File::OpenDisableBuffer ) );
+		lsets.file.reset( File::open( log_fn.c_str(), File::OpenCreate | File::OpenDisableBuffer ) );
 		if (!lsets.file) VLOGW("Log not written to file! (opening error)");
 		
-		if (cli_verb) lsets.level = *cli_verb;
+		lsets.file_level = cli_verb;
 		if (cli_logclr) lsets.use_clr = *cli_logclr;
 #ifdef _WIN32
 		else lsets.use_clr = false;
@@ -225,32 +236,24 @@ Mode options (--game):
 	
 
 	
-	if (!AppSettings::get().path_resources.empty() &&
-	    !set_current_dir( AppSettings::get().path_resources.c_str() ))
+	if (cfg_override)
 	{
-		VLOGW("Can't set resources directory");
+		if (!AppSettings::get_mut().load()) {
+			VLOGE("Settings: cmd override - FAILED, ignoring");
+			cfg_override = false;
+		}
+		else VLOGI("Settings: cmd override - loaded");
+	}
+	else VLOGI("Settings: cmd override - not present");
+	
+	if (!cfg_override)
+	{
+		AppSettings::get_mut().path_settings = HARDPATH_SETTINGS_USER;
+		if (AppSettings::get_mut().load()) VLOGI("Settings: user override - loaded");
+		else VLOGW("Settings: user override - FAILED");
 	}
 	
-	auto cfg_load = [&]
-	{
-		if (cfg_override)
-		{
-			if (!AppSettings::get_mut().load()) {
-				VLOGE("Settings: cmd override - FAILED, ignoring");
-				cfg_override = false;
-			}
-			else VLOGI("Settings: cmd override - loaded");
-		}
-		else VLOGI("Settings: cmd override - not present");
-		
-		if (!cfg_override)
-		{
-			AppSettings::get_mut().path_settings = HARDPATH_SETTINGS_USER;
-			if (AppSettings::get_mut().load()) VLOGI("Settings: user override - loaded");
-			else VLOGW("Settings: user override - FAILED");
-		}
-	};
-	cfg_load();
+	AppSettings::get().clear_old();
 	
 	
 	
@@ -308,7 +311,7 @@ Mode options (--game):
 	set_wnd_pars();
 	SDL_PumpEvents(); // just in case
 	
-	VLOGI("Basic initialization finished in {:.3f} seconds", (TimeSpan::since_start() - time_init).seconds());
+	VLOGI("Basic initialization finished in {:.3f} seconds", TimeSpan::since_start().seconds());
 	
 	
 	
@@ -320,7 +323,7 @@ Mode options (--game):
 		return 1;
 	}
 	
-	VLOGI("Full initialization finished in {:.3f} seconds", (TimeSpan::since_start() - time_init).seconds());
+	VLOGI("Full initialization finished in {:.3f} seconds", TimeSpan::since_start().seconds());
 	
 	
 	
@@ -346,11 +349,15 @@ Mode options (--game):
 	if (vsync_fps) VLOGI("Refresh rate specified - {}", vsync_fps);
 	else {
 		vsync_fps = 60;
-		VLOGI("No refresh rate specified, using default - {}", vsync_fps);
+		VLOGI("No refresh rate specified, using fallback - {}", vsync_fps);
 	}
 	
-	const int target_fps = AppSettings::get().target_fps;
-	VLOGI("Target FPS: {}", target_fps);
+	int target_fps = AppSettings::get().target_fps;
+	if (target_fps) VLOGI("Target FPS (manual setting): {}", target_fps);
+	else {
+		target_fps = vsync_fps;
+		VLOGI("Target FPS (native refresh rate): {}", target_fps);
+	}
 	
 	TimeSpan loop_length = TimeSpan::fps( target_fps );
 	bool loop_limit = true;//!RenderControl::get().has_vsync() || target_fps != vsync_fps;
@@ -385,7 +392,7 @@ Mode options (--game):
 	bool run = true;
 	while (run)
 	{
-		TimeSpan loop_0 = TimeSpan::since_start();
+		TimeSpan loop_0 = TimeSpan::current();
 		vig_begin();
 		
 		SDL_Event ev;
@@ -416,7 +423,7 @@ Mode options (--game):
 					else if (ks.scancode == SDL_SCANCODE_C)
 					{
 						VLOGI("Reloading settings");
-						cfg_load();
+						AppSettings::get_mut().load();
 					}
 				}
 				else if (ks.scancode == SDL_SCANCODE_GRAVE) debug_key_combo = true;
@@ -446,7 +453,6 @@ Mode options (--game):
 				break;
 			}
 		}
-		
 		if (!run) break;
 		
 		RenImm::get().set_context(RenImm::DEFCTX_UI);
@@ -504,7 +510,7 @@ Mode options (--game):
 			}
 		}
 		
-		last_time = TimeSpan::since_start() - loop_0;
+		last_time = TimeSpan::current() - loop_0;
 		if (!RenderControl::get().render( passed ))
 		{
 			VLOGC("Critical rendering error");
@@ -512,7 +518,7 @@ Mode options (--game):
 			break;
 		}
 		
-		TimeSpan loop_total = TimeSpan::since_start() - loop_0;
+		TimeSpan loop_total = TimeSpan::current() - loop_0;
 		if (loop_limit && loop_total < loop_length)
 		{
 			passed = loop_length;
@@ -531,13 +537,13 @@ Mode options (--game):
 		++avg_total_n;
 		avg_total += (loop_total.seconds() * 1000 - avg_total) / avg_total_n;
 		
-		if (loop_total > loop_length + lag_spike_tolerance) {
+		if (loop_total > loop_length + lag_spike_tolerance /*&& !MainLoop::is_debug_mode*/) {
 			++overmax_count;
 			VLOGD("Render lag: {:.3f} seconds on step {}", loop_total.seconds(), avg_total_n);
 		}
 	}
 	
-	VLOGI("Total run time: {:.3f} seconds", (TimeSpan::since_start() - time_init).seconds());
+	VLOGI("Total run time: {:.3f} seconds", TimeSpan::since_start().seconds());
 	VLOGI("Average render frame length: {} ms, {} samples", avg_total, avg_total_n);
 	VLOGI("Render frame length > sleep time: {} samples", overmax_count);
 	log_write_str(LogLevel::Critical, "main() normal exit");

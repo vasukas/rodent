@@ -163,7 +163,7 @@ void AtkPat_Boss::reset(Entity& self)
 }
 void AtkPat_Boss::set_dist(Entity& self, std::optional<float> dist)
 {
-	if (dist) const_cast<AI_DroneParams&>(self.ref_ai_drone().get_pars()).dist_optimal = *dist;
+	if (dist) self.ref_ai_drone().mut_pars().dist_optimal = *dist;
 }
 bool AtkPat_Boss::passed(Entity& self, TimeSpan t)
 {
@@ -465,7 +465,7 @@ void EHacker::step()
 	{
 		auto& st = std::get<AI_Drone::IdleResource>(gst->ist);
 		if (st.is_working_now)
-		    core.get_gmc().hacker_work();
+		    dynamic_cast<GameMode_Normal&>(core.get_gmc()).hacker_work();
 	}
 	else logic.set_idle_state();
 }

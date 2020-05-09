@@ -58,7 +58,7 @@ public:
 	
 	RenText_Impl()
 	{
-		TimeSpan is_t0 = TimeSpan::since_start();
+		TimeSpan is_t0 = TimeSpan::current();
 		
 		auto& sets = AppSettings::get();
 		fonts.resize(3);
@@ -88,7 +88,7 @@ public:
 			}
 		}
 		
-		VLOGI("Fonts loaded in {:.3f} seconds", (TimeSpan::since_start() - is_t0).seconds());
+		VLOGI("Fonts loaded in {:.3f} seconds", (TimeSpan::current() - is_t0).seconds());
 	}
 	void build (TextRenderInfo& b) override
 	{
@@ -267,9 +267,9 @@ public:
 			abd.add_static( {g.cp, g.size.x, g.size.y}, g.image.data() );
 		
 		// build atlas
-	TimeSpan is_t0 = TimeSpan::since_start();
+	TimeSpan is_t0 = TimeSpan::current();
 		auto is = abd.build();
-	TimeSpan is_t1 = TimeSpan::since_start() - is_t0;
+	TimeSpan is_t1 = TimeSpan::current() - is_t0;
 	VLOGD("Atlas built in {:.3f} seconds", is_t1.seconds());
 		
 		

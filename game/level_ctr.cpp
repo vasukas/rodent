@@ -215,13 +215,13 @@ const LevelControl::Cell& LevelControl::cref(vec2i pos) const
 	if (auto c = cell(pos)) return *c;
 	throw std::runtime_error("LevelControl::cref() null");
 }
-const LevelCtrRoom* LevelControl::ref_room(vec2fp pos) const noexcept
+const LevelCtrRoom* LevelControl::get_room(vec2fp pos) const noexcept
 {
 	auto ri = cref(to_cell_coord(pos)).room_i;
 	if (ri) return &rooms[*ri];
 	return nullptr;
 }
-LevelCtrRoom& LevelControl::ref_room(size_t index)
+const LevelCtrRoom& LevelControl::ref_room(size_t index) const
 {
 	return rooms.at(index);
 }

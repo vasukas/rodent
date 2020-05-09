@@ -310,4 +310,21 @@ public:
 	EC_Health*   get_hlc() override {return &hlc;}
 };
 
+
+
+class ERespawnFunc final : public Entity
+{
+	EC_VirtualBody phy;
+	EntityIndex child;
+	TimeSpan tmo;
+	void step() override;
+	
+public:
+	std::function<Entity*()> f;
+	TimeSpan period = TimeSpan::seconds(8);
+	
+	ERespawnFunc(GameCore& core, vec2fp pos, std::function<Entity*()> f, TimeSpan initial_delay = {});
+	EC_Position& ref_pc() override {return phy;}
+};
+
 #endif // OBJS_BASIC_HPP

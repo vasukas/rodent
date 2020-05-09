@@ -31,7 +31,7 @@ bool writefile( const char *filename, const void *data, size_t size = std::strin
 /// Cross-platform UTF-8 fopen
 void* open_stdio_file( const char *filename, const char *mode );
 
-/// Returns filename extension
+/// Returns filename extension - lowercase, without dot
 std::string get_file_ext(std::string_view filename);
 
 /// Returns true if succeeds or directory already exists
@@ -87,7 +87,8 @@ public:
 	
 	
 	/// Opens file, throws on error
-	static std::unique_ptr<File> open_ptr( const char *filename, int flags = OpenExisting | OpenRead );
+	static std::unique_ptr<File> open_ptr( const char *filename, int flags = OpenExisting | OpenRead,
+	                                       bool throw_on_error = true );
 	
 	/// Opens file
 	static File* open( const char *filename, int flags = OpenExisting | OpenRead, bool throw_on_error = false );
@@ -214,6 +215,9 @@ public:
 	/// Copies data from another file
 	static MemoryFile* from_copy( const MemoryFile& file, size_t offset = 0, size_t size = std::string::npos, bool writeable = true );
 	
+	/// Assumes ownership of memory allocated with std::malloc
+	static MemoryFile* from_malloc( void *mem, size_t size, ssize_t capacity = -1 );
+	
 	/// Frees owned memory
 	~MemoryFile();
 	
@@ -238,7 +242,7 @@ public:
 	void reset( bool free_mem = true );
 	
 	/// Returns pointer
-	const uint8_t *rawptr() const { return mem; }
+	uint8_t *rawptr() const { return mem; }
 	
 	/// Directly sets memory. If ptr is null, sets only size, If cap is <0, it's same as size. 
 	/// Previous owned memory is freed
@@ -249,6 +253,9 @@ public:
 	
 	/// Moves OWNED memory (file is zeroed). Fails (with nullptr) if const
 	std::unique_ptr<uint8_t[], malloc_deleter> release( size_t& size, size_t* capacity = nullptr );
+	
+	/// Resizes memory to fit exact file size (or silently fails)
+	void shrink_to_fit();
 	
 private:
 	uint8_t *mem;

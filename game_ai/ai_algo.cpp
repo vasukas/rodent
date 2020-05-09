@@ -17,7 +17,7 @@ void room_radio_flood(GameCore& core, vec2i pos, int max_depth, bool random_dirs
 	
 	auto& lc = core.get_lc();
 	auto& rnd = core.get_random();
-	std::vector<LevelCtrRoom*> open, next, closed;
+	std::vector<const LevelCtrRoom*> open, next, closed;
 	std::vector<size_t> i_tmp;
 	
 	open.reserve(32);

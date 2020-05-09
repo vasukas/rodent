@@ -358,7 +358,7 @@ bool vig_scrollbar(float& offset, float span, bool is_horizontal, vec2i pos, vec
 
 /// Enumeration selector (combined widget). 
 /// Returns true if value changed
-bool vig_selector(size_t& index, const std::vector<std::string> &vals, int key_minus = 0, int key_plus = 0);
+bool vig_selector(size_t& index, const std::vector<std::string_view> &vals, int key_minus = 0, int key_plus = 0);
 
 /// Numerical selector (combined widget). 
 /// Returns true if value changed

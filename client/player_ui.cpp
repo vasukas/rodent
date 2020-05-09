@@ -655,7 +655,7 @@ public:
 				stat_str += FMT_FORMAT("Looking at: {}\n", dstate.lookat);
 				
 				auto& lc = plr_ent->core.get_lc();
-				auto room = lc.ref_room(plr_ent->get_pos());
+				auto room = lc.get_room(plr_ent->get_pos());
 				stat_str += FMT_FORMAT("Room: {}\n", room? room->name : "Corridor");
 				
 				if (auto c = lc.cell( lc.to_cell_coord( pinp.get_state(PlayerInput::CTX_GAME).tar_pos ) ))

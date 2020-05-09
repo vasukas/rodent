@@ -1720,19 +1720,19 @@ LevelTerrain* LevelTerrain::generate(const GenParams& pars)
 	auto lt_ptr = std::make_unique<LevelTerrain>();
 	LevelTerrain& lt = *lt_ptr;
 	
-	TimeSpan t0 = TimeSpan::since_start();
+	TimeSpan t0 = TimeSpan::current();
 	Gen1( pars.rnd, pars.grid_size ).convert( lt );
 	lt.find_corridors();
 	
-	TimeSpan t1 = TimeSpan::since_start();
+	TimeSpan t1 = TimeSpan::current();
 	lt.ls_wall = lt.vectorize();
 	
-	TimeSpan t2 = TimeSpan::since_start();
+	TimeSpan t2 = TimeSpan::current();
 	lt.ls_grid = lt.gen_grid();
 	
 	if (log_test_level(LogLevel::Debug))
 	{
-		TimeSpan t3 = TimeSpan::since_start();
+		TimeSpan t3 = TimeSpan::current();
 		
 		size_t pts = 0, lps = 0;
 		for (auto& c : lt.ls_wall) {
