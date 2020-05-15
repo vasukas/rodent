@@ -8,11 +8,15 @@ set(TARGET rodent)
 
 
 
+option(USE_OPUSFILE "Compile with opus audio support" ON)
 option(USE_SANITIZERS "Compile with all sanitizers (GCC/clang only)" OFF)
 
 # pass 'PKG_OUTPUT_DIR' with path to copy all runtime files to after compilation
 # pass 'USE_SDL_MAIN=1' to compile with SDL_main
 
+if (USE_OPUSFILE)
+	target_compile_definitions(${TARGET} PRIVATE USE_OPUSFILE=1)
+endif()
 if (USE_SDL_MAIN)
 	target_compile_definitions(${TARGET} PRIVATE USE_SDL_MAIN=1)
 endif()
@@ -102,6 +106,13 @@ if (NOT ${fmt_FOUND})
 	target_include_directories(${TARGET} PRIVATE "${fmtlib_SOURCE_DIR}/include")
 endif()
 
+if (USE_OPUSFILE)
+	find_package(opusfile QUIET)
+	if (NOT ${opusfile_FOUND})
+		add_subdirectory(scripts/opusfile)
+	endif()
+endif()
+
 
 
 target_link_libraries(${TARGET} PRIVATE
@@ -118,6 +129,10 @@ list(APPEND DLL_NAMES
 	glew
 	SDL2
 )
+
+if (USE_OPUSFILE)
+	target_link_libraries(${TARGET} PRIVATE opusfile)
+endif()
 
 if (USE_SDL_MAIN)
 	target_link_libraries(${TARGET} PRIVATE SDL2::SDL2main)
@@ -140,6 +155,7 @@ list(APPEND SRC_LIST
 	client/presenter
 	client/replay
 	client/resbase
+	client/sounds
 
 	core/hard_paths
 	core/main.cpp
@@ -195,6 +211,7 @@ list(APPEND SRC_LIST
 	utils/line_cfg
 	utils/noise
 	utils/path_search
+	utils/res_audio
 	utils/res_image
 	utils/serializer_defs.hpp
 	utils/serializer_dsl.hpp
@@ -202,6 +219,7 @@ list(APPEND SRC_LIST
 	utils/svg_simple
 	utils/tcp_net
 	utils/time_utils
+	utils/tokenread
 
 	vaslib/vas_atlas_packer
 	vaslib/vas_containers

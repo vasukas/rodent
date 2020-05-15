@@ -45,6 +45,7 @@ EWall::EWall(GameCore& core, const std::vector<std::vector<vec2fp>>& walls)
 		auto f = phy.body.CreateFixture(&fd);
 		
 		set_info(*f, FixtureInfo{ FixtureInfo::TYPEFLAG_WALL | FixtureInfo::TYPEFLAG_OPAQUE });
+		if (auto p = SoundEngine::get()) p->geom_static_add({}, shp);
 	};
 	for (auto& w : walls) addfix(w);
 	
@@ -245,6 +246,7 @@ void EDoor::step()
 			state = ST_TO_CLOSE;
 			tm_left = anim_time;
 			fix.set_enabled(*this, true);
+			SoundEngine::once(SND_OBJ_DOOR_CLOSE, get_pos());
 		}
 	}
 	else if (state == ST_TO_OPEN)
@@ -282,6 +284,7 @@ void EDoor::step()
 			state = ST_TO_OPEN;
 			tm_left = anim_time;
 			fix.set_enabled(*this, false);
+			SoundEngine::once(SND_OBJ_DOOR_OPEN, get_pos());
 		}
 	}
 }
@@ -353,6 +356,7 @@ void EFinalTerminal::step()
 	auto& gmc = dynamic_cast<GameMode_Normal&>(core.get_gmc());
 	if (gmc.get_state() != GameMode_Normal::State::Booting) {
 		unreg_this();
+		snd.stop();
 	}
 	else {
 		float t = gmc.get_boot_left().seconds();
@@ -379,15 +383,21 @@ void EFinalTerminal::use(Entity* by)
 	
 	if		(state == GameMode_Normal::State::NoTokens) {
 		GamePresenter::get()->add_float_text({ get_pos(), "Access denied" });
+		SoundEngine::once(SND_OBJ_TERMINAL_FAIL, get_pos());
 	}
 	else if (state == GameMode_Normal::State::HasTokens) {
 		GamePresenter::get()->add_float_text({ get_pos(), "Boot sequence initialized" });
 		reg_this();
 		gmc.terminal_use();
+		SoundEngine::once(SND_OBJ_TERMINAL_OK, get_pos());
+		snd.update({SND_OBJAMB_FINALTERM_WORK, get_pos()});
 	}
 	else if (state == GameMode_Normal::State::Final) {
 		GamePresenter::get()->add_float_text({ get_pos(), "Terminal active" });
 		gmc.terminal_use();
+	}
+	else {
+		SoundEngine::once(SND_OBJ_TERMINAL_FAIL, get_pos());
 	}
 }
 
@@ -420,13 +430,20 @@ std::pair<bool, std::string> EDispenser::use_string()
 }
 void EDispenser::use(Entity*)
 {
-	if (!left) return;
+	if (!left) {
+		SoundEngine::once(SND_OBJ_DISPENSER_EMPTY, get_pos());
+		return;
+	}
 	TimeSpan now = core.get_step_time();
-	if (usable_after >= now) return;
+	if (usable_after >= now) {
+		SoundEngine::once(SND_OBJ_DISPENSER_WAIT, get_pos());
+		return;
+	}
 	
 	auto ap = EPickable::rnd_ammo(core);
 	if (increased) ap.amount *= core.get_random().range(1.5, 3);
 	new EPickable(core, gen_at, ap);
+	SoundEngine::once(SND_OBJ_DISPENSER, get_pos());
 	
 	usable_after = now + TimeSpan::seconds(10);
 	--left;
@@ -481,6 +498,7 @@ void ETeleport::activate(bool menu)
 		
 		ref<EC_RenderModel>().clr = FColor(0.3, 0.6, 0.6);
 		ref<EC_RenderModel>().parts(ME_AURA, {{}, 1.f, FColor(0.25, 0.4, 0.4, 0.3)});
+		SoundEngine::once(SND_OBJ_TELEPORT_ACTIVATE, get_pos());
 	}
 }
 void ETeleport::teleport_player()
@@ -489,6 +507,7 @@ void ETeleport::teleport_player()
 	GamePresenter::get()->effect(FE_SPAWN, {Transform{plr.get_pos()}, plr.ref_pc().get_radius()});
 	plr.ref_phobj().teleport(get_pos());
 	GamePresenter::get()->effect(FE_SPAWN, {Transform{get_pos()}, plr.ref_pc().get_radius()});
+	SoundEngine::once(SND_OBJ_TELEPORT, get_pos());
 }
 
 
@@ -568,6 +587,7 @@ void EMinidock::step()
 	//
 	
 	effect_lightning( get_pos(), plr->get_pos(), EffectLightning::Regular, wait, FColor(0.5, 0.9, 0.6));
+	SoundEngine::once(SND_OBJ_MINIDOCK, get_pos());
 }
 EMinidock::EMinidock(GameCore& core, vec2fp at, float rot)
     :
@@ -609,6 +629,7 @@ EStorageBox::~EStorageBox()
 		lc.mut_cell(lc.to_cell_coord( get_pos() )).is_wall = false;
 		
 		GamePresenter::get()->effect(FE_WPN_EXPLOSION, {Transform{get_pos()}, 3.f});
+		SoundEngine::once(SND_ENV_LARGE_EXPLOSION, get_pos());
 	}
 }
 
@@ -640,6 +661,7 @@ void EMiningDrill::use(Entity*)
 	}
 	else if (stage == 3) {
 		ref<EC_RenderPos>().parts({ FE_WPN_CHARGE }, {Transform{vec2fp(phy.get_radius(), 0)}, 3.f, FColor(1, 0.3, 0)});
+		SoundEngine::once(SND_OBJ_DRILL_FIZZLE, get_pos());
 	}
 }
 void EMiningDrill::step()
@@ -721,6 +743,7 @@ EAssembler::~EAssembler()
 		
 		ref<EC_RenderPos>().parts(FE_CIRCLE_AURA,   {{}, 3.f, FColor(0.8, 1, 1, 1.5)});
 		ref<EC_RenderPos>().parts(FE_WPN_EXPLOSION, {{}, 2.f});
+		SoundEngine::once(SND_ENV_LARGE_EXPLOSION, get_pos());
 	}
 }
 
@@ -785,6 +808,7 @@ void ERespawnFunc::step()
 		if (tmo.is_negative()) {
 			child = f()->index;
 			GamePresenter::get()->effect(FE_SPAWN, {Transform{get_pos()}});
+			SoundEngine::once(SND_OBJ_SPAWN, get_pos());
 		}
 	}
 	else if (!core.valid_ent(child)) {

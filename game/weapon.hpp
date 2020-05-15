@@ -2,6 +2,7 @@
 #define WEAPON_HPP
 
 #include "client/resbase.hpp"
+#include "client/sounds.hpp"
 #include "vaslib/vas_time.hpp"
 #include "damage.hpp"
 
@@ -93,6 +94,9 @@ public:
 	/// If returns nothing, no shot was made. 
 	/// Called if one or more of fire button flags are set
 	virtual std::optional<ShootResult> shoot(ShootParams pars) = 0;
+
+	/// Should return true if not shooting, but somehow preparing to. Called if shoot() fails
+	virtual bool is_preparing() {return false;}
 	
 	virtual std::optional<UI_Info> get_ui_info() {return {};} ///< Should return always, even if no info available
 	std::optional<TimeSpan> get_reload_timeout() const {if (rof_left.is_positive()) return rof_left; return {};}
@@ -109,6 +113,8 @@ public:
 		DIRTYPE_FORWARD_FAIL ///< Use target if in limits, otherwise returns forward direction (always succeeds)
 	};
 	std::optional<DirectionResult> get_direction(const ShootParams& pars, DirectionType dtype = DIRTYPE_TARGET);
+	
+	void sound(SoundId id, std::optional<TimeSpan> period = {}, std::optional<float> t = {});
 	
 private:
 	friend EC_Equipment;
@@ -155,6 +161,10 @@ struct EC_Equipment : EComp
 	
 	/// If set, error messages sent to it
 	WeaponMsgReport* msgrep = nullptr;
+	
+	/// For continiously shooting weapons
+	SoundObj snd_loop;
+	TimeSpan snd_keep_until;
 	
 	
 	

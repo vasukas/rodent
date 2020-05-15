@@ -1,4 +1,5 @@
 #include "client/presenter.hpp"
+#include "client/sounds.hpp"
 #include "vaslib/vas_log.hpp"
 #include "damage.hpp"
 #include "game_core.hpp"
@@ -214,6 +215,7 @@ void DmgShield::proc(EC_Health& hlc, DamageQuant& q)
 	}
 	else if (q.wpos) {
 		GamePresenter::get()->effect(FE_HIT_SHIELD, {Transform{*q.wpos}, hp.t_state() * 3.f});
+		SoundEngine::once(SoundPlayParams{SND_ENV_BIG_SHIELD_HIT, *q.wpos}._volume(dmg_ren * 0.01));
 		q.wpos.reset();
 	}
 }

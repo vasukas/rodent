@@ -87,6 +87,7 @@ class ETurret final : public Entity
 	
 public:
 	ETurret(GameCore& core, vec2fp at, size_t team);
+	~ETurret();
 	
 	EC_Position&   ref_pc() override  {return  phy;}
 	EC_Health*     get_hlc() override {return &hlc;}
@@ -167,6 +168,7 @@ class EHacker final : public Entity
 	
 public:
 	EHacker(GameCore& core, vec2fp at);
+	~EHacker();
 	
 	EC_Position&   ref_pc() override  {return  phy;}
 	EC_Health*     get_hlc() override {return &hlc;}

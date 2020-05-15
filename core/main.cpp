@@ -1,4 +1,5 @@
 #include <SDL2/SDL.h>
+#include "client/sounds.hpp"
 #include "core/hard_paths.hpp"
 #include "core/vig.hpp"
 #include "render/control.hpp"
@@ -51,6 +52,11 @@ static void set_wnd_pars()
 
 static void platform_info()
 {
+#if USE_OPUSFILE
+	VLOGI("USE_OPUSFILE = 1");
+#else
+	VLOGI("USE_OPUSFILE = 0");
+#endif
 #if USE_SDL_MAIN
 	VLOGI("USE_SDL_MAIN = 1");
 #else
@@ -83,6 +89,7 @@ int main( int argc, char *argv[] )
 	TimeSpan::since_start(); // start clock
 	std::optional<bool> cli_logclr;
 	LogLevel cli_verb = LogLevel::Debug;
+	bool no_sound = false;
 	
 	bool cfg_override = false;
 	MainLoop::startup_date = date_time_fn();
@@ -104,6 +111,8 @@ Options:
 				                   
   --cfg <FILE> override default config path
   --dump-cfg   saves default config values to "user/default.cfg" and exits
+  --no-sound   overrides config and disables sound
+  --snd-check  checks sound and music lists and exits
 
   --gldbg      create debug OpenGL context and log all GL messages as verbose
   --debugmode  enables various debug options
@@ -161,6 +170,11 @@ Mode options (--game):
 			else if (arg.is("--gldbg")) RenderControl::opt_gldbg = true;
 			else if (arg.is("--debugmode")) MainLoop::is_debug_mode = true;
 			else if (arg.is("--no-fndate")) MainLoop::startup_date = {};
+			else if (arg.is("--no-sound")) no_sound = true;
+			else if (arg.is("--snd-check")) {
+				SoundEngine::check_unused_sounds();
+				return 1;
+			}
 			else if (arg.is("--dump-cfg")) {
 				bool ok = AppSettings::get_mut().gen_cfg().write(HARDPATH_USR_PREFIX"default.cfg");
 				printf("--dump-cfg: %s\n", ok? "OK" : "FAILED");
@@ -310,6 +324,10 @@ Mode options (--game):
 	
 	set_wnd_pars();
 	SDL_PumpEvents(); // just in case
+	
+	if (AppSettings::get().use_audio && !no_sound)
+		SoundEngine::init();
+	else VLOGI("Sound disabled");
 	
 	VLOGI("Basic initialization finished in {:.3f} seconds", TimeSpan::since_start().seconds());
 	
@@ -553,6 +571,7 @@ Mode options (--game):
 	avg_passed.reset();
 	
 	while (MainLoop::current) delete MainLoop::current;
+	delete SoundEngine::get();
 	delete &RenderControl::get();
 	SDL_Quit();
 	

@@ -1,6 +1,7 @@
 #include <SDL2/SDL_messagebox.h>
 #include "client/plr_input.hpp"
 #include "client/replay.hpp"
+#include "client/sounds.hpp"
 #include "core/hard_paths.hpp"
 #include "core/settings.hpp"
 #include "core/vig.hpp"
@@ -497,6 +498,43 @@ public:
 			}
 			THROW_FMTSTR("No such option - {}", name);
 		};
+		
+		// audio
+		if (auto snd = SoundEngine::get())
+		{
+			double vol = snd->get_master_vol();
+			if (vig_slider("Master volume", vol)) {
+				std::get<LineCfgArg_Float>(opt("audio_volume").get_args()[0]).v = vol;
+				snd->set_master_vol(vol);
+				changed = true;
+			}
+			vig_lo_next();
+			
+			vol = snd->get_music_vol();
+			if (vig_slider("Music  volume", vol)) {
+				std::get<LineCfgArg_Float>(opt("music_volume").get_args()[0]).v = vol;
+				snd->set_music_vol(vol);
+				changed = true;
+			}
+			vig_lo_next();
+			
+			if (vig_button("Disable sound")) {
+				std::get<LineCfgArg_Bool>(opt("use_audio").get_args()[0]).v = false;
+				delete SoundEngine::get();
+				changed = true;
+				return;
+			}
+			vig_lo_next();
+		}
+		else
+		{
+			if (vig_button("Enable sound")) {
+				std::get<LineCfgArg_Bool>(opt("use_audio").get_args()[0]).v = true;
+				SoundEngine::init();
+				changed = true;
+			}
+		}
+		vig_space_line();
 		
 		// graphics
 		vig_label("Line type");

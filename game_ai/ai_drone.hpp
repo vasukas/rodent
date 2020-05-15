@@ -2,6 +2,7 @@
 #define AI_DRONE_HPP
 
 #include "client/ec_render.hpp"
+#include "client/sounds.hpp"
 #include "ai_components.hpp"
 #include "ai_control.hpp"
 #include "ai_sim.hpp"
@@ -23,6 +24,7 @@ public:
 		bool is_loading = true; // is acquiring resources
 		bool is_working_now = false;
 		TimeSpan particle_tmo = {}; // initial delay before showing particles
+		SoundObj snd = {};
 	};
 	
 	struct IdlePatrol

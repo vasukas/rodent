@@ -2,6 +2,7 @@
 #include <thread>
 #include "client/presenter.hpp"
 #include "client/replay.hpp"
+#include "client/sounds.hpp"
 #include "game/game_core.hpp"
 #include "game/game_mode.hpp"
 #include "game/level_ctr.hpp"
@@ -74,6 +75,9 @@ public:
 	}
 	~GameControl_Impl()
 	{
+		if (auto p = SoundEngine::get())
+			p->geom_static_clear();
+		
 		thr_term = true;
 		if (thr.joinable())
 			thr.join();
@@ -179,6 +183,9 @@ public:
 				
 				if (pause_steps && --pause_steps == 0)
 					pause_on = true;
+				
+				if (auto p = SoundEngine::get())
+					p->sync(*core, core->get_pmg().get_last_pos());
 			}
 			
 			if (auto mode_state = core->get_gmc().get_final_state())

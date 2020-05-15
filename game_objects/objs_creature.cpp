@@ -38,8 +38,10 @@ void AtkPat_Sniper::idle(Entity& self)
 
 	//
 	
-	if (auto mov = drone.mov)
+	if (auto mov = drone.mov) {
+		if (!mov->locked && charged) SoundEngine::once(SND_BOT_LOCK_FIX, self.get_pos());
 		mov->locked = charged;
+	}
 	
 	auto& rotover = drone.get_rot_ctl().speed_override;
 	if (charged && visible) rotover = rot_speed;
@@ -208,6 +210,10 @@ ETurret::ETurret(GameCore& core, vec2fp at, size_t team)
 	phy.add(FixtureCreate::circle( fixtdef(0.2, 0), GameConst::hsz_box_small, 0 ));
 	eqp.add_wpn(std::make_unique<WpnMinigunTurret>());
 }
+ETurret::~ETurret()
+{
+	SoundEngine::once(SND_ENV_BOT_EXPLOSION, get_pos());
+}
 
 
 
@@ -336,8 +342,10 @@ EEnemyDrone::EEnemyDrone(GameCore& core, vec2fp at, Init init)
 }
 EEnemyDrone::~EEnemyDrone()
 {
-	if (!core.is_freeing() && core.spawn_drop)
+	if (!core.is_freeing() && core.spawn_drop) {
 		EPickable::create_death_drop(core, get_pos(), drop_value);
+	}
+	SoundEngine::once(SND_ENV_BOT_EXPLOSION, get_pos());
 }
 
 
@@ -402,6 +410,7 @@ EHunter::EHunter(GameCore& core, vec2fp at)
 	
 	ref<EC_RenderPos>().parts(FE_SPAWN, {{}, GameConst::hsz_drone_hunter});
 	ref<EC_RenderModel>().parts(ME_AURA, {{}, 1, FColor(0, 0, 1, 2)});
+	SoundEngine::once(SND_OBJ_SPAWN, get_pos());
 }
 EHunter::~EHunter()
 {
@@ -416,6 +425,9 @@ EHunter::~EHunter()
 		ref<EC_RenderPos>().parts(FE_WPN_EXPLOSION, {{}, 3.f});
 		ref<EC_RenderPos>().parts(FE_CIRCLE_AURA,   {{}, 6.f, FColor(0.2, 0.8, 1, 1.5)});
 		ref<EC_RenderModel>().parts(ME_AURA, {{}, 1, FColor(0, 1, 1, 2)});
+		
+		SoundEngine::once(SND_ENV_BOT_EXPLOSION, get_pos());
+		SoundEngine::once(SND_ENV_LARGE_EXPLOSION, get_pos());
 	}
 }
 
@@ -468,4 +480,8 @@ void EHacker::step()
 		    dynamic_cast<GameMode_Normal&>(core.get_gmc()).hacker_work();
 	}
 	else logic.set_idle_state();
+}
+EHacker::~EHacker()
+{
+	SoundEngine::once(SND_ENV_BOT_EXPLOSION, get_pos());
 }

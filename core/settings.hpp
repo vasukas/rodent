@@ -18,6 +18,15 @@ struct AppSettings
 	int target_fps;
 	int set_vsync;
 	
+	// sound options
+	bool use_audio;
+	float audio_volume;
+	float music_volume;
+	std::string audio_api;
+	std::string audio_device;
+	int audio_rate;
+	int audio_samples;
+	
 	// font options
 	std::string font_path;
 	std::string font_dbg_path;

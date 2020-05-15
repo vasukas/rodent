@@ -3,6 +3,7 @@
 
 #include <variant>
 #include "client/ec_render.hpp"
+#include "client/sounds.hpp"
 #include "game/physics.hpp"
 #include "game/weapon.hpp"
 
@@ -137,6 +138,7 @@ public:
 class EFinalTerminal final : public EInteractive
 {
 	EC_Physics phy;
+	SoundObj snd;
 	void step() override;
 	
 public:
@@ -248,6 +250,7 @@ class EDecor : public Entity
 protected:
 	EC_Physics phy;
 public:
+	SoundObj snd; ///< Not used internally
 	/// 'ui_name' is NOT copied
 	EDecor(GameCore& core, const char *ui_name, Rect at, float rot, ModelType model, FColor clr = FColor(0.7, 0.7, 0.7));
 	EC_Position& ref_pc() override {return phy;}

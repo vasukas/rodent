@@ -1,5 +1,6 @@
 #include <SDL2/SDL_endian.h>
 #include "client/plr_input.hpp"
+#include "client/sounds.hpp"
 #include "core/settings.hpp"
 #include "core/vig.hpp"
 #include "game/level_ctr.hpp"
@@ -53,6 +54,7 @@ public:
 			case ERR_SELECT_NOAMMO:
 				str = "No ammo";
 				no_ammo_tcou.trigger();
+				SoundEngine::once(SND_UI_NO_AMMO, {});
 				break;
 			case ERR_NO_TARGET:
 				str = "No target";
@@ -62,6 +64,7 @@ public:
 		void no_ammo(int required) {
 			time = TimeSpan::since_start();
 			str = FMT_FORMAT("Need {} ammo", required);
+			SoundEngine::once(SND_UI_NO_AMMO, {});
 		}
 		void reset() {
 			str = {};
@@ -468,6 +471,7 @@ public:
 						if (std::exchange(proj_shld_was_dead, false)) {
 							i_alive.blink.force_reset();
 							i_alive.blink.trigger();
+							SoundEngine::once(SND_UI_SHIELD_READY, {});
 						}
 						i_alive.draw("Shield - ready", 0, true);
 					}

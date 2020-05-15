@@ -77,6 +77,18 @@ std::optional<Weapon::DirectionResult> Weapon::get_direction(const ShootParams& 
 
 	return DirectionResult{orig, dir};
 }
+void Weapon::sound(SoundId id, std::optional<TimeSpan> period, std::optional<float> t)
+{
+	auto& ent = equip->ent;
+	if (period) {
+		equip->snd_loop.update({ id, ent.get_pos(), ent.index, t, *period });
+		equip->snd_keep_until = equip->ent.core.get_step_time() + *period + GameCore::step_len;
+	}
+	else {
+		equip->snd_loop.stop();
+		SoundEngine::once(id, ent.get_pos());
+	}
+}
 void Weapon::Overheat::shoot(float amount)
 {
 	value += amount;
@@ -219,6 +231,9 @@ int EC_Equipment::shoot_check(Weapon& wpn)
 	if (!has_ammo(wpn)) return 1;
 	return 2;
 }
+
+#include "game/player_mgr.hpp"
+#include "vaslib/vas_log.hpp"
 void EC_Equipment::step()
 {
 	did_shot_flag = false;
@@ -227,6 +242,7 @@ void EC_Equipment::step()
 	if (last_req)
 		set_wpn(*last_req);
 	
+	bool snd_shooting = pars.main || pars.alt;
 	if (w_prev && *w_prev != wpn_cur)
 	{
 		auto sp = pars;
@@ -255,4 +271,8 @@ void EC_Equipment::step()
 		if (wpn->overheat && (i != wpn_cur || !has_shot))
 			wpn->overheat->cool();
 	}
+	
+	if (!snd_shooting || (!has_shot && !get_wpn().rof_left.is_positive()
+	                      && !get_wpn().is_preparing() && ent.core.get_step_time() > snd_keep_until))
+		snd_loop.stop();
 }

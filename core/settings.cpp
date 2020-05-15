@@ -67,6 +67,14 @@ LineCfg AppSettings::gen_cfg()
 	P_ENUM(set_vsync, int, {-1, "dont_set"}, {0, "force_off"}, {1, "on"})
 		.descr("vertical synchronization: dont_set, force_off, on");
 	
+	P_BOOL(use_audio).descr("enable sound");
+	P_FLOAT(audio_volume).descr("master audio volume");
+	P_FLOAT(music_volume).descr("music volume");
+	P_STR(audio_api).descr("empty string for default");
+	P_STR(audio_device).descr("empty string for default");
+	P_INT(audio_rate).descr("sample rate");
+	P_INT(audio_samples).descr("buffer size");
+	
 #define FONT(NM, DESCR) \
 	cs.emplace_back("font" #NM)\
 	.vstr(font##NM##_path)\
@@ -106,6 +114,14 @@ void AppSettings::init_default()
 	fscreen = 0;
 	target_fps = 0;
 	set_vsync = 1;
+	
+	use_audio = true;
+	audio_volume = 1;
+	music_volume = 0.9;
+	audio_api = {};
+	audio_device = {};
+	audio_rate = 48000;
+	audio_samples = 1024;
 	
 	font_path = "data/Inconsolata-Bold.ttf";
 	font_dbg_path = "data/Inconsolata.otf";

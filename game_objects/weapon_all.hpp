@@ -127,6 +127,7 @@ private:
 	EC_Physics phy;
 	EC_Health hlc;
 	size_t team;
+	SoundObj snd;
 	
 	static constexpr TimeSpan frozen_left = TimeSpan::seconds(0.1);
 	TimeSpan left;
@@ -151,6 +152,7 @@ private:
 class FireletProjectile : public Entity
 {
 	EC_Physics phy;
+	SoundObj snd;
 	TimeSpan left, tmo;
 	size_t team;
 	float charge = 1;
@@ -175,6 +177,7 @@ private:
 	EVS_SUBSCR;
 	EC_Physics phy;
 	EC_Health hlc;
+	SoundObj snd;
 	
 	EntityIndex src_eid;
 	TimeSpan ignore_tmo;
@@ -200,6 +203,7 @@ public:
 private:
 	EVS_SUBSCR;
 	EC_Physics phy;
+	SoundObj snd;
 	
 	EntityIndex target_id;
 	TimeSpan tmo_target;
@@ -245,6 +249,7 @@ private:
 	bool armed = false;
 	vec2fp shift = {};
 	TimeSpan min_spd_tmo;
+	SoundObj snd;
 	
 	void on_cnt(const CollisionEvent& ev);
 	void step() override;
@@ -298,6 +303,7 @@ public:
 private:
 	bool left = false;
 	std::optional<ShootResult> shoot(ShootParams pars) override;
+//	bool is_preparing() override {return true;}
 	
 	EVS_SUBSCR;
 	b2Fixture* detect = nullptr;
@@ -333,6 +339,7 @@ private:
 	
 	std::optional<ShootResult> shoot(ShootParams pars) override;
 	std::optional<UI_Info> get_ui_info() override;
+	bool is_preparing() override;
 };
 
 

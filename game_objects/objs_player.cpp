@@ -1,5 +1,6 @@
 #include "client/plr_input.hpp"
 #include "client/presenter.hpp"
+#include "client/sounds.hpp"
 #include "game/game_core.hpp"
 #include "game_ai/ai_control.hpp"
 #include "vaslib/vas_log.hpp"
@@ -268,6 +269,7 @@ void EC_PlayerLogic::on_cnt(const CollisionEvent& ev)
 				}
 				
 				ent.ref<EC_RenderModel>().parts(ME_AURA, {Transform{{2, 0}}, 0.5, FColor(0, 1, 0.2)});
+				SoundEngine::once(SND_ENV_RAM, ent.get_pos());
 			}
 		}
 	}

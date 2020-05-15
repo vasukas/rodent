@@ -217,6 +217,10 @@ void AI_Drone::state_on_leave(State& state)
 			if (st->reg) --st->reg->ai_patrolling;
 			st->reg = nullptr;
 		}
+		else if (auto st = std::get_if<IdleResource>(&gst->ist))
+		{
+			st->snd.stop();
+		}
 	}
 }
 void AI_Drone::helpcall(std::optional<vec2fp> target, bool high_prio)
@@ -492,12 +496,14 @@ void AI_Drone::step()
 						st->reg = {};
 
 						particles->stop(true);
+						st->snd.stop();
 					},
 					[&](AI_SimResource::ResultNotInRange wr)
 					{
 						mov->set_target(wr.move_target, AI_Speed::SlowPrecise);
 
 						particles->stop(true);
+						st->snd.stop();
 						st->particle_tmo = TimeSpan::seconds(1.5);
 					},
 					[&](AI_SimResource::ResultWorking wr)
@@ -523,6 +529,7 @@ void AI_Drone::step()
 							}
 						}
 						st->is_working_now = true;
+						st->snd.update(ent, {st->is_loading? SND_ENV_DRILLING : SND_ENV_UNLOADING});
 					}
 				}, res);
 			}

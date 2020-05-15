@@ -181,6 +181,7 @@ public:
 					
 					auto eff = [&](Entity* ent){
 						GamePresenter::get()->effect(FE_SPAWN, {{ent->ref_pc().get_trans()}, GameConst::hsz_drone_big});
+						SoundEngine::once(SND_OBJ_TELEPORT, ent->get_pos());
 						ent->ref_ai_drone().set_battle_state();
 					};
 					

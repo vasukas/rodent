@@ -7,6 +7,7 @@
 #include "client/plr_input.hpp"
 #include "client/presenter.hpp"
 #include "client/replay.hpp"
+#include "client/sounds.hpp"
 #include "core/hard_paths.hpp"
 #include "core/main_loop.hpp"
 #include "core/vig.hpp"
@@ -262,6 +263,7 @@ public:
 				vig_checkbox(core.get_aic().show_aos_debug, "Show AOS");
 				vig_checkbox(core.get_aic().show_states_debug, "See AI stats");
 				vig_checkbox(RenParticles::get().enabled, "Show particles");
+				if (auto p = SoundEngine::get()) vig_checkbox(p->debug_draw, "Sound debug draw");
 				vig_lo_next();
 				
 				vig_label_a("Raycasts:  {:4}\nAABB query: {:3}\n",
@@ -359,6 +361,11 @@ public:
 	}
 	~GameUI_Impl()
 	{
+		if (auto p = SoundEngine::get()) {
+			p->music(nullptr);
+			p->set_pause(true);
+		}
+		
 		gctr.set_post_step({});
 		VLOGI("Average logic frame length: {} ms, {} samples", serv_avg_total, serv_avg_count);
 		VLOGI("Logic frame length > sleep time: {} samples", serv_overmax_count);
@@ -403,6 +410,9 @@ public:
 		
 		auto lock = gctr.core_lock();
 		gctr.set_pause(true);
+		
+		if (auto p = SoundEngine::get())
+			p->set_pause(true);
 	}
 	void on_enter()
 	{
@@ -416,6 +426,9 @@ public:
 //		Postproc::get().tint_reset();
 //		Postproc::get().tint_seq({}, FColor(0.5, 0.5, 0.5, 0.5));
 //		Postproc::get().tint_default(TimeSpan::seconds(0.2));
+		
+		if (auto p = SoundEngine::get())
+			p->set_pause(false);
 	}
 	void on_event(const SDL_Event& ev)
 	{
@@ -450,7 +463,12 @@ public:
 			if		(k == SDL_SCANCODE_1) mod_pb_speed([](float v){return v/2;});
 			else if (k == SDL_SCANCODE_2) mod_pb_speed([](float v){return v*2;});
 			else if (k == SDL_SCANCODE_3) mod_pb_speed([](float){return 1;});
-			else if (k == SDL_SCANCODE_PAUSE) is_ren_paused = true;
+			else if (k == SDL_SCANCODE_PAUSE)
+			{
+				is_ren_paused = true;
+				if (auto p = SoundEngine::get())
+					p->set_pause(true);
+			}
 			else if (!is_first_frame && allow_cheats)
 			{
 				if		(k == SDL_SCANCODE_0) {
@@ -581,6 +599,32 @@ public:
 			{
 				VLOGI("First game frame rendered at {:.3f} seconds", TimeSpan::since_start().seconds());
 				is_first_frame = false;
+			}
+			
+			// sound & music
+			
+			if (auto snd = SoundEngine::get())
+			{
+				snd->set_pause(false);
+				
+				int num = core.get_aic().debug_batle_number;
+				if (!num) {
+					if (auto p = dynamic_cast<GameMode_Normal*>(&core.get_gmc());
+					    p && p->get_state() >= GameMode_Normal::State::Booting)
+					{
+						snd->music_control(SoundEngine::MUSC_LIGHT);
+					}
+					else snd->music_control(SoundEngine::MUSC_AMBIENT);
+				}
+				else if (num > AI_Const::msg_engage_max_bots + 6) {
+					snd->music_control(SoundEngine::MUSC_EPIC);
+				}
+				else if (num >= AI_Const::msg_engage_max_bots - 1) {
+					snd->music_control(SoundEngine::MUSC_HEAVY);
+				}
+				else {
+					snd->music_control(SoundEngine::MUSC_LIGHT);
+				}
 			}
 			
 			// input

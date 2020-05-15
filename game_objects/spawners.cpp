@@ -260,10 +260,13 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 			new EMiningDrill(core, lc.to_center_coord(at), r);
 			return true;
 		};
-		auto mk_mk = [&](const char *name, ModelType model, bool is_ghost) {
-			return [&core, name, model, is_ghost](vec2i at, float r) {
+		auto mk_mk = [&](const char *name, ModelType model, bool is_ghost, SoundId snd = SND_NONE) {
+			return [&core, name, model, is_ghost, snd](vec2i at, float r) {
 				if (is_ghost) new EDecorGhost( core, Transform(core.get_lc().to_center_coord(at), r), model );
-				else new EDecor( core, name, {at, {1,1}, true}, r, model );
+				else {
+					auto e = new EDecor( core, name, {at, {1,1}, true}, r, model );
+					if (snd != SND_NONE) e->snd.update({snd, e->get_pos()});
+				}
 				return !is_ghost;
 			};
 		};
@@ -524,7 +527,10 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 					for (auto& p : bigc.line)
 					{
 						float t = rnd.range_n();
-						if		(t < 0.75) new EDecor(core, "Conveyor", {p, {1,1}, true}, rot, MODEL_CONVEYOR);
+						if		(t < 0.75) {
+							auto e = new EDecor(core, "Conveyor", {p, {1,1}, true}, rot, MODEL_CONVEYOR);
+							e->snd.update({SND_OBJAMB_CONVEYOR, e->get_pos()});
+						}
 						else if (t < 0.85 && current_assemblers < max_assemblers && [&]{
 							vec2fp pp = lc.to_center_coord(p) + vec2fp(GameConst::cell_size, 0).fastrotate(rot);
 							vec2i c = lc.to_cell_coord(pp);
@@ -559,8 +565,8 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 				{
 					if (rnd.range_n() > 0.8) continue;
 					float t = rnd.range_n();
-					if		(t < 0.1) add_decor( p+d, mk_mk("Cryopod", MODEL_HUMANPOD, false), true );
-					else if (t < 0.6) add_decor( p+d, mk_mk("Lab device", MODEL_SCIENCE_BOX, false), true );
+					if		(t < 0.1) add_decor( p+d, mk_mk("Cryopod", MODEL_HUMANPOD, false, SND_OBJAMB_CRYOPOD), true );
+					else if (t < 0.6) add_decor( p+d, mk_mk("Lab device", MODEL_SCIENCE_BOX, false, SND_OBJAMB_SCITERM), true );
 					else if (t < 0.9) add_disp ( p+d );
 					else              add_mdock( p+d );
 				}

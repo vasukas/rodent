@@ -1,5 +1,6 @@
 #include "client/effects.hpp"
 #include "client/presenter.hpp"
+#include "client/sounds.hpp"
 #include "utils/noise.hpp"
 #include "game/game_core.hpp"
 #include "game/level_ctr.hpp"
@@ -35,6 +36,9 @@ PhysicsWorld::CastFilter StdProjectile::make_cf(EntityIndex)
 void StdProjectile::explode(GameCore& core, size_t src_team, EntityIndex src_eid,
                             b2Vec2 self_vel, PhysicsWorld::RaycastResult hit, const Params& pars)
 {
+	if (pars.type == T_AOE)
+		SoundEngine::once(SND_ENV_EXPLOSION, conv(hit.poi));
+	
 	auto apply = [&](Entity& tar, float k, b2Vec2 at, b2Vec2 v, std::optional<size_t> armor)
 	{
 		if (pars.ignore_hack && std::type_index(typeid(tar)) == *pars.ignore_hack) return;
@@ -64,6 +68,9 @@ void StdProjectile::explode(GameCore& core, size_t src_team, EntityIndex src_eid
 		std::optional<size_t> armor;
 		if (hit.fix) armor = hit.fix->armor_index;
 		apply(*hit.ent, 1, hit.poi, self_vel, armor);
+		
+		if (hit.fix && (hit.fix->typeflags & FixtureInfo::TYPEFLAG_WALL))
+			SoundEngine::once(SND_ENV_BULLET_HIT, conv(hit.poi));
 	}
 	break;
 		
@@ -314,6 +321,8 @@ std::optional<Weapon::ShootResult> WpnMinigun::shoot(ShootParams pars)
 		v *= info->bullet_speed;
 		v.rotate( core.get_random().range_n2() * deg_to_rad(disp) );
 		new ProjectileEntity(core, p, v, {}, &equip->ent, pp, MODEL_MINIGUN_PROJ, FColor(1, 1, 0.2, 1.5));
+		
+		sound(SND_WPN_MINIGUN, TimeSpan{});
 		return ShootResult{};
 	}
 	else if (pars.alt)
@@ -326,6 +335,8 @@ std::optional<Weapon::ShootResult> WpnMinigun::shoot(ShootParams pars)
 			lv.rotate( core.get_random().range_n2() * deg_to_rad(25) );
 			new ProjectileEntity(core, p, lv, {}, &equip->ent, p2, MODEL_MINIGUN_PROJ, FColor(1, 1, 0.2, 1.5));
 		}
+		
+		sound(SND_WPN_SHOTGUN);
 		return ShootResult{num, TimeSpan::seconds(0.7)};
 	}
 	return {};
@@ -369,6 +380,8 @@ std::optional<Weapon::ShootResult> WpnMinigunTurret::shoot(ShootParams pars)
 	v *= info->bullet_speed;
 	v.rotate( core.get_random().range_n2() * deg_to_rad(10) );
 	new ProjectileEntity(core, p, v, {}, &equip->ent, pp, MODEL_MINIGUN_PROJ, FColor(1, 1, 0.2, 1.5));
+	
+	sound(SND_WPN_MINIGUN_TURRET, TimeSpan{});
 	return ShootResult{};
 }
 
@@ -416,6 +429,7 @@ std::optional<Weapon::ShootResult> WpnRocket::shoot(ShootParams pars)
 	if (pars.alt) tar = pars.target;
 	
 	new ProjectileEntity(core, p, v, tar, &equip->ent, pp, MODEL_ROCKET_PROJ, FColor(0.2, 1, 0.6, 1.5));
+	sound(SND_WPN_ROCKET);
 	return ShootResult{};
 }
 
@@ -479,6 +493,7 @@ void BarrageMissile::step()
 	const float shift_spd = shift_max * (TimeSpan::seconds(1) / core.step_len);
 	
 	ref<EC_RenderPos>().parts(FE_SPEED_DUST, {Transform({-ref_pc().get_radius(), 0}), 0.25});
+	if (armed) snd.update(*this, SoundPlayParams{SND_AUTOLOCK_PING}._t(left / lifetime));
 	
 	left -= core.step_len;
 	if (left.is_negative())
@@ -573,6 +588,8 @@ std::optional<Weapon::ShootResult> WpnBarrage::shoot(ShootParams pars)
 
 	if (pars.main)
 	{
+		sound(SND_WPN_BARRAGE, *info->def_delay);
+		
 		auto res = core.get_phy().point_cast(conv(pars.target), 0.1, {[](auto& ent, auto&){ return ent.is_creature(); }});
 		if (res) {
 			bool armed;
@@ -681,6 +698,7 @@ ElectroCharge::ElectroCharge(GameCore& core, vec2fp pos, SrcParams src, std::opt
 	phy(*this, Transform{pos}),
     src(src), dir_lim(dir_lim)
 {
+	SoundEngine::once(SND_ENV_LIGHTNING, pos);
 	reg_this();
 }
 void ElectroCharge::step()
@@ -806,8 +824,10 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 				GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform{p, v.angle()}, charge_lvl * 2.5f, FColor(1, 1, 1)});
 			}
 			
-			if (charge_tmo < wpr.wait_time)
+			if (charge_tmo < wpr.wait_time) {
+				sound(SND_WPN_BOLTER_CHARGE, TimeSpan{}, charge_lvl);
 				return {};
+			}
 		}
 		charge_lvl = std::max(charge_lvl, min_charge_lvl);
 		
@@ -836,6 +856,7 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 		effect_lightning( p, r_hit, EffectLightning::Straight, TimeSpan::seconds(0.3) );
 		GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform(r_hit, v.angle() + M_PI),
 		                                             charge_lvl * 20, FColor(0.6, 0.85, 1, 1.2)});
+		sound(SND_WPN_BOLTER_DISCHARGE);
 		
 		ShootResult res = {int_round(wpr.max_ammo * charge_lvl), std::max(wpr.max_cd * charge_lvl, *info->def_delay)};
 		charge_lvl = 0.f;
@@ -846,10 +867,12 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 	if (pars.alt)
 	{
 		if (ElectroCharge::generate(core, p, {ent.get_team(), ent.index}, v)) {
+			sound(SND_WPN_BOLTER_ELECTRO, wpr.alt_delay);
 			return ShootResult{{}, wpr.alt_delay};
 		}
 		else {
 			effect_lightning(p, p + v*2, EffectLightning::First, TimeSpan::seconds(0.3), FColor(0.5, 0.7, 1, 0.8));
+			sound(SND_WPN_BOLTER_FAIL);
 			return ShootResult{0, wpr.alt_delay};
 		}
 	}
@@ -861,6 +884,10 @@ std::optional<Weapon::UI_Info> WpnElectro::get_ui_info()
 	UI_Info inf;
 	if (charge_lvl > 0.f) inf.charge_t = equip->has_ammo(*this, 1) ? charge_lvl : 1.f;
 	return inf;
+}
+bool WpnElectro::is_preparing()
+{
+	return charge_lvl > 0.f;
 }
 
 
@@ -967,6 +994,7 @@ void FoamProjectile::freeze(bool is_normal)
 	
 	team = TEAM_ENVIRON;
 	ref<EC_RenderModel>().clr = FColor(0.95, 1, 1);
+	snd.update(*this, SoundPlayParams{SND_WPN_FOAM_AMBIENT}._period({}));
 }
 
 
@@ -996,6 +1024,7 @@ FireletProjectile::FireletProjectile(GameCore& core, vec2fp pos, vec2fp vel, siz
 	phy.add(fc);
 	
 	reg_this();
+	snd.update(*this, SoundPlayParams{SND_WPN_FIRE_LOOP}._period({}));
 }
 void FireletProjectile::step()
 {
@@ -1089,6 +1118,7 @@ std::optional<Weapon::ShootResult> WpnFoam::shoot(ShootParams pars)
 	if (pars.alt)
 	{
 		new FoamProjectile(core, p, v * 10, ent.get_team(), ent.index, true);
+		sound(SND_WPN_FOAM_SHOOT, *info->def_delay);
 		return ShootResult{};
 	}
 	if (pars.main)
@@ -1102,6 +1132,7 @@ std::optional<Weapon::ShootResult> WpnFoam::shoot(ShootParams pars)
 			new FireletProjectile(ent.core, p, 11 * vec2fp(v).fastrotate(a + i * ad), ent.get_team(), ent.index);
 		
 		ammo_skip_count = (ammo_skip_count + 1) % 2;
+		sound(SND_WPN_FIRE_SHOOT, TimeSpan::seconds(0.3));
 		return ShootResult{ammo_skip_count ? 0 : 1, TimeSpan::seconds(0.3)};
 	}
 	return {};
@@ -1126,6 +1157,7 @@ GrenadeProjectile::GrenadeProjectile(GameCore& core, vec2fp pos, vec2fp dir, Ent
     left(TimeSpan::seconds(6))
 {
 	add_new<EC_RenderModel>(MODEL_GRENADE_PROJ, FColor(1, 0, 0));
+	snd.update(*this, {SND_AUTOLOCK_PING});
 	
 	phy.add(FixtureCreate::circle( fixtdef(0,1), GameConst::hsz_proj, 1 ));
 	phy.add(FixtureCreate::circle( fixtsensor(), 2, 0 ));
@@ -1229,6 +1261,7 @@ std::optional<Weapon::ShootResult> WpnRifle::shoot(ShootParams pars)
 		v.rotate( core.get_random().range(-1, 1) * deg_to_rad(2) );
 	
 		new ProjectileEntity(core, p, v, {}, &ent, pp, MODEL_MINIGUN_PROJ, FColor(0.6, 0.8, 1, 1.5));
+		sound(SND_WPN_RIFLE, *info->def_delay);
 		return ShootResult{};
 	}
 	
@@ -1242,6 +1275,7 @@ std::optional<Weapon::ShootResult> WpnRifle::shoot(ShootParams pars)
 		}
 		
 		new GrenadeProjectile(core, p, v, ent.index);
+		sound(SND_WPN_GRENADE_SHOT);
 		return ShootResult{ammo, TimeSpan::seconds(0.7)};
 	}
 	
@@ -1287,6 +1321,7 @@ std::optional<Weapon::ShootResult> WpnSMG::shoot(ShootParams pars)
 		v.rotate( core.get_random().range(-1, 1) * deg_to_rad(8) );
 	
 		new ProjectileEntity(core, p, v, {}, &equip->ent, pp, MODEL_MINIGUN_PROJ, FColor(0.9, 0.8, 0.5, 1.5));
+		sound(SND_WPN_SMG, *info->def_delay);
 		return ShootResult{};
 	}
 	return {};
@@ -1307,6 +1342,7 @@ ElectroBall::ElectroBall(GameCore& core, vec2fp pos, vec2fp dir)
 {
 	ui_descr = "Plasma ball";
 	add_new<EC_RenderModel>(MODEL_GRENADE_PROJ_ALT, FColor(0.4, 0.2, 1));
+	snd.update(*this, SoundPlayParams{SND_WPN_UBER_AMBIENT}._period({}));
 	
 	phy.add(FixtureCreate::circle( fixtsensor(), expl_radius, 0 ));
 	EVS_CONNECT1(phy.ev_contact, on_cnt);
@@ -1518,6 +1554,7 @@ std::optional<Weapon::ShootResult> WpnUber::shoot(ShootParams pars)
 		GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform(p, v.angle()), 0.3, FColor(1, 0.7, 0.5, 0.7)});
 		
 		ammo_skip_count = (ammo_skip_count + 1) % 5;
+		sound(SND_WPN_UBER_RAY, TimeSpan{});
 		return ShootResult{ammo_skip_count ? 0 : 1, {}, 0.3};
 	}
 	else if (pars.alt)
@@ -1530,6 +1567,7 @@ std::optional<Weapon::ShootResult> WpnUber::shoot(ShootParams pars)
 		}
 		
 		new ElectroBall(core, p, v);
+		sound(SND_WPN_UBER_LAUNCH);
 		return ShootResult{ammo, {}, 1 / GameCore::time_mul};
 	}
 	return {};
