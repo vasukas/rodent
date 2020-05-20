@@ -934,7 +934,7 @@ FoamProjectile::FoamProjectile(GameCore& core, vec2fp pos, vec2fp vel, size_t te
 }
 FoamProjectile::~FoamProjectile()
 {
-	if (!core.is_freeing())
+	if (!core.is_freeing() && !frozen)
 		freeze(false);
 }
 void FoamProjectile::step()
@@ -969,6 +969,8 @@ void FoamProjectile::freeze(bool is_normal)
 		if (is_normal) destroy();
 		return;
 	}
+	add_new<EC_ParticleEmitter>().effect(FE_FROST_AURA, {{}, 1.5f, FColor(1,1,1,0.1), 0.5},
+	                                     TimeSpan::seconds(rnd_stat().range(0.3, 0.5)), TimeSpan::nearinfinity);
 	
 	left = TimeSpan::seconds(12);
 	frozen = true;

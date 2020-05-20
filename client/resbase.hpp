@@ -100,6 +100,7 @@ enum FreeEffect
 	FE_CIRCLE_AURA,
 	FE_EXPLOSION_FRAG,
 	FE_FIRE_SPREAD, ///< 'power' is distance, 'rad' is spread angle (half)
+	FE_FROST_AURA,
 	
 	FE_TOTAL_COUNT_INTERNAL ///< Do not use
 };

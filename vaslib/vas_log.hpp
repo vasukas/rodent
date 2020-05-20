@@ -201,3 +201,26 @@ template<> struct formatter<vec2fp> {
 }
 
 #endif // VAS_MATH_HPP
+
+
+
+#if VAS_LOG_OSTREAM
+
+#include <ostream>
+
+struct vaslog_ostream : std::streambuf, std::ostream {
+	std::vector<char> mem;
+	LogLevel level;
+	
+	vaslog_ostream(LogLevel level): std::ostream(this), level(level) {}
+	int overflow(int c) {
+		if (c == '\n') {
+			log_write_str(level, mem.data(), mem.size());
+			mem.clear();
+		}
+		else mem.push_back(c);
+		return 0;
+	}
+};
+
+#endif // VAS_LOG_OSTREAM

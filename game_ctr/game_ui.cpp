@@ -533,7 +533,10 @@ public:
 		
 		if (auto st = std::get_if<GameControl::CS_Init>(&gstate))
 		{
-			draw_text_message(st->stage + "\n\n" + init_greet);
+			const float period = 12;
+			float t = std::fmod(TimeSpan::current().seconds(), period) / period;
+			t = 4 + 0.15 * std::sin(t * M_PI * 2);
+			draw_text_message(st->stage + "\n\n" + init_greet, t);
 		}
 		else if (auto st = std::get_if<GameControl::CS_End>(&gstate))
 		{

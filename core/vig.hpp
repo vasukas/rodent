@@ -99,6 +99,8 @@ VigMenu vig_current_menu();
 
 /* Keyboard events */
 
+// Note: arrow keys are reserved for slider controls
+
 #define vig_ScancodeFlag 0x0800
 //
 #define vig_Keymod_Ctrl  0x1000
@@ -153,7 +155,8 @@ int vig_mouse_state();
 /// Returns absolute mouse position
 vec2i vig_mouse_pos();
 
-/// Returns absolute mouse position when pressed button last time
+/// Returns absolute mouse position when began pressing button last time. 
+/// If mouse not pressed now, returns absolute position
 vec2i vig_mouse_press_pos();
 
 /// Returns scroll state - but only once per render step!
@@ -358,11 +361,11 @@ bool vig_scrollbar(float& offset, float span, bool is_horizontal, vec2i pos, vec
 
 /// Enumeration selector (combined widget). 
 /// Returns true if value changed
-bool vig_selector(size_t& index, const std::vector<std::string_view> &vals, int key_minus = 0, int key_plus = 0);
+bool vig_selector(size_t& index, const std::vector<std::string_view> &vals);
 
 /// Numerical selector (combined widget). 
 /// Returns true if value changed
-bool vig_num_selector(size_t& index, size_t num, int key_minus = 0, int key_plus = 0);
+bool vig_num_selector(size_t& index, size_t num);
 
 
 
@@ -411,6 +414,9 @@ struct vigTextbox
 	void allow_ipaddr(); ///< Sets 'allow' to IPv4/IPv6 address symbols
 	void allow_ascii(); ///< Sets 'allow' to ASCII chars
 	void allow_name(bool unicode); ///< Sets 'allow' to alphanumerics and underscores
+	
+	void set_u8(std::string s); ///< Corrects pointer position only if needed
+	std::string get_u8() const;
 	
 private:
 	size_t ptr = 0;

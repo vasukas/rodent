@@ -1,9 +1,13 @@
 # PowerShell downloader for MSVC
 
+param (
+	[switch]$openmpt = $false
+)
+$ErrorActionPreference = 'Inquire'
+
 $Git="git.exe"
 $TmpDir="TMP_load_deps"
 $TmpZip="TMP_load_deps.zip"
-$ErrorActionPreference = 'Inquire'
 
 
 
@@ -81,4 +85,11 @@ dlzip "https://www.libsdl.org/release/SDL2-devel-2.0.12-VC.zip" `
 	("SDL2*/lib/x64/SDL2.*", "SDL2*/lib/x64/SDL2main.*")
 
 Rename-Item "$OutDir/include/include" "$OutDir/include/SDL2"
+
+if ($openmpt) {
+	dlzip "https://lib.openmpt.org/files/libopenmpt/dev/libopenmpt-0.4.12+release.dev.win.vs2017.zip" `
+		"inc/libopenmpt" `
+		("lib/x86/*.lib", "bin/x86/*.dll") `
+		("lib/x86_64/*.lib", "bin/x86_64/*.dll")
+}
 

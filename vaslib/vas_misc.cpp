@@ -1,4 +1,5 @@
 #include <array>
+#include <stdexcept>
 #include "vaslib/vas_misc.hpp"
 #include "vaslib/vas_string_utils.hpp"
 

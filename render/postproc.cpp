@@ -131,7 +131,8 @@ struct PPF_Tint : PP_Filter
 struct PPF_Shake : PP_Filter
 {
 	const float decr_spd = 1. / 0.7; // per second
-	const float max_len = 2.5; // seconds
+	const float max_len = 1.5; // seconds
+	const vec2fp spd_mul = {12, 18};
 	float t = 0, str = 0, str_tar = 0;
 	
 	PPF_Shake()
@@ -161,8 +162,8 @@ struct PPF_Shake : PP_Filter
 		
 		vec2i sz = RenderControl::get_size();
 		float k = std::min(str, 2.f) * AppSettings::get().cam_pp_shake_str;
-		float x = cossin_lut(t * 10).y * k / sz.xy_ratio();
-		float y = cossin_lut(t * 15).y * k * 0.7;
+		float x = cossin_lut(t * spd_mul.x).y * k / sz.xy_ratio();
+		float y = cossin_lut(t * spd_mul.y).y * k * 0.7;
 		
 		sh->bind();
 		sh->set2f("tmod", x, y);

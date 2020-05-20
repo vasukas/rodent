@@ -41,4 +41,23 @@ enum : size_t
 	TEAM_PLAYER = 2
 };
 
+
+
+struct EntityIndex
+{
+	using Int = uint32_t;
+	
+	EntityIndex() = default;
+	
+	bool operator ==(const EntityIndex& ei) const {return i == ei.i;}
+	bool operator !=(const EntityIndex& ei) const {return i != ei.i;}
+	explicit operator bool() const {return i != std::numeric_limits<Int>::max();}
+	
+	[[nodiscard]] static EntityIndex from_int(Int i) {EntityIndex ei; ei.i = i; return ei;}
+	Int to_int() const {return i;}
+	
+private:
+	Int i = std::numeric_limits<Int>::max();
+};
+
 #endif // COMMON_DEFS_HPP

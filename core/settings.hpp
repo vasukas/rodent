@@ -13,14 +13,16 @@ struct AppSettings
 	
 	// renderer options
 	vec2i wnd_size;
-	bool wnd_size_max;
-	int fscreen;
 	int target_fps;
 	int set_vsync;
+	
+	enum FS_Type {FS_Windowed, FS_Maximized, FS_Borderless, FS_Fullscreen};
+	FS_Type fscreen;
 	
 	// sound options
 	bool use_audio;
 	float audio_volume;
+	float sfx_volume;
 	float music_volume;
 	std::string audio_api;
 	std::string audio_device;

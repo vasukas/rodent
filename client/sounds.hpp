@@ -3,7 +3,7 @@
 
 #include "game/entity.hpp"
 
-class b2Shape;
+class b2ChainShape;
 class GameCore;
 class Entity;
 
@@ -11,6 +11,8 @@ class Entity;
 
 #define SOUND_ID_X_LIST\
 	X(SND_NONE)\
+	X(SND_VOLUME_TEST_QUIET)\
+	X(SND_VOLUME_TEST_LOUD)\
 	\
 	X(SND_WPN_MINIGUN)\
 	X(SND_WPN_SHOTGUN)\
@@ -82,14 +84,6 @@ SOUND_ID_X_LIST
 const char *get_name(SoundId id);
 
 
-// Special values of channel index
-enum : int
-{
-	SNDENG_CHAN_NONE = -1,
-	SNDENG_CHAN_DONTCARE = -2
-};
-
-
 
 struct SoundPlayParams
 {
@@ -113,6 +107,14 @@ struct SoundPlayParams
 /// Controls looping sounds
 struct SoundObj
 {
+	struct Id {
+		using T = uint16_t;
+		T i = std::numeric_limits<T>::max();
+		Id() = default;
+		explicit Id(int i): i(i) {}
+		explicit operator bool() const {return i != std::numeric_limits<T>::max();}
+	};
+	
 	SoundObj() = default;
 	SoundObj(SoundObj&&) noexcept;
 	SoundObj& operator=(SoundObj&&) noexcept;
@@ -124,7 +126,7 @@ struct SoundObj
 	
 private:
 	friend class SoundEngine_Impl;
-	int chan = SNDENG_CHAN_NONE;
+	Id id = {};
 };
 
 
@@ -134,22 +136,25 @@ class SoundEngine
 public:
 	bool debug_draw = false;
 	
-	static void init();
+	static bool init();
 	static SoundEngine* get();
 	virtual ~SoundEngine();
 	
 	static void check_unused_sounds();
 	
 	static void once(const SoundPlayParams& pars) {
-		if (auto p = get()) p->play(SNDENG_CHAN_DONTCARE, pars, false);}
+		if (auto p = get()) p->play({}, pars, false);}
 	static void once(SoundId id, std::optional<vec2fp> pos) {
-		if (auto p = get()) p->play(SNDENG_CHAN_DONTCARE, {id, pos}, false);}
+		if (auto p = get()) p->play({}, {id, pos}, false);}
 
-	virtual void geom_static_add(Transform pos, const b2Shape& shp) = 0; ///< Must be line or chain
+	virtual void geom_static_add(const b2ChainShape& shp) = 0;
 	virtual void geom_static_clear() = 0;
 	
 	virtual float get_master_vol() = 0;
 	virtual void set_master_vol(float vol) = 0;
+	
+	virtual float get_sfx_vol() = 0;
+	virtual void set_sfx_vol(float vol) = 0;
 	
 	virtual float get_music_vol() = 0;
 	virtual void set_music_vol(float vol) = 0;
@@ -157,7 +162,7 @@ public:
 	/// Blocks if called immediatly again. 
 	/// Use nullptr to disable music. 
 	/// Disables automatic control
-	virtual void music(const char *name, bool = true) = 0;
+	virtual void music(const char *name, int subtrack_index = -1, bool = true) = 0;
 	
 	enum MusControl {
 		MUSC_NO_AUTO, ///< No automatic control (keeps last track playing)
@@ -173,8 +178,8 @@ public:
 	
 protected:
 	friend SoundObj;
-	virtual int play(int chan_id, const SoundPlayParams& pars, bool continious) = 0;
-	virtual void stop(int chan_id) = 0;
+	virtual SoundObj::Id play(SoundObj::Id obj_id, const SoundPlayParams& pars, bool continious) = 0;
+	virtual void stop(SoundObj::Id id, bool = true) = 0;
 };
 
 #endif // SOUND2_HPP

@@ -26,6 +26,11 @@ Site: https://xiph.org/ogg, https://opus-codec.org
 License: 3-clause BSD  
 https://github.com/xiph/opusfile/blob/master/COPYING
 
+### libopenmpt
+Site: https://openmpt.org/
+License: 3-clause BSD
+https://github.com/OpenMPT/openmpt/blob/master/LICENSE
+
 ### SDL2
 Site: https://www.libsdl.org/  
 License: zlib  

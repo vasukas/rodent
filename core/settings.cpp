@@ -1,4 +1,6 @@
 #include <filesystem>
+#include <mutex>
+#include <thread>
 #include "core/hard_paths.hpp"
 #include "utils/line_cfg.hpp"
 #include "vaslib/vas_file.hpp"
@@ -21,10 +23,6 @@ AppSettings::AppSettings()
 bool AppSettings::load()
 {
 	VLOGI("AppSettings::load() from \"{}\"", path_settings);
-	if (!fexist(path_settings.c_str())) {
-		VLOGW("AppSettings::load() file doesn't exist or isn't accessible");
-		return true;
-	}
 	bool ok = gen_cfg().read(path_settings.c_str());
 	trigger_cbs();
 	return ok;
@@ -55,11 +53,8 @@ LineCfg AppSettings::gen_cfg()
 	.vint(wnd_size.y)
 		.descr("window size");
 	
-	P_BOOL(wnd_size_max)
-		.descr("start maximized (not fullscreen)");
-	
-	P_ENUM(fscreen, int, {0, "off"}, {1, "on"}, {-1, "desktop"})
-		.descr("fullscreen: off, on, desktop");
+	P_ENUM(fscreen, FS_Type, {FS_Windowed, "off"}, {FS_Maximized, "max"}, {FS_Borderless, "desktop"}, {FS_Fullscreen, "on"})
+		.descr("fullscreen: off, max, desktop, on");
 	
 	P_INT(target_fps, 1000)
 		.descr("frames per second, rendering. 0 is native refresh rate");
@@ -68,8 +63,9 @@ LineCfg AppSettings::gen_cfg()
 		.descr("vertical synchronization: dont_set, force_off, on");
 	
 	P_BOOL(use_audio).descr("enable sound");
-	P_FLOAT(audio_volume).descr("master audio volume");
-	P_FLOAT(music_volume).descr("music volume");
+	P_FLOAT(audio_volume).descr("master audio volume (linear)");
+	P_FLOAT(sfx_volume).descr("sound effects volume (linear)");
+	P_FLOAT(music_volume).descr("music volume (linear)");
 	P_STR(audio_api).descr("empty string for default");
 	P_STR(audio_device).descr("empty string for default");
 	P_INT(audio_rate).descr("sample rate");
@@ -110,13 +106,13 @@ LineCfg AppSettings::gen_cfg()
 void AppSettings::init_default()
 {
 	wnd_size = {1024, 600};
-	wnd_size_max = true;
-	fscreen = 0;
 	target_fps = 0;
 	set_vsync = 1;
+	fscreen = FS_Maximized;
 	
 	use_audio = true;
 	audio_volume = 1;
+	sfx_volume = 1;
 	music_volume = 0.9;
 	audio_api = {};
 	audio_device = {};

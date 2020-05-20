@@ -1,12 +1,12 @@
 #include <atomic>
-#include <cctype>
 #include <filesystem>
+#include <future>
 #include <mutex>
-#include <thread>
 #include <unordered_set>
-#include <variant>
+#include <box2d/b2_dynamic_tree.h>
+#include <box2d/b2_chain_shape.h>
+#include <box2d/b2_edge_shape.h>
 #include <SDL2/SDL.h>
-#include <box2d/box2d.h>
 #include "client/presenter.hpp"
 #include "core/hard_paths.hpp"
 #include "core/settings.hpp"
@@ -15,23 +15,24 @@
 #include "utils/noise.hpp"
 #include "utils/res_audio.hpp"
 #include "utils/tokenread.hpp"
+#include "vaslib/vas_containers.hpp"
 #include "vaslib/vas_log.hpp"
-#include "vaslib/vas_string_utils.hpp"
 #include "sounds.hpp"
 
+const float speed_of_sound = 340;
 static float db_to_lin(float db) {
 	return std::pow(10, db/10);
 }
 static float sound_rtt(float dist) {
-	return dist * 2 / 340; // roundtrip time using speed of sound
+	return dist * 2 / speed_of_sound;
 }
 
-const TimeSpan thread_sleep = TimeSpan::ms(20);
-const TimeSpan t_frame_length = TimeSpan::ms(20); // must be same as thread_sleep or shorter
-// const TimeSpan t_stopfade_length = TimeSpan::seconds(0.5); // DISABLED - see usage of ChannelFrame::t_frame()
+const TimeSpan upd_period_all = TimeSpan::ms(20); // how often ALL sounds are updated
+const TimeSpan upd_period_one = TimeSpan::ms(100); // how often SINGLE sound is updated
 
 const float dist_cull_radius = 120; // sounds further than that are immediatly stopped
 const float dist_cull_radius_squ = dist_cull_radius * dist_cull_radius;
+
 const float lowpass_vertical_pan = 0.5; // how much vertical panning affects filtering
 
 const float wall_dist_incr = 5;   // additional increase in distance per wall meter
@@ -50,12 +51,19 @@ const float pan_dist_full = 15; // full panning active from that distance
 const float pan_max_k = 0.6; // max panning value
 
 const float chan_vol_max = db_to_lin(-6); // mix headroom
-
 const float rndvol_0 = db_to_lin(-2);
 const float rndvol_1 = 1;
 
-const TimeSpan music_transition_time = TimeSpan::seconds(5);
+const TimeSpan sound_stopfade = TimeSpan::ms(100);
+const TimeSpan sound_fadein = TimeSpan::ms(25);
+const TimeSpan music_crossfade = TimeSpan::seconds(5);
 const TimeSpan music_pause_fade = TimeSpan::seconds(3);
+
+const TimeSpan limiter_pause = TimeSpan::seconds(2);
+const float limiter_pause_incr = 0.4 / limiter_pause.seconds();
+const TimeSpan limiter_restore = TimeSpan::seconds(5);
+
+using samplen_t = int; ///< Length in samples
 
 
 
@@ -63,7 +71,7 @@ struct SoundInfo;
 struct SoundData
 {
 	std::vector<int16_t> d;
-	int len = 0;
+	samplen_t len = 0;
 	bool is_mono = true;
 	bool is_loop = true;
 };
@@ -105,7 +113,7 @@ static std::vector<SoundInfo> load_sounds(int sample_rate, std::unordered_set<st
 			SOUND_ID_X_LIST
 #undef X
 			if (id == -1)
-				THROW_FMTSTR("unknown name: {}", tkr.raw());
+				THROW_FMTSTR("unknown name/option: {}", tkr.raw());
 			
 			auto& in = info[id];
 			if (in.ok())
@@ -130,7 +138,7 @@ static std::vector<SoundInfo> load_sounds(int sample_rate, std::unordered_set<st
 			};
 			subload();
 			
-			while (!tkr.raw().empty() && std::islower(tkr.raw()[0]))
+			while (!tkr.raw().empty())
 			{
 				if		(tkr.is("v") || tkr.is("vol"))  in.volume = tkr.num();
 				else if (tkr.is("d") || tkr.is("dist")) {
@@ -150,7 +158,7 @@ static std::vector<SoundInfo> load_sounds(int sample_rate, std::unordered_set<st
 				else if (tkr.is("sub")) subload();
 				else if (tkr.is("rndvol")) in.random_vol = true;
 				else if (tkr.is("norndvol")) in.random_vol = false;
-				else THROW_FMTSTR("unknown option: {}", tkr.str());
+				else break;
 			}
 			
 			in.data.front().is_loop = in.data.size() > 1;
@@ -213,20 +221,20 @@ SoundPlayParams& SoundPlayParams::_volume(float t) {
 
 SoundObj::SoundObj(SoundObj&& b) noexcept
 {
-	chan = b.chan;
-	b.chan = SNDENG_CHAN_NONE;
+	id = b.id;
+	b.id = {};
 }
 SoundObj& SoundObj::operator=(SoundObj&& b) noexcept
 {
 	stop();
-	chan = b.chan;
-	b.chan = SNDENG_CHAN_NONE;
+	id = b.id;
+	b.id = {};
 	return *this;
 }
 void SoundObj::update(const SoundPlayParams& pars)
 {
 	if (auto p = SoundEngine::get())
-		chan = p->play(chan, pars, true);
+		id = p->play(id, pars, true);
 }
 void SoundObj::update(Entity& ent, SoundPlayParams pars)
 {
@@ -236,25 +244,16 @@ void SoundObj::update(Entity& ent, SoundPlayParams pars)
 }
 void SoundObj::stop()
 {
-	if (chan != SNDENG_CHAN_NONE) {
-		SoundEngine::get()->stop(chan);
-		chan = SNDENG_CHAN_NONE;
+	if (id) {
+		SoundEngine::get()->stop(id);
+		id = {};
 	}
 }
 
 
 
-struct SndEngMusic {
-	SoundEngine::MusControl state = SoundEngine::MUSC_NO_AUTO;
-	std::vector<std::vector<std::string>> track_fns;
-	
-	static constexpr TimeSpan tmo_ambient_to_peace = TimeSpan::seconds(120);
-	static constexpr TimeSpan tmo_battle_to_ambient = TimeSpan::seconds(6);
-	static constexpr TimeSpan tmo_longbattle = TimeSpan::seconds(120);
-	static constexpr TimeSpan tmo_escalation = TimeSpan::seconds(120);
-	static constexpr TimeSpan track_switch_max = TimeSpan::seconds(8*60); // 100% to switch
-	static constexpr TimeSpan track_switch_min = TimeSpan::seconds(3*60); // 0% to switch
-	
+struct SndEngMusic
+{
 	enum {
 		SUB_PEACE,
 		SUB_AMBIENT,
@@ -263,8 +262,26 @@ struct SndEngMusic {
 		SUB_EPIC,
 		SUB__TOTAL_COUNT
 	};
+	struct Track {
+		// 'normal' file
+		std::array<std::string, SUB__TOTAL_COUNT> fns;
+		// tracker file
+		std::string song_fn;
+		std::array<int, SUB__TOTAL_COUNT> subs;
+	};
+	
+	static constexpr TimeSpan tmo_ambient_to_peace = TimeSpan::seconds(120);
+	static constexpr TimeSpan tmo_battle_to_ambient = TimeSpan::seconds(6);
+	static constexpr TimeSpan tmo_longbattle = TimeSpan::seconds(120);
+	static constexpr TimeSpan tmo_escalation = TimeSpan::seconds(120);
+	static constexpr TimeSpan track_switch_max = TimeSpan::seconds(8*60); // 100% to switch
+	static constexpr TimeSpan track_switch_min = TimeSpan::seconds(3*60); // 0% to switch
+	
+	SoundEngine::MusControl state = SoundEngine::MUSC_NO_AUTO;
+	std::vector<Track> tracks;
+	
 	int track = 0;
-	int cur_music = -1;
+	int cur_music = -1; // subtrack
 	TimeSpan track_start; // how long playing
 	
 	// GameCore time
@@ -286,17 +303,34 @@ void SndEngMusic::load()
 	try {
 		while (!tkr.ended())
 		{
-			if (tkr.is("track")) {
-				track_fns.emplace_back().resize(SUB__TOTAL_COUNT);
+			auto str = tkr.str();
+			if (str == "track") {
+				tracks.emplace_back();
 				continue;
 			}
-			if (track_fns.empty()) THROW_FMTSTR("Track not specified");
-			if		(tkr.is("peace"))   track_fns.back()[SUB_PEACE] = tkr.str();
-			else if (tkr.is("ambient")) track_fns.back()[SUB_AMBIENT] = tkr.str();
-			else if (tkr.is("light"))   track_fns.back()[SUB_LIGHT] = tkr.str();
-			else if (tkr.is("heavy"))   track_fns.back()[SUB_HEAVY] = tkr.str();
-			else if (tkr.is("epic"))    track_fns.back()[SUB_EPIC]  = tkr.str();
-			else THROW_FMTSTR("Unknown subtrack ID: {}", tkr.raw());
+			if (tracks.empty()) THROW_FMTSTR("Track not specified");
+			
+			if (str == "song") {
+				tracks.back().song_fn = tkr.str();
+				for (auto& i : tracks.back().subs) i = -1;
+			}
+			else
+			{
+				int i;
+				if		(str == "peace")   i = SUB_PEACE;
+				else if (str == "ambient") i = SUB_AMBIENT;
+				else if (str == "light")   i = SUB_LIGHT;
+				else if (str == "heavy")   i = SUB_HEAVY;
+				else if (str == "epic")    i = SUB_EPIC;
+				else THROW_FMTSTR("Unknown subtrack ID: {}", str);
+				
+				if (tracks.back().song_fn.empty()) {
+					tracks.back().fns[i] = tkr.str();
+				}
+				else {
+					tracks.back().subs[i] = tkr.i32();
+				}
+			}
 		}
 	}
 	catch (std::exception& e) {
@@ -304,18 +338,29 @@ void SndEngMusic::load()
 		THROW_FMTSTR("SndEngMusic::load() failed to read config - {} [at {}:{}]", e.what(), p.first, p.second);
 	}
 	
-	for (auto& tr : track_fns)
+	for (auto& tr : tracks)
 	{
-		if (tr[SUB_PEACE]  .empty()) THROW_FMTSTR("SndEngMusic::load() - 'peace' subtrack must be specified");
-		if (tr[SUB_AMBIENT].empty()) tr[SUB_AMBIENT] = tr[SUB_PEACE];
-		if (tr[SUB_LIGHT]  .empty()) tr[SUB_LIGHT]   = tr[SUB_AMBIENT];
-		if (tr[SUB_HEAVY]  .empty()) tr[SUB_HEAVY]   = tr[SUB_LIGHT];
-		if (tr[SUB_EPIC]   .empty()) tr[SUB_EPIC]    = tr[SUB_HEAVY];
+		if (tr.song_fn.empty()) {
+			for (int i=0; i<SUB__TOTAL_COUNT; ++i) {
+				if (tr.fns[i].empty()) {
+					if (!i) THROW_FMTSTR("SndEngMusic::load() - 'peace' subtrack must be specified");
+					tr.fns[i] = tr.fns[i-1];
+				}
+			}
+		}
+		else {
+			for (int i=0; i<SUB__TOTAL_COUNT; ++i) {
+				if (tr.subs[i] == -1) {
+					if (!i) THROW_FMTSTR("SndEngMusic::load() - 'peace' subtrack must be specified");
+					tr.subs[i] = tr.subs[i-1];
+				}
+			}
+		}
 	}
 }
 void SndEngMusic::step(SoundEngine& snd, TimeSpan now)
 {
-	if (state == SoundEngine::MUSC_NO_AUTO || track_fns.empty()) {
+	if (state == SoundEngine::MUSC_NO_AUTO || tracks.empty()) {
 		cur_music = -1;
 		return;
 	}
@@ -356,10 +401,13 @@ void SndEngMusic::step(SoundEngine& snd, TimeSpan now)
 		if ((sel == SUB_PEACE || sel == SUB_AMBIENT) &&
 		    rnd_stat().range_n() < (TimeSpan::current() - track_start - track_switch_min)
 				/ (track_switch_max - track_switch_min)) {
-			track = rnd_stat().range_index(track_fns.size());
+			track = rnd_stat().range_index(tracks.size());
 		}
 		cur_music = sel;
-		snd.music(track_fns[track][sel].c_str(), false);
+		
+		auto& tr = tracks[track];
+		if (tr.song_fn.empty()) snd.music(tr.fns[sel].c_str(), -1, false);
+		else snd.music(tr.song_fn.c_str(), tr.subs[sel], false);
 	}
 }
 void SoundEngine::check_unused_sounds()
@@ -377,13 +425,16 @@ void SoundEngine::check_unused_sounds()
 		if (fns.end() == fns.find(e.path().filename().replace_extension().u8string()))
 			VLOGW("Unused file '{}'", e.path().u8string());
 	}
-	VLOGI("Check finished - {}", string_display_bytesize(bytes));
+	VLOGI("Check finished");
 	
 	VLOGI("Checking music...");
 	SndEngMusic mc;
 	mc.load();
 	fns.clear();
-	for (auto& tr : mc.track_fns) for (auto& fn : tr) fns.emplace(fn);
+	for (auto& tr : mc.tracks) {
+		if (tr.song_fn.empty()) {for (auto& fn : tr.fns) fns.emplace(fn);}
+		else fns.emplace(tr.song_fn);
+	}
 	for (auto& name : fns) {
 		std::string s = std::string(HARDPATH_MUSIC_PREFIX) + name;
 		delete AudioSource::open_stream(s.c_str(), 22050);
@@ -401,7 +452,8 @@ class SoundEngine_Impl : public SoundEngine
 {
 public:
 	// general
-	std::atomic<float> g_vol;
+	std::atomic<float> g_vol = 1;
+	std::atomic<float> g_sfx_vol = 1;
 	std::atomic<bool> g_ui_only = true;
 	vec2fp g_lstr_pos = {};
 	
@@ -420,30 +472,16 @@ public:
 	std::vector<ReverbPars> rev_pars;
 	ReverbPars rev_zero = {};
 	
-	// thread
-	std::atomic<bool> thr_term = false;
-	std::thread thr;
-	
-	// world
-	std::mutex world_lock;
-	b2World world = b2World({0,0});
-	std::vector<float> cast_dists;
-	
-	SndEngMusic musc;
-	
 	// channels
 	struct ChannelFrame
 	{
-		float kpan[2] = {0,0}; // channel volume
+		float kpan[2] = {0, 0}; // channel volume
 		float lowpass = 0; // wet coeff
-		float t_reverb = 0;
-		
-		int t_left = 0; // samples
 		float t_pitch = 1;
+		float t_reverb = 0;
 		ReverbPars* rev = nullptr;
 		
 		void diff(const ChannelFrame& prev, const ChannelFrame& next, float time_k) {
-			t_left = next.t_left;
 			for (int i=0; i<2; ++i) kpan[i] = (next.kpan[i] - prev.kpan[i]) * time_k;
 			lowpass  = (next.lowpass  - prev.lowpass)  * time_k;
 			t_reverb = (next.t_reverb - prev.t_reverb) * time_k;
@@ -455,107 +493,97 @@ public:
 			t_reverb += f.t_reverb;
 			t_pitch  += f.t_pitch;
 		}
-		float t_frame(int frame_len) {
-			return float(t_left) / frame_len;
-		}
 	};
-	struct ChannelStep
+	struct Channel
 	{
-		SoundInfo* info = nullptr;		
-		float t_pitch = 1;
-		bool is_static = true; // true if params never change
-		bool loop = false;
+		enum {
+			IS_OBJ = 1, // is allocated by SoundObj (and therefore looped)
+			IS_ACTIVE = 2, // is processed
+			WAS_ACTIVE = 4,
+			STOP = 8, // stop when frame ends
+			IS_NEW = 16, // just added
+			IS_STATIC = 32 // never moves
+		};
 		
-		int init_delay = 0;
-		int loop_period = 0;
-		
+		// params
+		SoundInfo* p_snd = nullptr;
 		std::optional<vec2fp> w_pos;
-		EntityIndex eid;
+		EntityIndex target;
+		float p_pitch;
+		float volume; // already multiplied by p_snd
+		samplen_t loop_period;
 		
-		bool stop = false; // shouldn't be processed
-		int8_t new_st = 0; // not, just added, inited
-		bool silent = false; // can't be heard now
-		std::optional<ChannelFrame> next;
-		float vol = 1;
-		
-		bool is_free() {
-			return !info;
-		}
-		void free() {
-			*this = ChannelStep{};
-		}
-	};
-	struct StepInternal
-	{
-		int i; // channel index
-		SoundInfo* info;
-		std::optional<vec2fp> w_pos;
-		
-		ChannelFrame frm;
-		bool stop = false; // shouldn't be processed
-		bool silent = false; // can't be heard now
-	};
-	struct ChannelLive
-	{
-		SoundInfo* info = nullptr;
-		int subsrc = 0; // subtrack
-		
+		// playback
+		int subsrc = 0;
 		float pb_pos = 0;
-		float lpass[2] = {};
-		ChannelFrame cur, mod, next;
+		samplen_t silence_left = 0;
+		samplen_t frame_left = 0;
+		samplen_t frame_length = 0; // last
+		ChannelFrame cur, next, mod;
 		
-		int delay_left = 0;
-		int loop_period = 0;
+		// effects data
+		float lpass[2] = {0,0}; // lowpass filter memory
+		float dopp_mul = 1; // doppler pitch multiplier
 		
-		bool stop = false; // free as soon as frame is completed
-		bool silent = false; // can't be heard now
-		bool loop = false;
+		// control
+		int32 body; // sensor (if used) or nullptr
+		int upd_at; // update step
+		uint8_t flags = IS_ACTIVE | IS_NEW;
 		
-		bool is_free() {
-			return !info;
-		}
-		void free() {
-			*this = ChannelLive{};
-		}
+		explicit operator bool() const {return p_snd;}
+		bool is_proc() const {return (flags & IS_ACTIVE) || frame_left;}
 	};
 	
-	static constexpr int n_chns = 64; // hard limit
+	// control
+	std::mutex chan_lock;
+	SparseArray<Channel> chans;
+	SndEngMusic musc;
 	
-	std::mutex chan_lock; // for chns_step
-	std::vector<ChannelStep> chns_step; // modified by step and live threads
-	std::vector<ChannelLive> chns_live; // modified only by live thread
-	std::vector<StepInternal> chns_iupd; // only for step function
+	b2DynamicTree snd_detect; // detect active channels
+	b2DynamicTree wall_detect;
+	std::vector<b2EdgeShape> wall_shapes;
 	
-	// audio
+	samplen_t update_accum = 0;
+	int update_step = 0;
+	
+	// preallocated data
 	std::vector<float> mix_buffer;
 	std::vector<int16_t> load_buffer;
-	
-	int frame_len;
-	float k_frame_time;
-//	int stopfade_len;
+	std::vector<float> cast_dists;
 	
 	// music
 	std::mutex music_lock;
-	std::atomic<float> g_mus_vol = 0;
-	std::thread mus_load;
+	std::string mus_prev_name;
+	std::atomic<float> g_mus_vol = 1;
+	std::future<void> mus_load;
 	std::unique_ptr<AudioSource> mus_src;
 	int mus_pos = 0;
 	
 	std::unique_ptr<AudioSource> musold_src;
 	int musold_pos;
-	int musold_left = 0, mus_left_full;
+	samplen_t musold_left = 0;
 	
 	float mus_vol_tar = 1, mus_vol_cur = 1; // ui lock fade
 	
 	// debug
 	TimeSpan callback_len;
-	TimeSpan dbg_audio_max;
-	TimeSpan dbg_audio_sum;
-	size_t dbg_audio_count = 0;
+	TimeSpan dbg_total_s, dbg_upd_s, dbg_proc_s;
+	TimeSpan dbg_total_m, dbg_upd_m, dbg_proc_m;
+	size_t dbg_count = 0;
 	
+	std::vector<TimeSpan> dbg_times;
+	size_t i_dbg_times = 0;
 	RAII_Guard dbg_menu;
 	
+	// simple limiter
+	float limit_mul = 0.999;
+	samplen_t limit_pause = 0;
 	
+	
+	
+	static b2AABB mk_aabb(vec2fp ctr, float radius) {
+		return {{ctr.x - radius, ctr.y - radius}, {ctr.x + radius, ctr.y + radius}};
+	}
 	
 	SoundEngine_Impl()
 	{
@@ -602,6 +630,7 @@ public:
 		
 		sett_g = AppSettings::get_mut().add_cb([this]{
 			set_master_vol(AppSettings::get().audio_volume);
+			set_sfx_vol(AppSettings::get().sfx_volume);
 			set_music_vol(AppSettings::get().music_volume);
 		});
 		sett_reinit = AppSettings::get_mut().add_cb([]{
@@ -615,17 +644,8 @@ public:
 		init_prev_api = AppSettings::get().audio_api;
 		init_prev_device = AppSettings::get().audio_device;
 		
-		chns_step.resize(n_chns);
-		chns_live.resize(n_chns);
-		chns_iupd.reserve(n_chns);
-		
-		mix_buffer.resize(spec.samples * 2);
-		load_buffer.resize(spec.samples * 2);
-		
-		frame_len = t_frame_length.seconds() * sample_rate;
-		k_frame_time = 1.f / frame_len;
-//		stopfade_len = t_stopfade_length.seconds() * sample_rate;
-		mus_left_full = music_transition_time.seconds() * sample_rate;
+		mix_buffer.resize(sample_rate * 2);
+		load_buffer.resize(sample_rate * 2);
 		
 		// https://github.com/bdejong/musicdsp/blob/master/source/Effects/44-delay-time-calculation-for-reverberation.rst
 		int rev_num = std::ceil( reverb_max_dist / reverb_dist_delta );
@@ -649,63 +669,87 @@ public:
 		snd_res = load_sounds(sample_rate);
 		musc.load();
 		
-		thr = std::thread([this]{
-			set_this_thread_name("soundstep");
-			while (!thr_term) {
-				TimeSpan t0 = TimeSpan::current();
-				step();
-				TimeSpan passed = TimeSpan::current() - t0;
-				sleep(thread_sleep - passed);
-			}
-		});
-		SDL_PauseAudioDevice(devid, 0);
-		
+		dbg_times.resize(TimeSpan::seconds(3) / callback_len);
 		dbg_menu = vig_reg_menu(VigMenu::DebugRenderer, [this]
 		{
-			int an = 0, ln = 0;
-			for (auto& c : chns_step) if (!c.is_free()) ++an;
-			for (auto& c : chns_live) if (!c.is_free()) ++ln;
-			vig_label_a("Sound channelss: {:2} / {:2} / {}\n", an, ln, n_chns);
+			int an = 0;
+			for (auto& c : chans) if (c.is_proc()) ++an;
+			vig_label_a("Sound channels: {:2} <- {:3}\n", an, chans.existing_count());
+			
+			TimeSpan max, avg;
+			for (auto& t : dbg_times) {
+				max = std::max(max, t);
+				avg += t;
+			}
+			vig_label_a("last 3 seconds: max {:3}, avg {:3}\n", int(max / callback_len * 100.), int(avg / callback_len * (100. / dbg_times.size())));
 		});
+		
+		SDL_PauseAudioDevice(devid, 0);
 	}
 	~SoundEngine_Impl()
 	{
-		SDL_PauseAudioDevice(devid, 1);
-		
-		thr_term = true;
-		if (thr.joinable()) thr.join();
-		if (mus_load.joinable()) mus_load.join();
+		TimeSpan exit_wait;
+		set_pause(true);
+		while (true)
+		{
+			{	std::unique_lock l1(chan_lock);
+				std::unique_lock l2(music_lock);
+				int an = 0;
+				for (auto& c : chans) if (c.flags & Channel::IS_ACTIVE) ++an;
+				if (!an && !mus_src && !musold_src && mus_vol_cur < 0.01)
+					break;
+				
+				if (exit_wait > upd_period_all*2) {
+					for (auto& c : chans) {
+						if (c.flags & Channel::IS_OBJ) {
+							VLOGE("SoundEngine:: SoundObjs exist on shutdown fade");
+							break;
+						}
+					}
+				}
+				if (exit_wait > TimeSpan::seconds(5)) {
+					VLOGE("SoundEngine:: shutdown fade failed");
+					break;
+				}
+			}
+			sleep(TimeSpan::ms(50));
+			exit_wait += TimeSpan::ms(50);
+		}
+		VLOGI("Audio exit wait: {:.3f} seconds", exit_wait.seconds());
 		
 		SDL_CloseAudioDevice(devid);
 		SDL_QuitSubSystem(SDL_INIT_AUDIO);
 		
-		auto perc = [&](auto t) {return static_cast<int>(100 * (t / callback_len));};
-		dbg_audio_sum.set_micro(dbg_audio_sum.micro() / dbg_audio_count);
-		VLOGI("Audio thread times:\n  avg: {:7}mks  {:3}%\n  max: {:7}mks  {:3}%",
-		      dbg_audio_sum.micro(), perc(dbg_audio_sum), dbg_audio_max.micro(), perc(dbg_audio_max));
+		VLOGI("Audio thread times (avg, max):");
+		auto show = [&](auto pref, auto sum, auto max){
+			auto perc = [&](auto t) {return static_cast<int>(100 * (t / callback_len));};
+			sum *= 1.f / dbg_count;
+			VLOGI("  {}:  {:7}mks  {:3}%   {:7}mks  {:3}%", pref, sum.micro(), perc(sum), max.micro(), perc(max));
+		};
+		show("total", dbg_total_s, dbg_total_m);
+		show("upd  ", dbg_upd_s, dbg_upd_m);
+		show("proc ", dbg_proc_s, dbg_proc_m);
 	}
-	void geom_static_add(Transform pos, const b2Shape& shp) override
+	void geom_static_add(const b2ChainShape& shp) override
 	{
-		std::unique_lock lock(world_lock);
-		
-		b2BodyDef bdef;
-		bdef.position.Set(pos.pos.x, pos.pos.y);
-		bdef.angle = pos.rot;
-		b2Body* b = world.CreateBody(&bdef);
-		
-		b2FixtureDef fdef;
-		fdef.shape = &shp;
-		fdef.density = 1;
-		b->CreateFixture(&fdef);
+		std::unique_lock lock(chan_lock);
+		for (int i=1; i<shp.m_count; ++i)
+		{
+			auto& ns = wall_shapes.emplace_back();
+			ns.Set(shp.m_vertices[i-1], shp.m_vertices[i]);
+			
+			b2AABB aabb;
+			b2Transform tr;
+			tr.SetIdentity();
+			ns.ComputeAABB(&aabb, tr, 0);
+			wall_detect.CreateProxy(aabb, reinterpret_cast<void*>(static_cast<intptr_t>(wall_shapes.size() - 1)));
+		}
 	}
 	void geom_static_clear() override
 	{
-		std::unique_lock lock(world_lock);
-		for (auto b = world.GetBodyList(); b;) {
-			auto next = b->GetNext();
-			if (!b->GetUserData()) world.DestroyBody(b);
-			b = next;
-		}
+		std::unique_lock lock(chan_lock);
+		for (size_t i=0; i<wall_shapes.size(); ++i) wall_detect.DestroyProxy(i);
+		wall_shapes.clear();
 	}
 	float get_master_vol() override
 	{
@@ -715,6 +759,14 @@ public:
 	{
 		g_vol = std::min(vol, 0.999f);
 	}
+	float get_sfx_vol() override
+	{
+		return g_sfx_vol;
+	}
+	void set_sfx_vol(float vol) override
+	{
+		g_sfx_vol = std::min(vol, 0.999f);
+	}
 	float get_music_vol() override
 	{
 		return g_mus_vol;
@@ -723,21 +775,34 @@ public:
 	{
 		g_mus_vol = std::min(vol, 0.999f);
 	}
-	void music(const char *name, bool disable_musc) override
+	void music(const char *name, int subtrack_index, bool disable_musc) override
 	{
 		if (disable_musc) music_control(MUSC_NO_AUTO);
-		if (mus_load.joinable())
-			mus_load.join();
+		if (mus_load.valid()) mus_load.get();
 		
 		if (!name) {
 			std::unique_lock lock(music_lock);
+			if (mus_src) {
+				musold_src = std::move(mus_src);
+				musold_pos = mus_pos;
+				musold_left = music_crossfade.seconds() * sample_rate;
+			}
 			mus_src.reset();
-			musold_src.reset();
+			mus_pos = 0;
 			return;
+		}
+		else if (mus_prev_name == name && subtrack_index != -1) {
+			std::unique_lock lock(music_lock);
+			if (mus_src) {
+				mus_src->select_subsong(subtrack_index);
+				return;
+			}
 		}
 		
 		std::string s = std::string(HARDPATH_MUSIC_PREFIX) + name;
-		mus_load = std::thread([this, s = std::move(s)]
+		mus_prev_name = name;
+		
+		mus_load = std::async(std::launch::async, [this, s = std::move(s), subtrack_index]
 		{
 			set_this_thread_name("music load");
 			auto src = AudioSource::open_stream(s.data(), sample_rate);
@@ -747,100 +812,81 @@ public:
 			if (mus_src) {
 				musold_src = std::move(mus_src);
 				musold_pos = mus_pos;
-				musold_left = mus_left_full;
+				musold_left = music_crossfade.seconds() * sample_rate;
 			}
 			mus_src.reset(src);
 			mus_pos = 0;
+			
+			if (subtrack_index != -1)
+				mus_src->select_subsong(subtrack_index);
 		});
 	}
 	void music_control(MusControl state) override
 	{
-		std::unique_lock lock(world_lock);
+		std::unique_lock lock(chan_lock);
 		musc.state = state;
 	}
-	int play(int i, const SoundPlayParams& pp, bool continious) override
+	SoundObj::Id play(SoundObj::Id i_obj, const SoundPlayParams& pp, bool continious) override
 	{
 		std::unique_lock lock(chan_lock);
 		auto& info = snd_res[pp.id];
 		
 		if (!info.ok()) {
-			if (i >= 0) stop_internal(i);
-			return SNDENG_CHAN_NONE;
+			stop(i_obj, false);
+			return {};
 		}
-		if (pp.pos) {
-			if (pp.pos->dist_squ(g_lstr_pos) > dist_cull_radius_squ)
-				return SNDENG_CHAN_NONE;
-		}
-		
-		auto& chns = chns_step;
-		if (i >= 0 && chns[i].info != &info) {
-			stop_internal(i);
-			i = SNDENG_CHAN_NONE;
+		if (!continious && pp.pos && pp.pos->dist_squ(g_lstr_pos) > dist_cull_radius_squ) {
+			stop(i_obj, false);
+			return {};
 		}
 		
-		bool is_new = (i < 0);
-		bool is_static = (i == SNDENG_CHAN_DONTCARE);
+		if (i_obj && chans[i_obj.i].p_snd != &info) {
+			stop(i_obj, false);
+			i_obj = {};
+		}
+		
+		bool is_new = !i_obj;
 		if (is_new) {
-			i=0;
-			for (; i<n_chns; ++i) {
-				if (chns[i].is_free())
-					break;
-			}
-			if (i == n_chns)
-				return SNDENG_CHAN_NONE;
+			i_obj.i = chans.emplace_new();
 		}
+		Channel& ch = chans[i_obj.i];
 		
-		auto& ch = chns[i];
-		ch.info = &info;
+		ch.p_snd = &info;
 		ch.w_pos = pp.pos;
-		ch.eid = pp.target;
-		if (is_new) ch.new_st = 1;
-		ch.is_static = is_static && !ch.w_pos && !ch.eid;
-		ch.loop = continious;
+		ch.target = pp.target;
+		ch.p_pitch = pp.t ? lerp(info.spd_mut.first, info.spd_mut.second, *pp.t)
+		                  : (is_new && info.randomized ? lerp(info.spd_rnd.first, info.spd_rnd.second, rnd_stat().range_n())
+		                                               : 1);
+		ch.volume = (info.random_vol ? rnd_stat().range(rndvol_0, rndvol_1) : 1) * clampf_n(pp.volume) * info.volume;
 		ch.loop_period = pp.loop_period.seconds() * sample_rate;
 		
-		if (pp.t) {
-			ch.t_pitch = lerp(info.spd_mut.first, info.spd_mut.second, *pp.t);
-		}
-		else {
-			if (is_new && info.randomized)
-				ch.t_pitch = lerp(info.spd_rnd.first, info.spd_rnd.second, rnd_stat().range_n());
-			else
-				ch.t_pitch = 1;
-		}
 		if (is_new) {
-			ch.vol = info.random_vol ? rnd_stat().range(rndvol_0, rndvol_1) : 1;
-			ch.vol *= clampf_n(pp.volume);
-			ch.vol *= info.volume;
-			if (ch.w_pos) {
-				float d = ch.w_pos->dist(g_lstr_pos);
-				ch.init_delay = sound_rtt(d) * sample_rate;
+			if (!ch.w_pos && !ch.target) ch.body = b2_nullNode;
+			else {
+				if (!ch.w_pos) ch.w_pos = vec2fp{-10000, -10000};
+				ch.body = snd_detect.CreateProxy(mk_aabb(*ch.w_pos, 1),
+				                                 reinterpret_cast<void*>(static_cast<intptr_t>(i_obj.i)));
 			}
 		}
-		return i;
-	}
-	void stop(int chan_id) override
-	{
-		std::unique_lock<std::mutex> lock;
-		stop_internal(chan_id);
-	}
-	void stop_internal(int i, bool is_pause = false, bool is_force = false)
-	{
-		auto& chn = chns_step[i];
-		auto& live = chns_live[i];
+		else { // restart non-looped sounds
+			ch.flags |= Channel::IS_ACTIVE;
+			ch.flags &= ~Channel::STOP;
+		}
 		
-		if (live.is_free()) chn.free();
-		else {
-			chn.loop = false;
-			if (is_force)
-			{
-				chn.loop = false;
-				chn.next = live.cur;
-				chn.next->t_left = frame_len;
-				if (is_pause) chn.silent = true;
-				else chn.stop = true;
-			}
-		}
+		if (continious) ch.flags |= Channel::IS_OBJ;
+		else if (!ch.target) ch.flags |= Channel::IS_STATIC;
+		ch.upd_at = update_step;
+		
+		return i_obj;
+	}
+	void stop(SoundObj::Id i_obj, bool do_lock) override
+	{
+		if (!i_obj) return;
+		std::unique_lock<std::mutex> lock;
+		if (do_lock) lock = std::unique_lock(chan_lock);
+		int i = i_obj.i;
+		if (chans[i].flags & Channel::IS_ACTIVE) chans[i].flags &= ~Channel::IS_OBJ;
+		else free_channel(i);
 	}
 	void sync(GameCore& core, vec2fp lstr_pos) override
 	{
@@ -853,37 +899,49 @@ public:
 				std::optional<vec2fp> pos;
 			};
 			std::vector<Info> info;
-			info.reserve(n_chns);
+			info.reserve(chans.size());
 			{
-				std::unique_lock l1(world_lock);
 				std::unique_lock l2(chan_lock);
-				
-				for (int i=0; i<n_chns; ++i) {
-					auto& chn = chns_live[i];
-					if (chn.is_free()) continue;
-					auto& stp = chns_step[i];
+				for (auto& vc : chans) {
 					auto& in = info.emplace_back();
-					in.snd = chn.info;
-					in.sub = chn.subsrc;
-					in.pos = stp.w_pos;
+					in.snd = vc.p_snd;
+					in.sub = (vc.flags & Channel::IS_ACTIVE)? vc.subsrc : -1;
+					in.pos = vc.w_pos;
 				}
 			}
 			for (auto& in : info) {
-				int st = in.sub == 0 ? 0 : (in.sub != (int) in.snd->data.size() - 1 ? 1 : 2);
+				vec2fp pos = in.pos.value_or(lstr_pos);
 				size_t i_snd = std::distance(snd_res.data(), in.snd);
-				GamePresenter::get()->dbg_text(in.pos.value_or(lstr_pos), FMT_FORMAT("{}[{}]", name_array[i_snd], st));
+				if (in.sub != -1) {
+					int st = in.sub == 0 ? 0 : (in.sub != (int) in.snd->data.size() - 1 ? 1 : 2);
+					GamePresenter::get()->dbg_text(pos, FMT_FORMAT("{}[{}]", name_array[i_snd], st), 0xffff'ffa0);
+				}
+				else {
+					GamePresenter::get()->dbg_text(pos, FMT_FORMAT("{}", name_array[i_snd]), 0x8080'80a0);
+				}
 			}
 		}
 		
-		std::unique_lock l1(world_lock);
 		std::unique_lock l2(chan_lock);
+		vec2fp lstr_vel = (lstr_pos - g_lstr_pos) * core.time_mul;
 		g_lstr_pos = lstr_pos;
 		
-		for (int i=0; i<n_chns; ++i) {
-			auto& chn = chns_step[i];
-			if (!chn.is_free()) {
-				if (auto ent = core.valid_ent(chn.eid))
-					chn.w_pos = ent->get_pos();
+		for (auto& c : chans) {
+			vec2fp vel = {};
+			
+			if (c && c.target)
+			if (auto e = core.valid_ent(c.target)) {
+				vec2fp n_pos = e->get_pos();
+				vec2fp dt = n_pos - *c.w_pos;
+				if (c.body != b2_nullNode) snd_detect.MoveProxy(c.body, mk_aabb(*c.w_pos, 1), {dt.x, dt.y});
+				vel = dt * core.time_mul;
+				c.w_pos = n_pos;
+			}
+			
+			if (c.w_pos) {
+				vec2fp dt = *c.w_pos - lstr_pos;
+				float dist = dt.fastlen();
+				c.dopp_mul = (speed_of_sound + dot(lstr_vel, dt) / dist) / (speed_of_sound + dot(vel, dt) / dist);
 			}
 		}
 		
@@ -892,248 +950,74 @@ public:
 	}
 	void set_pause(bool is_paused) override
 	{
-		std::unique_lock lock(chan_lock);
+		std::unique_lock lock1(chan_lock);
+		std::unique_lock lock2(music_lock);
 		g_ui_only = is_paused;
 		mus_vol_tar = is_paused ? 0 : 1;
-		if (!mus_src) mus_vol_cur = mus_vol_tar;
+		if (!mus_src && !musold_src) mus_vol_cur = mus_vol_tar;
 	}
-	void step()
+	
+	
+	
+	void free_channel(int i)
 	{
-		// gather state
-		chns_iupd.clear();
-		{
-			std::unique_lock lock(chan_lock);
-			bool ui_only = g_ui_only;
-			
-			for (int i=0; i<n_chns; ++i)
-			{
-				auto& chn = chns_step[i];
-				if (!chn.is_free() && !chn.stop)
-				{
-					if (ui_only && !chn.info->is_ui) {
-						stop_internal(i, true);
-						continue;
-					}
-					if (chn.is_static && chn.new_st != 1)
-						continue;
-					
-					auto& upd = chns_iupd.emplace_back();
-					upd.i = i;
-					upd.info = chn.info;
-					upd.w_pos = chn.w_pos;
-				}
-			}
+		if (chans[i].body != b2_nullNode) snd_detect.DestroyProxy(chans[i].body);
+		chans.free_and_reset(i);
+	}
+	void stop_channel(int i)
+	{
+		auto& vc = chans[i];
+		vc.flags &= ~(Channel::IS_ACTIVE | Channel::WAS_ACTIVE);
+		vc.flags |= Channel::STOP;
+		vc.upd_at = -1;
+		
+		if (vc.flags & Channel::IS_NEW) {
+			if (!(vc.flags & Channel::IS_OBJ)) free_channel(i);
+			return;
 		}
 		
-		// calculate
-		{
-			std::unique_lock lock(world_lock);
-			auto raycast = [&](vec2fp a, vec2fp b, callable_ref<void(float fraction)> f){
-				struct CB : b2RayCastCallback {
-					callable_ref<void(float)>* f;
-					float ReportFixture(b2Fixture*, const b2Vec2&, const b2Vec2&, float fraction) override {
-						(*f)(fraction);
-						return 1;
-					}
-				};
-				CB cb;
-				cb.f = &f;
-				world.RayCast(&cb, {a.x, a.y}, {b.x, b.y});
-			};
-			
-			vec2fp lstr = g_lstr_pos;
-			for (auto& upd : chns_iupd)
-			{
-				float kdist = 0; // relative distance (0 closest, 1 farthest)
-				float wall = 0; // reverse wall factor (0 no wall, 1 full wall)
-				float pan = 0, vpan = 0;
-				
-				const float min_dist = 1;
-				if (upd.w_pos)
-				{
-					vec2fp dt = lstr - *upd.w_pos;
-					float dist = dt.len_squ();
-					
-					if (dist > upd.info->max_dist_squ) {
-						if (dist > dist_cull_radius_squ) {
-							upd.stop = true;
-						}
-						upd.silent = true;
-						continue;
-					}
-					else if (dist > min_dist)
-					{
-						dist = std::sqrt(dist);
-						
-						cast_dists.clear();
-						raycast(lstr, *upd.w_pos, [&](float f){
-							cast_dists.push_back(f);
-						});
-						
-						std::sort(cast_dists.begin(), cast_dists.end());
-						for (size_t i=0; i + 1 < cast_dists.size(); i += 2)
-						{
-							float w = (cast_dists[i+1] - cast_dists[i]) * dist;
-							wall -= wall_pass_incr * w;
-							
-							dist += wall_dist_incr * w;
-							if (dist > upd.info->max_dist)
-								break;
-						}
-						if (dist > upd.info->max_dist) {
-							upd.silent = true;
-							continue;
-						}
-						
-						kdist = dist / upd.info->max_dist; // linear decay
-						wall = std::max(wall, 0.f);
-						
-						//
-						
-						float kxy = dot(dt / dist, vec2fp(1,0));
-						pan = std::copysign(std::min(std::abs(kxy), pan_max_k), -kxy);
-						vpan = std::copysign(1 - std::abs(kxy), -dt.y);
-						
-						float k = dist > pan_dist_full ? 1 : (dist - min_dist) / (pan_dist_full - min_dist);
-						pan *= k;
-						vpan *= k;
-						
-						//
-						
-						if (reverb_lines && wall > 0.999f)
-						{
-							float frac = 1;
-							int n_rays = (2*M_PI * reverb_max_dist) / reverb_raycast_delta;
-							int n_hits = 0;
-							for (int i=0; i<n_rays; ++i)
-							{
-								float rot = 2*M_PI * i / n_rays;
-								vec2fp dir = vec2fp(reverb_max_dist, 0).fastrotate(rot);
-								bool was_hit = false;
-								raycast(*upd.w_pos, *upd.w_pos + dir, [&](float f){
-									frac = std::min(frac, f);
-									was_hit = true;
-								});
-								if (was_hit) ++n_hits;
-							}
-							upd.frm.t_reverb = reverb_vol_max * (1 - frac * frac);
-							upd.frm.t_reverb *= std::min(1.f, n_hits / reverb_min_percentage / n_rays);
-							if (upd.frm.t_reverb < reverb_t_thr) upd.frm.rev = nullptr;
-							else {
-								int i = std::min<int>(frac * rev_pars.size(), rev_pars.size()-1);
-								upd.frm.rev = &rev_pars[i];
-							}
-						}
-					}
-				}
-				
-				upd.frm.lowpass = 1 - wall;
-				upd.frm.kpan[0] = upd.frm.kpan[1] =
-					chan_vol_max * (1 - kdist);
-				
-				static const float sq2 = std::sqrt(2.f);
-				auto cs = cossin_lut(M_PI_4 * (1 + pan));
-				upd.frm.kpan[0] *= sq2 * std::abs(cs.x);
-				upd.frm.kpan[1] *= sq2 * cs.y;
-				upd.frm.lowpass = clampf_n(upd.frm.lowpass + vpan * lowpass_vertical_pan);
-			}
-		}
-		
-		// update state
-		{
-			std::unique_lock lock(chan_lock);
-			for (auto& upd : chns_iupd)
-			{
-				auto& chn = chns_step[upd.i];
-				if (chn.new_st == 1) chn.new_st = 2;
-				
-				if (upd.stop) {
-					stop_internal(upd.i, false, true);
-				}
-				else if (upd.silent && !chn.silent) {
-					stop_internal(upd.i, true);
-				}
-				else {
-					chn.next = upd.frm;
-					auto& f = *chn.next;
-					f.t_left = frame_len;
-					f.t_pitch = chn.t_pitch;
-					for (auto& k : f.kpan) k *= chn.vol;
-				}
-			}
-		}
+		vc.frame_left = sound_stopfade.seconds() * sample_rate;
+		vc.next = vc.cur;
+		for (int i=0; i<2; ++i) vc.next.kpan[i] = 0;
+		vc.mod.diff(vc.cur, vc.next, 1.f / vc.frame_left);
 	}
 	void callback(float *outbuf, int outbuflen)
 	{
 		TimeSpan time0 = TimeSpan::current();
-		
-		// get updates
-		{
-			std::unique_lock lock(chan_lock);
-			for (int i=0; i<n_chns; ++i)
-			{
-				auto& src = chns_step[i];
-				auto& dst = chns_live[i];
-				
-				if (!src.is_free())
-				{
-					if (src.new_st) {
-						if (src.new_st == 1) continue;
-						src.new_st = 0;
-						dst.info = src.info;
-						dst.next = dst.cur = *src.next; // always set
-						src.next.reset();
-						dst.delay_left = src.init_delay;
-					}
-					if (dst.is_free()) {
-						src.free();
-					}
-					else if (src.next) {
-						dst.next = *src.next;
-						src.next.reset();
-						
-						dst.mod.diff(dst.cur, dst.next, k_frame_time), 
-						dst.stop = src.stop;
-						dst.silent = src.silent;
-					}
-					if (bool(dst.cur.rev) != bool(dst.mod.rev)) {
-						if (!dst.cur.rev) dst.cur.rev = &rev_zero;
-						else dst.mod.rev = &rev_zero;
-					}
-					dst.loop = src.loop;
-					dst.loop_period = src.loop_period;
-				}
-			}
-		}
 		
 		// music
 		
 		bool zero_mix = true;
 		{
 			std::unique_lock lock(music_lock);
-			bool fixed_vol = aequ(mus_vol_cur, mus_vol_tar, 1e-5f);
-			auto zero_tar = [&]{return aequ(mus_vol_tar, 0, 1e-5f);};
-			
-			if (mus_src && !(fixed_vol && zero_tar()))
+			if ((mus_src || musold_src) && (mus_vol_cur > 0.001 || mus_vol_tar > 0.001))
 			{
 				zero_mix = false;
-				float vol = g_mus_vol;
-				if (fixed_vol) vol *= mus_vol_cur;
+				float vol = g_mus_vol * mus_vol_cur;
 				
-				for (int i=0; i<outbuflen; )
+				if (mus_src)
 				{
-					int n = mus_src->read(load_buffer.data(), mus_pos, outbuflen - i);
-					for (int j=0; j<n; ++j) {
-						mix_buffer[i + j] = vol * load_buffer[j];
+					for (int i=0; i<outbuflen; )
+					{
+						int n = mus_src->read(load_buffer.data(), mus_pos, outbuflen - i);
+						for (int j=0; j<n; ++j) {
+							mix_buffer[i + j] = vol * load_buffer[j];
+						}
+						i += n;
+						mus_pos += n;
+						if (!n) mus_pos = 0;
 					}
-					i += n;
-					mus_pos += n;
-					if (!n) mus_pos = 0;
+				}
+				else
+				{
+					for (int i=0; i<outbuflen; ++i)
+						mix_buffer[i] = 0;
 				}
 				if (musold_left)
 				{
+					samplen_t mus_left_full = music_crossfade.seconds() * sample_rate;
 					float t0 = float(musold_left) / mus_left_full;
-					int len = std::min(musold_left, outbuflen /2);
+					int len = std::min(musold_left, outbuflen/2);
 					musold_left -= len;
 					float t1 = float(musold_left) / mus_left_full;
 					len *= 2;
@@ -1156,7 +1040,7 @@ public:
 					if (!musold_left)
 						musold_src.reset();
 				}
-				if (!fixed_vol)
+				if (mus_vol_cur != mus_vol_tar)
 				{
 					float v0 = mus_vol_cur;
 					float vchx = music_pause_fade.seconds() * (outbuflen/2) / sample_rate;
@@ -1167,7 +1051,7 @@ public:
 						mix_buffer[i] *= lerp(v0, mus_vol_cur, float(i) / outbuflen);
 					}
 					
-					if (mus_vol_cur == mus_vol_tar && zero_tar())
+					if (mus_vol_cur == mus_vol_tar && mus_vol_cur <= 0.001)
 					{
 						musold_left = 0;
 						musold_src.reset();
@@ -1179,118 +1063,327 @@ public:
 			for (auto& s : mix_buffer) s = 0;
 		}
 		
-		// process
+		// update
 		
-		for (int i=0; i<n_chns; ++i)
+		TimeSpan time_pre_upd = TimeSpan::current();
+		
+		update_accum += outbuflen/2;
+		
+		const bool ui_only = g_ui_only;
+		const vec2fp lstr_pos = g_lstr_pos;
+		const samplen_t update_length = upd_period_all.seconds() * sample_rate;
+		const samplen_t frame_length = upd_period_one.seconds() * sample_rate;
+		const samplen_t frame_fadein = std::min<samplen_t>(sound_fadein.seconds() * sample_rate, frame_length);
+		const int upd_increment = std::max<int>(1, upd_period_all / upd_period_one);
+		
+		// check range
+		if (update_accum >= update_length && !ui_only)
 		{
-			auto& chn = chns_live[i];
-			if (chn.is_free())
-				continue;
+			std::unique_lock lock(chan_lock);
+			for (auto& vc : chans) {
+				if ((vc.flags & Channel::STOP) || !vc.w_pos) continue;
+				bool was = (vc.flags & Channel::IS_ACTIVE);
+				vc.flags &= ~(Channel::IS_ACTIVE | Channel::WAS_ACTIVE);
+				if (was) vc.flags |= Channel::WAS_ACTIVE;
+			}
 			
-			ChannelFrame& cur = chn.cur;
-			ChannelFrame& mod = chn.mod;
+			struct CB {
+				SoundEngine_Impl& self;
+				CB(SoundEngine_Impl& self): self(self) {}
+				bool QueryCallback(int32 node) {
+					int i = reinterpret_cast<intptr_t>(self.snd_detect.GetUserData(node));
+					self.chans[i].flags |= Channel::IS_ACTIVE;
+					return true;
+				}
+			};
+			CB cb{*this};
+			snd_detect.Query(&cb, mk_aabb(g_lstr_pos, dist_cull_radius));
 			
-			int si=0;
-			while (si<outbuflen/2)
+			for (auto it = chans.begin(); it != chans.end(); ++it)
 			{
-				if (chn.delay_left > 0) {
-					int n = std::min(chn.delay_left, outbuflen/2 - si);
-					si += n;
-					chn.delay_left -= n;
+				if (bool(it->flags & Channel::IS_ACTIVE) != bool(it->flags & Channel::WAS_ACTIVE))
+				{
+					if (it->flags & Channel::IS_ACTIVE) it->upd_at = update_step;
+					else stop_channel(it.index());
+				}
+			}
+		}
+		
+		// update stats
+		while (update_accum >= update_length)
+		{
+			std::unique_lock lock(chan_lock);
+			
+			auto raycast = [&](vec2fp a, vec2fp b, callable_ref<void(float fraction)> f){
+				struct CB {
+					SoundEngine_Impl& self;
+					callable_ref<void(float)>* f;
+					CB(SoundEngine_Impl& self): self(self) {}
+					float RayCastCallback(const b2RayCastInput& input, int32 node) {
+						int i = reinterpret_cast<intptr_t>(self.wall_detect.GetUserData(node));
+						auto& shp = self.wall_shapes[i];
+						b2RayCastOutput out;
+						b2Transform tr;
+						tr.SetIdentity();
+						if (shp.RayCast(&out, input, tr, 0)) (*f)(out.fraction);
+						return input.maxFraction;
+					}
+				};
+				CB cb(*this);
+				cb.f = &f;
+				b2RayCastInput input;
+				input.p1 = {a.x, a.y};
+				input.p2 = {b.x, b.y};
+				input.maxFraction = 1.f;
+				wall_detect.RayCast(&cb, input);
+			};
+			
+			for (auto it = chans.begin(); it != chans.end(); ++it)
+			{
+				if (it->upd_at != update_step) continue;
+				auto& vc = *it;
+				
+				if (ui_only && !vc.p_snd->is_ui) {
+					stop_channel(it.index());
 					continue;
 				}
 				
-				auto& src = chn.info->data[chn.subsrc];
-				for (; si<outbuflen/2; ++si)
+				//
+				
+				auto& frm = vc.next;
+				vc.cur = frm;
+				frm = ChannelFrame{};
+				
+				float kdist = 0; // relative distance (0 closest, 1 farthest)
+				float wall = 0; // reverse wall factor (0 no wall, 1 full wall)
+				float pan = 0, vpan = 0;
+				
+				const float min_dist = 1;
+				if (vc.w_pos)
 				{
-					// frame proc
+					vec2fp dt = lstr_pos - *vc.w_pos;
+					float dist = dt.len_squ();
 					
-					if (mod.t_left) {
-						cur.add(mod);
-						--mod.t_left;
-						if (!mod.t_left) {
-							cur = chn.next;
-							if (cur.rev == &rev_zero)
-								cur.rev = nullptr;
-						}
+					if (dist > vc.p_snd->max_dist_squ) {
+						stop_channel(it.index());
+						continue;
 					}
-					else if (chn.stop) {
-						chn.free();
-						si = outbuflen; // outer break
-						break;
-					}
-					else if (chn.silent) {
-						si = outbuflen; // outer break
-						break;
-					}
-					
-					// sample proc
-					
-					float smp[2];
-					if (cur.t_reverb < reverb_t_thr)
+					else if (dist > min_dist)
 					{
-						float s_t = std::fmod(chn.pb_pos, 1);
-						int i0 = chn.pb_pos;
-						int i1 = (i0 + 1) % src.len;
+						dist = 1.f / fast_invsqrt(dist);
 						
-						if (src.is_mono) {
-							smp[0] = lerp(float(src.d[i0]), float(src.d[i1]), s_t);
-							smp[1] = smp[0];
+						cast_dists.clear();
+						raycast(lstr_pos, *vc.w_pos, [&](float f){
+							cast_dists.push_back(f);
+						});
+						
+						std::sort(cast_dists.begin(), cast_dists.end());
+						for (size_t i=0; i + 1 < cast_dists.size(); i += 2)
+						{
+							float w = (cast_dists[i+1] - cast_dists[i]) * dist;
+							wall -= wall_pass_incr * w;
+							
+							dist += wall_dist_incr * w;
+							if (dist > vc.p_snd->max_dist)
+								break;
 						}
-						else {
-							for (int i=0; i<2; ++i)
-								smp[i] = lerp(float(src.d[i0*2 + i]), float(src.d[i1*2 + i]), s_t);
+						if (dist > vc.p_snd->max_dist) {
+							stop_channel(it.index());
+							continue;
 						}
-					}
-					else
-					{
-						auto get = [&](float pos, int i){
-							float s_t = std::fmod(pos, 1);
-							int i0 = size_t(pos)    % src.len;
-							int i1 = size_t(i0 + 1) % src.len;
-							if (src.is_mono) return lerp(float(src.d[i0]), float(src.d[i1]), s_t);
-							else return lerp(float(src.d[i0*2 + i]), float(src.d[i1*2 + i]), s_t);
-						};
-						float ft = chn.mod.t_frame(frame_len);
-						for (int i=0; i<2; ++i) {
-							smp[i] = get(chn.pb_pos, i);
-							for (int j=0; j<reverb_lines; ++j) {
-								float t = lerp((*cur.rev)[i].first,  (*chn.next.rev)[i].first,  ft);
-								float g = lerp((*cur.rev)[i].second, (*chn.next.rev)[i].second, ft);
-								smp[i] += cur.t_reverb * g * get(chn.pb_pos - t, i);
+						
+						kdist = dist / vc.p_snd->max_dist; // linear decay
+						wall = std::max(wall, 0.f);
+						
+						//
+						
+						float kxy = dot(dt / dist, vec2fp(1,0));
+						pan = std::copysign(std::min(std::abs(kxy), pan_max_k), -kxy);
+						vpan = std::copysign(1 - std::abs(kxy), -dt.y);
+						
+						float k = dist > pan_dist_full ? 1 : (dist - min_dist) / (pan_dist_full - min_dist);
+						pan *= k;
+						vpan *= k;
+						
+						//
+						
+						if (reverb_lines && wall > 0.999f && (!(vc.flags & Channel::IS_STATIC) || (vc.flags & Channel::IS_NEW)))
+						{
+							float frac = 1;
+							int n_rays = (2*M_PI * reverb_max_dist) / reverb_raycast_delta;
+							int n_hits = 0;
+							for (int i=0; i<n_rays; ++i)
+							{
+								float rot = 2*M_PI * i / n_rays;
+								vec2fp dir = vec2fp(reverb_max_dist, 0).fastrotate(rot);
+								bool was_hit = false;
+								raycast(*vc.w_pos, *vc.w_pos + dir, [&](float f){
+									frac = std::min(frac, f);
+									was_hit = true;
+								});
+								if (was_hit) ++n_hits;
+							}
+							frm.t_reverb = reverb_vol_max * (1 - frac * frac);
+							frm.t_reverb *= std::min(1.f, n_hits / reverb_min_percentage / n_rays);
+							if (frm.t_reverb < reverb_t_thr) frm.rev = nullptr;
+							else {
+								int i = std::min<int>(frac * rev_pars.size(), rev_pars.size()-1);
+								frm.rev = &rev_pars[i];
 							}
 						}
 					}
-
-					for (int i=0; i<2; ++i) {
-						float sf = (smp[i] + chn.lpass[i]) /2;
-						mix_buffer[si*2+i] += cur.kpan[i] * lerp(smp[i], sf, cur.lowpass);
-						chn.lpass[i] = sf;
+				}
+				
+				frm.lowpass = 1 - wall;
+				frm.kpan[0] = frm.kpan[1] = chan_vol_max * (1 - kdist) * vc.volume;
+				
+				auto cs = cossin_lut(M_PI_4 * (1 + pan));
+				frm.kpan[0] *= M_SQRT2 * std::abs(cs.x);
+				frm.kpan[1] *= M_SQRT2 * cs.y;
+				frm.lowpass = clampf_n(frm.lowpass + vpan * lowpass_vertical_pan);
+				
+				//
+				
+				if (vc.flags & Channel::IS_NEW) vc.cur = frm;
+				vc.flags &= ~(Channel::IS_NEW | Channel::STOP);
+				vc.upd_at = update_step + upd_increment;
+				
+				vc.frame_length = (vc.flags & Channel::WAS_ACTIVE) ? frame_length : frame_fadein;
+				vc.frame_left = vc.frame_length;
+				vc.next.t_pitch = vc.p_pitch;
+				vc.mod.diff(vc.cur, vc.next, 1.f / vc.frame_length);
+				
+				if (bool(vc.cur.rev) != bool(vc.mod.rev)) {
+					if (!vc.cur.rev) vc.cur.rev = &rev_zero;
+					else vc.mod.rev = &rev_zero;
+				}
+			}
+			
+			update_accum -= update_length;
+			++update_step;
+		}
+		
+		TimeSpan time_pre_proc = TimeSpan::current();
+		float sfx_vol = g_sfx_vol;
+		
+		// process
+		
+		{	std::unique_lock lock(chan_lock);
+			for (auto it = chans.begin(); it != chans.end(); ++it)
+			{
+				if (!it->is_proc()) continue;
+				auto& vc = *it;
+				
+				ChannelFrame& cur = vc.cur;
+				ChannelFrame& mod = vc.mod;
+				
+				int si=0;
+				while (si < outbuflen/2)
+				{
+					if (vc.silence_left > 0) {
+						int n = std::min(vc.silence_left, outbuflen/2 - si);
+						si += n;
+						vc.silence_left -= n;
+						continue;
 					}
 					
-					// fin
-					
-					chn.pb_pos += cur.t_pitch;
-					if (chn.pb_pos >= src.len)
+					auto& src = vc.p_snd->data[vc.subsrc];
+					for (; si<outbuflen/2; ++si)
 					{
-						if (chn.loop && src.is_loop)
+						// frame proc
+						
+						if (vc.frame_left)
 						{
-							if (chn.subsrc != 0) chn.delay_left = chn.loop_period - src.len;
-							int old = chn.subsrc;
-							chn.subsrc = rnd_stat().range_index(chn.info->data.size()-1, 1);
-							if (chn.subsrc == old) chn.pb_pos -= src.len;
-							else chn.pb_pos = 0;
-							break; // restart loop with new sub
+							cur.add(mod);
+							--vc.frame_left;
+							if (!vc.frame_left)
+							{
+								cur = vc.next;
+								if (cur.rev == &rev_zero)
+									cur.rev = nullptr;
+							}
 						}
-						if (chn.subsrc != static_cast<int>(chn.info->data.size()) - 1) {
-							chn.pb_pos = 0;
-							chn.subsrc = static_cast<int>(chn.info->data.size()) - 1;
-							break; // restart loop with new sub
+						else if (vc.flags & Channel::STOP) {
+							if (!(vc.flags & Channel::IS_OBJ)) free_channel(it.index());
+							si = outbuflen; // outer break
+							break;
 						}
 						
-						chn.free();
-						si = outbuflen; // outer break
-						break;
+						// sample proc
+						
+						float smp[2];
+						if (cur.t_reverb < reverb_t_thr)
+						{
+							float s_t = std::fmod(vc.pb_pos, 1);
+							int i0 = vc.pb_pos;
+							int i1 = (i0 + 1) % src.len;
+							
+							if (src.is_mono) {
+								smp[0] = lerp(float(src.d[i0]), float(src.d[i1]), s_t);
+								smp[1] = smp[0];
+							}
+							else {
+								for (int i=0; i<2; ++i)
+									smp[i] = lerp(float(src.d[i0*2 + i]), float(src.d[i1*2 + i]), s_t);
+							}
+						}
+						else
+						{
+							auto get = [&](float pos, int i){
+								float s_t = std::fmod(pos, 1);
+								int i0 = size_t(pos)    % src.len;
+								int i1 = size_t(i0 + 1) % src.len;
+								if (src.is_mono) return lerp(float(src.d[i0]), float(src.d[i1]), s_t);
+								else return lerp(float(src.d[i0*2 + i]), float(src.d[i1*2 + i]), s_t);
+							};
+							float ft = 1 - float(vc.frame_left) / vc.frame_length;
+							for (int i=0; i<2; ++i) {
+								smp[i] = get(vc.pb_pos, i);
+								for (int j=0; j<reverb_lines; ++j) {
+									float t = lerp((*cur.rev)[i].first,  (*vc.next.rev)[i].first,  ft);
+									float g = lerp((*cur.rev)[i].second, (*vc.next.rev)[i].second, ft);
+									smp[i] += cur.t_reverb * g * get(vc.pb_pos - t, i);
+								}
+							}
+						}
+	
+						for (int i=0; i<2; ++i) {
+							float sf = (smp[i] + vc.lpass[i]) /2;
+							mix_buffer[si*2+i] += cur.kpan[i] * lerp(smp[i], sf, cur.lowpass) * sfx_vol;
+							vc.lpass[i] = sf;
+						}
+						
+						// fin
+						
+						vc.pb_pos += cur.t_pitch * vc.dopp_mul;
+						if (vc.pb_pos >= src.len)
+						{
+							if ((vc.flags & Channel::IS_OBJ) && src.is_loop)
+							{
+								if (vc.subsrc != 0) vc.silence_left = vc.loop_period - src.len;
+								int old = vc.subsrc;
+								vc.subsrc = rnd_stat().range_index(vc.p_snd->data.size() - 1, 1);
+								if (vc.subsrc == old) vc.pb_pos -= src.len;
+								else vc.pb_pos = 0;
+								break; // restart loop with new sub
+							}
+							if (vc.subsrc != static_cast<int>(vc.p_snd->data.size()) - 1) {
+								vc.subsrc = static_cast<int>(vc.p_snd->data.size()) - 1;
+								vc.pb_pos = 0;
+								break; // restart loop with new sub
+							}
+							if (vc.flags & Channel::IS_OBJ) {
+								vc.frame_left = 0;
+								vc.flags |= Channel::STOP;
+								vc.flags &= ~Channel::IS_ACTIVE;
+								vc.upd_at = -1;
+								vc.subsrc = vc.pb_pos = 0;
+								break; // will exit outer loop
+							}
+							free_channel(it.index());
+							si = outbuflen; // outer break
+							break;
+						}
 					}
 				}
 			}
@@ -1298,26 +1391,57 @@ public:
 		
 		// convert
 		
-		float gen_vol = g_vol;
+		float lim_max = 0;
 		for (int i=0; i<outbuflen; ++i) {
-			float res = mix_buffer[i] / std::numeric_limits<int16_t>::max();
-			outbuf[i] = res * 0.999 * gen_vol;
+			lim_max = std::max(lim_max, std::abs(mix_buffer[i]));
+		}
+		lim_max /= std::numeric_limits<int16_t>::max();
+		if (lim_max > 1) {
+			limit_mul = std::min(limit_mul, 1.f / (lim_max + 0.1f));
+			limit_pause = limiter_pause.seconds() * sample_rate;
+		}
+		if (limit_pause > 0) {
+			auto passed = float(outbuflen/2) / sample_rate;
+			limit_mul += limiter_pause_incr * (passed / limiter_pause.seconds());
+			limit_pause -= outbuflen/2;
+		}
+		else {
+			auto passed = float(outbuflen/2) / sample_rate;
+			limit_mul += (0.999 - limit_mul) * (passed / limiter_restore.seconds());
 		}
 		
-		TimeSpan passed = TimeSpan::current() - time0;
-		dbg_audio_max = std::max(dbg_audio_max, passed);
-		dbg_audio_sum += passed;
-		dbg_audio_count++;
+		float gen_vol = g_vol * limit_mul;
+		for (int i=0; i<outbuflen; ++i) {
+			float res = mix_buffer[i] / std::numeric_limits<int16_t>::max();
+			outbuf[i] = res * gen_vol;
+		}
+		
+		TimeSpan time1 = TimeSpan::current();
+		auto set = [](auto& sum, auto& max, auto time) {
+			max = std::max(max, time);
+			sum += time;
+		};
+		set(dbg_total_s, dbg_total_m, time1 - time0);
+		set(dbg_upd_s,   dbg_upd_m,   time_pre_proc - time_pre_upd);
+		set(dbg_proc_s,  dbg_proc_m,  time1 - time_pre_proc);
+		dbg_count++;
+		
+		dbg_times[i_dbg_times] = time1 - time0;
+		i_dbg_times = (i_dbg_times + 1) % dbg_times.size();
 	}
 };
 
 
 
 static SoundEngine* rni;
-void SoundEngine::init() {
-	try {rni = new SoundEngine_Impl;}
+bool SoundEngine::init() {
+	try {
+		rni = new SoundEngine_Impl;
+		return true;
+	}
 	catch (std::exception& e) {
 		VLOGE("SoundEngine::init() failed - {}", e.what());
+		return false;
 	}
 }
 SoundEngine* SoundEngine::get() {return rni;}

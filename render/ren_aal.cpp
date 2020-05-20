@@ -1,4 +1,3 @@
-#include <future>
 #include "core/settings.hpp"
 #include "client/resbase.hpp"
 #include "utils/noise.hpp"
@@ -24,82 +23,67 @@ struct Noise
 		depth = 20;
 		ck = cell_size;
 		
-		has_tex = false;
-		tex_async.reset();
+		std::vector<uint8_t> img_px( size * size * depth * 3 );
+		TimeSpan time0 = TimeSpan::current();
 		
-		tex_async = std::async(std::launch::async, [this]
+		std::vector<float> prev_vals( size * size * 2 );
+		RandomGen rnd;
+		
+		for (int z = 0; z < depth; ++z)
+		for (int y = 0; y < size;  ++y)
+		for (int x = 0; x < size;  ++x)
 		{
-			set_this_thread_name("aal grid gen");
+			float nH = rnd.range_n();
+			float nV = rnd.range_n();
 			
-			std::vector<uint8_t> img_px( size * size * depth * 3 );
-			TimeSpan time0 = TimeSpan::current();
+			float& pH = prev_vals[(y * size + x)*2 + 0];
+			float& pV = prev_vals[(y * size + x)*2 + 1];
+			float H, V;
 			
-			std::vector<float> prev_vals( size * size * 2 );
-			RandomGen rnd;
-			
-			for (int z = 0; z < depth; ++z)
-			for (int y = 0; y < size;  ++y)
-			for (int x = 0; x < size;  ++x)
-			{
-				float nH = rnd.range_n();
-				float nV = rnd.range_n();
-				
-				float& pH = prev_vals[(y * size + x)*2 + 0];
-				float& pV = prev_vals[(y * size + x)*2 + 1];
-				float H, V;
-				
-				if (!z) {
-					H = pH = nH;
-					V = pV = nV;
-				}
-				else {
-					auto calc = [](float& old, float cur)
-					{
-						float v = cur - old;
-						float len = std::fabs(v);
-						if (len > 0.3) v *= 0.3 / len;
-						
-						v += old;
-						old = cur;
-						return v;
-					};
-					H = calc(pH, nH);
-					V = calc(pV, nV);
-				}
-				
-				H = lerp<float>(170, 210, H) / 360;
-				V = lerp(0.15, 0.30, V);
-				
-				uint8_t* px = img_px.data() + (z * (size * size) + y * size + x)*3;
-				uint32_t px_val = FColor(H, 1, V).hsv_to_rgb().to_px();
-				px[0] = px_val >> 24;
-				px[1] = px_val >> 16;
-				px[2] = px_val >> 8;
+			if (!z) {
+				H = pH = nH;
+				V = pV = nV;
+			}
+			else {
+				auto calc = [](float& old, float cur)
+				{
+					float v = cur - old;
+					float len = std::fabs(v);
+					if (len > 0.3) v *= 0.3 / len;
+					
+					v += old;
+					old = cur;
+					return v;
+				};
+				H = calc(pH, nH);
+				V = calc(pV, nV);
 			}
 			
-			VLOGI("RenAAL generation time: {:.3f} seconds", (TimeSpan::current() - time0).seconds());
-			return img_px;
-		});
+			H = lerp<float>(170, 210, H) / 360;
+			V = lerp(0.15, 0.30, V);
+			
+			uint8_t* px = img_px.data() + (z * (size * size) + y * size + x)*3;
+			uint32_t px_val = FColor(H, 1, V).hsv_to_rgb().to_px();
+			px[0] = px_val >> 24;
+			px[1] = px_val >> 16;
+			px[2] = px_val >> 8;
+		}
+			
+		VLOGI("RenAAL generation time: {:.3f} seconds", (TimeSpan::current() - time0).seconds());
+		
+		tex.bind();
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
+		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+		glTexImage3D(GL_TEXTURE_3D, 0, GL_RGB, size, size, depth, 0, GL_RGB, GL_UNSIGNED_BYTE, img_px.data());
+		
+		tex.set_byte_size( size * size * depth * 3 );
 	}
 	bool check()
 	{
-		if (tex_async && tex_async->wait_for (std::chrono::seconds(0)) == std::future_status::ready)
-		{
-			auto res = tex_async->get();
-			tex_async.reset();
-			has_tex = true;
-			
-			tex.bind();
-			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
-			glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-			glTexImage3D(GL_TEXTURE_3D, 0, GL_RGB, size, size, depth, 0, GL_RGB, GL_UNSIGNED_BYTE, res.data());
-			
-			tex.set_byte_size( size * size * depth * 3 );
-		}
-		return has_tex;
+		return true;
 	}
 	void setup(Shader& sh, TimeSpan passed)
 	{
@@ -131,9 +115,6 @@ private:
 	
 	GLA_Texture tex;
 	float t = 0.f;
-	
-	bool has_tex = false;
-	std::optional <std::future< std::vector<uint8_t> >> tex_async;
 };
 
 

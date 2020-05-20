@@ -1,4 +1,3 @@
-#include <future>
 #include "core/hard_paths.hpp"
 #include "core/settings.hpp"
 #include "game/common_defs.hpp"
@@ -32,16 +31,17 @@ public:
 	std::array <vec2fp, MODEL_TOTAL_COUNT_INTERNAL> md_cpt = {};
 	std::array <Rectfp, MODEL_TOTAL_COUNT_INTERNAL> md_sz = {};
 	std::array <TextureReg, MODEL_TOTAL_COUNT_INTERNAL> md_img = {};	
-	
 	std::unique_ptr<Texture> tex;
-	std::future<Texture*> tex_async;
 	
 	struct AAL_Model {
 		std::vector<std::vector<vec2fp>> ls;
 		float width;
 	};
-	using InitResult = std::array<AAL_Model, MODEL_TOTAL_COUNT_INTERNAL>;
-	std::future<InitResult> future_init;
+	struct InitResult {
+		std::array<AAL_Model, MODEL_TOTAL_COUNT_INTERNAL> ms;
+		std::unique_ptr<Texture> tex;
+	};
+	std::optional<InitResult> future_init;
 	
 	
 	
@@ -63,13 +63,6 @@ public:
 	}
 	TextureReg get_image(ModelType type)
 	{
-		if (tex_async.valid())
-		{
-			if (tex_async.wait_for (std::chrono::seconds(0)) == std::future_status::ready) {
-				tex.reset( tex_async.get() );
-			}
-			else return {};
-		}
 		return md_img[type];
 	}
 	
@@ -89,14 +82,14 @@ ResBase& ResBase::get()
 
 ResBase_Impl::ResBase_Impl()
 {
-	future_init = std::async(std::launch::async, [this]{ return init_func(); });
+	future_init = init_func();
 }
 void ResBase_Impl::init_ren_wait()
 {
-	if (!future_init.valid()) {
-		future_init = std::async(std::launch::async, [this]{ return init_func(); });
-	}
-	auto mlns = future_init.get();
+	if (!future_init) future_init = init_func();
+	auto mlns = std::move(future_init->ms);
+	RenderControl::get().exec_task([&] {tex = std::move(future_init->tex);});
+	future_init.reset();
 	
 	float kw, ka;
 	switch (AppSettings::get().aal_type)
@@ -121,7 +114,6 @@ void ResBase_Impl::init_ren_wait()
 }
 ResBase_Impl::InitResult ResBase_Impl::init_func()
 {
-	set_this_thread_name("resbase init");
 	InitResult initres;
 	
 	struct Explosion : ParticleGroupGenerator
@@ -492,6 +484,37 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 			p.apply_gravity(2);
 		}
 	};
+	struct FrostAura : ParticleGroupGenerator
+	{
+		vec2fp ctr;
+		float pwr, rad, t, td;
+		
+		size_t begin(const ParticleBatchPars& pars, ParticleParams& p)
+		{
+			p.size = 0.2;
+			
+			p.clr = pars.clr;
+			ctr = pars.tr.pos;
+			pwr = pars.power;
+			rad = pars.rad;
+			
+			int num = 2*M_PI * rad / 0.4;
+			td = 2*M_PI / num;
+			t = rnd_stat().range(0, td);
+			return num;
+		}
+		void gen(ParticleParams& p)
+		{
+			vec2fp dir = vec2fp{rad, 0}.fastrotate(t);
+			p.pos = ctr + dir;
+			p.vel = dir * (pwr * rnd_stat().range(0.8, 1.2));
+			t += td;
+			
+			p.lt = rnd_stat().range(0.5, 1);
+			p.ft = rnd_stat().range(1, 1.5);
+			p.decel_to_zero();
+		}
+	};
 
 
 
@@ -563,6 +586,9 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 	}{
 		auto g = new FireSpread;
 		ld_es[FE_FIRE_SPREAD].reset(g);
+	}{
+		auto g = new FrostAura;
+		ld_es[FE_FROST_AURA].reset(g);
 	}
 	
 	
@@ -900,8 +926,8 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 		if (std::find( std::begin(wpn_ixs), std::end(wpn_ixs), i ) != std::end(wpn_ixs))
 			width = WEAPON_LINE_RADIUS;
 		
-		initres[i].ls = mlns[i].ls; // used later in image generator
-		initres[i].width = width;
+		initres.ms[i].ls = mlns[i].ls; // used later in image generator
+		initres.ms[i].width = width;
 	}
 	
 	
@@ -918,9 +944,8 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 	
 	// generate images
 	
-	tex_async = std::async(std::launch::async, [this, mlns = std::move(mlns)] ()->Texture*
-	{
-		set_this_thread_name("resbase glow");
+	initres.tex.reset(
+	[&]()-> Texture* {
 		TimeSpan time0 = TimeSpan::since_start();
 	        
 		struct Info
@@ -998,7 +1023,7 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 			t.tc.b = vec2fp(a.w, a.h) / vec2fp(res.get_size()) + t.tc.a;
 		}
 		return tx;
-	});
+	}());
 
 	return initres;
 }

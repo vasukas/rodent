@@ -9,6 +9,7 @@ set(TARGET rodent)
 
 
 option(USE_OPUSFILE "Compile with opus audio support" ON)
+option(USE_OPENMPT "Compile with tracker music support" OFF)
 option(USE_SANITIZERS "Compile with all sanitizers (GCC/clang only)" OFF)
 
 # pass 'PKG_OUTPUT_DIR' with path to copy all runtime files to after compilation
@@ -16,6 +17,9 @@ option(USE_SANITIZERS "Compile with all sanitizers (GCC/clang only)" OFF)
 
 if (USE_OPUSFILE)
 	target_compile_definitions(${TARGET} PRIVATE USE_OPUSFILE=1)
+endif()
+if (USE_OPENMPT)
+	target_compile_definitions(${TARGET} PRIVATE USE_OPENMPT=1)
 endif()
 if (USE_SDL_MAIN)
 	target_compile_definitions(${TARGET} PRIVATE USE_SDL_MAIN=1)
@@ -113,6 +117,10 @@ if (USE_OPUSFILE)
 	endif()
 endif()
 
+if (USE_OPENMPT)
+	find_package(libopenmpt)
+endif()
+
 
 
 target_link_libraries(${TARGET} PRIVATE
@@ -127,11 +135,17 @@ target_link_libraries(${TARGET} PRIVATE
 list(APPEND DLL_NAMES
 	freetype
 	glew
+	ogg opus opusfile
+	openmpt
 	SDL2
 )
 
 if (USE_OPUSFILE)
 	target_link_libraries(${TARGET} PRIVATE opusfile)
+endif()
+
+if (USE_OPENMPT)
+	target_link_libraries(${TARGET} PRIVATE libopenmpt)
 endif()
 
 if (USE_SDL_MAIN)

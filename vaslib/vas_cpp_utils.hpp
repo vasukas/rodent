@@ -2,8 +2,9 @@
 #define VAS_CPP_UTILS_HPP
 
 #include <algorithm>
-#include <optional>
 #include <functional>
+#include <optional>
+#include <stdexcept>
 #include "vaslib/vas_types.hpp"
 
 

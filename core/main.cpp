@@ -305,18 +305,12 @@ Mode options (--game):
 	
 	
 	
-	if (AppSettings::get().fscreen == 1)
-		RenderControl::opt_fullscreen = true;
-	
 	log_write_str(LogLevel::Critical, "=== Starting renderer initialization ===");
 	if (!RenderControl::init()) {
 		MainLoop::show_internal_error("Renderer init failed");
 		return 1;
 	}
 	log_write_str(LogLevel::Critical, "=== Renderer initialization finished ===");
-	
-	if (AppSettings::get().fscreen == -1)
-		RenderControl::get().set_fscreen( RenderControl::FULLSCREEN_DESKTOP );
 	
 	if (int set = AppSettings::get().set_vsync; set != -1)
 		RenderControl::get().set_vsync(set);
@@ -325,8 +319,10 @@ Mode options (--game):
 	set_wnd_pars();
 	SDL_PumpEvents(); // just in case
 	
-	if (AppSettings::get().use_audio && !no_sound)
-		SoundEngine::init();
+	if (AppSettings::get().use_audio && !no_sound) {
+		if (!SoundEngine::init())
+			MainLoop::show_internal_error("Sound init failed");
+	}
 	else VLOGI("Sound disabled");
 	
 	VLOGI("Basic initialization finished in {:.3f} seconds", TimeSpan::since_start().seconds());
@@ -435,7 +431,7 @@ Mode options (--game):
 						auto wnd = RenderControl::get().get_wnd();
 						RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_OFF);
 						SDL_RestoreWindow(wnd);
-						SDL_SetWindowSize(wnd, 320, 240);
+						SDL_SetWindowSize(wnd, 600, 400);
 						SDL_SetWindowPosition(wnd, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
 					}
 					else if (ks.scancode == SDL_SCANCODE_C)
@@ -560,6 +556,8 @@ Mode options (--game):
 			VLOGD("Render lag: {:.3f} seconds on step {}", loop_total.seconds(), avg_total_n);
 		}
 	}
+	
+	SDL_HideWindow(RenderControl::get().get_wnd());
 	
 	VLOGI("Total run time: {:.3f} seconds", TimeSpan::since_start().seconds());
 	VLOGI("Average render frame length: {} ms, {} samples", avg_total, avg_total_n);

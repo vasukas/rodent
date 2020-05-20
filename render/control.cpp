@@ -16,7 +16,6 @@ class RenderControl_Impl;
 static RenderControl_Impl* rct;
 
 bool RenderControl::opt_gldbg = false;
-bool RenderControl::opt_fullscreen = false;
 
 
 
@@ -108,8 +107,9 @@ public:
 		SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
 		
 		auto wnd_sz = AppSettings::get().wnd_size;
+		auto opt_fs = AppSettings::get().fscreen;
 		nonfs_size = wnd_sz;
-		if (opt_fullscreen)
+		if (opt_fs == AppSettings::FS_Fullscreen)
 		{
 			fs_cur = FULLSCREEN_ENABLED;
 
@@ -120,8 +120,9 @@ public:
 		old_size = wnd_sz;
 		
 		int wnd_flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
-		if (opt_fullscreen) wnd_flags |= SDL_WINDOW_FULLSCREEN;
-		else if (AppSettings::get().wnd_size_max) wnd_flags |= SDL_WINDOW_MAXIMIZED;
+		if (opt_fs == AppSettings::FS_Fullscreen) wnd_flags |= SDL_WINDOW_FULLSCREEN;
+		else if (opt_fs == AppSettings::FS_Borderless) wnd_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+		else if (opt_fs == AppSettings::FS_Maximized) wnd_flags |= SDL_WINDOW_MAXIMIZED;
 		
 		wnd = SDL_CreateWindow( "Loading...", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, wnd_sz.x, wnd_sz.y, wnd_flags );
 		if (!wnd)

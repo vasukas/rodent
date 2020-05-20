@@ -56,7 +56,7 @@ void MainLoop::show_error_msg(std::string text, std::string title)
 }
 void MainLoop::show_internal_error(std::string text)
 {
-	show_error_msg(FMT_FORMAT("{}.\n\nShow log (user/app.log) to developer", text), "Internal error");
+	show_error_msg(FMT_FORMAT("{}.", text), "Internal error");
 }
 
 
@@ -92,7 +92,7 @@ public:
 			current->init();
 		};
 		
-		if (!ml_prev)
+		if (!is_in_game())
 		{
 			lines.push_back({"MAIN MENU\n", {}});
 			lines.push_back({"", {}});
@@ -158,6 +158,13 @@ public:
 				return;
 			}
 		}
+		
+		// I'm bored
+		vec2i sz = RenImm::get().text_size("()_.._()");
+		vec2i pos = RenderControl::get_size() - sz;
+		if (Rect{pos, sz, true}.contains(vig_mouse_pos())) RenImm::get().draw_text(pos, "()_^^_()");
+		else if (MainLoop::is_debug_mode) RenImm::get().draw_text(pos, "()_**_()");
+		else RenImm::get().draw_text(pos, "()_.._()");
 	}
 };
 
@@ -442,111 +449,233 @@ public:
 	bool changed = false;
 	vec2i zone_offset = {};
 	
+	void save()
+	{
+		if (cfg.write(sets.path_settings.c_str())) {
+			for (auto& p : cfg.get_opts()) p.changed = false;
+			changed = false;
+			vig_message("New settings successfully saved", TimeSpan::seconds(5).ms());
+		}
+		else vig_infobox("Failed to save new settings!");
+	}
+	void discard()
+	{
+		if (sets.load()) {
+			for (auto& p : cfg.get_opts()) p.changed = false;
+			changed = false;
+		}
+		else {
+			vig_infobox("Failed to restore old settings!\nReset to defaults.");
+			defaults();
+		}
+	}
+	void defaults()
+	{
+		AppSettings copy = sets;
+		auto ccfg = copy.gen_cfg();
+		
+		sets.init_default();
+		
+		changed = false;
+		auto& opts = cfg.get_opts();
+		for (size_t i=0; i<opts.size(); ++i)
+		{
+			auto& a1 = ccfg.get_opts()[i].get_args();
+			auto& a2 = opts[i].get_args();
+			opts[i].changed = false;
+			for (size_t i=0; i<a1.size(); ++i) {
+				if (![&]{
+				    if (false) {}
+#define CMP(T, X) else if (std::holds_alternative<T>(a1[i])) return std::get<T>(a1[i]).X == std::get<T>(a2[i]).X
+				    CMP(LineCfgArg_Int, v);
+				    CMP(LineCfgArg_Float, v);
+				    CMP(LineCfgArg_Bool, v);
+				    CMP(LineCfgArg_Str, v);
+				    CMP(LineCfgArg_Enum, get_int());
+#undef CMP
+				    return false;
+				}())
+				{
+					opts[i].changed = true;
+					changed = true;
+					break;
+				}
+			}
+		}
+		
+		if (changed)
+			sets.trigger_cbs();
+	}
+	LineCfgOption& opt(std::string_view name)
+	{
+		for (auto& p : cfg.get_opts()) {
+			if (p.get_name() == name) {
+				p.changed = true;
+				return p;
+			}
+		}
+		THROW_FMTSTR("No such option - {}", name);
+	};
+	
 	ML_Options()
 	    : sets(AppSettings::get_mut()), cfg(sets.gen_cfg())
 	{
 		cfg.write_only_present = true;
 	}
 	~ML_Options() {
-		if (changed) {
-			VLOGI("Restoring settings...");
-			if (!AppSettings::get_mut().load())
-				vig_infobox("Failed to restore old settings");
-		}
-	}
-	void on_event(const SDL_Event& ev) {
-		if (ev.type == SDL_KEYDOWN && ev.key.keysym.scancode == SDL_SCANCODE_ESCAPE)
-			delete this;
+		if (changed) discard();
 	}
 	void render(TimeSpan, TimeSpan)
 	{
-		if (vig_button("Exit without changes")) {
+		if (vig_button("Exit", SDL_SCANCODE_ESCAPE | vig_ScancodeFlag, changed)) {
+			if (changed) save();
 			delete this;
 			return;
 		}
-		if (changed)
-		{
-			if (vig_button("Apply changes", 0, true))
-			{
-				VLOGI("Applying new settings...");
-				sets.trigger_cbs();
-				if (cfg.write(sets.path_settings.c_str()))
-				{
-					for (auto& p : cfg.get_opts()) p.changed = false;
-					changed = false;
-				}
-				else
-					vig_infobox("Failed to save new settings");
-			}
-			
-			vig_space_tab();
-			if (vig_button("Apply without saving"))
-				sets.trigger_cbs();
-		}
+		if (changed) {if (vig_button("Discard changes")) discard();}
+		else vig_space_tab(vig_element_size("Discard changes").x);
+		if (vig_button("Restore defaults")) defaults();
 		vig_space_line();
 		
 		vec2i size = RenderControl::get_size() - vig_element_decor()*2;
 		size.y -= vig_lo_get_next().y;
 		vig_lo_push_scroll(size, zone_offset);
 		
-		auto opt = [&](std::string_view name)-> LineCfgOption& {
-			for (auto& p : cfg.get_opts()) {
-				if (p.get_name() == name) {
-					p.changed = true;
-					return p;
-				}
-			}
-			THROW_FMTSTR("No such option - {}", name);
-		};
-		
-		// audio
-		if (auto snd = SoundEngine::get())
-		{
-			double vol = snd->get_master_vol();
-			if (vig_slider("Master volume", vol)) {
-				std::get<LineCfgArg_Float>(opt("audio_volume").get_args()[0]).v = vol;
-				snd->set_master_vol(vol);
-				changed = true;
-			}
-			vig_lo_next();
-			
-			vol = snd->get_music_vol();
-			if (vig_slider("Music  volume", vol)) {
-				std::get<LineCfgArg_Float>(opt("music_volume").get_args()[0]).v = vol;
-				snd->set_music_vol(vol);
-				changed = true;
-			}
-			vig_lo_next();
-			
-			if (vig_button("Disable sound")) {
-				std::get<LineCfgArg_Bool>(opt("use_audio").get_args()[0]).v = false;
-				delete SoundEngine::get();
-				changed = true;
-				return;
-			}
-			vig_lo_next();
-		}
-		else
-		{
-			if (vig_button("Enable sound")) {
-				std::get<LineCfgArg_Bool>(opt("use_audio").get_args()[0]).v = true;
-				SoundEngine::init();
-				changed = true;
-			}
-		}
-		vig_space_line();
+		bool changed_now = false;
 		
 		// graphics
-		vig_label("Line type");
-		size_t ix = AppSettings::get_mut().aal_type;
+		
+		vig_label("=== Graphics settings\n");
+		
+		vig_label("Fullscreen mode ");
+		size_t ix = sets.fscreen;
+		if (vig_selector(ix, {"Windowed", "Maximized", "Borderless", "Fullscreen"})) {
+			auto& arg = std::get<LineCfgArg_Enum>(opt("fscreen").get_args()[0]);
+			arg.type->man_set(arg.p, ix);
+			changed_now = true;
+			
+			auto wnd = RenderControl::get().get_wnd();
+			switch (static_cast<AppSettings::FS_Type>(ix))
+			{
+			case AppSettings::FS_Windowed:
+			default:
+				RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_OFF);
+				SDL_SetWindowSize(wnd, AppSettings::get().wnd_size.x, AppSettings::get().wnd_size.y);
+				SDL_SetWindowPosition(wnd, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+				break;
+				
+			case AppSettings::FS_Maximized:
+				{
+					SDL_DisplayMode dm;
+					SDL_GetDesktopDisplayMode(0, &dm);
+					vec2i b0, b1;
+					SDL_GetWindowBordersSize(wnd, &b0.y, &b0.x, &b1.y, &b1.x);
+					vec2i sz = vec2i{dm.w, dm.h} - (b0 + b1);
+					
+					RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_OFF);
+					SDL_SetWindowSize(wnd, sz.x, sz.y);
+					SDL_SetWindowPosition(wnd, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+				}
+				break;
+				
+			case AppSettings::FS_Borderless:
+				RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_DESKTOP);
+				break;
+				
+			case AppSettings::FS_Fullscreen:
+				RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_ENABLED);
+				break;
+			}
+		}
+		vig_lo_next();
+		
+		vig_label("Window borders can be dragged to resize it.");
+		vig_lo_next();
+		
+		vig_label("Line glow ");
+		ix = sets.aal_type;
 		if (vig_selector(ix, {"Fuzzy", "Glow", "Clear"})) {
 			auto& arg = std::get<LineCfgArg_Enum>(opt("aal_type").get_args()[0]);
 			arg.type->man_set(arg.p, ix);
-			changed = true;
+			changed_now = true;
 		}
 		vig_space_line();
 		
+		// audio
+		
+		vig_label("=== Audio settings\n");
+		if (auto snd = SoundEngine::get())
+		{
+			auto conv = [](double& v, bool to_linear) {
+				v = to_linear ? std::pow(v, 1.0/3) : std::pow(v, 3);
+			};
+			
+			double vol = snd->get_master_vol();
+			conv(vol, false);
+			if (vig_slider("Master volume", vol)) {
+				conv(vol, true);
+				std::get<LineCfgArg_Float>(opt("audio_volume").get_args()[0]).v = vol;
+				snd->set_master_vol(vol);
+				changed_now = true;
+			}
+			vig_lo_next();
+			
+			vol = snd->get_sfx_vol();
+			conv(vol, false);
+			if (vig_slider("Effects      ", vol)) {
+				conv(vol, true);
+				std::get<LineCfgArg_Float>(opt("sfx_volume").get_args()[0]).v = vol;
+				snd->set_sfx_vol(vol);
+				changed_now = true;
+			}
+			vig_space_tab();
+			if (vig_button("Play quiet sound")) snd->once(SND_VOLUME_TEST_QUIET, {});
+			if (vig_button("Play LOUD sound"))  snd->once(SND_VOLUME_TEST_LOUD,  {});
+			vig_lo_next();
+			
+			vol = snd->get_music_vol();
+			conv(vol, false);
+			if (vig_slider("Music        ", vol)) {
+				conv(vol, true);
+				std::get<LineCfgArg_Float>(opt("music_volume").get_args()[0]).v = vol;
+				snd->set_music_vol(vol);
+				changed_now = true;
+			}
+			vig_lo_next();
+			
+			if (is_in_game()) vig_label("Can't disable sound while in game.\n");
+			else {
+				if (vig_button("Disable sound")) {
+					std::get<LineCfgArg_Bool>(opt("use_audio").get_args()[0]).v = false;
+					delete SoundEngine::get();
+					changed_now = true;
+					return;
+				}
+			}
+		}
+		else if (sets.use_audio) vig_label("Audio not available - initialization error (see log for details).\n");
+		else
+		{
+			if (is_in_game()) vig_label("Can't enable sound while in game.\n");
+			else {
+				if (vig_button("Enable sound")) {
+					std::get<LineCfgArg_Bool>(opt("use_audio").get_args()[0]).v = true;
+					changed_now = true;
+					if (!SoundEngine::init())
+						vig_infobox("Failed to enable sound.\n\nSee log for details.", true);
+				}
+				vig_lo_next();
+			}
+		}
+		vig_space_line();
+		
+		//
+		
 		vig_lo_pop();
+		if (changed_now) {
+			sets.trigger_cbs();
+			changed = true;
+		}
 	}
 };
 
@@ -832,6 +961,14 @@ public:
 
 MainLoop* MainLoop::current;
 
+bool MainLoop::is_in_game() const
+{
+	for (auto p = ml_prev; p; p = p->ml_prev) {
+		if (typeid(*p) == typeid(ML_Game))
+			return true;
+	}
+	return false;
+}
 void MainLoop::create(InitWhich which, bool do_init)
 {
 	MainLoop* prev = current;

@@ -132,6 +132,7 @@ std::string AI_Drone::get_dbg_state() const
 }
 void AI_Drone::add_state(State new_state)
 {
+	state_on_leave( state_stack.back() );
 	state_stack.emplace_back( std::move(new_state) );
 	state_on_enter( state_stack.back() );
 }

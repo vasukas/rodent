@@ -19,6 +19,9 @@ public:
 	virtual int read(int16_t *buffer, int pos, int len) = 0; ///< Returns number of samples read
 	virtual int length() = 0; ///< May not be exact
 	virtual int num_channels() = 0; ///< Only 1 or 2 are allowed
+	
+	virtual bool has_subsongs() {return false;}
+	virtual void select_subsong(int index) {(void) index;}
 };
 
 #endif // RES_AUDIO_HPP

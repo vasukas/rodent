@@ -239,9 +239,10 @@ EEnemyDrone::Init EEnemyDrone::def_workr(GameCore& core)
 	init.pars = pars();
 	init.model = MODEL_WORKER;
 	
-	static const auto cs = normalize_chances<Weapon*(*)(), 2>({{
+	static const auto cs = normalize_chances<Weapon*(*)(), 3>({{
 		{[]()->Weapon*{return new WpnRocket;}, 1},
-		{[]()->Weapon*{return new WpnSMG;}, 0.05}
+		{[]()->Weapon*{return new WpnSMG;},   0.05},
+		{[]()->Weapon*{return new WpnRifle;}, 0.05}
 	}});
 	init.wpn.reset(core.get_random().random_el(cs)());
 	
@@ -272,9 +273,10 @@ EEnemyDrone::Init EEnemyDrone::def_drone(GameCore& core)
 	init.pars = pars();
 	init.model = MODEL_DRONE;
 	
-	static const auto cs = normalize_chances<Weapon*(*)(), 2>({{
+	static const auto cs = normalize_chances<Weapon*(*)(), 3>({{
 		{[]()->Weapon*{return new WpnRocket;}, 0.6},
-		{[]()->Weapon*{return new WpnSMG;}, 0.4}
+		{[]()->Weapon*{return new WpnSMG;},    0.4},
+		{[]()->Weapon*{return new WpnRifle;},  0.05}
 	}});
 	init.wpn.reset(core.get_random().random_el(cs)());
 	

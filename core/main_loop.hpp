@@ -39,6 +39,8 @@ public:
 	virtual void on_event(const SDL_Event&) {}
 	virtual void render(TimeSpan frame_begin, TimeSpan passed) = 0; ///< Called each frame on unset renderer
 	virtual ~MainLoop();
+	
+	bool is_in_game() const;
 };
 
 #endif // MAIN_LOOP_HPP

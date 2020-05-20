@@ -149,6 +149,7 @@ struct LineCfgArg_Enum {
 	LineCfgArg_Enum(void* p,std::shared_ptr<LineCfgEnumType> type): p(p), type(std::move(type)) {}
 	LineCfgArgError read(std::string_view s);
 	void write(std::string& s) const;
+	LineCfgEnumType::Base get_int() const {return type->man_get(p);}
 };
 using LineCfgArg = std::variant<LineCfgArg_Int, LineCfgArg_Float, LineCfgArg_Bool, LineCfgArg_Str, LineCfgArg_Enum>;
 

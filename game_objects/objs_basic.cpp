@@ -45,7 +45,7 @@ EWall::EWall(GameCore& core, const std::vector<std::vector<vec2fp>>& walls)
 		auto f = phy.body.CreateFixture(&fd);
 		
 		set_info(*f, FixtureInfo{ FixtureInfo::TYPEFLAG_WALL | FixtureInfo::TYPEFLAG_OPAQUE });
-		if (auto p = SoundEngine::get()) p->geom_static_add({}, shp);
+		if (auto p = SoundEngine::get()) p->geom_static_add(shp);
 	};
 	for (auto& w : walls) addfix(w);
 	
@@ -507,7 +507,7 @@ void ETeleport::teleport_player()
 	GamePresenter::get()->effect(FE_SPAWN, {Transform{plr.get_pos()}, plr.ref_pc().get_radius()});
 	plr.ref_phobj().teleport(get_pos());
 	GamePresenter::get()->effect(FE_SPAWN, {Transform{get_pos()}, plr.ref_pc().get_radius()});
-	SoundEngine::once(SND_OBJ_TELEPORT, get_pos());
+	SoundEngine::once(SND_OBJ_TELEPORT, {});
 }
 
 

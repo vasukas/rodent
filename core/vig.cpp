@@ -422,11 +422,13 @@ int vig_mouse_state() {
 	return mouse_state;
 }
 vec2i vig_mouse_pos() {
-	if (input_locked) return {};
+	if (input_locked) return {-1,-1};
 	return mouse_pos;
 }
 vec2i vig_mouse_press_pos() {
-	if (input_locked) return {};
+	const int any_pressed = ((vig_Mouse_ButtonCount - 1) << vig_Mouse_ButtonCount);
+	if (input_locked) return {-1,-1};
+	if (!(mouse_state & any_pressed)) return mouse_pos;
 	return mouse_press_pos;
 }
 vec2i vig_get_scroll() {
@@ -481,6 +483,7 @@ bool draw(vigWarnbox& b) {
 	vec2i tt_sz = vig_text_size(b.title);
 	vec2i ms_sz = vig_text_size(b.message);
 	vec2i lb_sz = {};
+	vec2i bg_bord = vec2i::one(8);
 	
 	std::vector<vec2i> ls;
 	ls.reserve(b.buttons.size());
@@ -496,6 +499,8 @@ bool draw(vigWarnbox& b) {
 	};
 	vec2i tot_off = (scr - tot_sz) /2;
 	
+	vig_fill_rect(tot_off - bg_bord, tot_sz + bg_bord*2, vig_CLR(MsgBack));
+	vig_draw_rect(tot_off - bg_bord, tot_sz + bg_bord*2, vig_CLR(Frame));
 	vig_draw_text(tot_off + vec2i((tot_sz.x - tt_sz.x) /2, 0), b.title);
 	vig_draw_text(tot_off + vec2i((tot_sz.x - ms_sz.x) /2, tt_sz.y + vig_text_height()), b.message);
 	
@@ -857,7 +862,7 @@ bool vig_button(std::string_view text, int key, bool active, bool repeat, vec2i 
 //	if (!size.x && !size.y) size = vig_element_size( text.data(), text.length() );
 	
 	// check if element hovered by mouse
-	bool hov = Rect(pos, size, true).contains(vig_mouse_pos());
+	bool hov = Rect(pos, size, true).contains(vig_mouse_press_pos());
 	
 	// draw background
 	if (!active) vig_fill_rect(pos, size, hov? vig_CLR(BackHover) : vig_CLR(Back));
@@ -893,7 +898,7 @@ bool vig_slider_t(std::string_view text, double& t, vec2i pos, vec2i size) {
 //	if (!size.x && !size.y) size = vig_element_size( text.data(), text.length() );
 	
 	// check if element hovered by mouse
-	bool hov = Rect(pos, size, true).contains(vig_mouse_pos());
+	bool hov = Rect(pos, size, true).contains(vig_mouse_press_pos());
 	
 	// draw background
 	vig_fill_rect(pos, size, hov? vig_CLR(BackHover) : vig_CLR(Back));
@@ -909,7 +914,7 @@ bool vig_slider_t(std::string_view text, double& t, vec2i pos, vec2i size) {
 	
 	// check if pressed
 	if (hov) {
-		if		(vig_mouse_state() & vig_Mouse_CLICK(Left)) {
+		if (vig_mouse_state() & vig_Mouse_PRESS(Left)) {
 			t = vig_mouse_pos().x - pos.x;
 			t /= size.x;
 		}
@@ -1008,7 +1013,7 @@ bool vig_scrollbar(float& offset, float span, bool is_horizontal, vec2i pos, vec
 
 
 
-bool vig_selector(size_t& index, const std::vector <std::string_view> &vals, int key_minus, int key_plus) {
+bool vig_selector(size_t& index, const std::vector <std::string_view> &vals) {
 	index = std::min(index, vals.size() - 1);
 	
 	// compose string
@@ -1017,7 +1022,7 @@ bool vig_selector(size_t& index, const std::vector <std::string_view> &vals, int
 	auto str = fmtstr("{:^{}}", vals[index], len);
 	
 	// calc subsizes
-	vec2i c_size = vig_element_size(str.data());
+	vec2i c_size = vig_element_size(str);
 	vec2i b_size = vig_element_size("<", 1);
 	
 	// allocate space, return if invisible
@@ -1027,10 +1032,10 @@ bool vig_selector(size_t& index, const std::vector <std::string_view> &vals, int
 	bool ret = false; // return value
 	
 	// draw increment buttons
-	if (vig_button("<", key_minus, false, true, pos, b_size)) {
+	if (vig_button("<", 0, index != 0, true, pos, b_size)) {
 		if (index) {--index; ret = true;}
 	}
-	if (vig_button(">", key_plus, false, true, {pos.x + c_size.x + b_size.x, pos.y}, b_size)) {
+	if (vig_button(">", 0, index != vals.size() - 1, true, {pos.x + c_size.x + b_size.x, pos.y}, b_size)) {
 		if (index != vals.size() - 1) {++index; ret = true;}
 	}
 	
@@ -1060,7 +1065,7 @@ bool vig_selector(size_t& index, const std::vector <std::string_view> &vals, int
 	
 	return ret;
 }
-bool vig_num_selector(size_t& index, size_t num, int key_minus, int key_plus) {
+bool vig_num_selector(size_t& index, size_t num) {
 	index = std::min(index, num - 1);
 	
 	// compose string
@@ -1078,10 +1083,10 @@ bool vig_num_selector(size_t& index, size_t num, int key_minus, int key_plus) {
 	bool ret = false; // return value
 	
 	// draw increment buttons
-	if (vig_button("<", key_minus, false, true, pos, b_size)) {
+	if (vig_button("<", 0, index != 0, true, pos, b_size)) {
 		if (index) {--index; ret = true;}
 	}
-	if (vig_button(">", key_plus, false, true, {pos.x + c_size.x + b_size.x, pos.y}, b_size)) {
+	if (vig_button(">", 0, index != num - 1, true, {pos.x + c_size.x + b_size.x, pos.y}, b_size)) {
 		if (index != num - 1) {++index; ret = true;}
 	}
 	
@@ -1334,6 +1339,13 @@ void vigTextbox::allow_name(bool unicode) {
 		       (c == '_') ||
 		       (unicode && 0 != (c & 0x80));
 	};
+}
+void vigTextbox::set_u8(std::string s) {
+	str = string_8to32(s);
+	ptr = std::min(ptr, str.length());
+}
+std::string vigTextbox::get_u8() const {
+	return string_32to8(str);
 }
 
 

@@ -6,7 +6,7 @@
 
 #include <bitset>
 #include <variant>
-#include "game/entity.hpp"
+#include "game/common_defs.hpp"
 #include "utils/color_manip.hpp"
 #include "vaslib/vas_math.hpp"
 #include "vaslib/vas_time.hpp"
