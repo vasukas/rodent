@@ -1,0 +1,277 @@
+# single value parameters
+#   v/vol - volume (linear, 0-1)
+#   d/dist - max hearing radius (max is 120)
+
+# multiple value params
+#   rnd - two values, bounds for random speed multiplier
+#      also acts as 'rndvol' flag
+#   spdmut - two values, bounds for set speed multiplier
+
+# flags (no values)
+#   ui - not affected by pause
+#   rndvol - allows volume to be slightly randomized
+#   norndvol - disables volume randomization
+
+# subtracks can be specified as `sub <filename>`
+# first subtrack is file from header, last is ending,
+# intermediate are loop variations.
+# all subtracks share same parameters
+
+# see name list in `client/sounds.hpp`
+# use '!' to specify silence file
+
+
+
+SND_VOLUME_TEST_QUIET test_quiet ui
+SND_VOLUME_TEST_LOUD  test_loud  ui
+
+SND_WPN_MINIGUN !
+	rnd 0.7 1.1
+	dist 70
+	sub wpn_minigun_1
+	sub wpn_minigun_2
+	sub wpn_minigun_end
+
+SND_WPN_SHOTGUN wpn_minigun_shotgun
+	rnd 0.95 1
+
+SND_WPN_MINIGUN_TURRET !
+	rnd 1.9 2.1
+	vol 0.85
+	dist 80
+	sub wpn_minigun_1
+	sub wpn_minigun_2
+	sub wpn_minigun_end
+
+SND_WPN_ROCKET !
+
+
+
+SND_WPN_BOLTER_CHARGE wpn_bolter_charge_begin
+	spdmut 0.5 2
+	dist 35
+	sub wpn_bolter_charge_1
+	sub wpn_bolter_charge_2
+	sub wpn_bolter_charge_3
+	sub wpn_bolter_charge_4
+	sub wpn_bolter_charge_end
+
+SND_WPN_BOLTER_DISCHARGE wpn_bolter_discharge
+	dist 200
+	vol 0.7
+
+SND_WPN_BOLTER_FAIL wpn_bolter_fail
+	rnd 0.5 1
+	vol 1.1
+
+SND_WPN_BOLTER_ELECTRO !
+	rnd 0.7 1.2
+	vol 1.2
+	sub wpn_bolter_electro_1
+	sub wpn_bolter_electro_2
+	sub wpn_bolter_electro_3
+	sub wpn_bolter_electro_end
+
+
+
+SND_WPN_FIRE_SHOOT !
+
+SND_WPN_FIRE_LOOP !
+
+SND_WPN_FOAM_SHOOT !
+
+SND_WPN_FOAM_AMBIENT wpn_foam_begin
+	dist 15
+	sub wpn_foam_1
+	sub wpn_foam_2
+	sub misc_silence05
+	sub misc_silence05
+	sub wpn_foam_end
+
+
+
+SND_WPN_RIFLE !
+	rnd 0.9 1.2
+	dist 40
+	sub wpn_rifle_3
+	sub wpn_rifle_end
+
+SND_WPN_GRENADE_SHOT wpn_rifle_grenade
+	rnd 0.6 1
+
+SND_WPN_UBER_RAY !
+	dist 60
+	vol 1.7
+#	sub wpn_uberray_1
+	sub wpn_uberray_2
+#	sub wpn_uberray_3
+	sub wpn_uberray_4
+	sub wpn_uberray_end
+
+SND_WPN_UBER_LAUNCH wpn_uber_launch
+	dist 90
+
+SND_WPN_UBER_AMBIENT !
+	dist 60
+	vol 0.5
+	rnd 0.95 1.05
+	sub wpn_uberball_amb
+	sub !
+
+
+
+SND_WPN_BARRAGE wpn_barrage_begin
+	rnd 0.95 1.1
+	dist 40
+	sub wpn_barrage_loop
+	sub !
+
+SND_WPN_SMG !
+	rnd 0.9 1.1
+	dist 60
+	sub wpn_smg1
+	sub wpn_smg2
+	sub wpn_smg3
+	sub wpn_smg4
+	sub wpn_smg_end
+
+
+
+SND_ENV_LIGHTNING !
+
+SND_ENV_BULLET_HIT env_bullet_hit
+	vol 0.35
+	dist 8
+	rnd 0.5 1
+
+SND_ENV_BIG_SHIELD_HIT env_shield_hit
+	rnd 0.9 1.1
+	vol 2
+	dist 12
+
+SND_ENV_EXPLOSION explosion_2
+	rnd 0.95 1.3
+
+SND_ENV_LARGE_EXPLOSION explosion_large
+	rnd 1 1.1
+	vol 1.3
+	dist 200
+
+SND_ENV_BOT_EXPLOSION !
+	rnd 0.8 1.2
+	dist 60
+	vol 1.5
+	sub explosion_bot_1
+	sub explosion_bot_2
+	sub !
+
+SND_ENV_RAM env_ram
+	rnd 0.8 1.8
+	vol 1.2
+
+SND_ENV_WALLRAM env_wallram
+	rnd 0.8 1.5
+	vol 1.2
+
+SND_ENV_DRILLING env_drill_begin
+	dist 25
+	rnd 0.5 1
+	sub env_drill_1
+	sub env_drill_2
+	sub env_drill_end
+
+SND_ENV_UNLOADING !
+
+
+
+SND_AUTOLOCK_PING !
+	spdmut 2 0.5
+	dist 10
+	sub misc_pingbeep
+	sub !
+
+SND_BOT_LOCK_FIX misc_lockbeep
+	rnd 0.8 1
+	dist 50
+	vol 0.8
+
+SND_OBJ_DISPENSER obj_dispenser
+
+SND_OBJ_DISPENSER_EMPTY obj_dispenser_empty
+
+SND_OBJ_DISPENSER_WAIT obj_dispenser_wait
+	vol 0.6
+
+SND_OBJ_MINIDOCK obj_minidock
+	rnd 0.95 1.3
+	dist 35
+	vol 1.6
+
+SND_OBJ_SPAWN obj_teleport
+	rnd 0.5 1.2
+	dist 25
+	vol 0.5
+
+SND_OBJ_TELEPORT_ACTIVATE obj_teleport_activate
+	dist 15
+	vol 0.5
+
+SND_OBJ_TELEPORT obj_teleport
+	rnd 0.9 1.1
+	dist 15
+
+SND_OBJ_DRILL_FIZZLE obj_drill_fizzle
+	dist 40
+
+SND_OBJ_TERMINAL_FAIL obj_terminal_fail
+
+SND_OBJ_TERMINAL_OK obj_terminal_ok
+
+SND_OBJ_DOOR_OPEN obj_door
+	rnd 0.8 1.2
+	dist 30
+
+SND_OBJ_DOOR_CLOSE obj_door
+	rnd 0.8 1.2
+	dist 30
+
+
+
+SND_OBJAMB_FINALTERM_WORK !
+	dist 18
+	sub objamb_term_work
+	sub objamb_term_work_end
+	vol 2
+
+SND_OBJAMB_SCITERM !
+	rnd 0.95 1.1
+	dist 10
+	sub objamb_sciterm
+	sub !
+	vol 1
+
+SND_OBJAMB_CRYOPOD !
+	rnd 0.95 1.1
+	dist 10
+	sub objamb_cryo
+	sub !
+	vol 2
+
+SND_OBJAMB_CONVEYOR !
+	rnd 0.95 1.1
+	dist 7
+	sub objamb_conv
+	sub !
+	vol 1
+
+
+
+SND_UI_NO_AMMO ui_no_ammo
+
+SND_UI_SHIELD_READY ui_shield_ready
+
+SND_UI_PICKUP ui_pickup
+	vol 0.3
+
+SND_UI_PICKUP_POWER ui_pickup_2
+
