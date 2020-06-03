@@ -317,18 +317,18 @@ public:
 		add_line({x1, y1}, {x0, y1}, frame_width);
 		add_obj( white_tex, clr, IS_TEXT_WHITE );
 	}
-	void draw_image (const Rectfp& dst, const TextureReg& tex, uint32_t clr)
+	void draw_image (const Rectfp& dst, const TextureReg& tex, uint32_t clr, bool alpha_only)
 	{
 		if (uint t = tex.get_obj())
-		draw_image (t, dst, tex.tc, clr);
+		draw_image (t, dst, tex.tc, clr, alpha_only);
 	}
-	void draw_image (uint32_t tex, const Rectfp& dst, const Rectfp& src, uint32_t clr)
+	void draw_image (uint32_t tex, const Rectfp& dst, const Rectfp& src, uint32_t clr, bool alpha_only)
 	{
-		if (!can_add( false )) return;
+		if (!can_add( alpha_only )) return;
 		reserve(1);
 		
 		add_rect( dst, src );
-		add_obj( tex, clr, false );
+		add_obj( tex, clr, alpha_only );
 	}
 	
 	

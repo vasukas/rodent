@@ -53,6 +53,8 @@ private:
 	float inert_reduce = 0;
 	const float inert_reduce_decr = 0.5; // per second
 	
+	vec2fp prev_pos; // for stats
+	
 	friend struct EC_PlayerLogic;
 	void upd_vel(Entity& ent, vec2fp dir, bool is_accel, vec2fp look_pos); ///< Must be called exactly once per step
 	void step() override;
@@ -104,6 +106,7 @@ struct EC_PlayerLogic : EComp
 	
 private:
 	EVS_SUBSCR;
+	TimeSpan idle_since = {};
 	
 	const float min_tar_dist = 1.2; // minimal target distance
 	vec2fp prev_tar; // used if current dist < minimal

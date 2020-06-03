@@ -1,6 +1,3 @@
-#if USE_OPENMPT
-#define VAS_LOG_OSTREAM 1
-#endif
 #include <SDL2/SDL_audio.h>
 #include "vaslib/vas_file.hpp"
 #include "vaslib/vas_log.hpp"
@@ -153,57 +150,6 @@ public:
 
 
 
-#if USE_OPENMPT
-#include <libopenmpt/libopenmpt.hpp>
-
-class AudioFile_OpenMPT : public AudioFile {
-public:
-	std::string data;
-	std::unique_ptr<openmpt::module> mod;
-	vaslog_ostream mod_clog;
-	int sample_rate;
-	int pos_check = 0;
-	
-	AudioFile_OpenMPT(const char *filename, int sample_rate)
-	    : mod_clog(LogLevel::Debug), sample_rate(sample_rate)
-	{
-		data = readfile(filename).value_or(std::string{});
-		if (data.empty()) THROW_FMTSTR("AudioFile_Openmpt:: failed to read file");
-		try {
-			mod.reset(new openmpt::module(data.data(), data.size(), mod_clog));
-		}
-		catch (std::exception& e) {
-			THROW_FMTSTR("AudioFile_Openmpt:: {}", e.what());
-		}
-		mod->set_repeat_count(-1);
-	}
-	int read(int16_t *buffer, int pos, int size) {
-		if (pos_check != pos) THROW_FMTSTR("AudioFile_Openmpt::read() non-streaming read");
-		int n = mod->read_interleaved_stereo(sample_rate, size /2, buffer) *2;
-		pos_check = pos + n;
-		return n;
-	}
-	int get_len() {
-		return std::numeric_limits<int>::max();
-	}
-	int get_rate() {
-		return sample_rate;
-	}
-	int get_chn() {
-		return 2;
-	}
-	bool has_subsongs() {
-		return true;
-	}
-	void select_subsong(int index) {
-		mod->select_subsong(index);
-	}
-};
-
-#endif
-
-
-
 class AudioSource_File : public AudioSource {
 public:
 	std::unique_ptr<AudioFile> file;
@@ -320,13 +266,6 @@ AudioSource* AudioSource::open_stream(const char *filename, int sample_rate)
 #else
 		VLOGI("audio: opusfile not used");
 #endif
-#if USE_OPENMPT
-		VLOGI("audio: libopenmpt API - {}.{}.{}", OPENMPT_API_VERSION_MAJOR, OPENMPT_API_VERSION_MINOR, OPENMPT_API_VERSION_PATCH);
-		uint32_t v = openmpt::get_library_version();
-		VLOGI("audio: libopenmpt version - {}.{}.{}", v >> 24, (v >> 16) & 0xff, v & 0xffff);
-#else
-		VLOGI("audio: libopenmpt not used");
-#endif
 	}
 	
 	try {
@@ -342,11 +281,6 @@ AudioSource* AudioSource::open_stream(const char *filename, int sample_rate)
 				THROW_FMTSTR("built without opus support");
 #endif
 			}
-#if USE_OPENMPT
-			else if (openmpt::is_extension_supported(ext)) {
-				file = std::make_unique<AudioFile_OpenMPT>(filename, sample_rate);
-			}
-#endif
 			else THROW_FMTSTR("unsupported extension");
 		}
 		else {

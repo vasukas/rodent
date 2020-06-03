@@ -26,10 +26,10 @@ Site: https://xiph.org/ogg, https://opus-codec.org
 License: 3-clause BSD  
 https://github.com/xiph/opusfile/blob/master/COPYING
 
-### libopenmpt
-Site: https://openmpt.org/
-License: 3-clause BSD
-https://github.com/OpenMPT/openmpt/blob/master/LICENSE
+### Perlin noise
+Site: https://github.com/stegu/perlin-noise  
+License: public domain  
+https://github.com/stegu/perlin-noise/blob/master/LICENSE.md
 
 ### SDL2
 Site: https://www.libsdl.org/  
@@ -51,10 +51,17 @@ Link: https://github.com/google/fonts/tree/master/ofl/inconsolata
 License: SIL Open Font License  
 https://github.com/google/fonts/tree/master/ofl/inconsolata/OFL.txt
 
-### Crosshair pack (PNG/Outline/crosshair159.png)
+### Crosshair pack
 Link: https://kenney.nl/assets/crosshair-pack  
 License: Creative Commons Zero, CC0  
-https://creativecommons.org/publicdomain/zero/1.0/
+https://creativecommons.org/publicdomain/zero/1.0/  
+Only "PNG/Outline/crosshair159.png" is used.
+
+### Royalty Free Soundtrack Collection by One Man Symphony
+Link: https://onemansymphony.bandcamp.com  
+License: Creative Commons - Attribution 4.0  
+https://creativecommons.org/licenses/by/4.0/  
+Track "71. Continuum" was truncated.
 
 ### Soniss GDC Audio Bundle
 Site: https://sonniss.com/  

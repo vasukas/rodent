@@ -1,3 +1,5 @@
+#include <filesystem>
+#include <future>
 #include <SDL2/SDL_messagebox.h>
 #include "client/plr_input.hpp"
 #include "client/replay.hpp"
@@ -96,10 +98,12 @@ public:
 		{
 			lines.push_back({"MAIN MENU\n", {}});
 			lines.push_back({"", {}});
+			if (fexist(HARDPATH_REPLAY_SAVEGAME)) lines.push_back({"Continue", {[]{ start_game("--loadlast --savegame"); }}});
+			lines.push_back({"New game", {[]{ start_game("--rndseed --savegame"); }}});
+			lines.push_back({"", {}});
 			lines.push_back({"Tutorial", {[]{ start_game("--tutorial"); }}});
-			lines.push_back({"Default", {[]{ start_game({}); }}});
-			lines.push_back({"New game", {[]{ start_game("--rndseed"); }}});
 			lines.push_back({"Survival", {[]{ start_game("--survival --no-ffwd --rndseed"); }}});
+			lines.push_back({"Default", {[]{ start_game({}); }}});
 			lines.push_back({"", {}});
 			lines.push_back({"Keybinds", {[]{ create(INIT_KEYBIND); }}});
 			lines.push_back({"Options", {[]{ create(INIT_OPTIONS); }}});
@@ -110,7 +114,7 @@ public:
 		else
 		{
 			lines.push_back({"PAUSE MENU\n", {}});
-			lines.push_back({"Beware! Game is not saved!", {}});
+			lines.push_back({"Game is automatically saved on exit.", {}});
 			lines.push_back({"", {}});
 			lines.push_back({"Keybinds", {[]{ create(INIT_KEYBIND); }}});
 			lines.push_back({"Options", {[]{ create(INIT_OPTIONS); }}});
@@ -503,8 +507,21 @@ public:
 			}
 		}
 		
-		if (changed)
-			sets.trigger_cbs();
+		if (changed) {
+			if (bool(SoundEngine::get()) != sets.use_audio) {
+				if (sets.use_audio) {
+					if (!SoundEngine::init())
+						vig_infobox("Failed to enable sound.\n\nSee log for details.", true);
+				}
+				else delete SoundEngine::get();
+			}
+			if (auto snd = SoundEngine::get()) {
+				snd->set_master_vol(sets.audio_volume);
+				snd->set_sfx_vol(sets.sfx_volume);
+				snd->set_music_vol(sets.music_volume);
+			}
+			set_window_fs(sets.fscreen);
+		}
 	}
 	LineCfgOption& opt(std::string_view name)
 	{
@@ -515,7 +532,42 @@ public:
 			}
 		}
 		THROW_FMTSTR("No such option - {}", name);
-	};
+	}
+	void set_window_fs(int ix)
+	{
+		auto wnd = RenderControl::get().get_wnd();
+		switch (static_cast<AppSettings::FS_Type>(ix))
+		{
+		case AppSettings::FS_Windowed:
+		default:
+			RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_OFF);
+			SDL_SetWindowSize(wnd, AppSettings::get().wnd_size.x, AppSettings::get().wnd_size.y);
+			SDL_SetWindowPosition(wnd, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+			break;
+			
+		case AppSettings::FS_Maximized:
+			{
+				SDL_DisplayMode dm;
+				SDL_GetDesktopDisplayMode(0, &dm);
+				vec2i b0, b1;
+				SDL_GetWindowBordersSize(wnd, &b0.y, &b0.x, &b1.y, &b1.x);
+				vec2i sz = vec2i{dm.w, dm.h} - (b0 + b1);
+				
+				RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_OFF);
+				SDL_SetWindowSize(wnd, sz.x, sz.y);
+				SDL_SetWindowPosition(wnd, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+			}
+			break;
+			
+		case AppSettings::FS_Borderless:
+			RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_DESKTOP);
+			break;
+			
+		case AppSettings::FS_Fullscreen:
+			RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_ENABLED);
+			break;
+		}
+	}
 	
 	ML_Options()
 	    : sets(AppSettings::get_mut()), cfg(sets.gen_cfg())
@@ -541,8 +593,6 @@ public:
 		size.y -= vig_lo_get_next().y;
 		vig_lo_push_scroll(size, zone_offset);
 		
-		bool changed_now = false;
-		
 		// graphics
 		
 		vig_label("=== Graphics settings\n");
@@ -552,81 +602,53 @@ public:
 		if (vig_selector(ix, {"Windowed", "Maximized", "Borderless", "Fullscreen"})) {
 			auto& arg = std::get<LineCfgArg_Enum>(opt("fscreen").get_args()[0]);
 			arg.type->man_set(arg.p, ix);
-			changed_now = true;
-			
-			auto wnd = RenderControl::get().get_wnd();
-			switch (static_cast<AppSettings::FS_Type>(ix))
-			{
-			case AppSettings::FS_Windowed:
-			default:
-				RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_OFF);
-				SDL_SetWindowSize(wnd, AppSettings::get().wnd_size.x, AppSettings::get().wnd_size.y);
-				SDL_SetWindowPosition(wnd, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
-				break;
-				
-			case AppSettings::FS_Maximized:
-				{
-					SDL_DisplayMode dm;
-					SDL_GetDesktopDisplayMode(0, &dm);
-					vec2i b0, b1;
-					SDL_GetWindowBordersSize(wnd, &b0.y, &b0.x, &b1.y, &b1.x);
-					vec2i sz = vec2i{dm.w, dm.h} - (b0 + b1);
-					
-					RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_OFF);
-					SDL_SetWindowSize(wnd, sz.x, sz.y);
-					SDL_SetWindowPosition(wnd, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
-				}
-				break;
-				
-			case AppSettings::FS_Borderless:
-				RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_DESKTOP);
-				break;
-				
-			case AppSettings::FS_Fullscreen:
-				RenderControl::get().set_fscreen(RenderControl::FULLSCREEN_ENABLED);
-				break;
-			}
+			changed = true;
+			set_window_fs(ix);
 		}
 		vig_lo_next();
 		
 		vig_label("Window borders can be dragged to resize it.");
 		vig_lo_next();
 		
-		vig_label("Line glow ");
-		ix = sets.aal_type;
-		if (vig_selector(ix, {"Fuzzy", "Glow", "Clear"})) {
-			auto& arg = std::get<LineCfgArg_Enum>(opt("aal_type").get_args()[0]);
-			arg.type->man_set(arg.p, ix);
-			changed_now = true;
-		}
-		vig_space_line();
-		
 		// audio
 		
 		vig_label("=== Audio settings\n");
 		if (auto snd = SoundEngine::get())
 		{
-			auto conv = [](double& v, bool to_linear) {
-				v = to_linear ? std::pow(v, 1.0/3) : std::pow(v, 3);
+			const double db0 = -10; // dB at threshold
+			const double base = std::pow(10, -db0/10);
+			const double baselog = 1/std::log(base);
+			const double xthr = 0.1;
+			const double ythr = 1/base;
+			//
+			auto cvt_from_user = [&](double& v){
+				// x -> y
+				if (v < xthr) v = v/xthr * ythr;
+				else v = std::pow(base, (v-xthr)/(1-xthr) - 1);
+			};
+			auto cvt_to_user = [&](double& v){
+				// y -> x
+				if (v < ythr) v = v*xthr / ythr;
+				else v = (std::log(v) * baselog + 1)*(1-xthr) + xthr;
 			};
 			
 			double vol = snd->get_master_vol();
-			conv(vol, false);
-			if (vig_slider("Master volume", vol)) {
-				conv(vol, true);
+			cvt_to_user(vol);
+			if (vig_slider("Master volume     ", vol)) {
+				cvt_from_user(vol);
 				std::get<LineCfgArg_Float>(opt("audio_volume").get_args()[0]).v = vol;
 				snd->set_master_vol(vol);
-				changed_now = true;
+				changed = true;
 			}
 			vig_lo_next();
 			
 			vol = snd->get_sfx_vol();
-			conv(vol, false);
-			if (vig_slider("Effects      ", vol)) {
-				conv(vol, true);
+			cvt_to_user(vol);
+			if (vig_slider("Effects           ", vol)) {
+				cvt_from_user(vol);
 				std::get<LineCfgArg_Float>(opt("sfx_volume").get_args()[0]).v = vol;
 				snd->set_sfx_vol(vol);
-				changed_now = true;
+				changed = true;
 			}
 			vig_space_tab();
 			if (vig_button("Play quiet sound")) snd->once(SND_VOLUME_TEST_QUIET, {});
@@ -634,12 +656,12 @@ public:
 			vig_lo_next();
 			
 			vol = snd->get_music_vol();
-			conv(vol, false);
-			if (vig_slider("Music        ", vol)) {
-				conv(vol, true);
+			cvt_to_user(vol);
+			if (vig_slider("Music             ", vol)) {
+				cvt_from_user(vol);
 				std::get<LineCfgArg_Float>(opt("music_volume").get_args()[0]).v = vol;
 				snd->set_music_vol(vol);
-				changed_now = true;
+				changed = true;
 			}
 			vig_lo_next();
 			
@@ -648,8 +670,7 @@ public:
 				if (vig_button("Disable sound")) {
 					std::get<LineCfgArg_Bool>(opt("use_audio").get_args()[0]).v = false;
 					delete SoundEngine::get();
-					changed_now = true;
-					return;
+					changed = true;
 				}
 			}
 		}
@@ -660,7 +681,7 @@ public:
 			else {
 				if (vig_button("Enable sound")) {
 					std::get<LineCfgArg_Bool>(opt("use_audio").get_args()[0]).v = true;
-					changed_now = true;
+					changed = true;
 					if (!SoundEngine::init())
 						vig_infobox("Failed to enable sound.\n\nSee log for details.", true);
 				}
@@ -672,10 +693,6 @@ public:
 		//
 		
 		vig_lo_pop();
-		if (changed_now) {
-			sets.trigger_cbs();
-			changed = true;
-		}
 	}
 };
 
@@ -691,6 +708,8 @@ public:
 	std::string init_greet;
 	size_t i_cheat = 0;
 	
+	std::future<std::function<void()>> async_init;
+	
 	// init args
 	
 	bool use_rndseed = false;
@@ -702,6 +721,7 @@ public:
 	
 	bool nodrop = false;
 	bool nohunt = false;
+	bool nocowlvl = false;
 	vec2i lvl_size = {220, 140};
 	
 	bool is_superman_init = false;
@@ -722,13 +742,39 @@ public:
 	ReplayInit replay_init_write;
 	ReplayInit replay_init_read;
 	bool replay_write_default = true;
+	std::string replay_loadgame;
+	bool savegame_rename = false;
 	
 	static bool isok(ReplayInit& v) {return !std::holds_alternative<std::monostate>(v);}
 	
 	
 	
 	ML_Game() = default;
-	~ML_Game() {if (gui) gui->on_leave();}
+	~ML_Game() {
+		if (gui) {
+			gui->on_leave();
+			if (savegame_rename && gui->has_game_finished()) {
+				std::error_code ec;
+				std::filesystem::rename(HARDPATH_REPLAY_SAVEGAME, FMT_FORMAT(HARDPATH_DEMO_TEMPLATE, date_time_fn()), ec);
+				if (ec) {
+					VLOGE("Failed to rename savegame replay: {}", ec.message());
+					vig_infobox("Failed to remove saved game");
+				}
+			}
+		}
+		if (fexist(HARDPATH_REPLAY_CONFLICT)) {
+			std::error_code ec;
+			if (!std::filesystem::remove(HARDPATH_REPLAY_CONFLICT, ec))
+				VLOGE("Failed to remove tmp (confilct) replay: {}", ec.message());
+		}
+		if (async_init.valid()) {
+			VLOGW("Interrupted initialization! Waiting...");
+			try {async_init.get();}
+			catch (std::exception& e) {
+				VLOGE("Interrupted initialization failed: {}", e.what());
+			}
+		}
+	}
 	bool parse_arg(ArgvParse& arg)
 	{
 		if		(arg.is("--rndseed")) use_rndseed = true;
@@ -743,6 +789,7 @@ public:
 		}
 		else if (arg.is("--nodrop")) nodrop = true;
 		else if (arg.is("--nohunt")) nohunt = true;
+		else if (arg.is("--nocowlvl")) nocowlvl = true;
 		
 		else if (arg.is("--lvl-size")) {
 			lvl_size.x = arg.i32();
@@ -792,6 +839,20 @@ public:
 			auto p3 = arg.flag();
 			replay_init_read = ReplayInit_Net{ std::move(p1), std::move(p2), p3 };
 		}
+		else if (arg.is("--loadlast")) {
+			replay_loadgame = HARDPATH_REPLAY_SAVEGAME;
+			if (is_debug_mode && !fexist(replay_loadgame.c_str()))
+				replay_loadgame = {};
+		}
+		else if (arg.is("--loadgame")) {
+			replay_loadgame = arg.str();
+			if (is_debug_mode && !fexist(replay_loadgame.c_str()))
+				replay_loadgame = {};
+		}
+		else if (arg.is("--savegame")) {
+			replay_init_write = ReplayInit_File{HARDPATH_REPLAY_SAVEGAME};
+			savegame_rename = true;
+		}
 		
 		else return false;
 		return true;
@@ -801,106 +862,151 @@ public:
 		PlayerInput::get(); // init
 		init_greet = GameUI::generate_greet();
 		
-		auto p_gci = std::make_unique<GameControl::InitParams>();
-		auto& gci = *p_gci;
-		
-		if (no_ffwd)
-			gci.fastforward_time = {};
-		
-		if (use_seed) {
-			gci.rndg.set_seed(*use_seed);
-			VLOGI("Level seed (cmd): {}", *use_seed);
-		}
-		else if (use_rndseed) {
-			uint32_t s = fast_hash32(date_time_str());
-			gci.rndg.set_seed(s);
-			VLOGI("Level seed (random): {}", s);
-		}
-		else VLOGI("Level seed: default");
-		
-		// setup demo record/playback
-		
-		if (replay_write_default
-			&& !isok(replay_init_write)
-			&& !isok(replay_init_read))
+		async_init = std::async(std::launch::async, [this]
 		{
-			replay_init_write = MainLoop::startup_date
-				? ReplayInit_File{FMT_FORMAT(HARDPATH_DEMO_TEMPLATE, date_time_fn())}
-				: ReplayInit_File{HARDPATH_USR_PREFIX"last.ratdemo"};
-		}
-		
-		ReplayInitData replay_dat;
-		if (isok(replay_init_write))
-		{
-			replay_dat.rnd_init = gci.rndg.save();
-			replay_dat.fastforward = gci.fastforward_time;
-			replay_dat.pmg_superman = is_superman_init;
-			replay_dat.pmg_dbg_ai_rect = debug_ai_rect_init;
-			replay_dat.mode_survival = is_survival;
-		}
-		
-		std::visit(overloaded{
-			[](std::monostate&){},
-			[&](ReplayInit_File& ps){
-				VLOGW("DEMO RECORD - FILE \"{}\"", ps.fn.data());
-				gci.replay_wr.reset( ReplayWriter::write_file( std::move(replay_dat), ps.fn.data() ));
-			},
-			[&](ReplayInit_Net& ps){
-				VLOGW("DEMO RECORD - NETWORK");
-				gci.replay_wr.reset( ReplayWriter::write_net( std::move(replay_dat), ps.addr.data(), ps.port.data(), ps.is_serv ));
-			}}
-		, replay_init_write);
-		
-		std::visit(overloaded{
-			[](std::monostate&){},
-			[&](ReplayInit_File& ps){
-				VLOGW("DEMO PLAYBACK - FILE \"{}\"", ps.fn.data());
-				gci.replay_rd.reset( ReplayReader::read_file( replay_dat, ps.fn.data() ));
-			},
-			[&](ReplayInit_Net& ps){
-				VLOGW("DEMO PLAYBACK - NETWORK");
-				gci.replay_rd.reset( ReplayReader::read_net( replay_dat, ps.addr.data(), ps.port.data(), ps.is_serv ));
-			}}
-		, replay_init_read);
-		
-		if (gci.replay_rd) {
-			gci.rndg.load( replay_dat.rnd_init );
-			gci.fastforward_time = replay_dat.fastforward;
-			is_superman_init     = replay_dat.pmg_superman;
-			debug_ai_rect_init   = replay_dat.pmg_dbg_ai_rect;
-			is_survival          = replay_dat.mode_survival;
-		}
-		
-		// init
-		
-		if (is_tutorial) {
-			gci.mode_ctr.reset(new GameMode_Tutorial);
-			gci.terrgen = [](auto&) {return tutorial_terrain();};
-			gci.spawner = tutorial_spawn;
-		}
-		else if (is_survival) {
-			gci.mode_ctr.reset(GameMode_Survival::create());
-			gci.terrgen = [](auto&) {return survival_terrain();};
-			gci.spawner = survival_spawn;
-		}
-		else {
-			gci.disable_drop = nodrop;
-			gci.disable_hunters = nohunt;
+			set_this_thread_name("ML::init");
 			
-			gci.mode_ctr.reset(GameMode_Normal::create());
-			gci.terrgen = [&](auto& rnd) {return LevelTerrain::generate({&rnd, lvl_size});};
-			gci.spawner = level_spawn;
+			auto p_gci = std::make_unique<GameControl::InitParams>();
+			auto& gci = *p_gci;
+			bool is_loadgame = false;
 			
-//			gci.terrgen = [](auto&) {return drone_test_terrain();};
-//			gci.spawner = drone_test_spawn;
-		}
-		gctr.reset( GameControl::create(std::move(p_gci)) );
-		
-		GameUI::InitParams pars;
-		pars.ctr = gctr.get();
-		pars.init_greet = std::move(init_greet);
-		pars.allow_cheats = MainLoop::is_debug_mode;
-		gui.reset( GameUI::create(std::move(pars)) );
+			if (no_ffwd)
+				gci.fastforward_time = {};
+			
+			if (use_seed) {
+				gci.rndg.set_seed(*use_seed);
+				VLOGI("Level seed (cmd): {}", *use_seed);
+			}
+			else if (use_rndseed) {
+				uint32_t s = fast_hash32(date_time_str());
+				gci.rndg.set_seed(s);
+				VLOGI("Level seed (random): {}", s);
+			}
+			else VLOGI("Level seed: default");
+			
+			// setup demo record/playback
+			
+			if (!replay_loadgame.empty()) {
+				gci.is_loadgame = is_loadgame = true;
+				replay_init_read = ReplayInit_File{std::move(replay_loadgame)};
+				
+				gci.loadgame_error_h = []
+				{
+					vigWarnbox wb{"WARNING", "Saved game is corrupted.\nLoad anyway?"};
+					wb.buttons.emplace_back(vigWarnboxButton{"Yes", {}}).is_default = true;
+					wb.buttons.emplace_back(vigWarnboxButton{"No", {}}).is_escape = true;
+					return 0 == vig_warnbox_wait(std::move(wb));
+				};
+			}
+			
+			if (std::holds_alternative<ReplayInit_File>(replay_init_read) &&
+			    std::holds_alternative<ReplayInit_File>(replay_init_write) &&
+			    std::get<ReplayInit_File>(replay_init_read).fn == std::get<ReplayInit_File>(replay_init_write).fn)
+			{
+				auto& fn = std::get<ReplayInit_File>(replay_init_read).fn;
+				std::filesystem::rename(fn, HARDPATH_REPLAY_CONFLICT);
+				fn = HARDPATH_REPLAY_CONFLICT;
+			}
+			
+			if (replay_write_default
+				&& !isok(replay_init_write)
+				&& !isok(replay_init_read))
+			{
+				replay_init_write = MainLoop::startup_date
+					? ReplayInit_File{FMT_FORMAT(HARDPATH_DEMO_TEMPLATE, date_time_fn())}
+					: ReplayInit_File{HARDPATH_USR_PREFIX"last.ratdemo"};
+			}
+			
+			ReplayInitData replay_dat;
+			if (isok(replay_init_write) && !isok(replay_init_read))
+			{
+				replay_dat.rnd_init = gci.rndg.save();
+				replay_dat.fastforward = gci.fastforward_time;
+				replay_dat.pmg_superman = is_superman_init;
+				replay_dat.pmg_dbg_ai_rect = debug_ai_rect_init;
+				replay_dat.mode_survival = is_survival;
+			}
+			
+			std::visit(overloaded{
+				[](std::monostate&){},
+				[&](ReplayInit_File& ps){
+					VLOGW("DEMO PLAYBACK - FILE \"{}\"", ps.fn.data());
+					gci.replay_rd.reset( ReplayReader::read_file( replay_dat, ps.fn.data() ));
+				},
+				[&](ReplayInit_Net& ps){
+					VLOGW("DEMO PLAYBACK - NETWORK");
+					gci.replay_rd.reset( ReplayReader::read_net( replay_dat, ps.addr.data(), ps.port.data(), ps.is_serv ));
+				}}
+			, replay_init_read);
+			
+			if (replay_dat.incompat_version) {
+				vigWarnbox wb{"WARNING",
+					FMT_FORMAT("Saved game was made using another version\nplatform:\n\n{}\nversus current:\n{}\n\nLoad anyway?",
+				               *replay_dat.incompat_version, get_full_platform_version())};
+				wb.buttons.emplace_back(vigWarnboxButton{"Yes", {}}).is_default = true;
+				wb.buttons.emplace_back(vigWarnboxButton{"No", {}}).is_escape = true;
+				if (0 != vig_warnbox_wait(std::move(wb))) {
+					VLOGW("Saved game incompatible version - user refused to load");
+					throw GameControl::ignore_exception();
+				}
+			}
+			
+			std::visit(overloaded{
+				[](std::monostate&){},
+				[&](ReplayInit_File& ps){
+					VLOGW("DEMO RECORD - FILE \"{}\"", ps.fn.data());
+					gci.replay_wr.reset( ReplayWriter::write_file( replay_dat, ps.fn.data() ));
+				},
+				[&](ReplayInit_Net& ps){
+					VLOGW("DEMO RECORD - NETWORK");
+					gci.replay_wr.reset( ReplayWriter::write_net( replay_dat, ps.addr.data(), ps.port.data(), ps.is_serv ));
+				}}
+			, replay_init_write);
+			
+			if (gci.replay_rd) {
+				gci.rndg.load( replay_dat.rnd_init );
+				gci.fastforward_time = replay_dat.fastforward;
+				is_superman_init     = replay_dat.pmg_superman;
+				debug_ai_rect_init   = replay_dat.pmg_dbg_ai_rect;
+				is_survival          = replay_dat.mode_survival;
+			}
+			
+			// init
+			
+			if (is_tutorial) {
+				gci.mode_ctr.reset(new GameMode_Tutorial);
+				gci.terrgen = [](auto&) {return tutorial_terrain();};
+				gci.spawner = tutorial_spawn;
+			}
+			else if (is_survival) {
+				gci.mode_ctr.reset(GameMode_Survival::create());
+				gci.terrgen = [](auto&) {return survival_terrain();};
+				gci.spawner = survival_spawn;
+			}
+			else {
+				gci.disable_drop = nodrop;
+				gci.disable_hunters = nohunt;
+				
+				gci.mode_ctr.reset(GameMode_Normal::create());
+				if (nocowlvl) static_cast<GameMode_Normal&>(*gci.mode_ctr).fastboot = true;
+				gci.terrgen = [&](auto& rnd) {return LevelTerrain::generate({&rnd, lvl_size});};
+				gci.spawner = level_spawn;
+				
+//				gci.terrgen = [](auto&) {return drone_test_terrain();};
+//				gci.spawner = drone_test_spawn;
+			}
+			gctr.reset( GameControl::create(std::move(p_gci)) );
+			
+			return std::function<void()>([this, is_loadgame]
+			{
+				GameUI::InitParams pars;
+				pars.ctr = gctr.get();
+				pars.init_greet = std::move(init_greet);
+				pars.allow_cheats = MainLoop::is_debug_mode;
+				pars.start_paused = is_loadgame;
+				gui.reset( GameUI::create(std::move(pars)) );
+			});
+		});
 	}
 	void on_current()
 	{
@@ -925,6 +1031,11 @@ public:
 	}
 	void render(TimeSpan frame_begin, TimeSpan passed)
 	{
+		if (async_init.valid()) {
+			if (async_init.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+			async_init.get()();
+		}
+		
 		if (!gctr_inited && std::holds_alternative<GameControl::CS_Run>(gctr->get_state()))
 		{
 		    gctr_inited = true;
@@ -939,7 +1050,13 @@ public:
 			gui->on_enter();
 		}
 		
-		gui->render(frame_begin, passed);
+		try {
+			gui->render(frame_begin, passed);
+		}
+		catch (GameControl::ignore_exception&) {
+			delete this;
+			return;
+		}
 		
 		PlayerInput::State st;
 		{	auto lock = PlayerInput::get().lock();

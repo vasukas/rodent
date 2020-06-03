@@ -284,3 +284,25 @@ void ImageInfo::map_pixel(callable_ref<void(uint8_t *)> f)
 	for (size_t i=0; i<px.size(); i += get_bpp())
 		f(px.data() + i);
 }
+
+
+std::vector<uint8_t> ImageInfo::procedural(const char *filename, vec2i size, Format fmt,
+	                                       callable_ref<void(ImageInfo&)> generate)
+{
+	ImageInfo img;
+	bool ok = img.load(filename, fmt);
+	
+	if (!ok) VLOGW("ImageInfo::procedural() failed to load \"{}\"", filename);
+	else if (img.get_size() != size) {
+		VLOGW("ImageInfo::procedural() incompatible size \"{}\"", filename);
+		ok = false;
+	}
+	
+	if (!ok) {
+		img.reset(size, fmt);
+		generate(img);
+		if (!img.save(filename))
+			VLOGE("ImageInfo::procedural() failed to save \"{}\"", filename);
+	}
+	return img.move_px();
+}

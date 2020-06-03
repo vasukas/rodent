@@ -64,10 +64,10 @@ public:
 	virtual void draw_frame (const Rectfp& dst, uint32_t clr, float frame_width = 1) = 0;
 	
 	/// Draw image
-	virtual void draw_image (const Rectfp& dst, const TextureReg& tex, uint32_t clr = White) = 0;
+	virtual void draw_image (const Rectfp& dst, const TextureReg& tex, uint32_t clr = White, bool alpha_only = false) = 0;
 	
 	/// Draw image
-	virtual void draw_image (uint tex, const Rectfp& dst, const Rectfp& src, uint32_t clr = White) = 0;
+	virtual void draw_image (uint tex, const Rectfp& dst, const Rectfp& src, uint32_t clr = White, bool alpha_only = false) = 0;
 
 	
 	

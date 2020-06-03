@@ -3,6 +3,7 @@
 #include "game/player_mgr.hpp"
 #include "render/ren_aal.hpp"
 #include "render/ren_imm.hpp"
+#include "render/ren_light.hpp"
 #include "utils/time_utils.hpp"
 #include "ec_render.hpp"
 #include "effects.hpp"
@@ -206,7 +207,7 @@ void EC_LaserDesigRay::render(const EC_RenderPos& ecp, TimeSpan passed)
 	vec2fp dt = tar_ray - src;
 	dt.norm_to( ent.ref_pc().get_radius() );
 	
-	RenAAL::get().draw_line(src + dt, tar_ray, clr.to_px(), 0.07, 1.5f, std::max(clr.a, 1.f));
+	RenAAL::get().draw_line(src + dt, tar_ray, clr.to_px(), 0.06, 1.f, std::max(clr.a, 1.f));
 	
 	if (tar_next) {
 		float d = passed.seconds() / ent.core.step_len.seconds();
@@ -270,6 +271,11 @@ void EC_RenderDoor::render(const EC_RenderPos& p, TimeSpan)
 	
 	float l_wid = 0.1f;
 	float l_aa = 3.f;
+	float l_off = l_wid * 1;
+	
+	p0 += o_len * l_off;
+	p1 -= o_len * l_off;
+	o_len *= 1 - l_off;
 	
 	RenAAL::get().draw_line(p0,         p0 + o_len,         l_clr.to_px(), l_wid, l_aa);
 	RenAAL::get().draw_line(p0 + o_wid, p0 + o_len + o_wid, l_clr.to_px(), l_wid, l_aa);
@@ -317,4 +323,14 @@ void EC_RenderFadeText::render(const EC_RenderPos& p, TimeSpan passed)
 		RenImm::get().draw_text(p.get_cur().pos + vec2fp(shadow, -shadow), tri, 0xff * c.a, true, 1.5);
 		RenImm::get().draw_text(p.get_cur().pos, tri, c.to_px(), true, 1.5);
 	}
+}
+
+
+
+EC_LightSource::EC_LightSource(Entity& ent): EDynComp(ent) {}
+EC_LightSource::~EC_LightSource() = default;
+void EC_LightSource::add(vec2fp offset, float angle, FColor clr, float radius) {
+	lights.emplace_back();
+	lights.back().set_color(clr);
+	lights.back().set_type(ent.get_pos() + offset, radius, angle);
 }

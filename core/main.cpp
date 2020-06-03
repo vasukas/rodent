@@ -1,4 +1,6 @@
+#include <filesystem>
 #include <SDL2/SDL.h>
+#include "client/resbase.hpp"
 #include "client/sounds.hpp"
 #include "core/hard_paths.hpp"
 #include "core/vig.hpp"
@@ -131,6 +133,7 @@ Mode options (--game):
 
   --nodrop    disable enemy item drop
   --nohunt    disable hunters
+  --nocowlvl  enable fastboot for level terminal
 
   --lvl-size <W> <H>  generate level of that size instead of the default
 
@@ -145,7 +148,10 @@ Mode options (--game):
                        default if '--no-fndate' is specified
   --demo-write <FILE>  record replay to specified file (adds extension)
   --demo-play  <FILE>  playback replay from file
-  --demo-last          same as '--demo-play user/last.ratdemo'
+  --demo-last          same as "--demo-play user/last.ratdemo"
+  --loadgame   <FILE>  loads replay as savegame
+  --loadlast           same as "--loadgame user/savegame.ratdemo"
+  --savegame           record replay to savegame file + rename it after game is finished
 
   --demo-net       <ADDR> <PORT> <IS_SERVER>  write replay to network
   --demo-net-play  <ADDR> <PORT> <IS_SERVER>  playback replay from network
@@ -172,8 +178,7 @@ Mode options (--game):
 			else if (arg.is("--no-fndate")) MainLoop::startup_date = {};
 			else if (arg.is("--no-sound")) no_sound = true;
 			else if (arg.is("--snd-check")) {
-				SoundEngine::check_unused_sounds();
-				return 1;
+				return SoundEngine::check_unused_sounds();
 			}
 			else if (arg.is("--dump-cfg")) {
 				bool ok = AppSettings::get_mut().gen_cfg().write(HARDPATH_USR_PREFIX"default.cfg");
@@ -210,10 +215,12 @@ Mode options (--game):
 	
 	set_signals();
 	
-	if (!create_dir(HARDPATH_USR_PREFIX))
-		VLOGE("Can't create user directory");
-    {
-		std::string log_fn = AppSettings::get().path_log;
+	{	std::error_code ec;
+		if (!std::filesystem::create_directories(HARDPATH_USR_DIRECTORY, ec) && ec)
+			VLOGE("Can't create user directory: {}", ec.message());
+	}
+	
+    {	std::string log_fn = AppSettings::get().path_log;
 		if (log_fn.empty()) {
 			if (MainLoop::startup_date)
 				log_fn = fmt::format(HARDPATH_LOGFILE_FNDATE, *MainLoop::startup_date);
@@ -402,7 +409,6 @@ Mode options (--game):
 	bool log_shown = false;
 	bool debug_key_combo = false;
 	bool fpscou_shown = MainLoop::is_debug_mode;
-	
 	bool run = true;
 	while (run)
 	{
@@ -412,7 +418,10 @@ Mode options (--game):
 		SDL_Event ev;
 		while (SDL_PollEvent(&ev))
 		{
-			if		(ev.type == SDL_QUIT) run = false;
+			if (ev.type == SDL_QUIT) {
+				VLOGD("SDL_QUIT event");
+				run = false;
+			}
 			else if (ev.type == SDL_KEYDOWN)
 			{
 				auto &ks = ev.key.keysym;
@@ -433,11 +442,6 @@ Mode options (--game):
 						SDL_RestoreWindow(wnd);
 						SDL_SetWindowSize(wnd, 600, 400);
 						SDL_SetWindowPosition(wnd, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
-					}
-					else if (ks.scancode == SDL_SCANCODE_C)
-					{
-						VLOGI("Reloading settings");
-						AppSettings::get_mut().load();
 					}
 				}
 				else if (ks.scancode == SDL_SCANCODE_GRAVE) debug_key_combo = true;
@@ -570,6 +574,7 @@ Mode options (--game):
 	
 	while (MainLoop::current) delete MainLoop::current;
 	delete SoundEngine::get();
+	delete &ResBase::get();
 	delete &RenderControl::get();
 	SDL_Quit();
 	

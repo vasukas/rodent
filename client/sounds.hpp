@@ -47,6 +47,7 @@ class Entity;
 	X(SND_ENV_LARGE_EXPLOSION)\
 	X(SND_ENV_BOT_EXPLOSION)\
 	X(SND_ENV_RAM)\
+	X(SND_ENV_WALLRAM)\
 	X(SND_ENV_DRILLING)\
 	X(SND_ENV_UNLOADING)\
 	\
@@ -72,6 +73,8 @@ class Entity;
 	\
 	X(SND_UI_NO_AMMO)\
 	X(SND_UI_SHIELD_READY)\
+	X(SND_UI_PICKUP)\
+	X(SND_UI_PICKUP_POWER)\
 	\
 	X(SND_TOTAL_COUNT_INTERNAL)
 
@@ -140,7 +143,7 @@ public:
 	static SoundEngine* get();
 	virtual ~SoundEngine();
 	
-	static void check_unused_sounds();
+	static int check_unused_sounds();
 	
 	static void once(const SoundPlayParams& pars) {
 		if (auto p = get()) p->play({}, pars, false);}
@@ -161,8 +164,11 @@ public:
 	
 	/// Blocks if called immediatly again. 
 	/// Use nullptr to disable music. 
-	/// Disables automatic control
-	virtual void music(const char *name, int subtrack_index = -1, bool = true) = 0;
+	/// Disables automatic control, resets UI pause (for music only).
+	virtual void music(const char *name, int subtrack_index = -1, bool loop = true, bool = true) = 0;
+	
+	/// Returns true if music currently playing
+	virtual bool has_music() = 0;
 	
 	enum MusControl {
 		MUSC_NO_AUTO, ///< No automatic control (keeps last track playing)

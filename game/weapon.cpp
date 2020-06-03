@@ -231,9 +231,6 @@ int EC_Equipment::shoot_check(Weapon& wpn)
 	if (!has_ammo(wpn)) return 1;
 	return 2;
 }
-
-#include "game/player_mgr.hpp"
-#include "vaslib/vas_log.hpp"
 void EC_Equipment::step()
 {
 	did_shot_flag = false;

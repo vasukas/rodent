@@ -67,7 +67,7 @@ public:
 		FIND_NEAREST_RANDOM,
 		
 		FIND_F_VALUE_MASK = 3, // removes flags
-		FIND_F_SAME_ROOM = 4 // flag
+		FIND_F_SAME_ROOM = 4 // flag - prefer same room
 	};
 	
 	

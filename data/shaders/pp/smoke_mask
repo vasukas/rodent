@@ -1,0 +1,31 @@
+//@vert
+#version 330
+
+uniform mat4 proj;
+uniform vec4 pars;
+
+layout(location = 0) in vec2 data;
+out vec2 tc;
+
+void main()
+{
+	tc = data * 0.5 + 0.5;
+	gl_Position = proj * vec4(data * pars.zw + pars.xy, 0, 1);
+}
+
+
+
+//@frag
+#version 330
+
+uniform sampler2D tex;
+uniform float alpha;
+
+in vec2 tc;
+out float res;
+
+void main()
+{
+	res = alpha * texture(tex, tc).r;
+}
+

@@ -3,16 +3,17 @@
 #version 330
 
 uniform sampler2D tex;
+uniform vec2 disp;
 
 in vec2 tc;
 out vec4 res;
 
 void main() {
-	const float k = 0.8;
+	const float k = 0.6;
 	res = texture(tex, tc);
 	res.rgb *= 1 - k;
-	res.r += k/2 * (texture(tex, vec2(tc.x + 0.001, tc.y)).r + texture(tex, vec2(tc.x, tc.y - 0.002)).r);
-	res.g += k * texture(tex, vec2(tc.x - 0.001, tc.y)).g;
-	res.b += k/2 * (texture(tex, vec2(tc.x - 0.001, tc.y)).b + texture(tex, vec2(tc.x, tc.y - 0.002)).b);
+	res.r += k/2 * (texture(tex, vec2(tc.x + disp.x, tc.y)).r + texture(tex, vec2(tc.x, tc.y - disp.y)).r);
+	res.g += k * texture(tex, vec2(tc.x - disp.x, tc.y)).g;
+	res.b += k/2 * (texture(tex, vec2(tc.x - disp.x, tc.y)).b + texture(tex, vec2(tc.x, tc.y - disp.y)).b);
 }
 

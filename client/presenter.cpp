@@ -3,6 +3,7 @@
 #include "game/level_gen.hpp"
 #include "render/ren_aal.hpp"
 #include "render/ren_imm.hpp"
+#include "render/ren_light.hpp"
 #include "vaslib/vas_containers.hpp"
 #include "vaslib/vas_log.hpp"
 #include "ec_render.hpp"
@@ -16,8 +17,6 @@
 #include "render/ren_text.hpp"
 #include "utils/noise.hpp"
 #include "utils/res_image.hpp"
-
-void effects_init(); // defined in effects.cpp
 
 
 
@@ -104,7 +103,6 @@ public:
 	
 	int max_interp_frames = 0;
 	RAII_Guard menu_g;
-	RAII_Guard sett_g;
 	
 	
 	
@@ -112,9 +110,7 @@ public:
 	{
 		core = pars.core;
 		terrain = pars.lvl;
-		sett_g = AppSettings::get_mut().add_cb([this]{
-			reinit_resources(*terrain);
-		});
+		reinit_resources(*terrain);
 		
 		menu_g = vig_reg_menu(VigMenu::DebugRenderer, [this]{
 			vig_label_a("Interp frames (max): {}\n", max_interp_frames);
@@ -218,6 +214,7 @@ public:
 	}
 	void add_cmd(PresCommand c) override
 	{
+		if (loadgame_hack) return;
 		reserve_more_block(cmds_queue, 256);
 		cmds_queue.emplace_back(std::move(c));
 	}
@@ -325,28 +322,15 @@ public:
 		dbg_sshot_img = {0, {}};
 	}
 	
-	void reinit_resources(const LevelTerrain& lvl) override
+	void reinit_resources(const LevelTerrain& lvl)
 	{
 		RenderControl::get().exec_task([&]{
+			RenLight::get().gen_wall_mask(lvl);
 			RenAAL::get().inst_begin( GameConst::cell_size );
 		});
 		
-		float kw_grid, ka_grid;
-		float kw_wall, ka_wall;
-		//
-		switch (AppSettings::get().aal_type)
-		{
-		case AppSettings::AAL_OldFuzzy:
-		case AppSettings::AAL_Clear:
-			kw_grid = 0.07; ka_grid = 1.5;
-			kw_wall = 0.1;  ka_wall = 3; // RenAAL defaults
-			break;
-			
-		case AppSettings::AAL_CrispGlow:
-			kw_grid = 0.03;  ka_grid = 0.5;
-			kw_wall = 0.005; ka_wall = 1.2;
-			break;
-		}
+		float kw_grid = 0.07, ka_grid = 1.5;
+		float kw_wall = 0.1, ka_wall = 3;
 		
 		for (auto& l : lvl.ls_grid) RenAAL::get().inst_add({l.first, l.second}, false, kw_grid, ka_grid);
 		RenAAL::get().inst_add_end();
@@ -362,7 +346,6 @@ public:
 		RenderControl::get().exec_task([]
 		{
 			RenAAL::get().inst_end();
-			effects_init();
 		});
 		
 		// remove all references to particle generators (invalidated)
@@ -416,11 +399,13 @@ public:
 	}
 	void add_effect(std::unique_ptr<GameRenderEffect> c) override
 	{
+		if (loadgame_hack) return;
 //		reserve_more_block(ef_fs, 128);
 		ef_fs.emplace_new(std::move(c));
 	}
 	void add_float_text(FloatText c) override
 	{
+		if (loadgame_hack) return;
 		reserve_more_block(f_texts, 128);
 		f_texts.emplace_back(std::move(c));
 	}

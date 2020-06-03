@@ -23,9 +23,7 @@ AppSettings::AppSettings()
 bool AppSettings::load()
 {
 	VLOGI("AppSettings::load() from \"{}\"", path_settings);
-	bool ok = gen_cfg().read(path_settings.c_str());
-	trigger_cbs();
-	return ok;
+	return gen_cfg().read(path_settings.c_str());
 }
 LineCfg AppSettings::gen_cfg()
 {
@@ -88,9 +86,6 @@ LineCfg AppSettings::gen_cfg()
 	
 	P_ENUM(interp_depth, int, {0, "0"}, {2, "2"}, {3, "3"})
 		.descr("interpolation depth (0, 2 or 3)");
-
-	P_ENUM(aal_type, AAL_Type, {AAL_OldFuzzy, "old_fuzzy"}, {AAL_CrispGlow, "crisp_glow"}, {AAL_Clear, "clear"})
-		.descr("glowing lines type: old_fuzzy, crisp_glow, clear");
 	
 	P_INT(cursor_info_flags, 1)
 		.descr("info shown on cursor - sum of: 1 weapon status, 2 shield status, 4 more status");
@@ -127,29 +122,10 @@ void AppSettings::init_default()
 	
 	cam_pp_shake_str = 0.007;
 	interp_depth = 3;
-	aal_type = AAL_OldFuzzy;
 	
 	cursor_info_flags = 1;
 	plr_status_blink = true;
 	plr_status_flare = true;
-	
-	trigger_cbs();
-}
-void AppSettings::trigger_cbs()
-{
-	for (auto& cb : cbs) if (cb) cb();
-}
-RAII_Guard AppSettings::add_cb(std::function<void()> cb, bool call_now)
-{
-	size_t i=0;
-	for (; i<cbs.size(); ++i) {
-		if (!cbs[i])
-			break;
-	}
-	if (i == cbs.size()) cbs.emplace_back();
-	cbs[i] = std::move(cb);
-	if (call_now) cbs[i]();
-	return RAII_Guard([i] {AppSettings::get_mut().cbs[i] = {};});
 }
 void AppSettings::clear_old() const
 {

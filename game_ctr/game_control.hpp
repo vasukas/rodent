@@ -17,6 +17,10 @@ class  ReplayWriter;
 class GameControl
 {
 public:
+	struct ignore_exception : public std::runtime_error {
+		ignore_exception(): std::runtime_error("<ignored>") {}
+	};
+	
 	struct InitParams
 	{
 		RandomGen rndg;
@@ -31,10 +35,12 @@ public:
 		// Note: init data must be already written/read
 		std::unique_ptr<ReplayReader> replay_rd;
 		std::unique_ptr<ReplayWriter> replay_wr;
+		std::function<bool()> loadgame_error_h;
 		
 		//
 		bool disable_drop = false;
 		bool disable_hunters = false;
+		bool is_loadgame = false;
 	};
 	
 	/// Creates new thread and initializes there. Initially is paused

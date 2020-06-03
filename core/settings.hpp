@@ -40,9 +40,6 @@ struct AppSettings
 	float cam_pp_shake_str;
 	int interp_depth;
 	
-	enum AAL_Type {AAL_OldFuzzy, AAL_CrispGlow, AAL_Clear};
-	AAL_Type aal_type;
-	
 	// game
 	int cursor_info_flags;
 	bool plr_status_blink;
@@ -55,16 +52,11 @@ struct AppSettings
 	
 	LineCfg gen_cfg();
 	bool load(); ///< Re-loads from file, triggers callbacks
-	void init_default(); ///< Triggers callbacks
-	void trigger_cbs();
-	
-	/// Adds callback which called on option change. Returns callback deleter
-	[[nodiscard]] RAII_Guard add_cb(std::function<void()> cb, bool call_now = true);
+	void init_default();
 	
 	void clear_old() const; ///< Deletes old log and replay files
 	
 private:
-	std::vector<std::function<void()>> cbs;
 	AppSettings();
 };
 

@@ -96,8 +96,10 @@ AI_SimResource::WorkerReg AI_SimResource::find(GameCore& core, vec2fp origin, fl
 		rs.emplace_back( &p, p.pos.dist_squ(origin) );
 	});
 	
-	if (rs.empty())
+	if (rs.empty()) {
+		if (find_type & FIND_F_SAME_ROOM) return find(core, origin, radius, type, rate, find_type & (~FIND_F_SAME_ROOM));
 		return {};
+	}
 	
 	bool strict_nearest = (find_type & FIND_F_VALUE_MASK) == FIND_NEAREST_STRICT;
 	

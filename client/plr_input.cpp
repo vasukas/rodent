@@ -253,12 +253,14 @@ void PlayerInput::set_defaults()
 			b.name = "Menu: help";
 			b.im_key = SDL_SCANCODE_F1;
 			b.hidden = true;
+			b.replay_ignore = true;
 		}{
 			auto& b = binds.emplace_back();
 			b.action = A_MENU_EXIT;
 			b.name = "Menu: exit";
 			b.im_key = SDL_SCANCODE_ESCAPE;
 			b.hidden = true;
+			b.replay_ignore = true;
 		}
 		
 		{
@@ -322,6 +324,7 @@ void PlayerInput::set_defaults()
 			b.descr = "Shows level map";
 			b.type = BT_SWITCH;
 			b.im_key = SDL_SCANCODE_M;
+			b.replay_ignore = true;
 		}{
 			auto& b = binds.emplace_back();
 			b.action = A_HIGHLIGHT;
@@ -455,9 +458,6 @@ void PlayerInput::on_event(const SDL_Event& ev)
 void PlayerInput::update(ContextMode m) {
 	ctxs[m].update(m == cur_ctx);
 }
-void PlayerInput::force_state(ContextMode m, State st) {
-	ctxs[m].state = std::move(st);
-}
 const PlayerInput::State& PlayerInput::get_state(ContextMode m) const {
 	return ctxs[m].state;
 }
@@ -486,6 +486,36 @@ void PlayerInput::set_context(ContextMode m) {
 }
 PlayerInput::ContextMode PlayerInput::get_context() const {
 	return cur_ctx;
+}
+void PlayerInput::replay_fix(ContextMode m, State& state) const
+{
+	auto& ctx = const_cast<Context&>(ctxs[m]);
+	for (int i=0; i<ACTION_TOTAL_COUNT_INTERNAL; ++i) {
+		if (state.is.test(i) && ctx.get(static_cast<Action>(i))->replay_ignore)
+			state.is.reset(i);
+	}
+	for (auto it = state.acts.begin(); it != state.acts.end(); ) {
+		if (ctx.get(*it)->replay_ignore) it = state.acts.erase(it);
+		else ++it;
+	}
+}
+void PlayerInput::replay_set(ContextMode m, State st)
+{
+	auto& ctx = ctxs[m];
+	std::vector<int> ri_is, ri_acts;
+	for (int i=0; i<ACTION_TOTAL_COUNT_INTERNAL; ++i) {
+		if (ctx.state.is.test(i) && ctx.get(static_cast<Action>(i))->replay_ignore)
+			ri_is.push_back(i);
+	}
+	for (auto& i : ctx.state.acts) {
+		if (ctx.get(i)->replay_ignore) 
+			ri_acts.push_back(i);
+	}
+	
+	ctxs[m].state = std::move(st);
+	
+	for (auto& i : ri_is) ctxs[m].state.is.set(i);
+	for (auto& i : ri_acts) ctxs[m].state.acts.push_back(static_cast<Action>(i));
 }
 PlayerInput::Bind* PlayerInput::Context::get(Action act)
 {

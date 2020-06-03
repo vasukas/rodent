@@ -1,5 +1,4 @@
 #include "core/hard_paths.hpp"
-#include "core/settings.hpp"
 #include "game/common_defs.hpp"
 #include "render/control.hpp"
 #include "render/ren_aal.hpp"
@@ -31,7 +30,7 @@ public:
 	std::array <vec2fp, MODEL_TOTAL_COUNT_INTERNAL> md_cpt = {};
 	std::array <Rectfp, MODEL_TOTAL_COUNT_INTERNAL> md_sz = {};
 	std::array <TextureReg, MODEL_TOTAL_COUNT_INTERNAL> md_img = {};	
-	std::unique_ptr<Texture> tex;
+	std::unique_ptr<Texture> tex, tex_explowave;
 	
 	struct AAL_Model {
 		std::vector<std::vector<vec2fp>> ls;
@@ -65,6 +64,10 @@ public:
 	{
 		return md_img[type];
 	}
+	TextureReg get_explo_wave()
+	{
+		return tex_explowave.get();
+	}
 	
 	ResBase_Impl();
 	void init_ren_wait();
@@ -74,8 +77,9 @@ public:
 };
 ResBase& ResBase::get()
 {
-	static ResBase_Impl b;
-	return b;
+	static std::unique_ptr<ResBase_Impl> b;
+	if (!b) b.reset(new ResBase_Impl);
+	return *b;
 }
 
 
@@ -88,21 +92,13 @@ void ResBase_Impl::init_ren_wait()
 {
 	if (!future_init) future_init = init_func();
 	auto mlns = std::move(future_init->ms);
-	RenderControl::get().exec_task([&] {tex = std::move(future_init->tex);});
+	RenderControl::get().exec_task([&] {
+		tex = std::move(future_init->tex);
+		tex_explowave.reset(Texture::load(HARDPATH_EXPLOSION_IMG));
+	});
 	future_init.reset();
 	
-	float kw, ka;
-	switch (AppSettings::get().aal_type)
-	{
-	case AppSettings::AAL_OldFuzzy:
-	case AppSettings::AAL_Clear:
-		kw = 1; ka = 3;
-		break;
-		
-	case AppSettings::AAL_CrispGlow:
-		kw = 0.1; ka = 1.5;
-		break;
-	}
+	const float kw = 1, ka = 3;
 	
 	auto& ren = RenAAL::get();
 	for (size_t i = MODEL_LEVEL_STATIC + 1; i < MODEL_TOTAL_COUNT_INTERNAL; ++i)
@@ -127,6 +123,8 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 		float alpha = 1.f;
 		float size = 0.1;
 		float spd_min = 0.f;
+		float decel_f = 0;
+		float max_spd = 100;
 		        
 		Transform tr;
 		float power;
@@ -146,7 +144,7 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 		}
 		void gen(ParticleParams& p)
 		{
-			float vk = rnd_stat().range(0.5, 2) * clampf(power, 0.1, 2) + spd_min;
+			float vk = std::min<float>(rnd_stat().range(0.5, 2) * clampf(power, 0.1, 2) + spd_min, max_spd);
 			p.vel = {vk, 0};
 			p.vel.fastrotate( tr.rot + rnd_stat().range(-a_lim, a_lim) );
 			
@@ -156,7 +154,7 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 #define RND(A) p.clr.A = t < 0.5 ? lerp(clr0.A, clr_t.A, t*2) : lerp(clr_t.A, clr1.A, t*2-1)
 			RND(r); RND(g); RND(b); RND(a);
 #undef RND
-//				p.clr.a *= alpha;
+			p.acc = decel_f * -p.vel / (p.lt + p.ft);
 		}
 	};
 	struct WpnExplosion : ParticleGroupGenerator
@@ -186,7 +184,7 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 		}
 		void gen(ParticleParams& p)
 		{
-			float total_len = rnd_stat().range(1, 2) + (is_quick ? -0.5 : 0);
+			float total_len = rnd_stat().range(1, 2) + (is_quick ? -0.8 : 0);
 			p.lt = total_len * 0.5;
 			p.ft = total_len * 0.5;
 			p.clr = clr;
@@ -274,7 +272,7 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 			p.vel.set(0, rnd_stat().range(0.1, 0.5));
 			p.vel.fastrotate( rnd_stat().range(-M_PI, M_PI) );
 			
-			p.ft = rnd_stat().range(3, 5);
+			p.ft = rnd_stat().range(1, 2.5); //3,5
 		}
 	};
 	struct Aura : ParticleGroupGenerator
@@ -374,8 +372,9 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 			p.clr = bp.clr;
 			for (int i=0; i<3; ++i) p.clr[i] += 0.1 * rnd_stat().range_n2();
 			
-			p.vel.set(bp.rad * rnd_stat().range(1, 4), 0);
+			p.vel.set(bp.rad * rnd_stat().range(1, 2.5), 0);
 			p.vel.fastrotate( bp.tr.rot + deg_to_rad(70) * rnd_stat().normal_fixed() );
+			p.acc = -p.vel / (p.lt + p.ft + 3);
 		}
 	};
 	struct FireSpread : ParticleGroupGenerator
@@ -423,6 +422,7 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 		size_t begin(const ParticleBatchPars& pars, ParticleParams&)
 		{
 			bp = pars;
+			bp.clr.a *= 0.8;
 			
 			i = 0;
 			num = (2 * M_PI * bp.rad) / 0.3;
@@ -448,7 +448,7 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 			p.pos = bp.tr.pos + p.vel;
 			p.vel *= bp.power * (1 + 0.2 * rnd_stat().range_n2()) / bp.rad;
 			
-			p.size = rnd_stat().range(0.1, 0.3);
+			p.size = rnd_stat().range(0.1, 0.2);
 		}
 	};
 	struct ExploFrag : ParticleGroupGenerator
@@ -528,20 +528,26 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 		g->spd_min = 1.;
 		g->clr0 = FColor(0.5, 0, 0, 0.5);
 		g->clr1 = FColor(1.2, 1, 0.8, 1);
+		g->decel_f = 0.2;
+		g->alpha = 0.7;
 	}{
 		auto g = new Explosion;
 		ld_es[FE_HIT].reset(g);
 		
-		g->n_base = 20;
+		g->n_base = 15;
 		g->clr0 = FColor(1, 0, 0, 0.1);
 		g->clr1 = FColor(1.2, 0.2, 0.2, 0.5);
+		g->max_spd = 2;
+		g->alpha = 0.5;
 	}{
 		auto g = new Explosion;
 		ld_es[FE_HIT_SHIELD].reset(g);
 		
-		g->n_base = 20;
+		g->n_base = 10;
 		g->clr0 = FColor(0, 0.5, 1, 0.1);
 		g->clr1 = FColor(0.2, 1, 1.2, 1);
+		g->alpha = 0.3;
+		g->decel_f = 1;
 	}{
 		auto g = new WpnExplosion;
 		ld_es[FE_WPN_EXPLOSION].reset(g);
@@ -566,8 +572,8 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 		
 		g->n_base = 8;
 		g->p_min = 0.2f, g->p_max = 2.f;
-		g->alpha = 0.45;
-		g->size = 0.15;
+		g->alpha = 0.35;
+		g->size = 0.12;
 		g->clr0 = FColor(0.4, 1, 1, 0.8);
 		g->clr1 = FColor(0.9, 1, 1, 0.8);
 	}{

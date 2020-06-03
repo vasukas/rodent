@@ -189,13 +189,21 @@ struct vigWarnboxButton {
 
 /// Warning box displayed on top of UI
 struct vigWarnbox {
-	std::string title; ///< Single line, caps recommended
-	std::string message;
-	std::vector<vigWarnboxButton> buttons;
+	std::string title = {}; ///< Single line, caps recommended
+	std::string message = {};
+	std::vector<vigWarnboxButton> buttons = {};
 };
 
 /// Pushes new on top of the stack
 void vig_warnbox(vigWarnbox wbox);
+
+/// Automatically fills 'func' for all buttons. Returns index of selected button. 
+/// Locks current thread - throws if it's rendering thread
+int vig_warnbox_wait(vigWarnbox wbox);
+
+/// Automatically fills 'func' for all buttons. 
+/// 'index' initialiiy initialized with -1
+void vig_warnbox_index(vigWarnbox wbox, int& index);
 
 /// Creates and pushes warnbox with single OK button
 void vig_infobox(std::string message, bool is_error = true);

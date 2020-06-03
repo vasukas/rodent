@@ -93,41 +93,58 @@ void AI_Movement::on_unreg()
 	ent.ref_phobj().body.SetLinearVelocity({0, 0});
 	ent.ref_phobj().body.SetAngularVelocity(0);
 }
-float AI_Movement::calc_avoidance()
+vec2fp AI_Movement::calc_avoidance()
 {
-	const float ray_width = 1.5;
+	const float ray_width = 1;
 	const float min_tar_dist = ent.ref_pc().get_radius() + 0.5;
-	const float max_ray_dist = GameConst::cell_size * 1.5;
-	const float min_mul = 0.3;
+	const float max_ray_dist = min_tar_dist + 5;
+	const float max_spd = get_set_speed() * 0.6;
+	const float side_dist = min_tar_dist + 2;
+	const float side_width = ent.ref_pc().get_radius();
+	const float rotation = deg_to_rad(30);
+	vec2fp self = ent.get_pos();
+	
+	auto stat_avoid = [&](vec2fp fwd)
+	{
+		const float radius = ent.ref_pc().get_radius() + 0.5;
+		vec2fp av = {};
+		
+		ent.core.get_phy().query_circle_all(conv(ent.get_pos()), radius,
+		[&](Entity& ent, auto&) {
+			av += self - ent.get_pos();
+		},
+		[&](Entity& ent, b2Fixture& fix) {
+			return !!ent.get_ai_drone() && &ent != &this->ent && !fix.IsSensor();
+		});
+		
+		if (av.len_squ() > 0.1) av.norm_to(3 * radius);
+		av += fwd;
+		if (has_target()) av.limit_to(max_spd);
+		return av;
+	};
 	
 	auto tar = get_next_point();
-	if (!tar) return 1;
+	if (!tar) return stat_avoid({});
 	
-	vec2fp self = ent.get_pos();
 	vec2fp dir = *tar - self;
-	if (dir.len_squ() < min_tar_dist * min_tar_dist) return 1;
+	if (dir.len_squ() < min_tar_dist * min_tar_dist) return stat_avoid({});
 	
 	const float ray_dist = std::min( dir.fastlen(), max_ray_dist );
 	dir.norm();
 	
 	auto rc = ent.core.get_phy().raycast_nearest( conv(self), conv(self + dir * ray_dist), {}, ray_width );
-	if (!rc || !rc->ent->get_ai_drone()) return 1;
-	if (rc->ent->index.to_int() < ent.index.to_int()) return 1; // won't need to avoid
+	if (!rc || !rc->ent->get_ai_drone()) return stat_avoid({});
 	
-	auto mov = rc->ent->ref_ai_drone().mov;
-	if (!mov) return 1;
+	vec2fp av = self - rc->ent->get_pos();
 	
-	auto next = mov->get_next_point();
-	if (!next) return 1;
+	float d1 = side_dist, d2 = side_dist;
+	if (auto rc = ent.core.get_phy().raycast_nearest(conv(self), conv(self + vec2fp(dir).rot90cw() * side_dist), {}, side_width))
+		d1 = rc->distance;
+	if (auto rc = ent.core.get_phy().raycast_nearest(conv(self), conv(self - vec2fp(dir).rot90cw() * side_dist), {}, side_width))
+		d2 = rc->distance;
 	
-	vec2fp d_dir = *next - rc->ent->get_pos();
-	d_dir.norm();
-	
-	float cmp = dot(d_dir, dir);
-	if (cmp > 0 && mov->get_set_speed() > get_set_speed() - 0.5)
-		return 1;
-	
-	return std::max(min_mul, rc->distance / ray_dist);
+	av.fastrotate(d1 < d2 ? -rotation : rotation);
+	return stat_avoid(av);
 }
 vec2fp AI_Movement::step_path()
 {
@@ -174,7 +191,8 @@ void AI_Movement::step()
 	else if (path)
 		fvel = step_path();
 	
-	fvel.limit_to(get_set_speed() * calc_avoidance());
+	fvel += calc_avoidance();
+	fvel.limit_to(get_set_speed());
 	b2Vec2 f = conv(fvel);
 	if (locked) f = {0,0};
 	

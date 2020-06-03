@@ -13,6 +13,7 @@ public:
 		std::string init_greet;
 		bool debug_menu = true;
 		bool allow_cheats = false;
+		bool start_paused = false;
 	};
 	
 	static GameUI* create(InitParams pars); ///< Must be called from render thread
@@ -25,6 +26,7 @@ public:
 	virtual void render(TimeSpan frame_time, TimeSpan passed) = 0;
 	
 	virtual void enable_debug_mode() = 0;
+	virtual bool has_game_finished() = 0;
 	static std::string generate_greet();
 };
 

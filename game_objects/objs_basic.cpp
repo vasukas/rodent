@@ -93,7 +93,7 @@ EPickable::AmmoPack EPickable::rnd_ammo(GameCore& core)
 		{AmmoType::Energy,   0.8},
 		{AmmoType::FoamCell, 0.4}
 	}});
-	return std_ammo(core.get_random().random_el(cs));
+	return std_ammo(core.get_random().random_chance(cs));
 }
 EPickable::AmmoPack EPickable::std_ammo(AmmoType type)
 {
@@ -181,13 +181,17 @@ void EPickable::on_cnt(const CollisionEvent& ce)
 	{
 		[&](AmmoPack& v)
 		{
-			if (v.amount <= 0) return true; // rare bug
+			if (v.amount <= 0) { // rare bug
+				SoundEngine::once(SND_UI_PICKUP, {});
+				return true;
+			}
 
 			auto& eqp = ce.other->ref_eqp();
 			int delta = eqp.get_ammo(v.type).add(v.amount);
 			
 			if (delta > 0)
 			{
+				SoundEngine::once(SND_UI_PICKUP, {});
 				v.amount -= delta;
 				if (v.amount <= 0) return true;
 				else this->ref<EC_RenderModel>().parts(ME_DEATH, {});
@@ -197,13 +201,17 @@ void EPickable::on_cnt(const CollisionEvent& ce)
 		[&](ArmorShard& v)
 		{
 			ce.other->ref_hlc().foreach_filter([&](DamageFilter& f) {
-				if (auto p = dynamic_cast<DmgArmor*>(&f))
-					v.amount -= p->get_hp().apply(v.amount);
+				if (auto p = dynamic_cast<DmgArmor*>(&f)) {
+					int delta = p->get_hp().apply(v.amount);
+					v.amount -= delta;
+					if (delta) SoundEngine::once(SND_UI_PICKUP, {});
+				}
 			});
 			return !v.amount;
 		},
 		[&](SecurityKey&)
 		{
+			SoundEngine::once(SND_UI_PICKUP_POWER, {});
 			dynamic_cast<GameMode_Normal&>(core.get_gmc()).inc_objective();
 			return true;
 		}

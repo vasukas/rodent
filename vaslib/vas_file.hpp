@@ -14,10 +14,7 @@ struct SDL_RWops;
 
 
 
-/// Sets current working dir, returns false on error
-bool set_current_dir( const char *dirname );
-
-/// Checks if file is accesible
+/// Checks if file exists and is accessible
 bool fexist( const char *filename );
 
 /// Reads file as null-terminated array
@@ -33,9 +30,6 @@ void* open_stdio_file( const char *filename, const char *mode );
 
 /// Returns filename extension - lowercase, without dot
 std::string get_file_ext(std::string_view filename);
-
-/// Returns true if succeeds or directory already exists
-bool create_dir(const char *filename);
 
 
 
@@ -101,12 +95,12 @@ public:
 	
 	/// Create SDL2 proxy, which must be freed by user. 
 	/// Note: must not be used after source is freed
-	SDL_RWops* make_sdl_proxy( bool allow_free_src = false );
+	SDL_RWops* make_sdl_proxy( bool own_source = false );
 	
 	/// Creates proxy object which will have access only to selected region. 
 	/// Note: must not be used after source is freed. 
 	/// Note: can't be created for unseekable files
-	File* proxy_region( uint64_t from, uint64_t length, bool writeable = false );
+	File* proxy_region( uint64_t from, uint64_t length, bool writeable = false, bool own_source = false );
 	
 	/// Closes source if 'free_src' is true
 	virtual ~File() = default;

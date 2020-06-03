@@ -1,0 +1,34 @@
+// Simple textured triangles
+
+//@vert
+#version 330
+
+uniform mat4 proj;
+
+layout(location = 0) in vec4 data;
+
+out vec2 tc;
+
+void main()
+{
+	tc = data.zw;
+	gl_Position = proj * vec4(data.xy, 0, 1);
+}
+
+
+
+//@frag
+#version 330
+
+uniform sampler2D tex;
+uniform vec4 clr;
+
+in vec2 tc;
+out vec4 res;
+
+void main()
+{
+	float a = texture(tex, tc).r;
+	res = vec4(clr.rgb, clr.a * a);
+}
+

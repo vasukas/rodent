@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cerrno>
+#include <filesystem>
 
 #include "vaslib/vas_log.hpp"
 #include "vaslib/vas_file.hpp"
@@ -88,34 +89,14 @@ static std::string errno_str( int err = errno )
 
 
 
-bool set_current_dir( const char *str )
-{
-#ifndef VAS_WINCOMPAT
-	if (chdir( str ))
-	{
-		VLOGE("set_current_dir() chdir failed {} (path: \"{}\")", errno_str(), str);
-		return false;
-	}
-#else
-	if (!winc_chdir( str ))
-	{
-		VLOGE("set_current_dir() failed (path: \"{}\")", str);
-		return false;
-	}
-#endif
-	return true;
-}
 bool fexist( const char *filename )
 {
-#ifndef VAS_WINCOMPAT
-	return access(filename, F_OK) == 0;
-#else
-	return winc_fexist(filename);
-#endif
+	std::error_code ec;
+	return std::filesystem::exists(filename, ec);
 }
 std::optional<std::string> readfile( const char *filename )
 {
-	File* f = File::open( filename );
+	auto f = File::open_ptr( filename, File::OpenExisting | File::OpenRead, false );
 	if (!f) return {};
 	f->error_throw = false;
 	
@@ -125,8 +106,6 @@ std::optional<std::string> readfile( const char *filename )
 	std::string a;
 	a.resize( an );
 	int rn = f->read( a.data(), an );
-	delete f;
-	
 	if (rn != an)
 	{
 		VLOGE("readfile() read failed (file: \"{}\")", filename);
@@ -136,14 +115,12 @@ std::optional<std::string> readfile( const char *filename )
 }
 bool writefile( const char *filename, const void *data, size_t size )
 {
-	File* f = File::open( filename, File::OpenCreate );
+	auto f = File::open_ptr( filename, File::OpenCreate, false );
 	if (!f) return false;
 	f->error_throw = false;
 	
 	if (size == std::string::npos) size = strlen( static_cast< const char * >(data) );
 	size_t rn = f->write( data, size );
-	delete f;
-	
 	if (rn != size)
 	{
 		VLOGE("writefile() write failed (file: \"{}\")", filename);
@@ -169,30 +146,6 @@ std::string get_file_ext(std::string_view filename)
 	std::string s(filename.substr(i + 1));
 	for (auto& c : s) if (c <= 'Z' && c >= 'A') c = (c - 'A') + 'a';
 	return s;
-}
-bool create_dir(const char *filename)
-{
-#ifndef VAS_WINCOMPAT
-	if (!mkdir(filename, 0775)) return true; // rwxrwxr-x
-	int err = errno;
-	if (err == EEXIST)
-	{
-		struct stat st;
-		if (lstat(filename, &st)) {
-			VLOGE("create_dir() mkdir failed, lstat failed {} (file: \"{}\")", errno_str(), filename);
-			return false;
-		}
-		if (S_ISDIR(st.st_mode))
-			return true;
-		
-		VLOGE("create_dir() mkdir failed - already exists, not a dir (file: \"{}\")", filename);
-		return false;
-	}
-	VLOGE("create_dir() mkdir failed {} (file: \"{}\")", errno_str(err), filename);
-	return false;
-#else
-	return winc_mkdir(filename);
-#endif
 }
 
 
@@ -520,7 +473,7 @@ public:
 		return len;
 	}
 };
-File* File::proxy_region( uint64_t from, uint64_t length, bool writeable )
+File* File::proxy_region( uint64_t from, uint64_t length, bool writeable, bool own_source )
 {
 	if (get_size() < 0)
 	{
@@ -534,7 +487,7 @@ File* File::proxy_region( uint64_t from, uint64_t length, bool writeable )
 	r->p0 = std::min( from, usz );
 	r->len = std::min( length, usz );
 	r->writeable = writeable;
-	r->free_src = false;
+	r->free_src = own_source;
 	return r;
 }
 

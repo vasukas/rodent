@@ -88,6 +88,9 @@ public:
 	/// Executes function on render thread. 
 	/// Throws if RenderControl no longer exists
 	virtual void exec_task(callable_ref<void()> f) = 0;
+	
+	/// Returns true if current thread is main one
+	virtual bool is_rendering_thread() const = 0;
 };
 
 #endif // REN_CTL_HPP

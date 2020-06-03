@@ -42,6 +42,8 @@ public:
 		Lost
 	};
 	
+	bool fastboot = false;
+	
 	static GameMode_Normal* create();
 	
 	virtual State get_state() = 0;

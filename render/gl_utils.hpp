@@ -121,7 +121,8 @@ struct GLA_Texture
 	
 	/// Allocates storage for 2D; binds texture. 
 	/// Sets filtering to linear and enables clamping
-	void set(GLenum internal_format, vec2i size, int level = 0, int dbg_bpp = 0);
+	void set(GLenum internal_format, vec2i size, int level = 0, int dbg_bpp = 0,
+	         void *data = nullptr, GLenum data_fmt = GL_RGBA);
 	
 	operator GLuint() {return tex;}
 	
@@ -134,10 +135,47 @@ private:
 
 
 
+struct GLA_Renderbuf
+{
+	GLuint rbf = 0;
+	
+	GLA_Renderbuf() {
+		glGenRenderbuffers(1, &rbf);
+	}
+	~GLA_Renderbuf() {
+		glDeleteRenderbuffers(1, &rbf);
+	}
+	
+	GLA_Renderbuf( const GLA_Renderbuf& ) = delete;
+	void operator =( const GLA_Renderbuf& ) = delete;
+	
+	GLA_Renderbuf  ( GLA_Renderbuf&& obj ) {swap(obj);}
+	void operator =( GLA_Renderbuf&& obj ) {swap(obj);}
+	
+	void swap(GLA_Renderbuf& obj) {
+		std::swap(rbf, obj.rbf);
+	}
+	
+	void bind() {
+		glBindRenderbuffer(GL_RENDERBUFFER, rbf);
+	}
+	void set(GLenum internal_format, vec2i size) {
+		glBindRenderbuffer(GL_RENDERBUFFER, rbf);
+		glRenderbufferStorage(GL_RENDERBUFFER, internal_format, size.x, size.y);
+	}
+	
+	operator GLuint() {return rbf;}
+};
+
+
+
 struct GLA_Framebuffer
 {
 	GLuint fbo = 0;
+	// just for storage, not used internally
 	vec2i size = {};
+	std::vector<GLA_Texture> em_texs;
+	std::vector<GLA_Renderbuf> em_rbufs;
 	
 	GLA_Framebuffer() {
 		glGenFramebuffers(1, &fbo);
@@ -155,6 +193,8 @@ struct GLA_Framebuffer
 	void swap(GLA_Framebuffer& obj) {
 		std::swap(fbo, obj.fbo);
 		std::swap(size, obj.size);
+		std::swap(em_texs, obj.em_texs);
+		std::swap(em_rbufs, obj.em_rbufs);
 	}
 	
 	void bind() {

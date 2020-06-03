@@ -282,6 +282,7 @@ public:
 		if (state == State::HasTokens) {
 			state = State::Booting;
 			boot_at = core->get_step_time() + boot_length;
+			if (fastboot) boot_at = core->get_step_time() + TimeSpan::seconds(2);
 			ui_message("Protect control terminal");
 		}
 		else if (state == State::Final) {
@@ -300,6 +301,7 @@ public:
 	void factory_down(bool is_last) override
 	{
 		ui_message(is_last? "All factories are down" : "Factory is down");
+		if (is_last) core->spawn_hunters = false;
 	}
 };
 GameMode_Normal* GameMode_Normal::create() {
@@ -404,7 +406,7 @@ public:
 					else eff(new EEnemyDrone(*core, p, EEnemyDrone::def_workr(*core)));},			8}
 			}});
 			for (int i=0; i<n_spawn; ++i)
-				core->get_random().random_el(cs)(teleps[i]);
+				core->get_random().random_chance(cs)(teleps[i]);
 		}
 		
 		wave_alive = 0;

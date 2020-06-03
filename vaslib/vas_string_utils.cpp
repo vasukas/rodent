@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <stdexcept>
 #include "vaslib/vas_string_utils.hpp"
 
 
@@ -185,6 +186,57 @@ bool string_atof (std::string_view s, float& value)
 	char *end = nullptr;
 	value = strtof( s.data(), &end );
 	return end && end - s.data() == static_cast<ptrdiff_t>(s.length());
+}
+
+
+
+std::string string_u64toa(uint64_t value, int base, bool hex_capital)
+{
+	if (!value) return "0";
+	int digits = 0;
+	for (uint64_t v = value; v; v /= base) ++digits;	
+	std::string s;
+	s.reserve(digits);
+	if (base <= 10 && base >= 2) {
+		for (; value; value /= base) {
+			int v = value % base;
+			s.push_back('0' + v);
+		}
+	}
+	else if (base == 16) {
+		char c = hex_capital ? 'A' : 'a';
+		for (; value; value /= base) {
+			int v = value % base;
+			if (v < 10) s.push_back('0' + v);
+			else s.push_back(c + (v - 10));
+		}
+	}
+	else throw std::logic_error("string_u64toa() invalid base");
+	
+	for (size_t i=0; i<s.size()/2; ++i) std::swap(s[i], s[s.size()-i-1]);
+	return s;
+}
+std::string string_u64toa_delim(uint64_t value, char delim, int delim_digits, int base)
+{
+	int delim_value = 1;
+	for (int i=0; i<delim_digits; ++i) delim_value *= base;
+	
+	int subs = 0;
+	for (uint64_t v = value / delim_value; v; v /= delim_value) ++subs;
+	int del = 1;
+	for (int i=0; i<subs; ++i) del *= delim_value;
+	
+	std::string s;
+	s.reserve((subs + 1) * (delim_digits + 1));
+	for (; subs != -1; --subs) {
+		uint64_t v = value / del;
+		std::string tmp = string_u64toa(v % delim_value, base);
+		if (!s.empty()) for (int i = tmp.size(); i < delim_digits; ++i) s.push_back('0');
+		s += tmp;
+		if (subs) s.push_back(delim);
+		del /= delim_value;
+	}
+	return s;
 }
 
 

@@ -184,7 +184,7 @@ static std::vector<SoundInfo> load_sounds(int sample_rate, std::unordered_set<st
 	VLOGI("load_sounds() in {:.3f} seconds", (TimeSpan::current() - time0).seconds());
 	return info;
 }
-static const std::vector<const char *> name_array = {
+static const char *name_array[] = {
 #define X(a) #a,
 	SOUND_ID_X_LIST
 #undef X
@@ -263,11 +263,13 @@ struct SndEngMusic
 		SUB__TOTAL_COUNT
 	};
 	struct Track {
-		// 'normal' file
-		std::array<std::string, SUB__TOTAL_COUNT> fns;
-		// tracker file
-		std::string song_fn;
-		std::array<int, SUB__TOTAL_COUNT> subs;
+		std::string fn;
+		int subsong = -1;
+		Track(std::string fn): fn(std::move(fn)) {}
+	};
+	struct Group {
+		std::array<std::vector<Track>, SUB__TOTAL_COUNT> ts = {};
+		bool single = true; ///< All tracks are the same file
 	};
 	
 	static constexpr TimeSpan tmo_ambient_to_peace = TimeSpan::seconds(120);
@@ -278,11 +280,13 @@ struct SndEngMusic
 	static constexpr TimeSpan track_switch_min = TimeSpan::seconds(3*60); // 0% to switch
 	
 	SoundEngine::MusControl state = SoundEngine::MUSC_NO_AUTO;
-	std::vector<Track> tracks;
+	std::vector<Group> groups;
+	std::array<std::vector<int>, SUB__TOTAL_COUNT> search; // group indices
+	std::unordered_map<std::string, std::string> aliases;
 	
-	int track = 0;
+	int group = 0;
 	int cur_music = -1; // subtrack
-	TimeSpan track_start; // how long playing
+	TimeSpan track_start; // since then this group is played
 	
 	// GameCore time
 	TimeSpan last_peace = TimeSpan::seconds(0);
@@ -301,36 +305,62 @@ void SndEngMusic::load()
 		THROW_FMTSTR("SndEngMusic::load() failed to read config");
 	
 	try {
+		auto get_type = [](auto& str) {
+			if		(str == "peace")   return SUB_PEACE;
+			else if (str == "ambient") return SUB_AMBIENT;
+			else if (str == "light")   return SUB_LIGHT;
+			else if (str == "heavy")   return SUB_HEAVY;
+			else if (str == "epic")    return SUB_EPIC;
+			THROW_FMTSTR("Unknown subtrack ID: {}", str);
+		};
 		while (!tkr.ended())
-		{
+		{			
 			auto str = tkr.str();
-			if (str == "track") {
-				tracks.emplace_back();
-				continue;
-			}
-			if (tracks.empty()) THROW_FMTSTR("Track not specified");
-			
-			if (str == "song") {
-				tracks.back().song_fn = tkr.str();
-				for (auto& i : tracks.back().subs) i = -1;
-			}
-			else
+			if (str == "group")
 			{
-				int i;
-				if		(str == "peace")   i = SUB_PEACE;
-				else if (str == "ambient") i = SUB_AMBIENT;
-				else if (str == "light")   i = SUB_LIGHT;
-				else if (str == "heavy")   i = SUB_HEAVY;
-				else if (str == "epic")    i = SUB_EPIC;
-				else THROW_FMTSTR("Unknown subtrack ID: {}", str);
-				
-				if (tracks.back().song_fn.empty()) {
-					tracks.back().fns[i] = tkr.str();
+				auto& gr = groups.emplace_back();
+				while (!tkr.ended())
+				{
+					auto str = tkr.str();
+					if (str == "@") break;
+					else {
+						int i = get_type(str);
+						while (!tkr.ended()) {
+							auto str = tkr.str();
+							if (str == "@") break;
+							else gr.ts[i].emplace_back(std::string(str));
+						}
+					}
 				}
-				else {
-					tracks.back().subs[i] = tkr.i32();
+				
+				std::string_view f0;
+				for (auto& ts : gr.ts)
+				for (auto& fn : ts)
+				{
+					if (f0.empty()) f0 = fn.fn;
+					else if (f0 != fn.fn) gr.single = false;
 				}
 			}
+			else if (str == "single")
+			{
+				auto& gr = groups.emplace_back();
+				auto fn = std::string(tkr.str());
+				while (!tkr.ended()) {
+					auto str = tkr.str();
+					if (str == "@") break;
+					else {
+						int i = get_type(str);
+						gr.ts[i].emplace_back(fn);
+					}
+				}
+			}
+			else if (str == "alias")
+			{
+				auto a = tkr.str();
+				auto b = tkr.str();
+				aliases.emplace(std::move(a), std::move(b));
+			}
+			else THROW_FMTSTR("Invalid token: {}", str);
 		}
 	}
 	catch (std::exception& e) {
@@ -338,29 +368,20 @@ void SndEngMusic::load()
 		THROW_FMTSTR("SndEngMusic::load() failed to read config - {} [at {}:{}]", e.what(), p.first, p.second);
 	}
 	
-	for (auto& tr : tracks)
-	{
-		if (tr.song_fn.empty()) {
-			for (int i=0; i<SUB__TOTAL_COUNT; ++i) {
-				if (tr.fns[i].empty()) {
-					if (!i) THROW_FMTSTR("SndEngMusic::load() - 'peace' subtrack must be specified");
-					tr.fns[i] = tr.fns[i-1];
-				}
+	for (size_t gi=0; gi<groups.size(); ++gi) {
+		for (int i=0; i<SUB__TOTAL_COUNT; ++i) {
+			if (!groups[gi].ts[i].empty()) {
+				search[i].push_back(gi);
 			}
-		}
-		else {
-			for (int i=0; i<SUB__TOTAL_COUNT; ++i) {
-				if (tr.subs[i] == -1) {
-					if (!i) THROW_FMTSTR("SndEngMusic::load() - 'peace' subtrack must be specified");
-					tr.subs[i] = tr.subs[i-1];
-				}
-			}
+			if (groups[gi].ts[i].size() > 1)
+				THROW_FMTSTR("SndEngMusic::load() failed - only one track per subtrack type currently implemented");
 		}
 	}
+	for (auto& m : search) if (m.empty()) THROW_FMTSTR("SndEngMusic::load() failed - music not specified for all modes");
 }
 void SndEngMusic::step(SoundEngine& snd, TimeSpan now)
 {
-	if (state == SoundEngine::MUSC_NO_AUTO || tracks.empty()) {
+	if (state == SoundEngine::MUSC_NO_AUTO) {
 		cur_music = -1;
 		return;
 	}
@@ -392,58 +413,108 @@ void SndEngMusic::step(SoundEngine& snd, TimeSpan now)
 			if (now - last_peace > tmo_escalation) sel = std::max<int>(sel, SUB_HEAVY);
 		}
 	}
-	
 	if (cur_music == -1) {
 		sel = std::max(0, sel);
 		track_start = TimeSpan::current();
 	}
-	if (cur_music != sel) {
+	
+	auto new_group = [&](bool any = false) {
+		size_t n = search[sel].size();
+		if (n <= 1) return;
+		if (!any) {
+			if (n == 2) return;
+			--n;
+		}
+		int i = rnd_stat().range_index(n);
+		if (i != group) track_start = TimeSpan::current();
+		group = search[sel][i];
+	};
+	auto play = [&]{
+		auto& gr = groups[group];
+		auto& tr = gr.ts[sel][0];
+		snd.music(tr.fn.c_str(), tr.subsong, !gr.single, false);
+	};
+	if (cur_music != sel)
+	{
 		if ((sel == SUB_PEACE || sel == SUB_AMBIENT) &&
-		    rnd_stat().range_n() < (TimeSpan::current() - track_start - track_switch_min)
-				/ (track_switch_max - track_switch_min)) {
-			track = rnd_stat().range_index(tracks.size());
+			rnd_stat().range_n() < (TimeSpan::current() - track_start - track_switch_min)
+				/ (track_switch_max - track_switch_min))
+		{
+			new_group(true);
+		}
+		if (groups[group].ts[sel].empty()) {
+			new_group();
 		}
 		cur_music = sel;
-		
-		auto& tr = tracks[track];
-		if (tr.song_fn.empty()) snd.music(tr.fns[sel].c_str(), -1, false);
-		else snd.music(tr.song_fn.c_str(), tr.subs[sel], false);
+		play();
+	}
+	else if (!snd.has_music())
+	{
+		if (track_start.is_positive()) new_group();
+		play();
 	}
 }
-void SoundEngine::check_unused_sounds()
+int SoundEngine::check_unused_sounds()
 {
-	std::unordered_set<std::string> fns;
-	VLOGI("Checking sounds...");
-	auto info = load_sounds(22050, &fns);
-	size_t bytes = 0;
-	for (int i=0; i<SND_TOTAL_COUNT_INTERNAL; ++i) {
-		bool any = false;
-		for (auto& d : info[i].data) {if (d.len > 2) {any = true; bytes += 2 * d.d.capacity();}}
-		if (!any) VLOGW("Silence {}", get_name((SoundId)i));
-	}
-	for (auto& e : std::filesystem::directory_iterator(HARDPATH_SOUNDS_PREFIX)) {
-		if (fns.end() == fns.find(e.path().filename().replace_extension().u8string()))
-			VLOGW("Unused file '{}'", e.path().u8string());
-	}
-	VLOGI("Check finished");
+	int ret = 0;
+	enum {
+		R_UNUSED_FILE = 1,
+		R_MUSIC = 2,
+		R_CONFIG = 4
+	};
 	
-	VLOGI("Checking music...");
-	SndEngMusic mc;
-	mc.load();
-	fns.clear();
-	for (auto& tr : mc.tracks) {
-		if (tr.song_fn.empty()) {for (auto& fn : tr.fns) fns.emplace(fn);}
-		else fns.emplace(tr.song_fn);
+	try {
+		std::unordered_set<std::string> fns;
+		VLOGI("Checking sounds...");
+		auto info = load_sounds(22050, &fns);
+		size_t bytes = 0;
+		for (int i=0; i<SND_TOTAL_COUNT_INTERNAL; ++i) {
+			bool any = false;
+			for (auto& d : info[i].data) {if (d.len > 2) {any = true; bytes += 2 * d.d.capacity();}}
+			if (!any) VLOGW("Silence {}", get_name((SoundId)i));
+		}
+		for (auto& e : std::filesystem::directory_iterator(HARDPATH_SOUNDS_PREFIX)) {
+			if (e.path().filename() == "LIST" || e.path().filename() == "music") continue;
+			if (fns.end() == fns.find(e.path().filename().replace_extension().u8string())) {
+				ret |= R_UNUSED_FILE;
+				VLOGW("Unused file '{}'", e.path().u8string());
+			}
+		}
+		VLOGI("Check finished");
+		
+		VLOGI("Checking music...");
+		SndEngMusic mc;
+		mc.load();
+		fns.clear();
+		for (auto& tr : mc.groups) {
+			for (auto& t : tr.ts)
+			for (auto& s : t)
+				fns.emplace(s.fn);
+		}
+		for (auto& as : mc.aliases) {
+			fns.emplace(as.second);
+		}
+		for (auto& name : fns) {
+			std::string s = std::string(HARDPATH_MUSIC_PREFIX) + name;
+			auto p = AudioSource::open_stream(s.c_str(), 22050);
+			if (!p) ret |= R_MUSIC;
+			delete p;
+		}
+		for (auto& e : std::filesystem::directory_iterator(HARDPATH_MUSIC_PREFIX)) {
+			if (e.path().filename() == "LIST" || e.file_size() < 4*1024) continue;
+			if (fns.end() == fns.find(e.path().filename().replace_extension().u8string())) {
+				ret |= R_UNUSED_FILE;
+				VLOGW("Unused file '{}'", e.path().u8string());
+			}
+		}
+		VLOGI("Check finished");
 	}
-	for (auto& name : fns) {
-		std::string s = std::string(HARDPATH_MUSIC_PREFIX) + name;
-		delete AudioSource::open_stream(s.c_str(), 22050);
+	catch (std::exception& e) {
+		VLOGE("Exception: {}", e.what());
+		ret |= R_CONFIG;
 	}
-	for (auto& e : std::filesystem::directory_iterator(HARDPATH_MUSIC_PREFIX)) {
-		if (fns.end() == fns.find(e.path().filename().replace_extension().u8string()))
-			VLOGW("Unused file '{}'", e.path().u8string());
-	}
-	VLOGI("Check finished");
+	
+	return ret;
 }
 
 
@@ -459,11 +530,6 @@ public:
 	
 	SDL_AudioDeviceID devid = 0;
 	int sample_rate;
-	
-	// settings
-	RAII_Guard sett_g, sett_reinit;
-	static inline std::string init_prev_api;
-	static inline std::string init_prev_device;
 	
 	// resources
 	std::vector<SoundInfo> snd_res;
@@ -542,6 +608,7 @@ public:
 	b2DynamicTree snd_detect; // detect active channels
 	b2DynamicTree wall_detect;
 	std::vector<b2EdgeShape> wall_shapes;
+	std::vector<int32> wall_nodeindices;
 	
 	samplen_t update_accum = 0;
 	int update_step = 0;
@@ -564,6 +631,7 @@ public:
 	samplen_t musold_left = 0;
 	
 	float mus_vol_tar = 1, mus_vol_cur = 1; // ui lock fade
+	bool mus_loop;
 	
 	// debug
 	TimeSpan callback_len;
@@ -628,21 +696,9 @@ public:
 		
 		// setup
 		
-		sett_g = AppSettings::get_mut().add_cb([this]{
-			set_master_vol(AppSettings::get().audio_volume);
-			set_sfx_vol(AppSettings::get().sfx_volume);
-			set_music_vol(AppSettings::get().music_volume);
-		});
-		sett_reinit = AppSettings::get_mut().add_cb([]{
-			if (init_prev_api != AppSettings::get().audio_api ||
-			    init_prev_device != AppSettings::get().audio_device)
-			{
-				delete SoundEngine::get();
-				SoundEngine::init();
-			}
-		}, false);
-		init_prev_api = AppSettings::get().audio_api;
-		init_prev_device = AppSettings::get().audio_device;
+		set_master_vol(AppSettings::get().audio_volume);
+		set_sfx_vol(AppSettings::get().sfx_volume);
+		set_music_vol(AppSettings::get().music_volume);
 		
 		mix_buffer.resize(sample_rate * 2);
 		load_buffer.resize(sample_rate * 2);
@@ -682,6 +738,8 @@ public:
 				avg += t;
 			}
 			vig_label_a("last 3 seconds: max {:3}, avg {:3}\n", int(max / callback_len * 100.), int(avg / callback_len * (100. / dbg_times.size())));
+			
+			vig_label_a("music {}, control {}, group {}, sel {}\n", has_music(), musc.state != MUSC_NO_AUTO, musc.group, musc.cur_music);
 		});
 		
 		SDL_PauseAudioDevice(devid, 0);
@@ -696,7 +754,7 @@ public:
 				std::unique_lock l2(music_lock);
 				int an = 0;
 				for (auto& c : chans) if (c.flags & Channel::IS_ACTIVE) ++an;
-				if (!an && !mus_src && !musold_src && mus_vol_cur < 0.01)
+				if (!an && ((!mus_src && !musold_src) || mus_vol_cur < 0.01))
 					break;
 				
 				if (exit_wait > upd_period_all*2) {
@@ -742,14 +800,16 @@ public:
 			b2Transform tr;
 			tr.SetIdentity();
 			ns.ComputeAABB(&aabb, tr, 0);
-			wall_detect.CreateProxy(aabb, reinterpret_cast<void*>(static_cast<intptr_t>(wall_shapes.size() - 1)));
+			int32 node = wall_detect.CreateProxy(aabb, reinterpret_cast<void*>(static_cast<intptr_t>(wall_shapes.size() - 1)));
+			wall_nodeindices.push_back(node);
 		}
 	}
 	void geom_static_clear() override
 	{
 		std::unique_lock lock(chan_lock);
-		for (size_t i=0; i<wall_shapes.size(); ++i) wall_detect.DestroyProxy(i);
+		for (auto& i : wall_nodeindices) wall_detect.DestroyProxy(i);
 		wall_shapes.clear();
+		wall_nodeindices.clear();
 	}
 	float get_master_vol() override
 	{
@@ -775,9 +835,13 @@ public:
 	{
 		g_mus_vol = std::min(vol, 0.999f);
 	}
-	void music(const char *name, int subtrack_index, bool disable_musc) override
+	void music(const char *name, int subtrack_index, bool loop, bool disable_musc) override
 	{
-		if (disable_musc) music_control(MUSC_NO_AUTO);
+		if (disable_musc) {
+			music_control(MUSC_NO_AUTO);
+			std::unique_lock lock(music_lock);
+			mus_vol_tar = 1;
+		}
 		if (mus_load.valid()) mus_load.get();
 		
 		if (!name) {
@@ -791,16 +855,21 @@ public:
 			mus_pos = 0;
 			return;
 		}
-		else if (mus_prev_name == name && subtrack_index != -1) {
+		else if (mus_prev_name == name)
+		{
 			std::unique_lock lock(music_lock);
 			if (mus_src) {
-				mus_src->select_subsong(subtrack_index);
+				if (subtrack_index != -1)
+					mus_src->select_subsong(subtrack_index);
 				return;
 			}
 		}
 		
-		std::string s = std::string(HARDPATH_MUSIC_PREFIX) + name;
 		mus_prev_name = name;
+		mus_loop = loop;
+		
+		if (auto it = musc.aliases.find(name); it != musc.aliases.end()) name = it->second.c_str();
+		std::string s = std::string(HARDPATH_MUSIC_PREFIX) + name;
 		
 		mus_load = std::async(std::launch::async, [this, s = std::move(s), subtrack_index]
 		{
@@ -817,9 +886,14 @@ public:
 			mus_src.reset(src);
 			mus_pos = 0;
 			
-			if (subtrack_index != -1)
+			if (subtrack_index != -1 && mus_src)
 				mus_src->select_subsong(subtrack_index);
 		});
+	}
+	bool has_music() override
+	{
+		std::unique_lock lock(music_lock);
+		return mus_src || musold_src;
 	}
 	void music_control(MusControl state) override
 	{
@@ -828,6 +902,9 @@ public:
 	}
 	SoundObj::Id play(SoundObj::Id i_obj, const SoundPlayParams& pp, bool continious) override
 	{
+		if (!continious && (g_vol < 1e-5 || g_sfx_vol < 1e-5))
+			return {};
+		
 		std::unique_lock lock(chan_lock);
 		auto& info = snd_res[pp.id];
 		
@@ -972,7 +1049,11 @@ public:
 		vc.upd_at = -1;
 		
 		if (vc.flags & Channel::IS_NEW) {
-			if (!(vc.flags & Channel::IS_OBJ)) free_channel(i);
+			if (vc.flags & Channel::IS_OBJ) {
+				auto& ds = vc.p_snd->data;
+				if (ds[0].is_loop) vc.subsrc = rnd_stat().range_index(ds.size() - 1, 1);
+			}
+			else free_channel(i);
 			return;
 		}
 		
@@ -1005,7 +1086,14 @@ public:
 						}
 						i += n;
 						mus_pos += n;
-						if (!n) mus_pos = 0;
+						if (!n) {
+							if (mus_loop) mus_pos = 0;
+							else {
+								mus_src.reset();
+								for (; i<outbuflen; ++i)
+									mix_buffer[i] = 0;
+							}
+						}
 					}
 				}
 				else
@@ -1304,7 +1392,11 @@ public:
 							}
 						}
 						else if (vc.flags & Channel::STOP) {
-							if (!(vc.flags & Channel::IS_OBJ)) free_channel(it.index());
+							if (vc.flags & Channel::IS_OBJ) {
+								if (!vc.subsrc && src.is_loop)
+									vc.subsrc = rnd_stat().range_index(vc.p_snd->data.size() - 1, 1);
+							}
+							else free_channel(it.index());
 							si = outbuflen; // outer break
 							break;
 						}
@@ -1358,7 +1450,7 @@ public:
 						vc.pb_pos += cur.t_pitch * vc.dopp_mul;
 						if (vc.pb_pos >= src.len)
 						{
-							if ((vc.flags & Channel::IS_OBJ) && src.is_loop)
+							if (src.is_loop && ((vc.flags & Channel::IS_OBJ) || vc.subsrc == 0))
 							{
 								if (vc.subsrc != 0) vc.silence_left = vc.loop_period - src.len;
 								int old = vc.subsrc;

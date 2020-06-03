@@ -47,7 +47,7 @@ private:
 	bool preq_failed = false;
 	
 	
-	float calc_avoidance(); // speed multiplier
+	vec2fp calc_avoidance();
 	vec2fp step_path();
 	void step() override;
 	

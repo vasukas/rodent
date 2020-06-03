@@ -32,8 +32,6 @@ public:
 	
 	virtual void draw_inst(const Transform& tr, FColor clr, size_t id) = 0; ///< Draws instanced object
 	
-	virtual void reinit_glow() = 0;
-	
 protected:
 	friend class Postproc_Impl;
 	static RenAAL* init();

@@ -83,6 +83,7 @@ void log_setup_signals()
 		log_critical_flush();
 		for (auto& f : term_fs) if (f) f();
 		
+		std::fflush(NULL); // flush all opened files
 		term_default();
 	});
 }

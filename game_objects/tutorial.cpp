@@ -395,7 +395,7 @@ void tutorial_spawn(GameCore& core, LevelTerrain& lt)
 		switch (pt.second)
 		{
 		case 0x00ffff: // teleport
-			script->tele2 = new ETeleport(core, pos);
+			if (script) script->tele2 = new ETeleport(core, pos);
 			break;
 			
 		case 0xff00ff: // objective

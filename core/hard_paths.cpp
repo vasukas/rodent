@@ -28,5 +28,11 @@ std::string get_full_platform_version()
 	auto cs = FMT_FORMAT("MSVC-{}", _MSC_VER);
 #endif
 	
-	return FMT_FORMAT("{} | {}-{}", cs, os, ps);
+#ifdef PROJECT_VERSION_STRING
+	const char *vs = PROJECT_VERSION_STRING;
+#else
+	const char *vs = "NONE";
+#endif
+	
+	return FMT_FORMAT("{} | {}-{} | v{}", cs, os, ps, vs);
 }

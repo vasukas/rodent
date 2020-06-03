@@ -530,7 +530,8 @@ void AI_Drone::step()
 							}
 						}
 						st->is_working_now = true;
-						st->snd.update(ent, {st->is_loading? SND_ENV_DRILLING : SND_ENV_UNLOADING});
+						if (st->val.type == AI_SimResource::T_ROCK)
+							st->snd.update(ent, {st->is_loading? SND_ENV_DRILLING : SND_ENV_UNLOADING});
 					}
 				}, res);
 			}
@@ -632,17 +633,14 @@ void AI_Drone::step()
 	float tar_torq = angle_delta(*ent.ref_pc().rot_override, nextAngle);
 	body.ApplyAngularImpulse( body.GetInertia() * tar_torq / GameCore::time_mul, true );
 }
-void AI_Drone::text_alert(std::string s, bool important, size_t num)
+void AI_Drone::text_alert(std::string s, bool important, size_t /*num*/)
 {
 	auto now = ent.core.get_step_time();
 	if (now - text_alert_last < TimeSpan::seconds(2) && !important) return;
 	text_alert_last = now;
 	
-	for (size_t i=0; i<num; ++i)
-	{
-		vec2fp p = ent.get_pos();
-		p.x += 0.7 * rnd_stat().range_n2();
-		p.y += 0.2 * rnd_stat().range_n2();
-		GamePresenter::get()->add_float_text({ p, std::move(s) });
-	}
+	vec2fp p = ent.get_pos();
+	p.x += 0.7 * rnd_stat().range_n2();
+	p.y += 0.2 * rnd_stat().range_n2();
+	GamePresenter::get()->add_float_text({ p, std::move(s) });
 }

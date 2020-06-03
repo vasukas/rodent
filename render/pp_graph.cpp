@@ -3,14 +3,10 @@
 
 
 
-PP_Node::PP_Node(std::string name, bool has_input, bool has_output)
-	: name(std::move(name)), has_input(has_input), has_output(has_output)
+PP_Node::PP_Node(std::string name, bool needs_input, bool needs_output)
+	: name(std::move(name)), needs_input(needs_input), needs_output(needs_output)
 {
 	PP_Graph::get().add_node(this);
-}
-PP_Node::~PP_Node()
-{
-	PP_Graph::get().del_node(this);
 }
 
 
@@ -18,45 +14,33 @@ PP_Node::~PP_Node()
 class PP_Graph_Impl : public PP_Graph
 {
 public:
-	struct NodeInfo
+	struct NodeDeleter {void operator()(PP_Node* p) {delete p;}};
+	struct Node
 	{
-		// object
-		std::unique_ptr<PP_Node> ptr;
-		size_t index;
-		
-		// connections
-		std::optional<size_t> target;
-		int ordering = 0;
-		
-		// status & rebuild
+		// input
+		std::unique_ptr<PP_Node, NodeDeleter> ptr;
+		std::optional<int> output;
+		int order = 0;
 		bool enabled = false;
 		
-		struct rebuild_t
-		{
-			bool loopdet = false;
-			bool proc = false;
-			bool force_dis = false;
-			
-			std::optional<size_t> i_tar;
-			int i_order; // inherited order
-			
-			size_t prov_num = 0; // total input count
-			size_t ready = 0; // current ready inputs
-		};
-		rebuild_t reb;
+		// output
+		bool is_used;
+		int res; // real output
+		
+		// resolving data
+		int self;
+		bool loopflag;
+		std::vector<int> inputs;
 	};
 	
-	std::vector<NodeInfo> nodes;
-	std::vector<NodeInfo*> ord;
+	std::vector<Node> nodes;
+	std::vector<Node*> ord;
 	bool rebuild_req = false;
-	
-	bool is_deleted = false;
 	
 	
 	
 	~PP_Graph_Impl()
 	{
-		is_deleted = true;
 		nodes.clear();
 	}
 	void connect(std::string out_name, std::string in_name, int ordering) override
@@ -70,16 +54,16 @@ public:
 		
 		auto& n_out = getn(out_name);
 		auto& n_in  = getn(in_name);
-		if (!n_in.ptr->has_input || !n_out.ptr->has_output)
+		if (!n_in.ptr->needs_input || !n_out.ptr->needs_output)
 			THROW_FMTSTR("PP_Graph::connect() invalid connection ({} -> {})", out_name, in_name);
 		
-		if (n_out.target) {
-			if (*n_out.target == n_in.index) return;
+		if (n_out.output) {
+			if (*n_out.output == n_in.self) return;
 			THROW_FMTSTR("PP_Graph::connect() already has output ({} -> {})", out_name, in_name);
 		}
 		
-		n_out.target = n_in.index;
-		n_out.ordering = ordering;
+		n_out.output = n_in.self;
+		n_out.order = ordering;
 	}
 	void render() override
 	{
@@ -94,15 +78,11 @@ public:
 		}
 		
 		if (rebuild_req)
-		{
-			rebuild_req = false;
 			rebuild();
-		}
 		
 		for (auto& s : ord)
 		{
-			auto i = s->reb.i_tar;
-			auto fbo = i? nodes[*i].ptr->get_input_fbo() : 0;
+			auto fbo = s->res >= 0 ? nodes[s->res].ptr->get_input_fbo() : 0;
 			s->ptr->proc(fbo);
 		}
 	}
@@ -115,140 +95,73 @@ public:
 		
 		auto& n = nodes.emplace_back();
 		n.ptr.reset(node);
-		n.index = nodes.size() - 1;
-	}
-	void del_node(PP_Node* node) override
-	{
-		if (is_deleted) return;
-		
-		auto it = std::find_if( nodes.begin(), nodes.end(), [&](auto& v){return v.ptr.get() == node;} );
-		// always found
-
-		bool is_tar = false;
-		for (auto& n : nodes) {
-			if (n.target == it->index) {
-				is_tar = true;
-				break;
-			}
-		}
-		
-		if (is_tar)
-		{
-			it->enabled = false;
-			
-			rebuild();
-			rebuild_req = false;
-			
-			for (auto& n : nodes) {
-				if (n.target == it->index)
-					n.target = n.reb.i_tar;
-			}
-		}
-		else if (it->enabled) rebuild_req = true;
-		
-		nodes.erase(it);
+		n.self = nodes.size() - 1;
 	}
 	
 	
-	
-	void rebuild_sub_1(NodeInfo& n, std::optional<size_t>& target, int& new_order, int prev_order)
-	{
-		if (n.reb.loopdet) THROW_FMTSTR("PP_Graph::rebuild() detected loop at - {}", n.ptr->name);
-		n.reb.loopdet = true;
-		
-		if (n.enabled)
-		{
-			target = n.index;
-			new_order = prev_order;
-			
-			if (!n.reb.proc)
-			{
-				n.reb.proc = true;
-				if (n.target)
-				{
-					rebuild_sub_1(nodes[*n.target], n.reb.i_tar, n.reb.i_order, n.ordering);
-					++ nodes[*n.reb.i_tar].reb.prov_num;
-				}
-			}
-		}
-		else if (n.target)
-		{
-			rebuild_sub_1(nodes[*n.target], target, new_order, n.ordering);
-		}
-		
-		n.reb.loopdet = false;
-	}
-	bool rebuild_sub_3(NodeInfo& n)
-	{
-		bool ok;
-		if (n.reb.i_tar) ok = rebuild_sub_3(nodes[*n.reb.i_tar]);
-		else ok = !n.ptr->has_output;
-		if (!ok) n.reb.force_dis = true;
-		return ok;
-	}
-	void rebuild_sub_2(NodeInfo& n)
-	{
-		if (!n.ptr->has_input || ++ n.reb.ready == n.reb.prov_num)
-		{
-			ord.push_back(&n);
-			if (n.reb.i_tar)
-				rebuild_sub_2(nodes[*n.reb.i_tar]);
-		}
-	}
 	void rebuild()
 	{
-		// reset
+		rebuild_req = false;
 		
 		ord.clear();
 		ord.reserve( nodes.size() );
 		
-		for (auto& n : nodes)
-			n.reb = NodeInfo::rebuild_t();
-		
-		// remove non-enabled nodes
-		
-		bool has_entry = false;
-		for (auto& n : nodes)
-		{
-			if (n.enabled && !n.ptr->has_input)
-			{
-				std::optional<size_t> ign; int ign2;
-				rebuild_sub_1(n, ign, ign2, 0);
-				has_entry = true;
-			}
-		}
-		if (!has_entry)
-			THROW_FMTSTR("PP_Graph::rebuild() no entry nodes");
-		
-		// disable invalid chains
-		
-		for (auto& n : nodes)
-		{
-			if (n.enabled && !n.ptr->has_input)
-				rebuild_sub_3(n);
+		for (auto& n : nodes) {
+			n.is_used = false;
+			n.res = -2;
+			n.loopflag = false;
+			n.inputs.clear();
 		}
 		
-		// add in readiness order
-	
-		for (auto& n : nodes)
-		{
-			if (n.enabled && !n.reb.force_dis && !n.ptr->has_input)
-				rebuild_sub_2(n);
-		}
+		//
 		
-		// adjust ordering
-		
-		for (size_t i = 0;   i < ord.size(); ++i)
-		for (size_t j = i+1; j < ord.size(); ++j)
+		auto proc = [&](Node& n, auto proc)-> bool
 		{
-			auto& na = ord[i];
-			auto& nb = ord[j];
+			if (n.loopflag) THROW_FMTSTR("Loop detected");
+			n.loopflag = true;
 			
-			if (na->reb.i_tar == nb->reb.i_tar &&
-			    na->reb.i_tar &&
-			    na->reb.i_order > nb->reb.i_order
-			    )
-				std::swap(na, nb);
+			for (auto& b : nodes) {
+				if (b.output == n.self)
+					n.inputs.push_back(b.self);
+			}
+			if (!n.inputs.empty())
+			{
+				for (auto& i : n.inputs) {
+					int k = 0;
+					for (auto& j : n.inputs) if (nodes[i].order == nodes[j].order) ++k;
+					if (k > 1) THROW_FMTSTR("Order repeat");
+				}
+				std::sort(n.inputs.begin(), n.inputs.end(), [&](auto& a, auto& b) {return nodes[a].order < nodes[b].order;});
+				
+				bool ok = false;
+				for (auto& i : n.inputs) {
+					ok |= proc(nodes[i], proc);
+				}
+				if (ok) {
+					if (n.enabled) {
+						n.is_used = true;
+						ord.push_back(&n);
+					}
+					return true;
+				}
+			}
+			if (!n.enabled) return false;
+			if (!n.ptr->needs_input) {
+				n.is_used = true;
+				ord.push_back(&n);
+				return true;
+			}
+			return false;
+		};
+		auto set = [&](Node& n, int root, auto set)-> void {
+			n.res = root;
+			for (auto& i : n.inputs)
+				set(nodes[i], n.is_used ? n.self : root, set);
+		};
+		
+		for (auto& n : nodes) {
+			if (!n.ptr->needs_output && n.enabled && proc(n, proc))
+				set(n, -1, set);
 		}
 		
 		//
@@ -260,20 +173,20 @@ public:
 	
 	void debug_dump()
 	{
-		auto put = [this](NodeInfo& n)
+		auto put = [this](Node& n)
 		{
-			VLOGV("{} {} -> {}[{}] / {}[{}]",
-			      n.enabled? (n.reb.force_dis? 'd' : ' ') : 'x',
+			VLOGV("{} {} -> {}[{}] / {}",
+			      n.enabled? (n.is_used? ' ' : 'd') : 'x',
 			      n.ptr->name,
-			      n.target? nodes[*n.target].ptr->name : "NONE",
-			      n.ordering,
-			      n.reb.i_tar? nodes[*n.reb.i_tar].ptr->name : "NONE",
-			      n.reb.i_order);
+			      n.output? nodes[*n.output].ptr->name : "NONE",
+			      n.order,
+			      n.res >= 0? nodes[n.res].ptr->name : "NONE");
 		};
 		
 		VLOGV("=== PP_Graph dump ===");
 		for (auto& s : ord) put(*s);
-		for (auto& n : nodes) if (!n.enabled || n.reb.force_dis) put(n);
+		for (auto& n : nodes) if (n.enabled && !n.is_used) put(n);
+		for (auto& n : nodes) if (!n.enabled) put(n);
 		VLOGV("=== End dump ===");
 	}
 };
@@ -363,4 +276,56 @@ void PPN_Chain::draw(bool is_last)
 	tex_s[!bs_index].bind();
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 	bs_index = !bs_index;
+}
+
+
+
+PPN_InputDraw::PPN_InputDraw(std::string name, Middle_FBO mid_fbo, std::function<void(GLuint fbo)> func)
+    : PP_Node(name, false, true), func(std::move(func))
+{
+	pass = Shader::load("pp/pass", {}, true);
+	if (mid_fbo)
+	{
+		fbo.emplace();
+		fbo_g = RenderControl::get().add_size_cb([this, mid_fbo, name]
+		{
+			if (fbo->em_texs.empty()) fbo->em_texs.emplace_back();
+			fbo->em_texs[0].set(GL_RGBA, RenderControl::get_size(), 0, 4);
+			fbo->attach_tex(GL_COLOR_ATTACHMENT0, fbo->em_texs[0]);
+			
+			if (mid_fbo == MID_DEPTH_STENCIL)
+			{
+				if (fbo->em_rbufs.empty()) fbo->em_rbufs.emplace_back();
+				fbo->em_rbufs[0].set(GL_DEPTH24_STENCIL8, RenderControl::get_size());
+				fbo->attach_rbf(GL_DEPTH_STENCIL_ATTACHMENT, fbo->em_rbufs[0]);
+			}
+			
+			fbo->check_throw(FMT_FORMAT("PPN_InputDraw - {}", name));
+		});
+	}
+}
+void PPN_InputDraw::proc(GLuint fbo_out)
+{
+	if (!fbo) func(fbo_out);
+	else
+	{
+		fbo->bind();
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+		
+		func(fbo->fbo);
+		
+		//
+		
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo_out);
+		pass->bind();
+		
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		glBlendEquation(GL_FUNC_ADD);
+		
+		glActiveTexture(GL_TEXTURE0);
+		fbo->em_texs[0].bind();
+		
+		RenderControl::get().ndc_screen2().bind();
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+	}
 }

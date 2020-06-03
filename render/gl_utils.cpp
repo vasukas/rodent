@@ -233,10 +233,10 @@ void GLA_Texture::bind(GLenum target)
 	if (target == GL_NONE) target = this->target;
 	glBindTexture(target, tex);
 }
-void GLA_Texture::set(GLenum internal_format, vec2i size, int level, int dbg_bpp)
+void GLA_Texture::set(GLenum internal_format, vec2i size, int level, int dbg_bpp, void* data, GLenum data_fmt)
 {
 	glBindTexture(target, tex);
-	glTexImage2D(target, level, internal_format, size.x, size.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	glTexImage2D(target, level, internal_format, size.x, size.y, 0, data_fmt, GL_UNSIGNED_BYTE, data);
 	
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);

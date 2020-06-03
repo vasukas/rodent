@@ -17,13 +17,14 @@ class LevelMap_Impl : public LevelMap
 public:
 	SmoothSwitch e_sw;
 	std::unique_ptr<Texture> tex;
-	vec2fp coord_k;
 	
 	std::optional<Rectfp> final_term;
 	TimeSpan final_marked_at;
 	
 	GameCore& core;
-	std::unordered_map<const LevelCtrRoom*, Rectfp> visited;
+	std::unordered_set<const LevelCtrRoom*> visited;
+	std::unique_ptr<Texture> tex_vis;
+	bool upd_visited_flag = false;
 	
 	vec2fp prim_offset = {};
 	
@@ -32,8 +33,6 @@ public:
 	LevelMap_Impl(GameCore& core, const LevelTerrain& lt)
 		: e_sw(TimeSpan::seconds(0.15)), core(core)
 	{
-		coord_k = vec2fp::one(1) / (vec2fp(lt.grid_size) * GameConst::cell_size);
-		
 		ImageInfo img = lt.draw_grid(false);
 		img.convert(ImageInfo::FMT_RGBA);
 		img.map_pixel([](auto px)
@@ -67,7 +66,7 @@ public:
 		
 		vec2fp sp = scr;
 		if (plr_pos) {
-			plr_pos = (*plr_pos) * coord_k;
+			plr_pos = (*plr_pos) / (vec2fp(core.get_lc().get_size()) * GameConst::cell_size);
 			sp -= (*plr_pos - vec2fp::one(0.5)) * sz;
 		}
 		if (is_primary)
@@ -96,13 +95,8 @@ public:
 		RenImm::get().draw_rect({{}, RenderControl::get_size(), false}, 192 * t_alpha);
 		if (show_visited)
 		{
-			for (auto& p : visited)
-			{
-				Rectfp r = p.second;
-				r.a = r.a * scale + dst.lower();
-				r.b = r.b * scale + dst.lower() + vec2fp::one(scale * 1.05);
-				RenImm::get().draw_rect(r, 0x80ff4000 | int(128 * t_alpha));
-			}
+			if (upd_visited_flag) upd_visited();
+			if (tex_vis) RenImm::get().draw_image(dst, tex_vis.get(), 0x80ff4000 | int(128 * t_alpha), true);
 		}
 		RenImm::get().draw_image(dst, tex.get(), 0xffffff00 | clr_a);
 		
@@ -217,7 +211,40 @@ public:
 	}
 	void mark_visited(const LevelCtrRoom& rm) override
 	{
-		visited.emplace(&rm, rm.area.to_fp(2 * GameConst::cell_size));
+		if (visited.emplace(&rm).second)
+			upd_visited_flag = true;
+	}
+	std::vector<const LevelCtrRoom*> get_visited() override
+	{
+		std::vector<const LevelCtrRoom*> rs;
+		rs.reserve(visited.size());
+		for (auto& v : visited) rs.push_back(v);
+		return rs;
+	}
+	void upd_visited()
+	{
+		upd_visited_flag = false;
+		auto& lc = core.get_lc();
+		
+		std::vector<uint8_t> px;
+		px.resize(lc.get_size().area());
+		
+		for (auto& v : visited)
+			v->area.map([&](vec2i p) {px[p.y * lc.get_size().x + p.x] = 255;});
+		
+		for (int y=0; y<lc.get_size().y; ++y)
+		for (int x=0; x<lc.get_size().x; ++x)
+		{
+			auto& c = lc.cref({x,y});
+			if (!c.is_wall && !c.room_i)
+			{
+				if (contains(visited, lc.get_rooms().data() + c.room_nearest))
+					px[y * lc.get_size().x + x] = 255;
+			}
+		}
+		
+		if (!tex_vis) tex_vis.reset(Texture::create_from(lc.get_size(), Texture::FMT_SINGLE, px.data(), Texture::FIL_NEAREST));
+		else tex_vis->update_full(px.data());
 	}
 };
 

@@ -6,7 +6,7 @@
 #include "render/ren_particles.hpp"
 #include "render/ren_text.hpp"
 
-struct TextRenderInfo;
+struct RenLightRef;
 
 
 
@@ -256,6 +256,18 @@ private:
 	
 	void render(const EC_RenderPos& p, TimeSpan passed);
 	void on_vport_enter() {left = {};}
+};
+
+
+
+struct EC_LightSource : EDynComp
+{
+	std::vector<RenLightRef> lights;
+	
+	EC_LightSource(Entity& ent);
+	~EC_LightSource();
+	
+	void add(vec2fp offset, float angle, FColor clr = FColor(1, 1, 0.5), float radius = 9);
 };
 
 #endif // EC_RENDER_HPP

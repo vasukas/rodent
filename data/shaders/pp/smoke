@@ -1,0 +1,24 @@
+//@vert vert_pass
+//@frag
+#version 330
+
+uniform sampler2D tex;
+uniform sampler2D mask;
+uniform sampler3D smoke;
+
+uniform vec3 offset;
+uniform vec2 scrk;
+
+in vec2 tc;
+out vec4 res;
+
+void main() {
+	const vec4 sclr = vec4(vec3(0.7), 1);
+	const float kmax = 1;
+
+	float mval = texture(mask, tc).r;
+	float k = texture(smoke, offset + vec3(tc * scrk, 0)).r;
+	k -= 1 - mval;
+	res = mix(texture(tex, tc), sclr, clamp(k, 0, 1) * kmax);
+}
+

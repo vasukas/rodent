@@ -3,6 +3,7 @@
 #include "vaslib/vas_log.hpp"
 #include "damage.hpp"
 #include "game_core.hpp"
+#include "game_info_list.hpp"
 #include "physics.hpp"
 
 
@@ -85,6 +86,9 @@ zero_damage:
 		ev.type = orig_type;
 		if (ev.amount < 0) ev.amount = 0;
 		on_damage.signal(ev);
+		
+		if (ent.get_team() == TEAM_BOTS)   ent.core.get_info().stat_event(GameInfoList::STAT_DAMAGE_RECEIVED_BOTS,   ev.amount);
+		if (ent.get_team() == TEAM_PLAYER) ent.core.get_info().stat_event(GameInfoList::STAT_DAMAGE_RECEIVED_PLAYER, ev.amount);
 		
 		if (!hp.is_alive())
 		{
@@ -181,7 +185,7 @@ void DmgShield::proc(EC_Health& hlc, DamageQuant& q)
 		hp.apply(-1); // reset regen timer
 		return;
 	}
-	auto dmg_ren = q.amount;
+	auto dmg_orig = q.amount;
 	
 	auto absorb = hp.t_state() > absorb_per || hp.exact().first > absorb_thr ? dead_absorb : 0;
 	auto am_left = q.amount - hp.exact().first;
@@ -198,7 +202,7 @@ void DmgShield::proc(EC_Health& hlc, DamageQuant& q)
 			if (hit_ren_tmo.is_positive()) return;
 			hit_ren_tmo = TimeSpan::seconds(0.5);
 			
-			bp.power = dmg_ren * 0.02f;
+			bp.power = dmg_orig * 0.02f;
 			bp.clr = FColor(0.4, 1, 1, 0.5);
 		}
 		else {
@@ -213,10 +217,13 @@ void DmgShield::proc(EC_Health& hlc, DamageQuant& q)
 		for (int i=0; i<times; ++i)
 			GamePresenter::get()->effect(FE_CIRCLE_AURA, bp);
 	}
-	else if (q.wpos) {
-		GamePresenter::get()->effect(FE_HIT_SHIELD, {Transform{*q.wpos}, hp.t_state() * 3.f});
-		SoundEngine::once(SoundPlayParams{SND_ENV_BIG_SHIELD_HIT, *q.wpos}._volume(dmg_ren * 0.01));
-		q.wpos.reset();
+	else {
+		hlc.ent.core.get_info().stat_event(GameInfoList::STAT_DAMAGE_BLOCKED, dmg_orig);
+		if (q.wpos) {
+			GamePresenter::get()->effect(FE_HIT_SHIELD, {Transform{*q.wpos}, hp.t_state() * 3.f});
+			SoundEngine::once(SoundPlayParams{SND_ENV_BIG_SHIELD_HIT, *q.wpos}._volume(dmg_orig * 0.01));
+			q.wpos.reset();
+		}
 	}
 }
 void DmgShield::step(EC_Health& hlc)

@@ -337,6 +337,7 @@ std::optional<Weapon::ShootResult> WpnMinigun::shoot(ShootParams pars)
 		}
 		
 		sound(SND_WPN_SHOTGUN);
+		shoot_smoke(p, v);
 		return ShootResult{num, TimeSpan::seconds(0.7)};
 	}
 	return {};
@@ -403,7 +404,7 @@ WpnRocket::WpnRocket(bool is_player)
 		return &*info;
 	}())
 {
-	pp.dq.amount = 120.f;
+	pp.dq.amount = is_player? 120 : 90;
 	pp.type = StdProjectile::T_AOE;
 	pp.rad = 4.f;
 	pp.rad_min = 0.f;
@@ -422,7 +423,8 @@ std::optional<Weapon::ShootResult> WpnRocket::shoot(ShootParams pars)
 	if (!dirs_tuple) return {};
 	auto [p, v] = *dirs_tuple;
 	auto& core = equip->ent.core;
-	
+	        
+	shoot_smoke(p, v);
 	v *= info->bullet_speed;
 	
 	std::optional<vec2fp> tar;
@@ -464,7 +466,7 @@ BarrageMissile::~BarrageMissile()
 	pp.aoe_max_k = 0.8;
 	pp.aoe_min_k = 0;
 	pp.particles_power = 2 / pp.rad;
-	pp.friendly_fire = 0.5;
+	pp.friendly_fire = 0.25;
 	pp.ignore_hack = typeid(BarrageMissile);
 	
 	PhysicsWorld::RaycastResult ray = {};
@@ -480,7 +482,7 @@ void BarrageMissile::step()
 {
 	const TimeSpan lifetime = TimeSpan::seconds(20); // after armed
 	const float dist_expl = 1; // explosion close
-	const float max_speed = speed * 1.2;
+	const float max_speed = speed * 2.1;
 	
 	const float min_speed = speed * 0.1;
 	const TimeSpan min_spd_max = TimeSpan::seconds(1);
@@ -509,7 +511,7 @@ void BarrageMissile::step()
 	}
 	
 	auto vel = phy.body.GetLinearVelocity();
-	if (vel.LengthSquared() > max_speed * max_speed) {
+	if (vel.LengthSquared() > max_speed * max_speed + 1) {
 		destroy();
 		return;
 	}
@@ -545,6 +547,9 @@ void BarrageMissile::step()
 		float k_dist = dist > dist_precise ? 1 : precise_k;
 		vel += (core.step_len / reverse_time * k_dist) * (conv(dt) - vel);
 		phy.body.SetLinearVelocity(vel);
+	}
+	if (!target) {
+		left = TimeSpan::seconds(core.get_random().range(0, 0.5));
 	}
 }
 
@@ -817,11 +822,11 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 			{
 				charge_lvl += GameCore::time_mul * (1.f / wpr.charge_time.seconds());
 				if (charge_lvl >= 1.f) charge_lvl = 1.f;
-				GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform{p, v.angle()}, charge_lvl * 2, FColor(0, 1, 1)});
+				GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform{p, v.angle()}, charge_lvl * 2, FColor(0, 1, 1, 0.15)});
 			}
 			else {
 				charge_tmo += GameCore::step_len;
-				GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform{p, v.angle()}, charge_lvl * 2.5f, FColor(1, 1, 1)});
+				GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform{p, v.angle()}, charge_lvl * 2.5f, FColor(1, 1, 1, 0.1)});
 			}
 			
 			if (charge_tmo < wpr.wait_time) {
@@ -855,7 +860,7 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 		
 		effect_lightning( p, r_hit, EffectLightning::Straight, TimeSpan::seconds(0.3) );
 		GamePresenter::get()->effect(FE_WPN_CHARGE, {Transform(r_hit, v.angle() + M_PI),
-		                                             charge_lvl * 20, FColor(0.6, 0.85, 1, 1.2)});
+		                                             charge_lvl * 5, FColor(0.6, 0.85, 1, 1.2)});
 		sound(SND_WPN_BOLTER_DISCHARGE);
 		
 		ShootResult res = {int_round(wpr.max_ammo * charge_lvl), std::max(wpr.max_cd * charge_lvl, *info->def_delay)};
@@ -969,7 +974,7 @@ void FoamProjectile::freeze(bool is_normal)
 		if (is_normal) destroy();
 		return;
 	}
-	add_new<EC_ParticleEmitter>().effect(FE_FROST_AURA, {{}, 1.5f, FColor(1,1,1,0.1), 0.5},
+	add_new<EC_ParticleEmitter>().effect(FE_FROST_AURA, {{}, 1.5f, FColor(1, 1, 1, 0.07), 0.5},
 	                                     TimeSpan::seconds(rnd_stat().range(0.3, 0.5)), TimeSpan::nearinfinity);
 	
 	left = TimeSpan::seconds(12);
@@ -1444,7 +1449,7 @@ void ElectroBall::step()
 			
 			core.get_phy().query_circle_all( conv(get_pos()), find_radius,
 			[&](auto& ent, auto&) {
-				if (ent.get_eqp()) es_tars.push_back(ent.index);
+				if (ent.is_creature()) es_tars.push_back(ent.index);
 				else es_grav.push_back(&ent);
 			},
 			[&](auto& ent, auto& fix) {
@@ -1545,11 +1550,12 @@ std::optional<Weapon::ShootResult> WpnUber::shoot(ShootParams pars)
 			StdProjectile::Params pp;
 			pp.dq.amount = lerp(450, 80, dist) * GameCore::time_mul;
 			pp.imp = lerp(30, -5, dist);
+			if (ent.get_team() == TEAM_ENVIRON) pp.friendly_fire = 1;
 			StdProjectile::explode(core, ent.get_team(), ent.index, conv(v), hit, pp);
 		}
 		, ray_width, max_dist, 0, ent.index);
 		
-		if (r_hit) GamePresenter::get()->effect(FE_EXPLOSION, {Transform{*r_hit}, lerp(0.2f, 0.07f, dist)});
+		if (r_hit) GamePresenter::get()->effect(FE_EXPLOSION, {Transform{*r_hit}, lerp(0.1f, 0.04f, dist)});
 		else r_hit = p + v * max_dist;
 		
 		ent.ensure<EC_Uberray>().trigger(*r_hit);

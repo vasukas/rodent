@@ -45,7 +45,7 @@ public:
 		SmoothBlink no_ammo_tcou;
 		
 		void jerr(JustError err) {
-			time = TimeSpan::since_start();
+			time = TimeSpan::current();
 			switch(err)
 			{
 			case ERR_SELECT_OVERHEAT:
@@ -62,7 +62,7 @@ public:
 			}
 		}
 		void no_ammo(int required) {
-			time = TimeSpan::since_start();
+			time = TimeSpan::current();
 			str = FMT_FORMAT("Need {} ammo", required);
 			SoundEngine::once(SND_UI_NO_AMMO, {});
 		}
@@ -268,13 +268,14 @@ public:
 		float flare_incr = 1.f / 0.5; // per second
 		float flare_decr = 1.f / 1.2;
 		FColor clr;
+		bool is_big = false;
 		
 		float level = 0;
 		std::optional<float> target;
 		
 		void trigger(float max = 1) {
-			if (target) target = std::max(*target, max);
-			else target = max;
+			/*if (target) target = std::max(*target, max);
+			else*/ target = max;
 		}
 		float update(float passed) {
 			if (target) {
@@ -299,7 +300,7 @@ public:
 	std::array<Flare, FLARE_TOTAL_COUNT_INTERNAL> flares;
 	
 	RAII_Guard flare_g;
-	std::unique_ptr<Texture> flare_tex;
+	std::unique_ptr<Texture> flare_tex, flare_tex_big;
 	
 	
 	
@@ -327,6 +328,7 @@ public:
 		flares[FLARE_SHIELD].clr = FColor(0.4, 0.9, 1);
 		flares[FLARE_HEALTH].clr = FColor(0.4, 0, 0);
 		flares[FLARE_HEALTH].flare_decr = 1.f / 3;
+		flares[FLARE_HEALTH].is_big = true;
 		flares[FLARE_NO_SHIELD].clr = FColor(0.4, 0.4, 0);
 		flares[FLARE_NO_SHIELD].flare_decr = flares[FLARE_NO_SHIELD].flare_incr;
 		
@@ -335,29 +337,33 @@ public:
 			vec2i sz = RenderControl::get_size();
 			std::vector<uint32_t> px (sz.area());
 			
-			int x0 = sz.x/6; // min offset
-			int x1 = sz.x/3; // max offset
-			int y0 = sz.y/5; // center min
-			float alpha_d = 255.f / x1;
-			
-			auto line = [&](int x, int y){
-				int i; float a;
-				for (a=0, i=x; i>=0; --i, a += alpha_d) {
-					px[            y *sz.x + i] = px[            y *sz.x - i + sz.x - 1] =
-					px[(sz.y - y - 1)*sz.x + i] = px[(sz.y - y - 1)*sz.x - i + sz.x - 1] =
-						SDL_SwapBE32(0xffff'ff00 | int(a));
+			// min offset, max offset, center min
+			auto gen = [&](int x0, int x1, int y0)
+			{
+				float alpha_d = 255.f / x1;
+				auto line = [&](int x, int y){
+					int i; float a;
+					for (a=0, i=x; i>=0; --i, a += alpha_d) {
+						px[            y *sz.x + i] = px[            y *sz.x - i + sz.x - 1] =
+						px[(sz.y - y - 1)*sz.x + i] = px[(sz.y - y - 1)*sz.x - i + sz.x - 1] =
+							SDL_SwapBE32(0xffff'ff00 | int(a));
+					}
+				};
+				for (int y=0; y<y0; ++y) {
+					float t = float(y) / y0;
+					line(lerp(x1, x0, t), y);
 				}
+				int y2 = sz.y/2;
+				if (sz.y % 1) ++y2;;
+				for (int y=y0; y<y2; ++y)
+					line(x0, y);
 			};
-			for (int y=0; y<y0; ++y) {
-				float t = float(y) / y0;
-				line(lerp(x1, x0, t), y);
-			}
-			int y2 = sz.y/2;
-			if (sz.y % 1) ++y2;;
-			for (int y=y0; y<y2; ++y)
-				line(x0, y);
 			
+			gen(sz.x/6, sz.x/3, sz.y/5);
 			flare_tex.reset(Texture::create_from( sz, Texture::FMT_RGBA, px.data() ));
+			
+			gen(sz.x/3, sz.x/2.5, sz.y/2.5);
+			flare_tex_big.reset(Texture::create_from( sz, Texture::FMT_RGBA, px.data() ));
 		});
 	}
 	void render(PlayerManager& mgr, const DrawState& dstate, TimeSpan passed, vec2i mou_pos)
@@ -402,19 +408,22 @@ public:
 				}
 				
 				if (hlc.get_hp().t_state() < 0.95) {
-					flares[FLARE_HEALTH].trigger(1 - hlc.get_hp().t_state()/2);
+					if (flares[FLARE_HEALTH].level < 0.1) flares[FLARE_HEALTH].trigger();
+					else flares[FLARE_HEALTH].trigger(1 - hlc.get_hp().t_state()/2);
 				}
 				else if (!log.pers_shld->get_hp().is_alive()) {
 					flares[FLARE_NO_SHIELD].trigger(0.6);
 				}
 				
 				FColor clr = {0,0,0,0};
+				FColor clr_big = {0,0,0,0};
 				for (auto& f : flares) {
 					FColor c = f.clr;
 					c.a = f.update(passed.seconds());
-					clr += c * c.a;
+					(f.is_big ? clr_big : clr) += c * c.a;
 				}
 				
+				RenImm::get().draw_image({{}, flare_tex->get_size(), true}, flare_tex_big.get(), clr_big.to_px());
 				RenImm::get().draw_image({{}, flare_tex->get_size(), true}, flare_tex.get(), clr.to_px());
 			}
 			
@@ -514,7 +523,7 @@ public:
 			}
 			
 			const TimeSpan wmr_max = TimeSpan::seconds(1.5);
-			TimeSpan wmr_passed = TimeSpan::since_start() - wpn_msgrep.time;
+			TimeSpan wmr_passed = TimeSpan::current() - wpn_msgrep.time;
 			if (wmr_passed < wmr_max)
 			{
 				uint32_t clr = 0xffffff00 | lerp(0, 255, 1 - wmr_passed / wmr_max);

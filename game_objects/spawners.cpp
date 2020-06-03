@@ -4,6 +4,7 @@
 #include "game/level_gen.hpp"
 #include "game_ai/ai_sim.hpp"
 #include "utils/noise.hpp"
+#include "vaslib/vas_containers.hpp"
 #include "vaslib/vas_log.hpp"
 #include "objs_basic.hpp"
 #include "objs_creature.hpp"
@@ -15,7 +16,7 @@
 void level_spawn(GameCore& core, LevelTerrain& lt)
 {
 	TimeSpan time_start = TimeSpan::current();
-	new EWall(core, lt.ls_wall);
+	auto lvl_walls = new EWall(core, lt.ls_wall);
 	
 	/// Square grid non-diagonal directions (-x, +x, -y, +y)
 	const std::array<vec2i, 4> sg_dirs{{{-1,0}, {1,0}, {0,-1}, {0,1}}};
@@ -249,7 +250,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 		};
 		
 		auto mk_cont = [&](vec2i at, float r) {
-			new EDecor( core, "Box", {at, {1,1}, true}, r, rnd_stat().range_n() < 0.3 ? MODEL_STORAGE_BOX_OPEN : MODEL_STORAGE_BOX );
+			new EDecor( core, "Box", {at, {1,1}, true}, r, rnd.range_n() < 0.3 ? MODEL_STORAGE_BOX_OPEN : MODEL_STORAGE_BOX );
 			return true;
 		};
 		auto mk_abox = [&](vec2i at, float) {
@@ -271,10 +272,158 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 			};
 		};
 		
+		enum LightType {
+			LIGHT_DEFAULT,
+			LIGHT_STORAGE,
+			LIGHT_BADCOND,
+			LIGHT_STRUCT_LAB,
+			LIGHT_BLUE,
+			LIGHT_TOPLIGHT
+		};
+		auto spawn_lights = [&](LightType type)
+		{
+			auto spawn = [&](vec2i p, FColor clr, bool do_check = true) {
+				static_vector<vec2i, 4> dir;
+				bool edge = false;
+				for (auto& d : sg_dirs) {
+					if (lt_cref(p + d).is_wall) {
+						dir.push_back(d);
+						if (!r.area.contains_le(p + d)) edge = true;
+					}
+				}
+				if (dir.empty()) return false;
+				if (do_check) {
+					Rect cr = calc_intersection(Rect{{}, lc.get_size(), true}, Rect::from_center_le(p, vec2i::one(2)));
+					if (!cr.map_check([&](vec2i p) {return !lt_cref(p).is_door;}))
+						return false;
+				}
+				if (edge) {
+					for (auto i = dir.begin(); i != dir.end(); ) {
+						if (r.area.contains_le(p + *i)) i = dir.erase(i);
+						else ++i;
+					}
+				}
+				float rot = vec2fp(rnd.random_el(dir)).fastangle();
+				                                                      
+				vec2fp fp = lc.to_center_coord(p);
+				fp += vec2fp(GameConst::cell_size/2, 0).fastrotate(rot);
+				lvl_walls->ensure<EC_LightSource>().add(fp, rot, clr);
+				return true;
+			};
+			auto sp_default = [&](int period, float str_fail, bool no_decor) {
+				int cou = rnd.range_index(period);
+				r.area.map_inner([&](vec2i p) {
+					if (cou) {--cou; return;} else cou = period;
+					spawn(p, FColor(1, 1, 0.5));
+				});
+				r.area.map([&](vec2i p) {
+					if (!lt_cref(p).structure || rnd.range_n() < str_fail) return;
+					if (no_decor) {
+						static_vector<vec2i, 4> dir;
+						for (auto& d : sg_dirs) {
+							if (!lt_cref(p + d).decor_used)
+								dir.push_back(d);
+						}
+						if (!dir.empty())
+							spawn(p + rnd.random_el(dir), FColor(1, 1, 0.5, 0.75));
+					}
+					else spawn(p + rnd.random_el(sg_dirs), FColor(1, 1, 0.5));
+				});
+			};
+                                   
+			switch (type)
+			{
+			case LIGHT_DEFAULT:
+				sp_default(8, 0.6, true);
+				break;
+				
+			case LIGHT_STORAGE:
+				sp_default(12, 0.8, false);
+				break;
+				
+			case LIGHT_BADCOND: {
+					const int period = 6;
+					int cou = rnd.range(period, period * 3);
+					r.area.map_inner([&](vec2i p) {
+						if (cou) {--cou; return;} else cou = rnd.range(period, period * 3);
+						if (rnd.range_n() < 0.8) return;
+						spawn(p, FColor(rnd_stat().range(0.6, 1), rnd_stat().range(0, 0.3), rnd_stat().range(0, 0.1)));
+					});
+					int num = 0;
+					r.area.map([&](vec2i p) {
+						if (num >= 2 || rnd.range_n() < 0.97) return;
+						if (spawn(p, FColor(rnd_stat().range(0.6, 1), rnd_stat().range(0, 0.3), rnd_stat().range(0, 0.1))))
+							++num;
+					});
+				}
+				break;
+				
+			case LIGHT_BLUE: {
+					const int period = 6;
+					int cou = rnd.range_index(period);
+					r.area.map_inner([&](vec2i p) {
+						if (cou) {--cou; return;} else cou = period;
+						spawn(p, FColor(0.4, 0.9, 1));
+					});
+				}
+				break;
+				
+			case LIGHT_STRUCT_LAB: {
+					std::vector<std::pair<vec2i, vec2i>> lines;
+					r.area.map([&](vec2i p) {
+						if (!lt_cref(p).structure) return;
+						bool any = false;
+						for (auto& l : lines) {
+							if (p == l.second + vec2i(1,0) || p == l.second + vec2i(0,1)) {
+								any = true;
+								l.second = p;
+							}
+						}
+						if (!any) {
+							lines.emplace_back(p, p);
+						}
+					});
+					rnd.shuffle(lines);
+					for (auto& l : lines) {
+						if (rnd.range_n() < 0.05) continue;
+						vec2i d = l.second - l.first;
+						vec2i p = d / 2;
+						if (!d.x) {
+							if (!(d.y & 1)) p.y += (d.y < r.area.size().y /2) ? -1 : 1;
+						}
+						else {
+							if (!(d.x & 1)) p.x += (d.x < r.area.size().x /2) ? -1 : 1;
+						}
+						spawn(l.first + p, FColor(0.9, 1, 1), false);
+					}
+				}
+				break;
+				
+			case LIGHT_TOPLIGHT: {
+					FColor clr = FColor(0.2, 1, 0.5);
+					if (r.area.sz.x & 1) {
+						if (spawn(r.area.off + vec2i(r.area.sz.x /2, 0), clr, false)) break;
+						if (spawn(r.area.off + vec2i(r.area.sz.x /2, r.area.sz.y - 1), clr, false)) break;
+					}
+					if (r.area.sz.y & 1) {
+						if (spawn(r.area.off + vec2i(0, r.area.sz.y /2), clr, false)) break;
+						if (spawn(r.area.off + vec2i(r.area.sz.x - 1, r.area.sz.y /2), clr, false)) break;
+					}
+				}
+				break;
+			}
+		};
+		
 		//
 		
-		if		(r.type == LevelTerrain::RM_LIVING)
+		if		(r.type == LevelTerrain::RM_CONNECT)
 		{
+			spawn_lights(LIGHT_DEFAULT);
+		}
+		else if	(r.type == LevelTerrain::RM_LIVING)
+		{
+			spawn_lights(LIGHT_BADCOND);
+			
 			for (int i=0; i<6; ++i)
 			{
 				vec2i at;
@@ -289,6 +438,8 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 		}
 		else if (r.type == LevelTerrain::RM_WORKER)
 		{
+			spawn_lights(LIGHT_BADCOND);
+			
 			// get & check rnd pos
 			auto next_pos = [&]() -> std::optional<vec2i>
 			{
@@ -393,6 +544,8 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 		}
 		else if (r.type == LevelTerrain::RM_REPAIR)
 		{
+			spawn_lights(LIGHT_BLUE);
+			
 			r.area.map_inner([&](vec2i p)
 			{
 				if (rnd.range_n() > 0.5) return;
@@ -405,21 +558,14 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 		}
 		else if (r.type == LevelTerrain::RM_FACTORY)
 		{
+			spawn_lights(LIGHT_DEFAULT);
+			
 			const int max_assemblers = 3;
 			int current_assemblers = 0;
 			
-			// generate conveyor lines
+			// build big grid
 			
-			struct BigCell
-			{
-				std::vector<vec2i> line; ///< Empty for non-column, non-local
-				bool is_conv = false; ///< Has conveyor (impassable)
-				bool is_hor; ///< Is line extended by x
-				int depth; // tmp
-			};
-			std::vector<BigCell> bcs;
-			
-			std::vector<int> cs_xs, cs_ys; // local
+			std::vector<int> cs_xs, cs_ys; // local column coords
 			for (int y = 1; y < r.area.size().y - 1; ++y)
 			for (int x = 1; x < r.area.size().x - 1; ++x)
 			{
@@ -431,100 +577,137 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 			if (cs_xs.empty() || cs_ys.empty())
 				continue;
 			
-			vec2i lsz;
-			lsz.x = cs_xs.size()*2 + 1;
-			lsz.y = cs_ys.size()*2 + 1;
-			
-			auto bc = [&](vec2i p) -> BigCell* {
-				if (p.x < 0 || p.y < 0 || p.x >= lsz.x || p.y >= lsz.y) return nullptr;
-				return &bcs[p.y * lsz.x + p.x];
-			};
-			
-			bcs.resize( lsz.area() );
-			for (int y=0; y < int(cs_ys.size()) + 1; ++y)
-			for (int x=0; x < int(cs_xs.size()) + 1; ++x)
+			struct BigCell
 			{
-				vec2i p0, p1;
-				p0.x = x ? cs_xs[x-1] + 1 : 0;
-				p0.y = y ? cs_ys[y-1] + 1 : 0;
-				p1.x = x != int(cs_xs.size()) ? cs_xs[x] : r.area.size().x;
-				p1.y = y != int(cs_ys.size()) ? cs_ys[y] : r.area.size().y;
+				vec2i p0, p1; // local column coords
+				int self;
+				static_vector<int, 4> neis;
+				bool visited;
+			};
+			std::vector<BigCell> bcs;
+			bcs.reserve( (cs_ys.size() + 1)*(cs_xs.size() + 1) );
+			
+			for (size_t y=0; y <= cs_ys.size(); ++y)
+			for (size_t x=0; x <= cs_xs.size(); ++x)
+			{
+				auto& b = bcs.emplace_back();
+				b.self = bcs.size() - 1;
 				
-				if (y) {
-					auto& c = *bc({x*2, y*2 - 1});
-					c.is_hor = true;
-					for (int lx = p0.x; lx < p1.x; ++lx)
-						c.line.push_back(vec2i{ lx, cs_ys[y-1] } + r.area.lower());
+				if (!x) b.p0.x = -1;
+				else {
+					b.p0.x = cs_xs[x-1];
+					b.neis.push_back(b.self - 1);
 				}
-				if (x) {
-					auto& c = *bc({x*2 - 1, y*2});
-					c.is_hor = false;
-					for (int ly = p0.y; ly < p1.y; ++ly)
-						c.line.push_back(vec2i{ cs_xs[x-1], ly } + r.area.lower());
+				
+				if (!y) b.p0.y = -1;
+				else {
+					b.p0.y = cs_ys[y-1];
+					b.neis.push_back(b.self - (cs_xs.size() + 1));
 				}
-				if (x && y) {
-					auto& c = *bc({x*2 - 1, y*2 - 1});
-					c.is_conv = true;
+				
+				if (x == cs_xs.size()) b.p1.x = r.area.size().x;
+				else {
+					b.p1.x = cs_xs[x];
+					b.neis.push_back(b.self + 1);
 				}
+				
+				if (y == cs_ys.size()) b.p1.y = r.area.size().y;
+				else {
+					b.p1.y = cs_ys[y];
+					b.neis.push_back(b.self + (cs_xs.size() + 1));
+				}
+				
+				rnd.shuffle(b.neis);
 			}
 			
-			const int depth_max = 100000;
-			auto check = [&]
-			{
-				for (auto& c : bcs)
-					c.depth = c.is_conv ? -1 : depth_max;
-				
-				int depth = 0;
-				bcs[0].depth = 0;
-				
-				while (true)
+			// generate conveyor lines
+			
+			std::vector<vec2i> tmp_cs;
+			
+			std::vector<int> bcs_order(bcs.size());
+			std::iota(bcs_order.begin(), bcs_order.end(), 0);
+			rnd.shuffle(bcs_order);
+			
+			for (auto& bi : bcs_order) {
+				auto& b = bcs[bi];
+				for (auto ni = b.neis.begin(); ni != b.neis.end(); )
 				{
-					bool any = false;
-					for (int y=0; y < lsz.y; ++y)
-					for (int x=0; x < lsz.x; ++x)
-					{
-						if (bc({x, y})->depth != depth) continue;
+					if (rnd.range_n() < 0.25) {
+						++ni;
+						continue;
+					}
+					
+					for (auto& b : bcs) b.visited = false;
+					b.visited = true;
+					
+					auto mark = [&](auto& b, auto mark) {
+						if (b.visited) return;
+						b.visited = true;
+						for (auto& n : b.neis) mark(bcs[n], mark);
+					};
+					for (auto& n : b.neis) {
+						if (n != *ni)
+							mark(bcs[n], mark);
+					}
+					
+					bool ok = true;
+					for (auto& b : bcs) if (!b.visited) {ok = false; break;}
+					if (!ok) {
+						++ni;
+						continue;
+					}
+					
+					// determine line position
+					
+					vec2i pos_0, pos_1;
+					int bc_a = b.self;
+					int bc_b = *ni;
+					
+					if (bc_a > bc_b) {
+						if (bc_a == bc_b + 1) { // x0
+							pos_0.x = b.p0.x;  pos_0.y = b.p0.y + 1;
+							pos_1.x = b.p0.x;  pos_1.y = b.p1.y - 1;
+						}
+						else { // y0
+							pos_0.x = b.p0.x + 1;  pos_0.y = b.p0.y;
+							pos_1.x = b.p1.x - 1;  pos_1.y = b.p0.y;
+						}
+					}
+					else {
+						if (bc_a == bc_b - 1) { // x1
+							pos_0.x = b.p1.x;  pos_0.y = b.p0.y + 1;
+							pos_1.x = b.p1.x;  pos_1.y = b.p1.y - 1;
+						}
+						else { // y1
+							pos_0.x = b.p0.x + 1;  pos_0.y = b.p1.y;
+							pos_1.x = b.p1.x - 1;  pos_1.y = b.p1.y;
+						}
+					}
+					
+					// generate line - or skip it
+					
+					tmp_cs.clear();
+					vec2i dt = pos_0.x == pos_1.x ? vec2i(0,1) : vec2i(1,0);
+					
+					for (; pos_0 != pos_1 + dt && ok; pos_0 += dt) {
+						tmp_cs.push_back(r.area.lower() + pos_0);
 						for (auto& d : sg_dirs) {
-							if (auto nc = bc(vec2i{x,y} + d);
-							    nc && nc->depth > depth)
-							{
-								nc->depth = depth;
-								any = true;
+							if (lt_cref(tmp_cs.back() + d).is_door) {
+								ok = false;
+								break;
 							}
 						}
 					}
-					if (!any) break;
-				}
-				
-				for (auto& c : bcs) if (c.depth == depth_max) return false;
-				return true;
-			};
-			
-			std::vector<vec2i> tries; ///< Not yet tried, bcs coords
-			tries.reserve( cs_xs.size() * cs_ys.size() * 2 );
-			
-			for (size_t y=1; y <= cs_ys.size(); ++y)
-			for (size_t x=1; x <= cs_xs.size(); ++x)
-			{
-				tries.push_back(vec2i( x*2 - 1, y*2 ));
-				tries.push_back(vec2i( x*2, y*2 - 1 ));
-			}
-			rnd.shuffle(tries);
-			
-			for (auto& bcp : tries)
-			{
-				if (rnd.range_n() < 0.25) continue;
-				
-				auto& bigc = *bc(bcp);
-				bigc.is_conv = true;
-				
-				if (!check()) bigc.is_conv = false;
-				else {
-					float rot = bigc.is_hor ? M_PI/2 : 0;
+					if (!ok) {
+						++ni;
+						continue;
+					}
+					
+					float rot = (pos_0.x == pos_1.x) ? 0 : M_PI/2;
 					if (rnd.flag()) rot += M_PI;
 					
-					rnd.shuffle(bigc.line);
-					for (auto& p : bigc.line)
+					rnd.shuffle(tmp_cs);
+					for (auto& p : tmp_cs)
 					{
 						float t = rnd.range_n();
 						if		(t < 0.75) {
@@ -542,6 +725,11 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 						else mk_abox(p, rot);
 						lt_cref(p).is_wall = true;
 					}
+					
+					// remove - only on successful generation (may fail because of doors)
+					
+					erase_if(bcs[*ni].neis, [&](auto& i) {return i == b.self;});
+					ni = b.neis.erase(ni);
 				}
 			}
 			
@@ -554,6 +742,8 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 		}
 		else if (r.type == LevelTerrain::RM_LAB)
 		{
+			spawn_lights(LIGHT_STRUCT_LAB);
+			
 			r.area.map_inner([&](vec2i p) {
 				lt_cref(p).structure = {};
 				if (rnd.range_n() < 0.2)
@@ -574,6 +764,8 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 		}
 		else if (r.type == LevelTerrain::RM_STORAGE)
 		{
+			spawn_lights(LIGHT_STORAGE);
+			
 			auto spawn = [&](vec2i p)
 			{
 				if (rnd.range_n() > 0.45) return;
@@ -610,7 +802,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 				auto& c = lt_cref(p);
 				if (c.structure) {
 					for (auto& d : sg_dirs)
-						rnd.random_el(cs)(p + d);
+						rnd.random_chance(cs)(p + d);
 				}
 			});
 			
@@ -636,6 +828,8 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 		}
 		else if (r.type == LevelTerrain::RM_TRANSIT)
 		{
+			spawn_lights(LIGHT_TOPLIGHT);
+			
 			vec2fp at = room_ctr(r, true);
 			new ETeleport(core, at);
 			lt_cref( lc.to_cell_coord(at) ).decor_used = true;
@@ -650,6 +844,8 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 		}
 		else if (r.type == LevelTerrain::RM_ABANDON)
 		{
+			spawn_lights(LIGHT_BADCOND);
+			
 			for (int i=0; i<4; ++i)
 			{
 				vec2i at;
@@ -703,7 +899,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 			
 			for (auto& d : sg_dirs) {
 				int n = AI_SimResource::max_capacity;
-				new AI_SimResource(core, {AI_SimResource::T_LEVELTERM, true, n, n}, p + d * (rad + 1.5), p);
+				new AI_SimResource(core, {AI_SimResource::T_LEVELTERM, true, n, n}, p + vec2fp(d) * (rad + 2), p);
 			}
 		}
 		else if (r.type == LevelTerrain::RM_LIVING)   key_rooms.push_back(&r);
@@ -777,6 +973,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 		
 		size_t num = dl_count * (room_area / room_cdel);
 		if (!num) continue;
+		num = std::min<size_t>(num, 16);
 		
 		std::vector<vec2i> spawn_ps;
 		spawn_ps.reserve( r.area.size().area() );

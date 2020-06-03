@@ -33,6 +33,7 @@
 #include "render/ren_text.hpp"
 #include "utils/path_search.hpp"
 #include "utils/res_image.hpp"
+#include "vaslib/vas_string_utils.hpp"
 
 
 
@@ -179,6 +180,9 @@ public:
 	bool menu_pause = false;
 	
 	TimeSpan since_victory;
+	bool stats_screen = false;
+	GameModeCtr::FinalState::Type stats_screen_victory;
+	vec2i stats_scroll_pos = {};
 	
 	SmoothBlink gm_status_blink;
 	float gm_prev_level = 2; // >1, to flash on appear
@@ -200,7 +204,7 @@ public:
 	
 	// debug stats
 	
-	RAII_Guard dbg_serv_g, dbg_rend_g;
+	RAII_Guard dbg_serv_g;
 	std::optional<vigAverage> dbg_serv_avg;
 	
 	double serv_avg_total = 0;
@@ -222,27 +226,12 @@ public:
 		PlayerInput::get().set_context(PlayerInput::CTX_GAME);
 		init_greet = std::move(pars.init_greet);
 		allow_cheats = pars.allow_cheats;
+		is_ren_paused = pars.start_paused;
 		
 		crosshair_tex.reset(Texture::load(HARDPATH_CROSSHAIR_IMG));
 		
 		if (pars.debug_menu)
 		{
-			dbg_rend_g = vig_reg_menu(VigMenu::DebugRenderer, []
-			{
-				auto& t = AppSettings::get_mut().aal_type;
-				auto bt = [&](auto type, auto text){
-					if (vig_button(text, 0, t == type)) {
-						t = type;
-						AppSettings::get_mut().trigger_cbs();
-					}
-				};
-				vig_label("AAL glow");
-				bt(AppSettings::AAL_OldFuzzy, "OldFuzzy");
-				bt(AppSettings::AAL_CrispGlow, "CrispGlow");
-				bt(AppSettings::AAL_Clear, "Clear");
-				vig_lo_next();
-			});
-			
 			dbg_serv_avg.emplace(5.f, GameCore::time_mul);
 			
 			dbg_serv_g = vig_reg_menu(VigMenu::DebugGame, [this]
@@ -365,6 +354,7 @@ public:
 			p->music(nullptr);
 			p->set_pause(true);
 		}
+		Postproc::get().ui_mode(true);
 		
 		gctr.set_post_step({});
 		VLOGI("Average logic frame length: {} ms, {} samples", serv_avg_total, serv_avg_count);
@@ -397,7 +387,7 @@ public:
 			gctr.get_core().get_pmg().set_pui( std::unique_ptr<PlayerUI>(pmg_ui) );
 		}
 		
-		RenAAL::get().draw_grid = true;
+		Postproc::get().ui_mode(false);
 		Postproc::get().tint_seq({}, FColor(0,0,0,0));
 		
 		if (true)
@@ -405,8 +395,7 @@ public:
 	}
 	void on_leave()
 	{
-		RenAAL::get().draw_grid = false;
-		RenParticles::get().enabled = false;
+		Postproc::get().ui_mode(true);
 		
 		auto lock = gctr.core_lock();
 		gctr.set_pause(true);
@@ -416,8 +405,7 @@ public:
 	}
 	void on_enter()
 	{
-		RenAAL::get().draw_grid = true;
-		RenParticles::get().enabled = true;
+		Postproc::get().ui_mode(false);
 		hide_pause_until = TimeSpan::since_start() + TimeSpan::seconds(0.5);
 		
 		auto lock = gctr.core_lock();
@@ -531,10 +519,73 @@ public:
 			init();
 		}
 		
-		if (auto st = std::get_if<GameControl::CS_Init>(&gstate))
+		if (stats_screen)
 		{
-			const float period = 12;
-			float t = std::fmod(TimeSpan::current().seconds(), period) / period;
+			vig_lo_push_scroll(RenderControl::get_size() - vig_element_decor()*2, stats_scroll_pos);
+			
+			auto& core = gctr.get_core();
+			
+			float visited_area = 0;
+			if (lmap) for (auto& r : lmap->get_visited()) visited_area += r->fp_area().size().area();
+			float total_area = 0;
+			for (auto& r : core.get_lc().get_rooms()) total_area += r.fp_area().size().area();
+			
+			switch (stats_screen_victory) {
+			case GameModeCtr::FinalState::Won:
+				vig_label("Access to the next level acquired!\n\n");
+				vig_label_a("Level completetion: {:3}%\n", int(100 * visited_area / total_area));
+				break;
+			case GameModeCtr::FinalState::Lost:
+				vig_label("Station access is terminated.\n\n");
+				vig_label_a("Level completetion: {:3}%\n", int(100 * visited_area / total_area));
+				break;
+			case GameModeCtr::FinalState::End:
+				vig_label("OK.\n");
+				break;
+			}
+			vig_space_line();
+			
+			int ttime = core.get_step_time().seconds(); // includes fast-forward
+			vig_label_a("Total time (ingame): {}:{:02}:{:02}\n", ttime / 3600, (ttime / 60) % 60, ttime % 60);
+			vig_label_a("Active factories left: {}\n", core.spawn_hunters ? "YES" : "NO");
+			vig_space_line();
+			
+#define GEV(T) uint64_t(core.get_info().get_stat_event(GameInfoList::T))
+#define BIGEV(T) string_u64toa_delim(GEV(T))
+			vig_label_a("Kills:      {} / {}\n", GEV(STAT_DEATHS_BOTS) + GEV(STAT_DEATHS_BOSSES), GEV(STAT_SPAWN_BOTS_ALL));
+			vig_label_a("Boss kills: {}\n", GEV(STAT_DEATHS_BOSSES));
+			vig_label_a("Deaths:     {}\n", GEV(STAT_DEATHS_PLAYER));
+			vig_space_line();
+			vig_label_a("Damage!\n");
+			vig_label_a("  dealt:    {}\n", BIGEV(STAT_DAMAGE_RECEIVED_BOTS));
+			vig_label_a("  received: {}\n", BIGEV(STAT_DAMAGE_RECEIVED_PLAYER));
+			vig_label_a("  blocked:  {}\n", BIGEV(STAT_DAMAGE_BLOCKED));
+			vig_space_line();
+			vig_label_a("Travelled total: {} m\n", string_u64toa_delim(GEV(STAT_MOVED_NORMAL) + GEV(STAT_MOVED_ACCEL)));
+			vig_label_a("  normal: {} m\n", BIGEV(STAT_MOVED_NORMAL));
+			vig_label_a("  accel:  {} m\n", BIGEV(STAT_MOVED_ACCEL));
+			vig_space_line();
+			
+			auto& teleps = core.get_info().get_teleport_list();
+			int found = 0; for (auto& t : teleps) if (t.discovered) ++found;
+			vig_label_a("Teleports found: {} / {}\n", found, teleps.size());
+#undef GEV
+#undef BIGEV
+			vig_lo_pop();
+			
+			auto& pinp = PlayerInput::get();
+			pinp.set_context(PlayerInput::CTX_MENU);
+			pinp.update(PlayerInput::CTX_MENU);
+			if (pinp.get_state(PlayerInput::CTX_MENU).is[PlayerInput::A_MENU_EXIT]) {
+				if (auto p = SoundEngine::get())
+					p->music(nullptr);
+				delete MainLoop::current;
+				return;
+			}
+		}
+		else if (auto st = std::get_if<GameControl::CS_Init>(&gstate))
+		{
+			float t = TimeSpan::get_period_t(12);
 			t = 4 + 0.15 * std::sin(t * M_PI * 2);
 			draw_text_message(st->stage + "\n\n" + init_greet, t);
 		}
@@ -543,6 +594,11 @@ public:
 			if (!st->err_msg.empty()) {
 				LOG_THROW("Game exception - {}", st->err_msg);
 				// exits
+			}
+			
+			if (!since_victory.is_positive()) { // first time
+				if (auto p = SoundEngine::get())
+					p->music("menu_stats");
 			}
 			
 			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
@@ -575,9 +631,20 @@ public:
 			auto& pinp = PlayerInput::get();
 			pinp.set_context(PlayerInput::CTX_MENU);
 			pinp.update(PlayerInput::CTX_MENU);
-			if (pinp.get_state(PlayerInput::CTX_MENU).is[PlayerInput::A_MENU_EXIT]) {
-				delete MainLoop::current;
-				return;
+			if (pinp.get_state(PlayerInput::CTX_MENU).is[PlayerInput::A_MENU_EXIT])
+			{
+				auto& gmc = gctr.get_core().get_gmc();
+				if (typeid(gmc) != typeid(GameMode_Tutorial)) {
+					stats_screen = true;
+					stats_screen_victory = st->fs.type;
+					on_leave();
+					if (auto p = SoundEngine::get())
+						p->music("menu_stats");
+				}
+				else {
+					delete MainLoop::current;
+					return;
+				}
 			}
 		}
 		else if (!RenderControl::get().is_visible() && !ignore_ren_pause)
@@ -622,7 +689,7 @@ public:
 				else if (num > AI_Const::msg_engage_max_bots + 6) {
 					snd->music_control(SoundEngine::MUSC_EPIC);
 				}
-				else if (num >= AI_Const::msg_engage_max_bots - 1) {
+				else if (num > AI_Const::msg_engage_max_bots) {
 					snd->music_control(SoundEngine::MUSC_HEAVY);
 				}
 				else {
@@ -649,15 +716,18 @@ public:
 			
 			// set camera
 			
-			if (auto ent = core.get_pmg().get_ent())
 			{
 				const float tar_min = GameConst::hsz_rat * 2;
 				const float tar_max = 15.f;
 //				const float tar_max = 15.f * (calc_mag / cam.get_state().mag);
 				
-				const vec2fp pos = GamePresenter::get()->playback_hack
-				                   ? ent->get_pos()
-				                   : ent->ref<EC_RenderPos>().get_cur().pos;
+				vec2fp pos;
+				if (auto ent = core.get_pmg().get_ent()) {
+					if (GamePresenter::get()->playback_hack) pos = ent->get_pos();
+					else pos = ent->ref<EC_RenderPos>().get_cur().pos;
+				}
+				else pos = core.get_pmg().get_last_pos();
+				
 				vec2fp tar = pos;
 				if (inpst.is[PlayerInput::A_CAM_FOLLOW])
 				{
@@ -1077,6 +1147,10 @@ public:
 		allow_cheats = true;
 		pmg_ui->debug_mode = allow_cheats;
 		pmg_ui->message("CHEATS ENABLED", TimeSpan::seconds(1), TimeSpan::seconds(1));
+	}
+	bool has_game_finished()
+	{
+		return stats_screen && dynamic_cast<GameMode_Normal*>(&gctr.get_core().get_gmc());
 	}
 	
 	void save_automap(const char *filename)

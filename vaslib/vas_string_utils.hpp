@@ -44,6 +44,12 @@ bool string_atoi(std::string_view s, int64_t& value, int base = 10);
 bool string_atof(std::string_view s, double& value);
 bool string_atof(std::string_view s, float& value);
 
+///
+std::string string_u64toa(uint64_t value, int base = 10, bool hex_capital = false);
+
+/// Returns string with delimiters at specified intervals
+std::string string_u64toa_delim(uint64_t value, char delim = '\'', int delim_digits = 3, int base = 10);
+
 
 
 /// Splits string by any of delimiters

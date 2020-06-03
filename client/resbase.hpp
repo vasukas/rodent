@@ -122,6 +122,8 @@ public:
 	virtual Rectfp get_size(ModelType type) = 0; ///< Without scalebox transform
 	virtual TextureReg get_image(ModelType type) = 0; ///< Value may change between calls
 	
+	virtual TextureReg get_explo_wave() = 0;
+	
 protected:
 	friend class GamePresenter_Impl;
 	virtual void init_ren_wait() = 0; // waits until all non-render-thread init is complete

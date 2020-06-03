@@ -32,10 +32,26 @@ public:
 	
 	std::vector<BotAssemblerInfo>& get_assembler_list() {return assembler_list;}
 	
+	enum EventType {
+		STAT_DAMAGE_RECEIVED_PLAYER,
+		STAT_DAMAGE_RECEIVED_BOTS,
+		STAT_DAMAGE_BLOCKED,
+		STAT_DEATHS_PLAYER,
+		STAT_DEATHS_BOTS,
+		STAT_DEATHS_BOSSES,
+		STAT_SPAWN_BOTS_ALL,
+		STAT_MOVED_NORMAL,
+		STAT_MOVED_ACCEL,
+		STAT__TOTAL_COUNT
+	};
+	void stat_event(EventType ev, float increase = 1) {stat_event_vals[ev] += increase;}
+	float get_stat_event(EventType ev) const {return stat_event_vals[ev];}
+	
 private:
 	std::vector<TeleportInfo> teleport_list;
 	std::optional<size_t> teleport_cur;
 	std::vector<BotAssemblerInfo> assembler_list;
+	std::array<float, STAT__TOTAL_COUNT> stat_event_vals = {};
 	
 	friend class GameCore_Impl;
 	GameInfoList() = default;

@@ -105,6 +105,7 @@ public:
 		}
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, ctx_flags);
 		SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
+		SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 		
 		auto wnd_sz = AppSettings::get().wnd_size;
 		auto opt_fs = AppSettings::get().fscreen;
@@ -436,7 +437,7 @@ public:
 	
 	void exec_task(callable_ref<void()> f)
 	{
-		if (mainthr_id == std::this_thread::get_id()) {
+		if (is_rendering_thread()) {
 			f();
 			return;
 		}
@@ -473,6 +474,10 @@ public:
 			}
 		}
 		task_cv.notify_all();
+	}
+	bool is_rendering_thread() const
+	{
+		return mainthr_id == std::this_thread::get_id();
 	}
 };
 bool RenderControl::init()

@@ -104,7 +104,7 @@ public:
 	virtual size_t get_team() const {return TEAM_ENVIRON;}
 	vec2fp get_pos() {return ref_pc().get_pos();}
 	
-	virtual bool is_creature() {return get_eqp();}
+	virtual bool is_creature() {return get_eqp() && get_team() != TEAM_ENVIRON;}
 
 	
 	

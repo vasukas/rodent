@@ -14,12 +14,11 @@ class PP_Node
 {
 public:
 	const std::string name;
-	const bool has_input; ///< Is target (disabled if have no inputs)
-	const bool has_output; ///< Is provider (disabled if have no target)
+	const bool needs_input;
+	const bool needs_output;
 	
 	
-	PP_Node(std::string name, bool has_input = true, bool has_output = true); ///< Adds self to PP_Graph
-	virtual ~PP_Node(); ///< Removes self from graph
+	PP_Node(std::string name, bool needs_input = true, bool needs_output = true); ///< Adds self to PP_Graph
 	
 	/// Called once before each step. Returns true if node is enabled
 	virtual bool prepare() = 0;
@@ -29,6 +28,10 @@ public:
 	
 	/// Returns input framebuffer (called once per input, but only before proc())
 	virtual GLuint get_input_fbo() = 0;
+	
+protected:
+	friend class PP_Graph_Impl;
+	virtual ~PP_Node() = default;
 };
 
 
@@ -49,7 +52,6 @@ protected:
 	
 	friend PP_Node;
 	virtual void add_node(PP_Node* node) = 0;
-	virtual void del_node(PP_Node* node) = 0;
 };
 
 
@@ -92,16 +94,24 @@ private:
 class PPN_InputDraw : public PP_Node
 {
 public:
-	bool enabled;
-	PPN_InputDraw(std::string name, std::function<void(GLuint fbo)> func, bool enabled = true)
-	    : PP_Node(name, false, true), enabled(enabled), func(std::move(func))
-	{}
+	enum Middle_FBO {
+		MID_NONE = 0,
+		MID_COLOR = 1,
+		MID_DEPTH_STENCIL = 2
+	};
+	
+	bool enabled = true;
+	PPN_InputDraw(std::string name, Middle_FBO mid_fbo, std::function<void(GLuint fbo)> func);
 	
 private:
+	std::unique_ptr<Shader> pass;
+	std::optional<GLA_Framebuffer> fbo;
+	RAII_Guard fbo_g;
 	std::function<void(GLuint)> func;
+	bool alt_blend;
 	
 	bool prepare() override {return enabled;}
-	void proc(GLuint fbo) override {func(fbo);}
+	void proc(GLuint fbo_out) override;
 	GLuint get_input_fbo() override {throw std::logic_error("PPN_InputDraw::get_input_fbo() called");}
 };
 

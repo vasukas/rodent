@@ -121,6 +121,11 @@ void transform(const ContIn& in, ContOut& out, UnaryF f)
 		out.emplace_back(f(*it));
 }
 
+template <typename Map, typename Key>
+bool contains(const Map& map, const Key& key) {
+	return map.find(key) != map.end();
+}
+
 
 
 /// Non-owning reference to callable object

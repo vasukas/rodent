@@ -1,4 +1,3 @@
-#include "core/settings.hpp"
 #include "client/resbase.hpp"
 #include "utils/noise.hpp"
 #include "vaslib/vas_cpp_utils.hpp"
@@ -159,9 +158,6 @@ public:
 	RAII_Guard fbo_g;
 	Noise fbo_noi;
 	
-	//
-	RAII_Guard sett_g;
-	
 	
 	
 	void add_line(vec2fp p0, vec2fp p1, float width, float wpar, float aa_width)
@@ -266,9 +262,7 @@ public:
 		sh      = Shader::load("aal", {}, true);
 		sh_inst = Shader::load("aal_inst", {}, true);
 		
-		sett_g = AppSettings::get_mut().add_cb([this]{
-			reinit_glow();
-		});
+		reinit_glow();
 		
 		// for grid
 		
@@ -300,20 +294,7 @@ public:
 				return a * exp(-(x*x) / c);
 			});
 		};
-		switch (AppSettings::get().aal_type)
-		{
-		case AppSettings::AAL_OldFuzzy:
-			init_old(0.2);
-			break;
-		
-		case AppSettings::AAL_CrispGlow:
-			init([](float x){ return x*x; });
-			break;
-			
-		case AppSettings::AAL_Clear:
-			init_old(0.17);
-			break;
-		}
+		init_old(0.17);
 
 		tex.bind();
 		glTexImage2D(tex.target, 0, GL_R8, n, 1, 0, GL_RED, GL_FLOAT, data);
@@ -348,6 +329,11 @@ public:
 	{
 		if (inst_locked) return;
 		
+		// draw to buffer
+		
+		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
+		glBlendEquation(GL_MAX);
+		
 		const float *mx = RenderControl::get().get_world_camera().get_full_matrix();
 		const float scrmul = 1.f;//cam->get_state().mag;
 		
@@ -378,7 +364,7 @@ public:
 			objs.clear();
 			prev_clr = 0;
 		}
-		if (!inst_q.empty() || draw_grid)
+		if (!inst_q.empty())
 		{
 			inst_vao.bind();
 			
@@ -439,7 +425,7 @@ public:
 		
 		glBindFramebuffer(GL_FRAMEBUFFER, fbo_out);
 		
-		glBlendFuncSeparate(GL_ONE_MINUS_DST_ALPHA, GL_ONE, GL_ONE, GL_ONE);
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 		glBlendEquation(GL_FUNC_ADD);
 		
 		fbo_sh->bind();

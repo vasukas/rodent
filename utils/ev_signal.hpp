@@ -81,10 +81,10 @@ struct ev_signal : ev_signal_detail::Publr
 		s.rs.emplace_back(this, ss.size());
 		ss.emplace_back(std::move(cb), &s);
 	}
-	void signal(Args&... args) {
+	void signal(const Args&... args) {
 		for (auto& s : ss)
 			if (s.first)
-				s.first( std::forward<Args>(args)... );
+				s.first(args...);
 	}
 	bool has_conn() {
 		for (auto& s : ss) if (s.first) return true;

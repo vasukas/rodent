@@ -9,17 +9,14 @@ set(TARGET rodent)
 
 
 option(USE_OPUSFILE "Compile with opus audio support" ON)
-option(USE_OPENMPT "Compile with tracker music support" OFF)
 option(USE_SANITIZERS "Compile with all sanitizers (GCC/clang only)" OFF)
+option(DOWNLOAD_SOUNDS "Download sounds and music from github branch" ON)
 
 # pass 'PKG_OUTPUT_DIR' with path to copy all runtime files to after compilation
 # pass 'USE_SDL_MAIN=1' to compile with SDL_main
 
 if (USE_OPUSFILE)
 	target_compile_definitions(${TARGET} PRIVATE USE_OPUSFILE=1)
-endif()
-if (USE_OPENMPT)
-	target_compile_definitions(${TARGET} PRIVATE USE_OPENMPT=1)
 endif()
 if (USE_SDL_MAIN)
 	target_compile_definitions(${TARGET} PRIVATE USE_SDL_MAIN=1)
@@ -78,14 +75,22 @@ include(FetchContent)
 FetchContent_Declare(
 	Box2D
 	GIT_REPOSITORY  https://github.com/erincatto/Box2D.git
+	GIT_SHALLOW 1
 )
 FetchContent_Declare(
 	fmtlib
 	GIT_REPOSITORY  https://github.com/fmtlib/fmt.git
+	GIT_SHALLOW 1
 )
 FetchContent_Declare(
 	stb
 	GIT_REPOSITORY  https://github.com/nothings/stb.git
+	GIT_SHALLOW 1
+)
+FetchContent_Declare(
+	pnoise
+	GIT_REPOSITORY  https://github.com/stegu/perlin-noise
+	GIT_SHALLOW 1
 )
 
 find_package(fmt      QUIET)
@@ -105,6 +110,11 @@ target_include_directories(${TARGET} PRIVATE "${box2d_SOURCE_DIR}/include")
 FetchContent_Populate(stb)
 target_include_directories(${TARGET} PRIVATE "${stb_SOURCE_DIR}")
 
+FetchContent_Populate(pnoise)
+target_include_directories(${TARGET} PRIVATE "${pnoise_SOURCE_DIR}/src")
+target_sources(${TARGET} PRIVATE "${pnoise_SOURCE_DIR}/src/noise1234.c")
+set_source_files_properties("${pnoise_SOURCE_DIR}/src/noise1234.c" PROPERTIES LANGUAGE CXX)
+
 if (NOT ${fmt_FOUND})
 	FetchContent_MakeAvailable(fmtlib)
 	target_include_directories(${TARGET} PRIVATE "${fmtlib_SOURCE_DIR}/include")
@@ -115,10 +125,6 @@ if (USE_OPUSFILE)
 	if (NOT ${opusfile_FOUND})
 		add_subdirectory(scripts/opusfile)
 	endif()
-endif()
-
-if (USE_OPENMPT)
-	find_package(libopenmpt)
 endif()
 
 
@@ -136,16 +142,11 @@ list(APPEND DLL_NAMES
 	freetype
 	glew
 	ogg opus opusfile
-	openmpt
 	SDL2
 )
 
 if (USE_OPUSFILE)
 	target_link_libraries(${TARGET} PRIVATE opusfile)
-endif()
-
-if (USE_OPENMPT)
-	target_link_libraries(${TARGET} PRIVATE libopenmpt)
 endif()
 
 if (USE_SDL_MAIN)
@@ -155,6 +156,8 @@ endif()
 if (WIN32)
 	target_link_libraries(${TARGET} PRIVATE ws2_32)
 endif()
+
+target_compile_definitions(${TARGET} PRIVATE PROJECT_VERSION_STRING="${rodent_VERSION}")
 
 
 
@@ -214,6 +217,7 @@ list(APPEND SRC_LIST
 	render/pp_graph
 	render/ren_aal
 	render/ren_imm
+	render/ren_light
 	render/ren_particles
 	render/ren_text
 	render/shader
@@ -278,17 +282,32 @@ endif()
 
 
 
+function(postbuild_cmd)
+	add_custom_command(TARGET ${TARGET} POST_BUILD COMMAND "${CMAKE_COMMAND}" -E ${ARGV})
+endfunction()
+
+# Download sounds from branch
+if (DOWNLOAD_SOUNDS)
+	FetchContent_Declare(
+		binary_sounds
+		GIT_REPOSITORY  https://github.com/vasukas/rodent.git
+		GIT_TAG         binary_sounds
+		GIT_SHALLOW 1
+	)
+	FetchContent_Populate(binary_sounds)
+	postbuild_cmd(copy_directory "${binary_sounds_SOURCE_DIR}/data" "${PROJECT_SOURCE_DIR}/data")
+endif()
+
 # Copy 'data/' and DLLs to packaging dir
 if (PKG_OUTPUT_DIR)
-	function(postbuild_cmd)
-		add_custom_command(TARGET ${TARGET} POST_BUILD COMMAND "${CMAKE_COMMAND}" -E ${ARGV})
-	endfunction()
-	
 	get_filename_component(PKG_OUTPUT_DIR "${PKG_OUTPUT_DIR}" ABSOLUTE)
 	postbuild_cmd(make_directory "${PKG_OUTPUT_DIR}")
 	postbuild_cmd(copy $<TARGET_FILE:${TARGET}> "${PKG_OUTPUT_DIR}/$<TARGET_FILE_NAME:${TARGET}>")
 	postbuild_cmd(copy_directory "${PROJECT_SOURCE_DIR}/data" "${PKG_OUTPUT_DIR}/data")
 	postbuild_cmd(remove_directory "${PKG_OUTPUT_DIR}/user")
+	
+	file(GLOB LICENSES "${PROJECT_SOURCE_DIR}/LICENSE*")
+	postbuild_cmd(copy ${LICENSES} "${PKG_OUTPUT_DIR}")
 	
 	if (WIN32)
 		foreach(NAME ${DLL_NAMES})

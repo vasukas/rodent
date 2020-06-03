@@ -16,6 +16,7 @@ struct ReplayInitData
 	bool pmg_superman;
 	bool pmg_dbg_ai_rect;
 	bool mode_survival;
+	std::optional<std::string> incompat_version; // only for reading; contains version
 };
 
 struct Replay_DebugTeleport

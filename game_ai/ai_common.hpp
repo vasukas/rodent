@@ -214,8 +214,12 @@ const int msg_engage_relay_dist = 0;
 const int msg_helpcall_dist = 5;
 const int msg_helpcall_highprio_dist = 8;
 
-/// Engage message sent only if group has less bots
+/// Engage message sent only if group has less bots. 
+/// (and only if new bot added to group)
 const int msg_engage_max_bots = 12;
+
+/// Engage message is immediatly stopped if group has more bots
+const int msg_engage_hard_limit = 22;
 
 
 

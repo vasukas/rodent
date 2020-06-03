@@ -14,7 +14,7 @@ struct TimeSpan;
 class LevelMap
 {
 public:
-	static LevelMap* init(GameCore& core, const LevelTerrain& lt); ///< Inits singleton. Core not used here
+	static LevelMap* init(GameCore& core, const LevelTerrain& lt); ///< Inits singleton. Core is only stored here
 	static LevelMap& get(); ///< Returns existing singleton
 	virtual ~LevelMap();
 	
@@ -25,6 +25,8 @@ public:
 	
 	virtual void mark_final_term(const LevelCtrRoom& rm) = 0;
 	virtual void mark_visited(const LevelCtrRoom& rm) = 0;
+	
+	virtual std::vector<const LevelCtrRoom*> get_visited() = 0; ///< Only for statistics
 };
 
 #endif // LEVEL_MAP_HPP

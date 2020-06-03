@@ -1,3 +1,4 @@
+#include <condition_variable>
 #include <mutex>
 #include <SDL2/SDL_clipboard.h>
 #include <SDL2/SDL_events.h>
@@ -464,6 +465,33 @@ void vig_warnbox(vigWarnbox wbox) {
 	std::unique_lock msg_lock(msg_mutex);
 	warnboxes.emplace_back(std::move(wbox));
 	input_locked = true;
+}
+int vig_warnbox_wait(vigWarnbox wbox) {
+	if (RenderControl::get().is_rendering_thread()) {
+		THROW_FMTSTR("vig_warnbox_wait() called from rendering thread! (title: {}, message: {})", wbox.title, wbox.message);
+	}
+	std::condition_variable cond;
+	std::mutex mx;
+	int ret = -1;
+	
+	for (size_t i=0; i<wbox.buttons.size(); ++i) {
+		wbox.buttons[i].func = [&, i]{
+			std::unique_lock l(mx);
+			ret = i;
+			cond.notify_all();
+		};
+	}
+	vig_warnbox(std::move(wbox));
+	
+	std::unique_lock l(mx);
+	cond.wait(l, [&]{return ret != -1;});
+	return ret;
+}
+void vig_warnbox_index(vigWarnbox wbox, int& index) {
+	index = -1;
+	for (size_t i=0; i<wbox.buttons.size(); ++i)
+		wbox.buttons[i].func = [p = &index, i] {*p = i;};
+	vig_warnbox(std::move(wbox));
 }
 void vig_infobox(std::string message, bool is_error) {
 	vigWarnbox box;

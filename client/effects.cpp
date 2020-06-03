@@ -1,21 +1,9 @@
-#include "core/hard_paths.hpp"
 #include "render/postproc.hpp"
 #include "render/ren_aal.hpp"
 #include "render/ren_imm.hpp"
 #include "utils/noise.hpp"
 #include "effects.hpp"
 #include "presenter.hpp"
-
-static bool effects_init_called = false;
-static std::unique_ptr<Texture> tex_explowave;
-
-void effects_init()
-{
-	if (effects_init_called) return;
-	effects_init_called = true;
-	
-	tex_explowave.reset( Texture::load(HARDPATH_EXPLOSION_IMG) );
-}
 
 
 
@@ -132,7 +120,7 @@ struct GRE_Explowave : GameRenderEffect
 		int a;
 		if (t > a_thr) a = 255 * lerp(1 - a_thr, 1, (t - a_thr) / (1 - a_thr));
 		else a = 255 * (1 - a_thr) * (t / a_thr);
-		RenImm::get().draw_image( Rectfp::from_center(pos, vec2fp::one( (1 - t*t*t) * szk )), tex_explowave.get(), 0xffffff00 | a );
+		RenImm::get().draw_image( Rectfp::from_center(pos, vec2fp::one( (1 - t*t*t) * szk )), ResBase::get().get_explo_wave(), 0xffffff00 | a );
 		return (t -= tps * passed.seconds()) > 0;
 	}
 };
@@ -143,4 +131,19 @@ void effect_explosion_wave(vec2fp ctr, float power)
 		GamePresenter::get()->add_effect(std::make_unique<GRE_Explowave>(ctr, power));
 		Postproc::get().screen_shake(power);
 	}
+}
+
+
+
+void shoot_smoke(vec2fp at, vec2fp dir, float radius)
+{
+	Postproc::Smoke s;
+	s.at = at;
+	s.vel = dir * 2;
+	s.radius = radius;
+	s.et = TimeSpan::seconds(0.2);
+	s.lt = {};
+	s.ft = TimeSpan::seconds(5);
+	s.expand = true;
+	Postproc::get().add_smoke(s);
 }

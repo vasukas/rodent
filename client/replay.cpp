@@ -10,7 +10,7 @@
 #include "replay.hpp"
 
 constexpr char stream_header[] = "ratdemo";
-const uint32_t stream_version = 7;
+const uint32_t stream_version = 7; // binary format
 
 struct Header {
 	SerialType_Void signature_hack;
@@ -83,8 +83,10 @@ static void read_header(File& f, ReplayInitData& init)
 	if (h.version != stream_version)
 	    throw std::runtime_error("ReplayReader:: unsupported file version");
 	
-	if (h.platform != get_full_platform_version())
+	if (h.platform != get_full_platform_version()) {
 		VLOGW("ReplayReader:: incompatible platform - {}", h.platform);
+		init.incompat_version = h.platform;
+	}
 	
 	SERIALFUNC_READ(init, f);
 }
@@ -235,7 +237,7 @@ public:
 		
 		auto& frm = frms.front();
 		auto evs = std::move(frm.evs);
-		pc.force_state(frm.ctx, std::move(frm.st));
+		pc.replay_set(frm.ctx, std::move(frm.st));
 		frms.pop();
 		
 		if		(frms.size() > fn_skip_thr) return RET_OK{ 0.f, std::move(evs) };
@@ -269,7 +271,10 @@ public:
 	}
 	void update_client(PlayerInput& pc) override {
 		frm.ctx = pc.get_context();
-		if (frm.ctx == PlayerInput::CTX_GAME) frm.st = pc.get_state(frm.ctx);
+		if (frm.ctx == PlayerInput::CTX_GAME) {
+			frm.st = pc.get_state(frm.ctx);
+			pc.replay_fix(frm.ctx, frm.st);
+		}
 		else frm.st = {};
 		thr.write(std::move(frm));
 		frm.evs.clear();
@@ -296,7 +301,10 @@ public:
 	}
 	void update_client(PlayerInput& pc) override {
 		frm.ctx = pc.get_context();
-		if (frm.ctx == PlayerInput::CTX_GAME) frm.st = pc.get_state(frm.ctx);
+		if (frm.ctx == PlayerInput::CTX_GAME) {
+			frm.st = pc.get_state(frm.ctx);
+			pc.replay_fix(frm.ctx, frm.st);
+		}
 		else frm.st = {};
 		SERIALFUNC_WRITE(frm, *f);
 		frm.evs.clear();
@@ -309,7 +317,7 @@ public:
 		Frame frm;
 		SERIALFUNC_READ(frm, *f);
 		
-		pc.force_state(frm.ctx, std::move(frm.st));
+		pc.replay_set(frm.ctx, std::move(frm.st));
 		return RET_OK{{}, std::move(frm.evs)};
 	}
 };

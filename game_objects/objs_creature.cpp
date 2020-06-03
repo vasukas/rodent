@@ -1,5 +1,6 @@
 #include "client/ec_render.hpp"
 #include "game/game_core.hpp"
+#include "game/game_info_list.hpp"
 #include "game/game_mode.hpp"
 #include "game/player_mgr.hpp"
 #include "game_ai/ai_algo.hpp"
@@ -7,6 +8,13 @@
 #include "objs_basic.hpp"
 #include "objs_creature.hpp"
 #include "weapon_all.hpp"
+
+static b2FixtureDef fixtdef_nocol(float fric, float rest) {
+	auto fd = fixtdef(fric, rest);
+	fd.filter.categoryBits = EC_Physics::CF_DRONE;
+	fd.filter.maskBits = ~EC_Physics::CF_DRONE;
+	return fd;
+}
 
 
 
@@ -224,11 +232,12 @@ EEnemyDrone::Init EEnemyDrone::def_workr(GameCore& core)
 		static std::shared_ptr<AI_DroneParams> pars;
 		if (!pars) {
 			pars = std::make_shared<AI_DroneParams>();
-			pars->set_speed(2, 3, 4);
+			pars->set_speed(2, 3, 6);
 			pars->dist_minimal = 3;
 			pars->dist_optimal = 10;
 			pars->dist_visible = 14;
 			pars->dist_suspect = 16;
+			pars->dist_battle = 18;
 			pars->rot_speed = deg_to_rad(90);
 			pars->helpcall = AI_DroneParams::HELP_LOW;
 		}
@@ -244,7 +253,7 @@ EEnemyDrone::Init EEnemyDrone::def_workr(GameCore& core)
 		{[]()->Weapon*{return new WpnSMG;},   0.05},
 		{[]()->Weapon*{return new WpnRifle;}, 0.05}
 	}});
-	init.wpn.reset(core.get_random().random_el(cs)());
+	init.wpn.reset(core.get_random().random_chance(cs)());
 	
 	init.atk_pat.reset(new AtkPat_Burst);
 	init.drop_value = 0.4;
@@ -278,7 +287,7 @@ EEnemyDrone::Init EEnemyDrone::def_drone(GameCore& core)
 		{[]()->Weapon*{return new WpnSMG;},    0.4},
 		{[]()->Weapon*{return new WpnRifle;},  0.05}
 	}});
-	init.wpn.reset(core.get_random().random_el(cs)());
+	init.wpn.reset(core.get_random().random_chance(cs)());
 	
 	init.drop_value = 0.7;
 	return init;
@@ -333,7 +342,7 @@ EEnemyDrone::EEnemyDrone(GameCore& core, vec2fp at, Init init)
 {
 	ui_descr = "Drone";
 	add_new<EC_RenderModel>(init.model, FColor(1, 0, 0, 1), EC_RenderModel::DEATH_AND_EXPLOSION);
-	phy.add(FixtureCreate::circle( fixtdef(0.3, 0.4), GameConst::hsz_drone * 1.4, 25 ));  // sqrt2 - diagonal
+	phy.add(FixtureCreate::circle( fixtdef_nocol(0.3, 0.4), GameConst::hsz_drone * 1.4, 25 ));  // sqrt2 - diagonal
 	
 	hlc.add_filter(std::make_unique<DmgShield>(100, 20, TimeSpan::seconds(5)));
 //	hlc.ph_thr = 100;
@@ -341,13 +350,14 @@ EEnemyDrone::EEnemyDrone(GameCore& core, vec2fp at, Init init)
 //	hlc.hook(phy);
 	
 	eqp.add_wpn(std::move(init.wpn));
+	core.get_info().stat_event(GameInfoList::STAT_SPAWN_BOTS_ALL);
 }
 EEnemyDrone::~EEnemyDrone()
 {
-	if (!core.is_freeing() && core.spawn_drop) {
-		EPickable::create_death_drop(core, get_pos(), drop_value);
-	}
+	if (core.is_freeing()) return;
+	if (core.spawn_drop) EPickable::create_death_drop(core, get_pos(), drop_value);
 	SoundEngine::once(SND_ENV_BOT_EXPLOSION, get_pos());
+	core.get_info().stat_event(GameInfoList::STAT_DEATHS_BOTS);
 }
 
 
@@ -413,10 +423,13 @@ EHunter::EHunter(GameCore& core, vec2fp at)
 	ref<EC_RenderPos>().parts(FE_SPAWN, {{}, GameConst::hsz_drone_hunter});
 	ref<EC_RenderModel>().parts(ME_AURA, {{}, 1, FColor(0, 0, 1, 2)});
 	SoundEngine::once(SND_OBJ_SPAWN, get_pos());
+	
+	core.get_info().stat_event(GameInfoList::STAT_SPAWN_BOTS_ALL);
 }
 EHunter::~EHunter()
 {
-	if (!core.is_freeing() && core.spawn_drop)
+	if (core.is_freeing()) return;
+	if (core.spawn_drop)
 	{
 		for (int i=0; i<8; ++i) {
 			float rot = core.get_random().range_n2() * M_PI;
@@ -431,6 +444,7 @@ EHunter::~EHunter()
 		SoundEngine::once(SND_ENV_BOT_EXPLOSION, get_pos());
 		SoundEngine::once(SND_ENV_LARGE_EXPLOSION, get_pos());
 	}
+	core.get_info().stat_event(GameInfoList::STAT_DEATHS_BOSSES);
 }
 
 
@@ -472,6 +486,8 @@ EHacker::EHacker(GameCore& core, vec2fp at)
 	logic.always_online = true;
 	logic.ignore_battle = true;
 	reg_this();
+	
+	core.get_info().stat_event(GameInfoList::STAT_SPAWN_BOTS_ALL);
 }
 void EHacker::step()
 {
@@ -486,4 +502,5 @@ void EHacker::step()
 EHacker::~EHacker()
 {
 	SoundEngine::once(SND_ENV_BOT_EXPLOSION, get_pos());
+	core.get_info().stat_event(GameInfoList::STAT_DEATHS_BOTS);
 }

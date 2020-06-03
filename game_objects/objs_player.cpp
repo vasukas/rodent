@@ -2,6 +2,7 @@
 #include "client/presenter.hpp"
 #include "client/sounds.hpp"
 #include "game/game_core.hpp"
+#include "game/game_info_list.hpp"
 #include "game_ai/ai_control.hpp"
 #include "vaslib/vas_log.hpp"
 #include "objs_player.hpp"
@@ -16,6 +17,8 @@ PlayerMovement::PlayerMovement(PlayerEntity& ent)
 	
 	accel_ss.min_sus = TimeSpan::seconds(0.2);
 	peace_parts = ent.ensure<EC_ParticleEmitter>().new_channel();
+	
+	prev_pos = ent.get_pos();
 }
 void PlayerMovement::upd_vel(Entity& ent, vec2fp dir, bool is_accel, vec2fp look_pos)
 {
@@ -132,6 +135,12 @@ void PlayerMovement::upd_vel(Entity& ent, vec2fp dir, bool is_accel, vec2fp look
 		tar_dir = prev_dir = dir;
 	}
 	else tar_dir = {};
+	
+	// stats
+	
+	vec2fp moved = ent.get_pos() - prev_pos;
+	ent.core.get_info().stat_event(is_accel ? GameInfoList::STAT_MOVED_ACCEL : GameInfoList::STAT_MOVED_NORMAL, moved.len());
+	prev_pos = ent.get_pos();
 }
 void PlayerMovement::step()
 {
@@ -236,7 +245,7 @@ EC_PlayerLogic::EC_PlayerLogic(PlayerEntity& ent)
 {
 	prev_tar = ent.get_pos() + vec2fp(1, 0);
 	
-	vec2fp ram_ext{0.7, 1.2};
+	vec2fp ram_ext(0.7, 1);
 	Transform ram_pos{{GameConst::hsz_rat + ram_ext.x, 0}};
 	ram_sensor = &ent.phy.add (FixtureCreate::box (fixtsensor(), ram_ext, ram_pos, 0));
 	
@@ -273,6 +282,8 @@ void EC_PlayerLogic::on_cnt(const CollisionEvent& ev)
 			}
 		}
 	}
+	if (ev.type == CollisionEvent::T_RESOLVE && ev.imp > 120)
+		SoundEngine::once(SND_ENV_WALLRAM, ent.get_pos());
 }
 void EC_PlayerLogic::on_dmg(const DamageQuant&)
 {
@@ -283,6 +294,8 @@ void EC_PlayerLogic::m_step()
 	auto& pinp = PlayerInput::get();
 	auto& cst = pinp.get_state(PlayerInput::CTX_GAME);
 	auto& eqp = ent.ref_eqp();
+	
+	bool is_idle = cst.acts.empty() && cst.mov.len_squ() < 0.01 && cst.tar_pos.dist_squ(prev_tar) < 0.01;
 	
 	// shield
 	
@@ -295,6 +308,7 @@ void EC_PlayerLogic::m_step()
 	// actions
 	
 	bool accel = cst.is[PlayerInput::A_ACCEL];
+	if (accel) is_idle = false;
 	
 	for (auto& a : cst.acts)
 	{
@@ -341,8 +355,10 @@ void EC_PlayerLogic::m_step()
 	
 	eqp.shoot(tar, cst.is[PlayerInput::A_SHOOT], cst.is[PlayerInput::A_SHOOT_ALT] );
 	
-	if (cst.is[PlayerInput::A_SHOOT] || cst.is[PlayerInput::A_SHOOT_ALT])
+	if (cst.is[PlayerInput::A_SHOOT] || cst.is[PlayerInput::A_SHOOT_ALT]) {
 		pmov.battle_trigger();
+		is_idle = false;
+	}
 	
 	// set rotation
 	
@@ -372,6 +388,12 @@ void EC_PlayerLogic::m_step()
 	{
 		pmov.peace_tmo = std::min(pmov.peace_tmo, pmov.c_peace_tmo_short);
 	}
+	
+	// idle animation
+	
+	if (!is_idle) idle_since = ent.core.get_step_time();
+	else if (ent.core.get_step_time() - idle_since > TimeSpan::seconds(20))
+		ent.ref_pc().rot_override = self_angle + 2*M_PI * TimeSpan::get_period_t(4);
 }
 
 
@@ -393,7 +415,7 @@ PlayerEntity::PlayerEntity(GameCore& core, vec2fp pos, bool is_superman)
 	ensure<EC_RenderPos>().disable_culling = true;
 	add_new<EC_RenderModel>(MODEL_PC_RAT, FColor(0.4, 0.9, 1, 1), EC_RenderModel::DEATH_AND_EXPLOSION);
 	add_new<EC_RenderEquip>();
-	add_new<EC_LaserDesigRay>();
+	add_new<EC_LaserDesigRay>().clr *= 0.7;
 	
 	GamePresenter::get()->effect(FE_SPAWN, {Transform{pos}, GameConst::hsz_rat});
 	GamePresenter::get()->effect({MODEL_PC_RAT, ME_AURA}, {Transform{pos}, 3, FColor(0.3, 0.7, 1, 0.7)});
@@ -434,6 +456,7 @@ PlayerEntity::PlayerEntity(GameCore& core, vec2fp pos, bool is_superman)
 }
 PlayerEntity::~PlayerEntity()
 {
+	if (!core.is_freeing()) core.get_info().stat_event(GameInfoList::STAT_DEATHS_PLAYER);
 	ref<EC_RenderModel>().parts(ME_AURA, {{}, 2, FColor(1, 0.4, 0.1, 2)});
 	PlayerInput::get().set_switch(PlayerInput::CTX_GAME, PlayerInput::A_SHIELD_SW, false);
 }

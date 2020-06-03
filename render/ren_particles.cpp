@@ -10,7 +10,7 @@
 
 void ParticleParams::set_zero(bool vel, bool accel)
 {
-	if (vel) vel = {};
+	if (vel) this->vel = {};
 	if (accel) acc = {};
 }
 void ParticleParams::decel_to_zero()

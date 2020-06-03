@@ -1,12 +1,19 @@
 #include <deque>
+#include <future>
 #include "core/settings.hpp"
 #include "vaslib/vas_log.hpp"
 #include "postproc.hpp"
 #include "pp_graph.hpp"
 
+#include "camera.hpp"
 #include "ren_aal.hpp"
 #include "ren_imm.hpp"
+#include "ren_light.hpp"
 #include "ren_particles.hpp"
+
+#include "core/hard_paths.hpp"
+#include "utils/res_image.hpp"
+#include "noise1234.h"
 
 
 
@@ -44,7 +51,11 @@ struct PPF_Bleed : PP_Filter
 	}
 	void proc() override
 	{
+		vec2fp d = {0.04, 0.08}; // meters
+		d /= RenderControl::get().get_world_camera().coord_size();
+		
 		sh->bind();
+		sh->set2f("disp", d);
 		for (int i=0; i<n; ++i) draw(i == n-1);
 	}
 };
@@ -233,7 +244,7 @@ private:
 	}
 	void proc(GLuint output_fbo) override
 	{
-		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
+		glBlendFunc(GL_ONE, GL_ONE);
 		glBlendEquation(GL_FUNC_ADD);
 		
 		glActiveTexture(GL_TEXTURE0);
@@ -261,17 +272,226 @@ private:
 		sh_blur->set1i("horiz", 1);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 		
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		glBlendEquation(GL_FUNC_ADD);
+		
 		glBindFramebuffer(GL_FRAMEBUFFER, output_fbo);
 		tex_s[1].bind();
 		sh_blur->set1i("horiz", 0);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
+	}
+	GLuint get_input_fbo() override {return fbo_s[0].fbo;}
+};
+
+
+
+class PP_Smoke : public PP_Node
+{
+public:
+	bool enabled = true;	
+
+	const int size = 256, z_size = 16;
+	const int octs = 5;
+	const float z_speed = 0.2;
+	const float world_size = 25;
+	
+	const int circ_size = 64; // circle texture size
+	const float y_rad_k = 0.8; // y-axis scale
+	
+	const float max_dist = 60;
+	
+	struct SmokeData {
+		vec2fp ctr, vel;
+		float et, lt, ft; // timeouts (seconds): expand, life, fade
+		float rad, dt_rad; // radius, increase per second
+		float a, in_a, dt_a; // alpha, increase,decrease per second
+	};
+	
+	PP_Smoke(std::string name)
+		: PP_Node(std::move(name))
+	{
+		TimeSpan time0 = TimeSpan::current();
+		
+		sh_mask = Shader::load("pp/smoke_mask", {});
+		sh_eff = Shader::load("pp/smoke", {});
+		
+		fbo_eff.em_texs.emplace_back();
+		fbo_mask.em_texs.emplace_back();
+		rsz_g = RenderControl::get().add_size_cb([this]
+		{
+			fbo_eff.em_texs[0].set(GL_RGBA, RenderControl::get_size(), 0, 4);
+			fbo_eff.attach_tex(GL_COLOR_ATTACHMENT0, fbo_eff.em_texs[0]);
+			fbo_eff.check_throw("PP_Smoke eff");
+			
+			fbo_mask.em_texs[0].set(GL_R8, RenderControl::get_size(), 0, 1);
+			fbo_mask.attach_tex(GL_COLOR_ATTACHMENT0, fbo_mask.em_texs[0]);
+			fbo_mask.check_throw("PP_Smoke mask");
+		});
 		
 		//
 		
-		glBlendFunc(GL_ONE, GL_ONE);
-		glBlendEquation(GL_FUNC_ADD);
+		auto px = ImageInfo::procedural(HARDPATH_SMOKE_PROCIMG, {size, size * z_size}, ImageInfo::FMT_ALPHA,
+		[&](ImageInfo& img)
+		{
+			const float freq = std::pow(2, -octs);
+			const float z_freq = std::max(freq, 1.f / z_size);
+		          
+			std::vector<std::future<void>> fs;
+			for (int z=0; z<z_size; ++z) {
+				fs.emplace_back(std::async(std::launch::async, [&, z]{
+					int i = z * (size * size);
+					for (int y=0; y<size; ++y)
+					for (int x=0; x<size; ++x)
+					{
+						float v = 0;
+						for (int i=0, k=1; i<5; ++i, k*=2)
+							v += (1.f/k) * pnoise3(x*k*freq, y*k*freq, z*k*z_freq, size*freq*k, size*freq*k, z_size*z_freq*k);
+						img.raw()[i++] = 255 * clampf_n(0.5 + 0.5 * v);
+					}
+				}));
+			}
+		});
+		
+		tex_noi.target = GL_TEXTURE_3D;
+		tex_noi.bind();
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexImage3D(GL_TEXTURE_3D, 0, GL_R8, size, size, z_size, 0, GL_RED, GL_UNSIGNED_BYTE, px.data());
+		tex_noi.set_byte_size(size * size * z_size);
+		
+		//
+		
+		px.resize(circ_size * circ_size);
+		for (int y=0; y<circ_size; ++y)
+		for (int x=0; x<circ_size; ++x)
+		{
+			float xd = float(x - circ_size/2) / (circ_size/2);
+			float yd = float(y - circ_size/2) / (circ_size/2);
+			float d = std::sqrt(xd*xd + yd*yd);
+			d = std::pow(d, 2);
+			px[y*circ_size + x] = 255 * (1 - std::min(1.f, d));
+		}
+		
+		tex_circ.set(GL_R8, {circ_size, circ_size}, 0, 1, px.data(), GL_RED);
+		
+		VLOGI("Generated smoke in {:.3f} seconds", (TimeSpan::current() - time0).seconds());
 	}
-	GLuint get_input_fbo() override {return fbo_s[0].fbo;}
+	void add(const Postproc::Smoke& i)
+	{
+		auto& s = smokes.emplace_back();
+		s.ctr = i.at;
+		s.vel = i.vel;
+		s.et = i.et.seconds();
+		s.lt = i.lt.seconds();
+		s.ft = i.ft.seconds();
+		s.rad = i.expand ? 0 : i.radius;
+		s.dt_rad = i.expand ? i.radius / s.et : 0;
+		s.a = 0;
+		s.in_a = i.alpha / s.et;
+		s.dt_a = i.alpha / s.ft;
+	}
+	
+private:
+	GLA_Framebuffer fbo_mask, fbo_eff;
+	GLA_Texture tex_noi, tex_circ;
+	std::unique_ptr<Shader> sh_mask, sh_eff;
+	RAII_Guard rsz_g;
+	
+	std::vector<SmokeData> smokes;
+	float t_val = 0;
+	
+	bool prepare() override
+	{
+		if (!sh_mask->is_ok() || !sh_eff->is_ok() || smokes.empty() || !enabled)
+			return false;
+		
+		fbo_eff.bind();
+		glClearColor(0, 0, 0, 0);
+		glClear(GL_COLOR_BUFFER_BIT);
+		return true;
+	}
+	void proc(GLuint output_fbo) override
+	{
+		auto& cam = RenderControl::get().get_world_camera();
+		auto  ssz = RenderControl::get().get_size();
+		
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		glBlendEquation(GL_FUNC_ADD);
+		
+		fbo_mask.bind();
+		glClearColor(0, 0, 0, 0);
+		glClear(GL_COLOR_BUFFER_BIT);
+		
+		sh_mask->bind();
+		sh_mask->set4mx("proj", cam.get_full_matrix());
+		
+		glActiveTexture(GL_TEXTURE0);
+		tex_circ.bind();
+		RenderControl::get().ndc_screen2().bind();
+		
+		const float z_max_dist = ssz.minmax().y + max_dist;
+		const float time_mul = RenderControl::get().get_passed().seconds();
+		t_val += z_speed * time_mul;
+		
+		for (auto it = smokes.begin(); it != smokes.end(); )
+		{
+			auto& s = *it;
+			s.ctr += s.vel * time_mul;
+			if (s.et > 0) {
+				s.et -= time_mul;
+				s.rad += s.dt_rad * time_mul;
+				s.a += s.in_a * time_mul;
+			}
+			else if (s.lt > 0) {
+				s.lt -= time_mul;
+			}
+			else if (s.ft > 0) {
+				s.a -= s.dt_a * time_mul;
+			}
+			else {
+				it = smokes.erase(it);
+				continue;
+			}
+			
+			float max = s.rad + z_max_dist;
+			if (s.ctr.dist_squ(cam.get_state().pos) > max*max) {
+				it = smokes.erase(it);
+				continue;
+			}
+			++it;
+			
+			sh_mask->set4f("pars", s.ctr.x, s.ctr.y, s.rad, s.rad * y_rad_k);
+			sh_mask->set1f("alpha", s.a);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+		}
+		
+		//
+		
+		sh_eff->bind();
+		sh_eff->set1i("smoke", 1);
+		sh_eff->set1i("mask", 2);
+		
+		vec2fp scr_z = cam.coord_size();
+		vec2fp cpos = cam.get_state().pos;
+		cpos.y = -cpos.y;
+		cpos /= world_size;
+		
+		sh_eff->set3f("offset", cpos.x, cpos.y, t_val);
+		sh_eff->set2f("scrk", scr_z / vec2fp::one(world_size));
+		
+		//
+		
+		glActiveTexture(GL_TEXTURE2);
+		fbo_mask.em_texs[0].bind();
+		glActiveTexture(GL_TEXTURE1);
+		tex_noi.bind();
+		glActiveTexture(GL_TEXTURE0);
+		fbo_eff.em_texs[0].bind();
+		
+		glBindFramebuffer(GL_FRAMEBUFFER, output_fbo);
+		RenderControl::get().ndc_screen2().bind();
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+	}
+	GLuint get_input_fbo() override {return fbo_eff.fbo;}
 };
 
 
@@ -279,13 +499,23 @@ private:
 class Postproc_Impl : public Postproc
 {
 public:	
+	void ui_mode(bool enable) override
+	{
+		RenAAL::get().draw_grid = !enable;
+		RenLight::get().enabled = !enable;
+		RenParticles::get().enabled = !enable;
+		if (smoke) smoke->enabled = !enable;
+	}
+	
+	
+	
 	PPF_Tint* tint = nullptr;
 	
-	void tint_reset()
+	void tint_reset() override
 	{
 		if (tint) tint->reset();
 	}
-	void tint_seq(TimeSpan time_to_reach, FColor target_mul, FColor target_add)
+	void tint_seq(TimeSpan time_to_reach, FColor target_mul, FColor target_add) override
 	{
 		if (tint) tint->add_step(time_to_reach, target_mul, target_add);
 	}
@@ -302,7 +532,7 @@ public:
 	PPN_OutputScreen* display;
 	PPN_InputDraw* draw_ui;
 	
-	void capture_begin(Texture* tex)
+	void capture_begin(Texture* tex) override
 	{
 		capture = CaptureInfo{};
 		capture->tex = tex;
@@ -311,7 +541,7 @@ public:
 		display->fbo = capture->fbo.fbo;
 		draw_ui->enabled = false;
 	}
-	void capture_end()
+	void capture_end() override
 	{
 		if (capture) {
 			display->fbo = 0;
@@ -322,11 +552,20 @@ public:
 	
 	
 	
-	PPF_Shake* shake;
+	PPF_Shake* shake = nullptr;
 	
-	void screen_shake(float power)
+	void screen_shake(float power) override
 	{
 		if (shake) shake->add(power);
+	}
+	
+	
+	
+	PP_Smoke* smoke = nullptr;
+	
+	void add_smoke(const Smoke& s) override
+	{
+		if (smoke) smoke->add(s);
 	}
 	
 	
@@ -347,6 +586,7 @@ public:
 		
 		INIT(RenAAL);
 		INIT(RenImm);
+		INIT(RenLight);
 		INIT(RenParticles);
 		//
 		INIT(PP_Graph);
@@ -355,57 +595,56 @@ public:
 		
 		display = new PPN_OutputScreen;
 		
-		new PPN_InputDraw("grid", [](auto fbo)
+		new PPN_InputDraw("grid", PPN_InputDraw::MID_NONE, [](auto fbo)
 		{
 			RenAAL::get().render_grid(fbo);
 		});
 		
-		new PPN_InputDraw("aal", [](auto fbo)
+		new PPN_InputDraw("aal", PPN_InputDraw::MID_COLOR, [](auto)
 		{
-			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
-			glBlendEquation(GL_MAX);
-			
-			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 			RenAAL::get().render();
 		});
 		
-		new PPN_InputDraw("parts", [](auto fbo)
+		new PPN_InputDraw("parts", PPN_InputDraw::MID_COLOR, [](auto)
 		{
-			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
+			glBlendFunc(GL_ONE, GL_ONE);
 			glBlendEquation(GL_FUNC_ADD);
-			
-			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 			RenParticles::get().render();
 		});
 		
-		new PPN_InputDraw("imm", [](auto fbo)
+		new PPN_InputDraw("imm", PPN_InputDraw::MID_COLOR, [](auto)
 		{
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glBlendEquation(GL_FUNC_ADD);
-			
-			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 			RenImm::get().render(RenImm::DEFCTX_WORLD);
 		});
 		
-		draw_ui = new PPN_InputDraw("ui", [](auto fbo)
+		draw_ui = new PPN_InputDraw("ui", PPN_InputDraw::MID_COLOR, [](auto)
 		{
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glBlendEquation(GL_FUNC_ADD);
-			
-			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 			RenImm::get().render(RenImm::DEFCTX_UI);
 		});
 		
+		new PPN_InputDraw("light", PPN_InputDraw::MID_DEPTH_STENCIL, [](auto)
+		{
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			glBlendEquation(GL_FUNC_ADD);
+			RenLight::get().render();
+		});
+		
 		std::vector<std::unique_ptr<PP_Filter>> fts;
-		{	
+		{
 			fts.emplace_back(new PPF_Bleed);
 			new PPN_Chain("E1", std::move(fts), []
 			{
-				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+				glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 				glBlendEquation(GL_FUNC_ADD);
 			});
 		}{
 			new PP_Bloom("bloom");
+		}{
+			smoke = new PP_Smoke("smoke");
 		}{
 			fts.emplace_back(shake = new PPF_Shake);
 			fts.emplace_back(tint  = new PPF_Tint);
@@ -414,14 +653,17 @@ public:
 		
 		auto& g = PP_Graph::get();
 		
-		g.connect("grid", "post", 1);
+		g.connect("grid", "smoke", 1);
 		g.connect("aal", "E1", 2);
 		g.connect("imm", "display", 2);
 		
 		g.connect("parts", "bloom");
-		g.connect("bloom", "post", 3);
+		g.connect("bloom", "smoke", 3);
 		
-		g.connect("E1", "post", 2);
+		g.connect("smoke", "post", 1);
+		g.connect("light", "post", 2);
+		
+		g.connect("E1", "smoke", 2);
 		g.connect("post", "display", 1);
 		g.connect("ui", "display", 3);
 		
@@ -432,13 +674,13 @@ public:
 		for (auto it = r_dels.rbegin(); it != r_dels.rend(); ++it)
 			(*it)();
 	}
-	void render()
+	void render() override
 	{
 		RenImm::get().render_pre();
 		PP_Graph::get().render();
 		RenImm::get().render_post();
 	}
-	void render_reset()
+	void render_reset() override
 	{
 		RenImm::get().render_post();
 	}

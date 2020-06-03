@@ -58,6 +58,7 @@ public:
 	};
 	
 	bool playback_hack = false; ///< Disables interpolation
+	bool loadgame_hack = false; ///< Ignore all effect and particle commands
 	
 	static GamePresenter* init(const InitParams& pars); ///< Creates singleton
 	static GamePresenter* get(); ///< Returns singleton
@@ -83,9 +84,6 @@ public:
 	
 	/// Performs debug screenshot on following rendering step
 	virtual void dbg_screenshot() = 0;
-	
-	/// Must be called from rendering thread
-	virtual void reinit_resources(const LevelTerrain& lvl) = 0;
 	
 protected:
 	friend EC_RenderPos;

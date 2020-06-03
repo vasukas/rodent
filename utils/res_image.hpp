@@ -44,6 +44,9 @@ struct ImageInfo
 	/// Created only for RGB and RGBA image
 	SDL_Surface* proxy() const;
 	
+	/// Loads image if exists, generates and saves if not
+	static std::vector<uint8_t> procedural(const char *filename, vec2i size, Format fmt,
+	                                       callable_ref<void(ImageInfo&)> generate);
 	
 	
 	/// Clears image (optionally changing format)

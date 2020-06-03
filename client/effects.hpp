@@ -17,9 +17,10 @@ enum class EffectLightning
 /// Creates running lightning bolt effect
 void effect_lightning(vec2fp a, vec2fp b, EffectLightning type, TimeSpan length, FColor clr = FColor(0.6, 0.85, 1));
 
-
-
 /// Creates concentric wave effect
 void effect_explosion_wave(vec2fp ctr, float power = 1);
+
+/// Creates moving fading smoke
+void shoot_smoke(vec2fp at, vec2fp dir, float radius = 3);
 
 #endif // EFFECTS_HPP

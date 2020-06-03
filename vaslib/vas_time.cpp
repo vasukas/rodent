@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cmath>
 #include <iomanip>
 #include <sstream>
 #include <thread>
@@ -38,6 +39,10 @@ TimeSpan TimeSpan::current()
 	auto t = steady_clock::now().time_since_epoch();
 	return TimeSpan(duration_cast<microseconds>(t).count());
 }
+float TimeSpan::get_period_t(float period_seconds)
+{
+	return std::fmod(TimeSpan::current().seconds(), period_seconds) / period_seconds;
+}
 TimeSpan TimeSpan::diff( const TimeSpan& t ) const
 {
 	auto d = mks_value - t.mks_value;
@@ -46,7 +51,7 @@ TimeSpan TimeSpan::diff( const TimeSpan& t ) const
 void sleep(TimeSpan time)
 {
 	auto mk = time.micro();
-	if (mk > 0) std::this_thread::sleep_for(microseconds(mk));
+	if (mk >= 0) std::this_thread::sleep_for(microseconds(mk));
 }
 
 #ifdef _WIN32
@@ -54,7 +59,7 @@ void sleep(TimeSpan time)
 void precise_sleep(TimeSpan time)
 {
 	auto mk = time.micro();
-	if (mk > 0) winc_sleep(mk);
+	if (mk >= 0) winc_sleep(mk);
 }
 #else
 void precise_sleep(TimeSpan time)

@@ -210,9 +210,9 @@ void AI_Group::update()
 				{
 					if (d.is_online && !std::holds_alternative<AI_Drone::Battle>( d.get_state() ))
 						d.set_battle_state();
-					return true;
+					return drones.size() < AI_Const::msg_engage_hard_limit;
 				});
-				return true;
+				return drones.size() < AI_Const::msg_engage_hard_limit;
 			});
 		}
 		
@@ -313,7 +313,7 @@ public:
 	TimeSpan group_check_tmo;
 	
 	std::vector<EntityIndex> hunters;
-	TimeSpan hunter_resp_tmo = {};
+	TimeSpan hunter_resp_tmo = TimeSpan::seconds(2*60);
 	
 	
 	
@@ -381,7 +381,6 @@ public:
 				hunters.push_back(ent->index);
 				hunter_resp_tmo = AI_Const::hunter_respawn_tmo;
 			}
-			else core.spawn_hunters = false;
 		}
 		for (auto it = hunters.begin(); it != hunters.end(); )
 		{

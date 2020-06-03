@@ -473,7 +473,7 @@ std::optional<float> PhysicsWorld::los_check(vec2fp from, Entity& target, std::o
 		for (int i=0; i<3; ++i) {
 			vec2fp pos = to + t * (i / 2.f);
 			
-			auto rc = raycast_nearest(conv(from), conv(pos), std::move(cf));
+			auto rc = raycast_nearest(conv(from), conv(pos), cf);
 			if (rc && rc->ent == &target) return rc->distance;
 		}
 	}

@@ -13,6 +13,7 @@
 
 
 
+#include "game/game_info_list.hpp"
 #include "game/physics.hpp"
 #include "game_objects/objs_basic.hpp"
 
@@ -24,6 +25,7 @@ static void play(GameCore& core, ReplayEvent ev)
 	},
 	[&](Replay_UseTransitTeleport& e) {
 		dynamic_cast<ETeleport&>(core.ent_ref(e.teleport)).teleport_player();
+		core.get_info().set_menu_teleport({});
 	}}, ev);
 }
 
@@ -57,6 +59,7 @@ public:
 	std::unique_ptr<ReplayReader> replay_rd;
 	std::unique_ptr<ReplayWriter> replay_wr;
 	std::optional<float> speed_k;
+	bool replay_rd_loadgame;
 	
 	
 	
@@ -65,12 +68,19 @@ public:
 		auto lock = core_lock();
 		replay_rd = std::move(pars->replay_rd);
 		replay_wr = std::move(pars->replay_wr);
+		replay_rd_loadgame = pars->is_loadgame;
 		
 		thr = std::thread([this](auto pars){
 			set_this_thread_name("game step");
-			init(std::move(pars));
-			VLOGI("Game initialized");
-			thr_func();
+			try {
+				init(std::move(pars));
+				VLOGI("Game initialized");
+				thr_func();
+			}
+			catch (std::exception& e) {
+				set_state(CS_End{e.what(), {}});
+				thr_term = true;
+			}
 		}, std::move(pars));
 	}
 	~GameControl_Impl()
@@ -109,6 +119,16 @@ public:
 		
 		VLOGI("GameControl::init() finished in {:.3f} seconds", (TimeSpan::current() - t0).seconds());
 		
+		float snd_volume;
+		if (auto p = SoundEngine::get()) {
+			snd_volume = p->get_master_vol();
+			p->set_master_vol(0);
+		}
+		if (pres) {
+			pres->playback_hack = true;
+			pres->loadgame_hack = true;
+		}
+		
 		if (pars.fastforward_time.is_positive())
 		{
 			set_state(CS_Init{"Forwarding..."});
@@ -119,6 +139,8 @@ public:
 			
 			while (core->get_step_time() < pars.fastforward_time)
 			{
+				sleep(TimeSpan::ms(0));
+				
 				core->step(t0);
 				if (core->get_step_time() > pars.fastforward_fullworld)
 					core->get_pmg().fastforward = false;
@@ -130,9 +152,75 @@ public:
 			VLOGI("GameControl::init() fastforwarded {:.3f} seconds in {:.3f}",
 				 pars.fastforward_time.seconds(), (TimeSpan::current() - t1).seconds());
 		}
+		
+		if (pars.is_loadgame)
+		{
+			set_state(CS_Init{"Loading..."});
+			TimeSpan t1 = TimeSpan::current();
+			
+			bool is_error = false;
+			while (true)
+			{
+				sleep(TimeSpan::ms(0));
+				
+				auto& pc_ctr = PlayerInput::get();
+				auto ctr_lock = pc_ctr.lock();
+				
+				ReplayReader::Ret ret;
+				try {
+					ret = replay_rd->update_server(pc_ctr);
+				}
+				catch (std::exception& e) {
+					VLOGE("GameControl::init() savegame read failed: {}", e.what());
+					is_error = true;
+					break;
+				}
+				if (auto r = std::get_if<ReplayReader::RET_OK>(&ret))
+				{
+					for (auto& e : r->evs)
+					{
+						play(*core, e);
+						if (replay_wr)
+							replay_wr->add_event(e);
+					}
+				}
+				else if (std::holds_alternative<ReplayReader::RET_WAIT>(ret)) {
+					sleep(core->step_len);
+					continue;
+				}
+				else if (std::holds_alternative<ReplayReader::RET_END>(ret))
+				{
+					VLOGW("SAVEGAME PLAYBACK FINISHED");
+					break;
+				}
+				
+				if (replay_wr)
+					replay_wr->update_client(pc_ctr);
+				
+				core->step(TimeSpan::current());
+			}
+			if (is_error) {
+				if (!pars.loadgame_error_h || !pars.loadgame_error_h())
+					throw ignore_exception();
+				else 
+					VLOGW("Saved game corrupted - user allowed to load");
+			}
+			
+			VLOGI("GameControl::init() loaded game - {:.3f} seconds - in {:.3f}",
+				 core->get_step_time().seconds(), (TimeSpan::current() - t1).seconds());
+			
+			replay_rd.reset();
+		}
+		
+		if (auto p = SoundEngine::get()) {
+			p->set_master_vol(snd_volume);
+		}
+		if (pres) {
+			pres->playback_hack = false;
+			pres->loadgame_hack = false;
+		}
 	}
 	void thr_func()
-	try
 	{
 		while (!thr_term)
 		{
@@ -177,7 +265,10 @@ public:
 					replay_wr->update_client(pc_ctr);
 
 				if (!sleep_time_k && speed_k) sleep_time_k = *speed_k;
-				if (pres) pres->playback_hack = !!sleep_time_k;
+				if (pres) {
+					pres->playback_hack = !!sleep_time_k;
+					pres->loadgame_hack = sleep_time_k && *sleep_time_k > 2.01;
+				}
 				
 				core->step(t0);
 				
@@ -206,9 +297,6 @@ public:
 			sleep(t_sleep - dt); // precise_sleep causes more stutter on Linux
 		}
 		
-	} catch (std::exception& e) {
-		thr_term = true;
-		set_state(CS_End{e.what(), {}});
 	}
 	void set_state(CoreState state) {
 		std::unique_lock lock(state_lock);
@@ -245,6 +333,7 @@ public:
 		pause_steps = steps;
 	}
 	ReplayReader* get_replay_reader() {
+		if (replay_rd_loadgame) return nullptr;
 		return replay_rd.get();
 	}
 	ReplayWriter* get_replay_writer() {

@@ -100,7 +100,8 @@ struct EC_Physics : EC_Position
 		CF_ALL = std::numeric_limits<decltype(b2Filter::categoryBits)>::max(),
 		CF_DEFAULT = 1,
 		CF_BULLET  = 2,
-		CF_FIRELET = 4
+		CF_FIRELET = 4,
+		CF_DRONE   = 8
 	};
 	
 	/// May be null only if was created inside world step

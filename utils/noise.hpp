@@ -25,18 +25,28 @@ struct RandomGen
 	void load(const std::string& s); ///< Throws on error
 	void set_seed(uint32_t s);
 	
-	template <typename T>
-	T& random_el(std::vector<T> &els) {return els[range_index(els.size())];}
+	template <typename Cont>
+	typename Cont::value_type& random_el(Cont &els) {return els[range_index(els.size())];}
 	
-	template <typename T>
-	void shuffle(std::vector<T>& els) {
+	template <typename Cont>
+	const typename Cont::value_type& random_el(const Cont &els) {return els[range_index(els.size())];}
+	
+	template <typename Cont>
+	void shuffle(Cont& els) {
 		if (els.empty()) return;
 		for (size_t i = els.size() - 1; i > 0; --i)
 			std::swap(els[i], els[range_index(i)]);
 	}
 	
+	template <typename It>
+	void shuffle(It begin, size_t count) {
+		if (!count) return;
+		for (size_t i = count - 1; i > 0; --i)
+			std::swap(*(begin + i), *(begin + range_index(i)));
+	}
+	
 	template <typename T, size_t N>
-	const T& random_el(const std::array<std::pair<T, float>, N>& vs) {
+	const T& random_chance(const std::array<std::pair<T, float>, N>& vs) {
 		float t = range_n();
 		for (auto& v : vs) if (t < v.second) return v.first;
 		return vs.back().first;

@@ -130,6 +130,7 @@ public:
 		BindType type = BT_TRIGGER;
 		std::string name, descr;
 		bool hidden = false; ///< Not shown in settings
+		bool replay_ignore = false; ///< Not written into replay
 		
 		IM_Key   im_key, im_alt;
 		IM_Mouse im_mou;
@@ -163,7 +164,6 @@ public:
 	void on_event(const SDL_Event& ev);
 	
 	void update(ContextMode m); ///< Must be called after getting all events
-	void force_state(ContextMode m, State st); ///< Forcefully sets state
 	const State& get_state(ContextMode m) const; ///< Last updated state
 	
 	void set_switch(ContextMode m, Action act, bool value); ///< In current context
@@ -175,6 +175,9 @@ public:
 	std::vector<Bind>& binds_ref(ContextMode m) {
 		return ctxs[m].binds;
 	}
+	
+	void replay_fix(ContextMode m, State& state) const; ///< Fixes state for replay
+	void replay_set(ContextMode m, State st); ///< Overwrites current state (except 'replay_ignore')
 	
 private:
 	struct Context {

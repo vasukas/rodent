@@ -23,6 +23,8 @@ struct TimeSpan
 	static TimeSpan since_start(); ///< Returns amount of time passed since program start using steady clock
 	static TimeSpan current(); ///< Returns current time using steady clock
 	
+	static float get_period_t(float period_seconds); ///< Returns (current_time % period) / period
+	
 	[[nodiscard]] static constexpr TimeSpan fps(int t) {return seconds( 1.f / t );}
 	int fps() const {return 1.f / seconds();}
 	

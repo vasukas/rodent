@@ -168,6 +168,133 @@ public:
 
 
 
+template <typename T, size_t Capacity>
+class static_vector
+{
+	alignas(T) uint8_t mem[Capacity * sizeof(T)];
+	size_t n = 0;
+	
+public:
+	static constexpr auto max_size = Capacity;
+	typedef T value_type;
+	typedef T* iterator;
+	typedef const T* const_iterator;
+	
+	static_vector() = default;
+	static_vector(std::initializer_list<T> init) {
+		insert(end(), init.begin(), init.end());
+	}
+	static_vector(const static_vector& v) {
+		*this = v;
+	}
+	static_vector(static_vector&& v) {
+		*this = std::move(v);
+	}
+	static_vector& operator= (const static_vector& v) {
+		clear();
+		insert(end(), v.begin(), v.end());
+		return *this;
+	}
+	static_vector& operator= (static_vector&& v) {
+		clear();
+		for (auto it = v.begin(); it != v.end(); ++it)
+			emplace_back(std::move(*it));
+		v.clear();
+		return *this;
+	}
+	~static_vector() {
+		clear();
+	}
+	
+	      T* data() {return static_cast<T*>(static_cast<void*>(mem));}
+	const T* data() const {return static_cast<const T*>(static_cast<const void*>(mem));}
+	
+	T& operator[](size_t i) noexcept {return data()[i];}
+const T& operator[](size_t i) const noexcept {return data()[i];}
+	
+	T* begin() {return data();}
+	T* end()   {return data() + n;}
+	
+	const T* begin() const {return data();}
+	const T* end()   const {return data() + n;}
+	
+	const T* cbegin() const {return data();}
+	const T* cend()   const {return data() + n;}
+	
+	T& front() {return data()[0];}
+	T& back()  {return data()[n-1];}
+	
+	const T& front() const {return data()[0];}
+	const T& back()  const {return data()[n-1];}
+	
+	size_t size() const {return n;}
+	bool  empty() const {return n == 0;}
+	
+	void clear() {
+		erase(begin(), end());
+	}
+	void resize(size_t new_size) {
+		if (n > new_size) erase(begin() + new_size, begin() + n);
+		while (n < new_size)
+			emplace_back();
+	}
+	iterator insert(const_iterator pos, const T& v) {
+		size_t i = std::distance(begin(), pos);
+		emplace(pos, v);
+		return begin() + i;
+	}
+	iterator insert(const_iterator pos, T&& v) {
+		size_t i = std::distance(begin(), pos);
+		emplace(pos, std::move(v));
+		return begin() + i;
+	}
+	template <typename InputIt>
+	iterator insert(const_iterator pos, InputIt first, InputIt last) {
+		size_t i = std::distance(cbegin(), pos);
+		size_t n = 0;
+		for (; first != last; ++first, ++pos, ++n)
+			emplace(pos, *first);
+		return begin() + i + n;
+	}
+	iterator erase(const_iterator pos) {
+		return erase(pos, pos + 1);
+	}
+	iterator erase(const_iterator first, const_iterator last) {
+		size_t i = std::distance(cbegin(), first);
+		size_t cnt = std::distance(cbegin(), last) - i;
+		n -= cnt;
+		for (size_t j = i; j < n; ++j) data()[j] = std::move(data()[j + cnt]);
+		for (size_t j = 0; j < cnt; ++j) data()[n + j].~T();
+		return begin() + i;
+	}
+	
+	template <typename... Args>
+	T& emplace(const_iterator pos, Args&&... args) {
+		size_t i = std::distance(cbegin(), pos);
+		if (i > n)         throw std::runtime_error("static_vector() out-of-bounds emplace");
+		if (n == max_size) throw std::runtime_error("static_vector() max_size reached");
+		for (size_t j = n; j > i; --j) data()[j] = std::move(data()[j-1]);
+		++n;
+		return *(new(data() + i) T(std::forward<Args>(args)...));
+	}
+	
+	template <typename... Args>
+	T& emplace_back(Args&&... args) {
+		return emplace(end(), std::forward<Args>(args)...);
+	}
+	void push_back(const T& v) {
+		emplace(end(), v);
+	}
+	void push_back(T&& v) {
+		emplace(end(), std::move(v));
+	}
+	void pop_back() {
+		erase(end() - 1);
+	}
+};
+
+
+
 template <typename... Ts>
 struct PoolAllocator_AutoParam;
 
