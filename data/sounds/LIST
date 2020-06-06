@@ -43,7 +43,10 @@ SND_WPN_MINIGUN_TURRET !
 	sub wpn_minigun_2
 	sub wpn_minigun_end
 
-SND_WPN_ROCKET !
+SND_WPN_ROCKET wpn_rocket
+	rnd 0.9 1.1
+	vol 1
+	dist 50
 
 
 
@@ -77,8 +80,14 @@ SND_WPN_BOLTER_ELECTRO !
 SND_WPN_FIRE_SHOOT !
 
 SND_WPN_FIRE_LOOP !
+	rnd 0.7 1.2
+	dist 50
+	sub wpn_fire_loop
+	sub wpn_fire_end
 
-SND_WPN_FOAM_SHOOT !
+SND_WPN_FOAM_SHOOT wpn_foam_shoot
+	rnd 0.95 1.05
+	vol 1.5
 
 SND_WPN_FOAM_AMBIENT wpn_foam_begin
 	dist 15
@@ -137,7 +146,10 @@ SND_WPN_SMG !
 
 
 
-SND_ENV_LIGHTNING !
+SND_ENV_LIGHTNING env_lightning
+	rnd 0.9 2
+	dist 50
+	vol 0.7
 
 SND_ENV_BULLET_HIT env_bullet_hit
 	vol 0.35
