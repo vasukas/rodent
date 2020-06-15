@@ -112,16 +112,21 @@ public:
 	{
 		std::shared_ptr<AI_DroneParams> pars;
 		ModelType model = MODEL_DRONE;
+		FColor color = FColor(1, 0, 0, 1);
 		std::unique_ptr<Weapon> wpn;
 		std::unique_ptr<AI_AttackPattern> atk_pat; // optional
 		float drop_value = 0;
 		bool is_worker = false;
+		bool is_accel = false;
 		std::vector<vec2fp> patrol = {};
+		int hp = 70;
+		std::unique_ptr<DamageFilter> shield = {};
 	};
 	
 	static Init def_workr(GameCore& core);
 	static Init def_drone(GameCore& core);
 	static Init def_campr(GameCore& core);
+	static Init def_fastb(GameCore& core);
 	
 	EEnemyDrone(GameCore& core, vec2fp at, Init init);
 	~EEnemyDrone();

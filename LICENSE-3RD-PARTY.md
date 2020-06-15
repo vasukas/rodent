@@ -31,6 +31,11 @@ Site: https://github.com/stegu/perlin-noise
 License: public domain  
 https://github.com/stegu/perlin-noise/blob/master/LICENSE.md
 
+### PortAudio
+Site: http://www.portaudio.com/  
+License: MIT  
+http://www.portaudio.com/license.html
+
 ### SDL2
 Site: https://www.libsdl.org/  
 License: zlib  
@@ -66,5 +71,6 @@ Track "71. Continuum" was truncated.
 ### Soniss GDC Audio Bundle
 Site: https://sonniss.com/  
 License: Free  
-https://sonniss.com/gdc-bundle-license/
+https://sonniss.com/gdc-bundle-license/  
+All sounds are edited.
 

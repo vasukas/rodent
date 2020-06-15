@@ -27,7 +27,7 @@ class ResBase_Impl : public ResBase
 public:
 	std::array <std::array<std::unique_ptr<ParticleGroupGenerator>, ME_TOTAL_COUNT_INTERNAL>, MODEL_TOTAL_COUNT_INTERNAL> ld_me;
 	std::array <std::unique_ptr<ParticleGroupGenerator>, FE_TOTAL_COUNT_INTERNAL> ld_es;
-	std::array <vec2fp, MODEL_TOTAL_COUNT_INTERNAL> md_cpt = {};
+	std::array <std::pair<vec2fp, bool>, MODEL_TOTAL_COUNT_INTERNAL> md_cpt = {};
 	std::array <Rectfp, MODEL_TOTAL_COUNT_INTERNAL> md_sz = {};
 	std::array <TextureReg, MODEL_TOTAL_COUNT_INTERNAL> md_img = {};	
 	std::unique_ptr<Texture> tex, tex_explowave;
@@ -54,7 +54,13 @@ public:
 	}
 	vec2fp get_cpt(ModelType type)
 	{
-		return md_cpt[type];
+		return md_cpt[type].first;
+	}
+	std::optional<vec2fp> get_cpt_opt(ModelType type)
+	{
+		auto& c = md_cpt[type];
+		if (!c.second) return {};
+		return c.first;
 	}
 	Rectfp get_size(ModelType type)
 	{
@@ -75,11 +81,16 @@ public:
 	
 	InitResult init_func();
 };
+
+static ResBase_Impl* resbase_ptr;
 ResBase& ResBase::get()
 {
-	static std::unique_ptr<ResBase_Impl> b;
-	if (!b) b.reset(new ResBase_Impl);
-	return *b;
+	if (!resbase_ptr) resbase_ptr = new ResBase_Impl;
+	return *resbase_ptr;
+}
+ResBase::~ResBase()
+{
+	resbase_ptr = nullptr;
 }
 
 
@@ -626,6 +637,7 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 	    {MODEL_CAMPER, "camper"},
 	    {MODEL_HUNTER, "hunter"},
 	    {MODEL_HACKER, "hacker"},
+	    {MODEL_FASTBOT, "fast"},
 	    
 	    {MODEL_ARMOR, "armor"},
 	    {MODEL_TERMINAL_KEY, "term_key"},
@@ -807,6 +819,7 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 	scale_to(MODEL_CAMPER, hsz_drone_big);
 	scale_to(MODEL_HACKER, hsz_drone_big);
 	scale_to(MODEL_HUNTER, hsz_drone_hunter);
+	scale_to(MODEL_FASTBOT, hsz_drone_big);
 	
 	scale_to(MODEL_ARMOR, hsz_supply);
 	scale_to(MODEL_TERMINAL_KEY, hsz_supply_big);
@@ -926,7 +939,8 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 			throw std::logic_error(std::to_string(i) + " - no model data (internal error)");
 		
 		ld_me[i][ME_DEATH].reset( new Death(mlns[i].ls) );
-		md_cpt[i] = mlns[i].p_cpt;
+		md_cpt[i].first = mlns[i].p_cpt;
+		md_cpt[i].second = mlns[i].has_p_cpt;
 		
 		float width = 0.1f;
 		if (std::find( std::begin(wpn_ixs), std::end(wpn_ixs), i ) != std::end(wpn_ixs))

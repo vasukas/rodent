@@ -92,6 +92,7 @@ int main( int argc, char *argv[] )
 	std::optional<bool> cli_logclr;
 	LogLevel cli_verb = LogLevel::Debug;
 	bool no_sound = false;
+	bool sndprof = false;
 	
 	bool cfg_override = false;
 	MainLoop::startup_date = date_time_fn();
@@ -113,8 +114,11 @@ Options:
 				                   
   --cfg <FILE> override default config path
   --dump-cfg   saves default config values to "user/default.cfg" and exits
+  --opt <STR>  parses string as part of the config, overriding
+
   --no-sound   overrides config and disables sound
   --snd-check  checks sound and music lists and exits
+  --sndprof    uses fake audio thread - for profiling etc
 
   --gldbg      create debug OpenGL context and log all GL messages as verbose
   --debugmode  enables various debug options
@@ -170,6 +174,14 @@ Mode options (--game):
 				AppSettings::get_mut().path_settings  = arg.str();
 				cfg_override = true;
 			}
+			else if (arg.is("--dump-cfg")) {
+				bool ok = AppSettings::get_mut().gen_cfg().write(HARDPATH_USR_PREFIX"default.cfg");
+				printf("--dump-cfg: %s\n", ok? "OK" : "FAILED");
+				return 1;
+			}
+			else if (arg.is("--opt")) {
+				AppSettings::get_mut().overrides.emplace_back(arg.str());
+			}
 			else if (arg.is("-v0")) cli_verb = LogLevel::Info;
 			else if (arg.is("-v"))  cli_verb = LogLevel::Debug;
 			else if (arg.is("-vv")) cli_verb = LogLevel::Verbose;
@@ -180,11 +192,7 @@ Mode options (--game):
 			else if (arg.is("--snd-check")) {
 				return SoundEngine::check_unused_sounds();
 			}
-			else if (arg.is("--dump-cfg")) {
-				bool ok = AppSettings::get_mut().gen_cfg().write(HARDPATH_USR_PREFIX"default.cfg");
-				printf("--dump-cfg: %s\n", ok? "OK" : "FAILED");
-				return 1;
-			}
+			else if (arg.is("--sndprof")) sndprof = true;
 			else if (arg.is("--game"))
 			{
 				if (MainLoop::current) {
@@ -327,7 +335,7 @@ Mode options (--game):
 	SDL_PumpEvents(); // just in case
 	
 	if (AppSettings::get().use_audio && !no_sound) {
-		if (!SoundEngine::init())
+		if (!SoundEngine::init(sndprof))
 			MainLoop::show_internal_error("Sound init failed");
 	}
 	else VLOGI("Sound disabled");

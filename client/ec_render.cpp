@@ -1,6 +1,5 @@
 #include "game/game_core.hpp"
 #include "game/physics.hpp"
-#include "game/player_mgr.hpp"
 #include "render/ren_aal.hpp"
 #include "render/ren_imm.hpp"
 #include "render/ren_light.hpp"
@@ -284,45 +283,6 @@ void EC_RenderDoor::render(const EC_RenderPos& p, TimeSpan)
 	RenAAL::get().draw_line(p1,         p1 - o_len,         l_clr.to_px(), l_wid, l_aa);
 	RenAAL::get().draw_line(p1 - o_wid, p1 - o_len - o_wid, l_clr.to_px(), l_wid, l_aa);
 	RenAAL::get().draw_line(p1 - o_len, p1 - o_len - o_wid, l_clr.to_px(), l_wid, l_aa);
-}
-
-
-
-EC_RenderFadeText::EC_RenderFadeText(Entity& ent, std::string_view text, vec2fp offset)
-    : EC_RenderComp(ent), offset(offset)
-{
-	set_text(text);
-}
-EC_RenderFadeText::~EC_RenderFadeText() = default;
-void EC_RenderFadeText::set_text(std::string_view text)
-{
-	tri.str_a = text.data();
-	tri.length = text.length();
-	tri.build();
-}
-void EC_RenderFadeText::render(const EC_RenderPos& p, TimeSpan passed)
-{
-	constexpr float dist = GameConst::cell_size * 3.5;
-	constexpr TimeSpan t_full = TimeSpan::seconds(1.5);
-	constexpr float shadow = 0.05;
-	
-	if (auto e = ent.core.get_pmg().get_ent();
-	    (e && e->get_pos().dist_squ( ent.get_pos() ) < dist*dist))
-	{
-		left = std::min(left + passed, t_full);
-	}
-	else if (left.is_positive()) {
-		left -= passed;
-	}
-	
-	if (left.is_positive())
-	{
-		FColor c = FColor(1,1,1);
-		c.a = left / t_full;
-		RenImm::get().draw_text(p.get_cur().pos + vec2fp(-shadow, shadow), tri, 0xff * c.a, true, 1.5);
-		RenImm::get().draw_text(p.get_cur().pos + vec2fp(shadow, -shadow), tri, 0xff * c.a, true, 1.5);
-		RenImm::get().draw_text(p.get_cur().pos, tri, c.to_px(), true, 1.5);
-	}
 }
 
 

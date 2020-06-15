@@ -767,14 +767,6 @@ EDecorGhost::EDecorGhost(GameCore& core, Transform at, ModelType model, FColor c
 
 
 
-ETutorialMsg::ETutorialMsg(GameCore& core, vec2fp pos, std::string msg)
-    : Entity(core), phy(*this, Transform{pos})
-{
-	add_new<EC_RenderFadeText>(std::move(msg));
-}
-
-
-
 ETutorialDummy::ETutorialDummy(GameCore& core, vec2fp pos)
     :
 	Entity(core),

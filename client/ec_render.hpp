@@ -4,7 +4,6 @@
 #include "client/resbase.hpp"
 #include "game/entity.hpp"
 #include "render/ren_particles.hpp"
-#include "render/ren_text.hpp"
 
 struct RenLightRef;
 
@@ -236,26 +235,6 @@ private:
 	void render(const EC_RenderPos& p, TimeSpan passed) {
 		if (f) f(p.get_cur(), passed);
 	}
-};
-
-
-
-/// Text appearing only when camera is close
-struct EC_RenderFadeText : EC_RenderComp
-{
-	vec2fp offset;
-	
-	EC_RenderFadeText(Entity& ent, std::string_view text, vec2fp offset = {});
-	~EC_RenderFadeText();
-	
-	void set_text(std::string_view text);
-	
-private:
-	TimeSpan left;
-	TextRenderInfo tri;
-	
-	void render(const EC_RenderPos& p, TimeSpan passed);
-	void on_vport_enter() {left = {};}
 };
 
 

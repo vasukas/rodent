@@ -13,7 +13,10 @@
 
 #include "core/hard_paths.hpp"
 #include "utils/res_image.hpp"
+
+extern "C" {
 #include "noise1234.h"
+}
 
 
 

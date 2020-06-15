@@ -189,6 +189,9 @@ public:
 	
 	std::optional<vec2i> mouse_drag_prev;
 	
+	std::optional<std::pair<size_t, TextRenderInfo>> tut_msg_sel;
+	float tut_msg_alpha = 0;
+	
 	// debug controls
 	
 	bool allow_cheats = false;
@@ -352,7 +355,7 @@ public:
 	{
 		if (auto p = SoundEngine::get()) {
 			p->music(nullptr);
-			p->set_pause(true);
+			p->set_ui_mode(SoundEngine::UIM_MUSIC_ONLY);
 		}
 		Postproc::get().ui_mode(true);
 		
@@ -401,7 +404,7 @@ public:
 		gctr.set_pause(true);
 		
 		if (auto p = SoundEngine::get())
-			p->set_pause(true);
+			p->set_ui_mode(SoundEngine::UIM_SILENCE);
 	}
 	void on_enter()
 	{
@@ -416,7 +419,7 @@ public:
 //		Postproc::get().tint_default(TimeSpan::seconds(0.2));
 		
 		if (auto p = SoundEngine::get())
-			p->set_pause(false);
+			p->set_ui_mode(SoundEngine::UIM_OFF);
 	}
 	void on_event(const SDL_Event& ev)
 	{
@@ -455,7 +458,7 @@ public:
 			{
 				is_ren_paused = true;
 				if (auto p = SoundEngine::get())
-					p->set_pause(true);
+					p->set_ui_mode(SoundEngine::UIM_SILENCE);
 			}
 			else if (!is_first_frame && allow_cheats)
 			{
@@ -577,8 +580,6 @@ public:
 			pinp.set_context(PlayerInput::CTX_MENU);
 			pinp.update(PlayerInput::CTX_MENU);
 			if (pinp.get_state(PlayerInput::CTX_MENU).is[PlayerInput::A_MENU_EXIT]) {
-				if (auto p = SoundEngine::get())
-					p->music(nullptr);
 				delete MainLoop::current;
 				return;
 			}
@@ -597,8 +598,10 @@ public:
 			}
 			
 			if (!since_victory.is_positive()) { // first time
-				if (auto p = SoundEngine::get())
+				if (auto p = SoundEngine::get()) {
 					p->music("menu_stats");
+					p->set_ui_mode(SoundEngine::UIM_MUSIC_ONLY);
+				}
 			}
 			
 			RenImm::get().set_context(RenImm::DEFCTX_WORLD);
@@ -638,8 +641,10 @@ public:
 					stats_screen = true;
 					stats_screen_victory = st->fs.type;
 					on_leave();
-					if (auto p = SoundEngine::get())
+					if (auto p = SoundEngine::get()) {
 						p->music("menu_stats");
+						p->set_ui_mode(SoundEngine::UIM_MUSIC_ONLY);
+					}
 				}
 				else {
 					delete MainLoop::current;
@@ -675,7 +680,7 @@ public:
 			
 			if (auto snd = SoundEngine::get())
 			{
-				snd->set_pause(false);
+				snd->set_ui_mode(menu_pause ? SoundEngine::UIM_MUSIC_ONLY : SoundEngine::UIM_OFF);
 				
 				int num = core.get_aic().debug_batle_number;
 				if (!num) {
@@ -905,24 +910,69 @@ public:
 				}
 			}
 			
+			// tutorial text
+			
+			if (auto& msgs = core.get_info().get_tut_messages();
+			    !msgs.empty() && !menu_pause)
+			{
+				constexpr float dist = GameConst::cell_size * 3.5;
+				constexpr TimeSpan t_full = TimeSpan::seconds(0.5);
+				constexpr float size_k = 1.5;
+				
+				std::optional<size_t> best;
+				float best_dist = dist * dist;
+				if (auto plr = core.get_pmg().get_ent())
+				{
+					vec2fp p = plr->get_pos();
+					for (size_t i=0; i<msgs.size(); ++i) {
+						float d = msgs[i].first.dist_squ(p);
+						if (d < best_dist) {
+							best = i;
+							best_dist = d;
+						}
+					}
+				}
+				
+				[&]{
+					if (!best && !tut_msg_sel)
+						return;
+					
+					if (!tut_msg_sel) {
+						tut_msg_sel.emplace();
+						tut_msg_sel->first = *best;
+						
+						auto& tri = tut_msg_sel->second;
+						tri.str_a = msgs[*best].second.c_str();
+						tri.build();
+					}
+					else if (!best || best != tut_msg_sel->first) {
+						tut_msg_alpha -= passed / t_full;
+						if (tut_msg_alpha <= 0) {
+							tut_msg_sel.reset();
+							tut_msg_alpha = 0;
+							return;
+						}
+					}
+					else {
+						tut_msg_alpha = std::min(1., tut_msg_alpha + passed / t_full);
+					}
+					
+					auto& tri = tut_msg_sel->second;
+					vec2fp p = RenderControl::get_size();
+					p.x /= 2;
+					p.y -= size_k * (tri.size.y/2 + 2 * RenText::get().line_height(tri.font));
+					auto r = Rectfp::from_center(p, size_k * (tri.size/2 + RenText::get().mxc_size(tri.font)));
+					RenImm::get().draw_rect(r, int(0xc0 * tut_msg_alpha));
+					RenImm::get().draw_text(p, tri, FColor(1,1,1,tut_msg_alpha).to_px(), true, size_k);
+				}();
+			}
+			
 			// object highlight
 			
 			if (auto plr = core.get_pmg().get_ent();
-				plr && inpst.is[PlayerInput::A_HIGHLIGHT])
+				plr && inpst.is[PlayerInput::A_HIGHLIGHT] && !menu_pause)
 			{
 				RenImm::get().set_context(RenImm::DEFCTX_WORLD);
-				
-				auto& gmc = core.get_gmc();
-				if (typeid(gmc) == typeid(GameMode_Tutorial)) {
-					core.foreach([](auto& ent){
-						if (typeid(ent) == typeid(ETutorialMsg)) {
-							vec2fp p = ent.get_pos();
-							RenImm::get().draw_circle(p, 0.3, 0xff40'40c0, 8);
-							RenImm::get().draw_circle(p, 0.1, 0x60ff'80ff, 3);
-							RenImm::get().draw_text(p, "Holoprojector", 0xc0ff'ffc0, true);
-						}
-					});
-				}
 				
 				auto area = Rectfp::from_center(plr->get_pos(), vec2fp::one(36));
 				core.get_phy().query_aabb(area, [&](Entity& ent, b2Fixture& fix)
@@ -987,14 +1037,14 @@ public:
 					RenAAL::get().draw_line(
 						plr->get_pos() + dir * plr->ref_pc().get_radius(),
 						plr->get_pos() + dir * (dist - ent.ref_pc().get_radius()),
-						FColor(0, 0.8, 0.6, 0.5).to_px(), 0.2, 1.5);
+						(ent.get_hlc() ? FColor(0.9, 0.6, 0, 0.5) : FColor(0, 0.8, 0.6, 0.5)).to_px(), 0.2, 1.5);
 					
 //						auto& b_aabb = fix.GetAABB(0);
 //						Rectfp aabb = {conv(b_aabb.lowerBound), conv(b_aabb.upperBound), false};
 //						aabb.offset(ent.get_pos());
 					Rectfp aabb = Rectfp::from_center(ent.get_pos(), vec2fp::one(ent.ref_pc().get_radius()));
 					
-					RenImm::get().draw_frame(aabb, 0x00ff'4080, 0.2);
+					RenImm::get().draw_frame(aabb, ent.get_hlc() ? 0xffc0'0080 : 0x00ff'4080, 0.2);
 					RenImm::get().draw_text({aabb.lower().x, aabb.upper().y + 0.5f}, info, 0xc0ff'ffc0);
 					
 					if (show_hp)

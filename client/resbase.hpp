@@ -26,6 +26,7 @@ enum ModelType
 	MODEL_CAMPER,
 	MODEL_HUNTER,
 	MODEL_HACKER,
+	MODEL_FASTBOT,
 	
 	MODEL_ARMOR,
 	MODEL_TERMINAL_KEY,
@@ -113,12 +114,13 @@ public:
 	// Note: must not be used before GamePresenter init
 	
 	static ResBase& get(); ///< Returns singleton
-	virtual ~ResBase() = default;
+	virtual ~ResBase();
 	
 	virtual ParticleGroupGenerator* get_eff(ModelType type, ModelEffect eff) = 0;	
 	virtual ParticleGroupGenerator* get_eff(FreeEffect eff) = 0;
 	
 	virtual vec2fp get_cpt(ModelType type) = 0; ///< Some special control/center point. Default is (0,0)
+	virtual std::optional<vec2fp> get_cpt_opt(ModelType type) = 0; ///< Same as get_cpt(), but returns only if set
 	virtual Rectfp get_size(ModelType type) = 0; ///< Without scalebox transform
 	virtual TextureReg get_image(ModelType type) = 0; ///< Value may change between calls
 	

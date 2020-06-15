@@ -62,14 +62,12 @@ cd "build$bits"
 
 &"Cmake" $args $Platform "-DCMAKE_PREFIX_PATH=$External" ..
 if (!($?)) {
-	Write-Host "Build failed"
 	cd ..
 	exit 1
 }
 
 &"Cmake" --build . --config MinSizeRel
 if (!($?)) {
-	Write-Host "Build failed"
 	cd ..
 	exit 1
 }

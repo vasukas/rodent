@@ -295,8 +295,6 @@ void EC_PlayerLogic::m_step()
 	auto& cst = pinp.get_state(PlayerInput::CTX_GAME);
 	auto& eqp = ent.ref_eqp();
 	
-	bool is_idle = cst.acts.empty() && cst.mov.len_squ() < 0.01 && cst.tar_pos.dist_squ(prev_tar) < 0.01;
-	
 	// shield
 	
 	pinp.set_switch(PlayerInput::CTX_GAME, PlayerInput::A_SHIELD_SW, shlc.step(cst.is[PlayerInput::A_SHIELD_SW]));
@@ -308,7 +306,6 @@ void EC_PlayerLogic::m_step()
 	// actions
 	
 	bool accel = cst.is[PlayerInput::A_ACCEL];
-	if (accel) is_idle = false;
 	
 	for (auto& a : cst.acts)
 	{
@@ -355,10 +352,8 @@ void EC_PlayerLogic::m_step()
 	
 	eqp.shoot(tar, cst.is[PlayerInput::A_SHOOT], cst.is[PlayerInput::A_SHOOT_ALT] );
 	
-	if (cst.is[PlayerInput::A_SHOOT] || cst.is[PlayerInput::A_SHOOT_ALT]) {
+	if (cst.is[PlayerInput::A_SHOOT] || cst.is[PlayerInput::A_SHOOT_ALT])
 		pmov.battle_trigger();
-		is_idle = false;
-	}
 	
 	// set rotation
 	
@@ -391,8 +386,14 @@ void EC_PlayerLogic::m_step()
 	
 	// idle animation
 	
+	bool is_idle = cst.acts.empty() && cst.mov.len_squ() < 0.01 && cst.tar_pos.dist_squ(prev_tar) < 0.01;
+	for (int i=0; is_idle && i<PlayerInput::ACTION_TOTAL_COUNT_INTERNAL; ++i) {
+		if (cst.is[i] && pinp.binds_ref(PlayerInput::CTX_GAME)[i].type != PlayerInput::BT_SWITCH)
+			is_idle = false;
+	}
+	
 	if (!is_idle) idle_since = ent.core.get_step_time();
-	else if (ent.core.get_step_time() - idle_since > TimeSpan::seconds(20))
+	else if (ent.core.get_step_time() - idle_since > TimeSpan::seconds(30))
 		ent.ref_pc().rot_override = self_angle + 2*M_PI * TimeSpan::get_period_t(4);
 }
 

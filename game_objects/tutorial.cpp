@@ -552,7 +552,7 @@ void tutorial_spawn(GameCore& core, LevelTerrain& lt)
 	};
 	for (auto& t : dat.texts) {
 		auto it = ms.find(t.second);
-		if (it != ms.end()) new ETutorialMsg(core, t.first, it->second);
+		if (it != ms.end()) core.get_info().get_tut_messages().emplace_back(t.first, it->second);
 		else {
 			vec2i at = LevelControl::to_cell_coord(t.first);
 			THROW_FMTSTR("Tutorial loader: invalid message index at {}:{} (0-based coords)", at.x, at.y);

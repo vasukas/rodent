@@ -15,6 +15,13 @@ static b2FixtureDef fixtdef_nocol(float fric, float rest) {
 	fd.filter.maskBits = ~EC_Physics::CF_DRONE;
 	return fd;
 }
+static b2FixtureDef fixtdef_boss(float fric, float rest) {
+	// collide with other bosses, but not drones
+	auto fd = fixtdef(fric, rest);
+	fd.filter.categoryBits = EC_Physics::CF_DEFAULT;
+	fd.filter.maskBits = ~EC_Physics::CF_DRONE;
+	return fd;
+}
 
 
 
@@ -228,24 +235,21 @@ ETurret::~ETurret()
 
 EEnemyDrone::Init EEnemyDrone::def_workr(GameCore& core)
 {
-	auto pars = []{
-		static std::shared_ptr<AI_DroneParams> pars;
-		if (!pars) {
-			pars = std::make_shared<AI_DroneParams>();
-			pars->set_speed(2, 3, 6);
-			pars->dist_minimal = 3;
-			pars->dist_optimal = 10;
-			pars->dist_visible = 14;
-			pars->dist_suspect = 16;
-			pars->dist_battle = 18;
-			pars->rot_speed = deg_to_rad(90);
-			pars->helpcall = AI_DroneParams::HELP_LOW;
-		}
-		return pars;
-	};
+	static std::shared_ptr<AI_DroneParams> pars;
+	if (!pars) {
+		pars = std::make_shared<AI_DroneParams>();
+		pars->set_speed(2, 3, 6);
+		pars->dist_minimal = 3;
+		pars->dist_optimal = 10;
+		pars->dist_visible = 14;
+		pars->dist_suspect = 16;
+		pars->dist_battle = 18;
+		pars->rot_speed = deg_to_rad(90);
+		pars->helpcall = AI_DroneParams::HELP_LOW;
+	}
 	
 	Init init;
-	init.pars = pars();
+	init.pars = pars;
 	init.model = MODEL_WORKER;
 	
 	static const auto cs = normalize_chances<Weapon*(*)(), 3>({{
@@ -262,24 +266,21 @@ EEnemyDrone::Init EEnemyDrone::def_workr(GameCore& core)
 }
 EEnemyDrone::Init EEnemyDrone::def_drone(GameCore& core)
 {
-	auto pars = []{
-		static std::shared_ptr<AI_DroneParams> pars;
-		if (!pars) {
-			pars = std::make_shared<AI_DroneParams>();
-			pars->set_speed(4, 7, 9);
-			pars->dist_minimal = 8;
-			pars->dist_optimal = 14;
-			pars->dist_visible = 20;
-			pars->dist_suspect = 22;
-			pars->rot_speed = deg_to_rad(240);
-			pars->fov = std::make_pair(deg_to_rad(45), deg_to_rad(90));
-			pars->placement_prio = 5;
-		}
-		return pars;
-	};
+	static std::shared_ptr<AI_DroneParams> pars;
+	if (!pars) {
+		pars = std::make_shared<AI_DroneParams>();
+		pars->set_speed(4, 7, 9);
+		pars->dist_minimal = 8;
+		pars->dist_optimal = 14;
+		pars->dist_visible = 20;
+		pars->dist_suspect = 22;
+		pars->rot_speed = deg_to_rad(240);
+		pars->fov = std::make_pair(deg_to_rad(45), deg_to_rad(90));
+		pars->placement_prio = 5;
+	}
 	
 	Init init;
-	init.pars = pars();
+	init.pars = pars;
 	init.model = MODEL_DRONE;
 	
 	static const auto cs = normalize_chances<Weapon*(*)(), 3>({{
@@ -294,33 +295,65 @@ EEnemyDrone::Init EEnemyDrone::def_drone(GameCore& core)
 }
 EEnemyDrone::Init EEnemyDrone::def_campr(GameCore&)
 {
-	auto pars = []{
-		static std::shared_ptr<AI_DroneParams> pars;
-		if (!pars) {
-			pars = std::make_shared<AI_DroneParams>();
-			pars->set_speed(5, 6, 8);
-			pars->dist_panic   = 6;
-			pars->dist_minimal = 12;
-			pars->dist_optimal = 18;
-			pars->dist_visible = 24;
-			pars->dist_suspect = 28;
-			pars->dist_battle = 50;
-			pars->rot_speed = deg_to_rad(180);
-			pars->is_camper = true;
-			pars->fov = {};
-			pars->helpcall = AI_DroneParams::HELP_NEVER;
-			pars->placement_prio = 30;
-			pars->placement_freerad = 1;
-		}
-		return pars;
-	};
+	static std::shared_ptr<AI_DroneParams> pars;
+	if (!pars) {
+		pars = std::make_shared<AI_DroneParams>();
+		pars->set_speed(5, 6, 8);
+		pars->dist_panic   = 6;
+		pars->dist_minimal = 12;
+		pars->dist_optimal = 18;
+		pars->dist_visible = 24;
+		pars->dist_suspect = 28;
+		pars->dist_battle = 50;
+		pars->rot_speed = deg_to_rad(180);
+		pars->is_camper = true;
+		pars->fov = {};
+		pars->helpcall = AI_DroneParams::HELP_NEVER;
+		pars->placement_prio = 30;
+		pars->placement_freerad = 1;
+	}
 	
 	Init init;
-	init.pars = pars();
+	init.pars = pars;
 	init.model = MODEL_CAMPER;
 	init.wpn.reset(new WpnElectro(WpnElectro::T_CAMPER));
 	init.atk_pat.reset(new AtkPat_Sniper);
 	init.drop_value = 1;
+	return init;
+}
+EEnemyDrone::Init EEnemyDrone::def_fastb(GameCore& core)
+{
+	static std::shared_ptr<AI_DroneParams> pars;
+	if (!pars) {
+		pars = std::make_shared<AI_DroneParams>();
+		pars->set_speed(8, 15, 15);
+		pars->dist_minimal = 3;
+		pars->dist_optimal = 6;
+		pars->dist_visible = 20;
+		pars->dist_suspect = 22;
+		pars->dist_battle  = 24;
+		pars->rot_speed = deg_to_rad(720);
+		pars->fov = std::make_pair(deg_to_rad(30), deg_to_rad(120));
+		pars->placement_prio = 10;
+	}
+	
+	Init init;
+	init.pars = pars;
+	init.model = MODEL_FASTBOT;
+	init.color = FColor(0.9, 0.6, 0, 1);
+	
+	static const auto cs = normalize_chances<Weapon*(*)(), 2>({{
+		{[]()->Weapon*{return new WpnRocket;}, 0.5},
+		{[]()->Weapon*{return new WpnRifle;},  0.5}
+	}});
+	init.wpn.reset(core.get_random().random_chance(cs)());
+	
+	init.hp = 50;
+	init.shield = std::make_unique<DmgShield>(115, 15, TimeSpan::seconds(2));
+	
+	init.drop_value = 0.3;
+	init.is_worker = true;
+	init.is_accel = true;
 	return init;
 }
 
@@ -334,23 +367,29 @@ EEnemyDrone::EEnemyDrone(GameCore& core, vec2fp at, Init init)
 	:
 	Entity(core),
 	phy(*this, bodydef(at, true)),
-	hlc(*this, 70),
+	hlc(*this, init.hp),
 	eqp(*this),
 	logic(*this, init.pars, init_idle(init), std::move(init.atk_pat)),
 	mov(logic),
 	drop_value(init.drop_value)
 {
 	ui_descr = "Drone";
-	add_new<EC_RenderModel>(init.model, FColor(1, 0, 0, 1), EC_RenderModel::DEATH_AND_EXPLOSION);
+	add_new<EC_RenderModel>(init.model, init.color, EC_RenderModel::DEATH_AND_EXPLOSION);
 	phy.add(FixtureCreate::circle( fixtdef_nocol(0.3, 0.4), GameConst::hsz_drone * 1.4, 25 ));  // sqrt2 - diagonal
 	
-	hlc.add_filter(std::make_unique<DmgShield>(100, 20, TimeSpan::seconds(5)));
+	if (init.shield) hlc.add_filter(std::move(init.shield));
+	else hlc.add_filter(std::make_unique<DmgShield>(100, 20, TimeSpan::seconds(5)));
 //	hlc.ph_thr = 100;
 //	hlc.ph_k = 0.2;
 //	hlc.hook(phy);
 	
 	eqp.add_wpn(std::move(init.wpn));
 	core.get_info().stat_event(GameInfoList::STAT_SPAWN_BOTS_ALL);
+	
+	if (init.is_accel) {
+		ensure<EC_ParticleEmitter>().effect(FE_SPEED_DUST, {Transform({-phy.get_radius(), 0}, M_PI), 0.3},
+		                                    core.step_len, TimeSpan::nearinfinity);
+	}
 }
 EEnemyDrone::~EEnemyDrone()
 {
@@ -409,7 +448,7 @@ EHunter::EHunter(GameCore& core, vec2fp at)
 {
 	ui_descr = "Hunter Drone";
 	add_new<EC_RenderModel>(MODEL_HUNTER, FColor(1, 0, 0, 1), EC_RenderModel::DEATH_AND_EXPLOSION);
-	phy.add(FixtureCreate::circle( fixtdef(0.2, 0.2), GameConst::hsz_drone_hunter, 80 ));
+	phy.add(FixtureCreate::circle( fixtdef_boss(0.2, 0.2), GameConst::hsz_drone_hunter, 80 ));
 	
 	hlc.add_filter(std::make_unique<DmgArmor>(300, 300));
 	hlc.add_filter(std::make_unique<DmgShield>(250, 30, TimeSpan::seconds(6)));

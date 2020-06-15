@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.11)
 
-project(rodent VERSION 0.1.0
-               LANGUAGES CXX)
+project(rodent VERSION 0.1.2
+               LANGUAGES CXX C)
 
 add_executable(rodent WIN32)
 set(TARGET rodent)
@@ -9,14 +9,18 @@ set(TARGET rodent)
 
 
 option(USE_OPUSFILE "Compile with opus audio support" ON)
+option(USE_PORTAUDIO "Compile with PortAudio support" OFF)
 option(USE_SANITIZERS "Compile with all sanitizers (GCC/clang only)" OFF)
+option(USE_SDL_MAIN "Use SDL_main() instead of just main()" OFF)
 option(DOWNLOAD_SOUNDS "Download sounds and music from github branch" ON)
 
 # pass 'PKG_OUTPUT_DIR' with path to copy all runtime files to after compilation
-# pass 'USE_SDL_MAIN=1' to compile with SDL_main
 
 if (USE_OPUSFILE)
 	target_compile_definitions(${TARGET} PRIVATE USE_OPUSFILE=1)
+endif()
+if (USE_PORTAUDIO)
+	target_compile_definitions(${TARGET} PRIVATE USE_PORTAUDIO=1)
 endif()
 if (USE_SDL_MAIN)
 	target_compile_definitions(${TARGET} PRIVATE USE_SDL_MAIN=1)
@@ -25,7 +29,7 @@ endif()
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "")
 	set(default_build_type "MinSizeRel")
 	set(CMAKE_BUILD_TYPE ${default_build_type})
-	message("No build type specified - set to ${default_build_type}")
+	message("rodent: No build type specified - set to ${default_build_type}")
 endif()
 
 set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}" "${CMAKE_SOURCE_DIR}/scripts")
@@ -42,20 +46,20 @@ include(CheckIPOSupported)
 check_ipo_supported(RESULT ipo_res)
 if (ipo_res AND NOT "${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
 	set_target_properties(${TARGET} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
-	message("FLTO enabled")
+	message("rodent: FLTO enabled")
 else()
-	message("FLTO not enabled")
+	message("rodent: FLTO not enabled")
 endif()
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 	if ("${CMAKE_BUILD_TYPE}" STREQUAL "Release" OR "${CMAKE_BUILD_TYPE}" STREQUAL "MinSizeRel")
 		target_link_options(${TARGET} PRIVATE -s)
-		message("Build stripped")
+		message("rodent: Build stripped")
 	elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug" AND USE_SANITIZERS)
 		target_compile_definitions(${TARGET} PRIVATE _GLIBCXX_DEBUG=1 _GLIBCXX_DEBUG_PEDANTIC=1 _GLIBCXX_SANITIZE_VECTOR=1)
 		target_compile_options(${TARGET} PRIVATE -fsanitize=address -fsanitize=undefined)
 		target_link_options(${TARGET} PRIVATE -fsanitize=address -fsanitize=undefined)
-		message("Build with sanitizers")
+		message("rodent: Build with sanitizers")
 	endif()
 endif()
 
@@ -113,17 +117,31 @@ target_include_directories(${TARGET} PRIVATE "${stb_SOURCE_DIR}")
 FetchContent_Populate(pnoise)
 target_include_directories(${TARGET} PRIVATE "${pnoise_SOURCE_DIR}/src")
 target_sources(${TARGET} PRIVATE "${pnoise_SOURCE_DIR}/src/noise1234.c")
-set_source_files_properties("${pnoise_SOURCE_DIR}/src/noise1234.c" PROPERTIES LANGUAGE CXX)
 
-if (NOT ${fmt_FOUND})
+if (NOT fmt_FOUND)
+	message("rodent: fmt not found, building from source")
 	FetchContent_MakeAvailable(fmtlib)
 	target_include_directories(${TARGET} PRIVATE "${fmtlib_SOURCE_DIR}/include")
 endif()
 
 if (USE_OPUSFILE)
 	find_package(opusfile QUIET)
-	if (NOT ${opusfile_FOUND})
+	if (NOT opusfile_FOUND)
+		message("rodent: opusfile not found, building from source")
 		add_subdirectory(scripts/opusfile)
+	endif()
+endif()
+
+if (USE_PORTAUDIO)
+	find_package(portaudio QUIET)
+	if (NOT portaudio_FOUND)
+		message("rodent: portaudio not found, building from source")
+		FetchContent_Declare(
+			portaudio
+			GIT_REPOSITORY  https://git.assembla.com/portaudio.git
+			GIT_SHALLOW 1
+		)
+		FetchContent_MakeAvailable(portaudio)
 	endif()
 endif()
 
@@ -142,11 +160,16 @@ list(APPEND DLL_NAMES
 	freetype
 	glew
 	ogg opus opusfile
+	portaudio
 	SDL2
 )
 
 if (USE_OPUSFILE)
 	target_link_libraries(${TARGET} PRIVATE opusfile)
+endif()
+
+if (USE_PORTAUDIO)
+	target_link_libraries(${TARGET} PRIVATE portaudio)
 endif()
 
 if (USE_SDL_MAIN)
@@ -156,6 +179,18 @@ endif()
 if (WIN32)
 	target_link_libraries(${TARGET} PRIVATE ws2_32)
 endif()
+
+
+
+macro(get_commit_hash DIR)
+	find_package(Git)
+	execute_process(COMMAND "${GIT_EXECUTABLE}" log -1 --format=%H
+		WORKING_DIRECTORY "${DIR}" OUTPUT_VARIABLE COMMIT_HASH OUTPUT_STRIP_TRAILING_WHITESPACE)
+endmacro()
+
+#get_commit_hash("${PROJECT_SOURCE_DIR}")
+#set_source_files_properties("${PROJECT_SOURCE_DIR}/core/hard_paths.cpp" PROPERTIES COMPILE_DEFINITIONS
+#	PROJECT_VERSION_STRING="${rodent_VERSION} | commit-${COMMIT_HASH}")
 
 target_compile_definitions(${TARGET} PRIVATE PROJECT_VERSION_STRING="${rodent_VERSION}")
 
@@ -291,11 +326,20 @@ if (DOWNLOAD_SOUNDS)
 	FetchContent_Declare(
 		binary_sounds
 		GIT_REPOSITORY  https://github.com/vasukas/rodent.git
-		GIT_TAG         binary_sounds
+		GIT_TAG         origin/binary_sounds
 		GIT_SHALLOW 1
 	)
 	FetchContent_Populate(binary_sounds)
-	postbuild_cmd(copy_directory "${binary_sounds_SOURCE_DIR}/data" "${PROJECT_SOURCE_DIR}/data")
+
+	# don't copy files if commit didn't change
+	get_commit_hash("${binary_sounds_SOURCE_DIR}")
+	if (NOT "${COMMIT_HASH}" STREQUAL "${DOWNLOAD_SOUNDS_COMMIT_HASH}")
+		set(DOWNLOAD_SOUNDS_COMMIT_HASH "${COMMIT_HASH}" CACHE INTERNAL "")
+		postbuild_cmd(remove_directory "${PROJECT_SOURCE_DIR}/data/sounds")
+		postbuild_cmd(copy_directory "${binary_sounds_SOURCE_DIR}/data" "${PROJECT_SOURCE_DIR}/data")
+	else()
+		message("rodent: Sounds not copied - same commit")
+	endif()
 endif()
 
 # Copy 'data/' and DLLs to packaging dir
@@ -313,6 +357,7 @@ if (PKG_OUTPUT_DIR)
 		foreach(NAME ${DLL_NAMES})
 			list(APPEND LIB_GLOBS "${CMAKE_PREFIX_PATH}/bin/*${NAME}*.dll")
 			list(APPEND LIB_GLOBS "${CMAKE_PREFIX_PATH}/lib/*${NAME}*.dll")
+			list(APPEND LIB_GLOBS "${CMAKE_CURRENT_BINARY_DIR}/_deps/*${NAME}*-build/${CMAKE_BUILD_TYPE}/*${NAME}*.dll")
 		endforeach()
 		file(GLOB LIBS ${LIB_GLOBS})
 		postbuild_cmd(copy ${LIBS} "${PKG_OUTPUT_DIR}")

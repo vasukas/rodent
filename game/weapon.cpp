@@ -62,7 +62,7 @@ std::optional<Weapon::DirectionResult> Weapon::get_direction(const ShootParams& 
 		else forward_dir = false;
 	}
 	
-	vec2fp offset = {ent.ref_pc().get_radius(), 0};
+	vec2fp offset = equip->get_attachment_offset();
 	offset.fastrotate(rot);
 	if (equip->hand)
 		offset += vec2fp(info->bullet_offset).fastrotate( rot );
@@ -165,10 +165,7 @@ bool EC_Equipment::set_wpn(size_t index, bool even_if_no_ammo)
 	if (hand)
 	{
 		auto& ri = *get_wpn().info;
-		int w_hand = ri.hand ? *ri.hand : *hand;
-		
-		float r = ent.ref_pc().get_radius();
-		rc.attach( EC_RenderEquip::ATT_WEAPON, Transform{vec2fp(r, r/2 * w_hand)}, ri.model, FColor(1, 0.4, 0, 1) );
+		rc.attach( EC_RenderEquip::ATT_WEAPON, Transform{get_attachment_offset()}, ri.model, FColor(1, 0.4, 0, 1) );
 	}
 	
 	return true;
@@ -205,6 +202,20 @@ bool EC_Equipment::has_ammo(Weapon& w, std::optional<int> amount)
 	if (infinite_ammo) return true;
 	if (!amount) amount = w.info->def_ammo;
 	return amount ? get_ammo(w.info->ammo).has(*amount) : true;
+}
+vec2fp EC_Equipment::get_attachment_offset()
+{
+	vec2fp ret;
+	if (auto p = ResBase::get().get_cpt_opt(ent.ref<EC_RenderModel>().model)) ret = *p;
+	else ret = {ent.ref_pc().get_radius(), 0};
+	
+	// No hands are used
+//	auto& ri = *get_wpn().info;
+//	int w_hand = ri.hand ? *ri.hand : *hand;
+//	float r = ent.ref_pc().get_radius();
+//	ret.y += r/2 * w_hand;
+	
+	return ret;
 }
 bool EC_Equipment::shoot_internal(Weapon& wpn, Weapon::ShootParams pars)
 {

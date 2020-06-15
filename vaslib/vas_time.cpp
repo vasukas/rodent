@@ -51,7 +51,7 @@ TimeSpan TimeSpan::diff( const TimeSpan& t ) const
 void sleep(TimeSpan time)
 {
 	auto mk = time.micro();
-	if (mk >= 0) std::this_thread::sleep_for(microseconds(mk));
+	if (mk > 0) std::this_thread::sleep_for(microseconds(mk));
 }
 
 #ifdef _WIN32
@@ -59,7 +59,7 @@ void sleep(TimeSpan time)
 void precise_sleep(TimeSpan time)
 {
 	auto mk = time.micro();
-	if (mk >= 0) winc_sleep(mk);
+	if (mk > 0) winc_sleep(mk);
 }
 #else
 void precise_sleep(TimeSpan time)

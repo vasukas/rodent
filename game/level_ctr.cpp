@@ -252,8 +252,8 @@ vec2i LevelControl::to_nonwall_coord(vec2fp p) const
 	
 	if (cref(c).is_wall)
 	{
-		float fx = std::fmod(p.x, 1) - 0.5;
-		float fy = std::fmod(p.y, 1) - 0.5;
+		float fx = fracpart(p.x) - 0.5;
+		float fy = fracpart(p.y) - 0.5;
 	
 #define CHECK(X, Y) {if (auto cl = cell(c + vec2i(X,Y)); cl && !cl->is_wall) return c + vec2i(X,Y);}
 		if (std::abs(fx) > std::abs(fy))

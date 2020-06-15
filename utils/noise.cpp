@@ -1,5 +1,7 @@
 #include <sstream>
 #include "vaslib/vas_log.hpp"
+#include "vaslib/vas_misc.hpp"
+#include "vaslib/vas_time.hpp"
 #include "noise.hpp"
 
 
@@ -60,6 +62,10 @@ void RandomGen::set_seed(uint32_t s)
 
 RandomGen& rnd_stat()
 {
-	thread_local RandomGen g;
+	thread_local RandomGen g = []{
+		RandomGen g;
+		g.set_seed(fast_hash32(date_time_str()));
+		return g;
+	}();
 	return g;
 }

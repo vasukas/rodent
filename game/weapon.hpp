@@ -187,6 +187,8 @@ struct EC_Equipment : EComp
 	Ammo& get_ammo(AmmoType type) {return ammos[static_cast<size_t>(type)];}
 	bool has_ammo(Weapon& w, std::optional<int> amount = {}); ///< For use by Weapon
 	
+	vec2fp get_attachment_offset();
+	
 private:
 	std::vector<std::unique_ptr<Weapon>> wpns; // no nulls
 	std::array<Ammo, static_cast<size_t>(AmmoType::TOTAL_COUNT)> ammos;

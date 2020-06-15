@@ -23,7 +23,15 @@ AppSettings::AppSettings()
 bool AppSettings::load()
 {
 	VLOGI("AppSettings::load() from \"{}\"", path_settings);
-	return gen_cfg().read(path_settings.c_str());
+	if (overrides.empty()) {
+		return gen_cfg().read(path_settings.c_str());
+	}
+	
+	VLOGW("AppSettings::load() using CLI overrides");
+	auto s = readfile(path_settings.c_str()).value();
+	for (auto& v : overrides) {s += '\n'; s += v;}
+	gen_cfg().read_s(s);
+	return true;
 }
 LineCfg AppSettings::gen_cfg()
 {
@@ -68,6 +76,8 @@ LineCfg AppSettings::gen_cfg()
 	P_STR(audio_device).descr("empty string for default");
 	P_INT(audio_rate).descr("sample rate");
 	P_INT(audio_samples).descr("buffer size");
+	P_BOOL(use_portaudio).descr("use PortAudio backend if available - may help with latency");
+	P_BOOL(use_audio_reverb).descr("disable reverb effect - may remove audio artifacts due to low performance");
 	
 #define FONT(NM, DESCR) \
 	cs.emplace_back("font" #NM)\
@@ -113,6 +123,8 @@ void AppSettings::init_default()
 	audio_device = {};
 	audio_rate = 48000;
 	audio_samples = 1024;
+	use_portaudio = true;
+	use_audio_reverb = true;
 	
 	font_path = "data/Inconsolata-Bold.ttf";
 	font_dbg_path = "data/Inconsolata.otf";

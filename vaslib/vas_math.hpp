@@ -35,6 +35,8 @@ float fast_invsqrt(float x);
 template <typename T1, typename T2, typename T3>
 bool aequ(T1 v, T2 c, T3 eps) {return std::fabs(v - c) < eps;}
 
+inline float fracpart(float v) {return v - static_cast<int>(v);}
+
 inline float clampf(float x, float min, float max) {return std::max(min, std::min(max, x));}
 inline float clampf_n(float x) {return clampf(x, 0, 1);}
 template <typename T> T clamp(T x, T min, T max) {return std::max(min, std::min(max, x));}

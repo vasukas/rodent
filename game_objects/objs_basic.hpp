@@ -291,16 +291,6 @@ public:
 
 
 
-class ETutorialMsg final : public Entity
-{
-	EC_VirtualBody phy;
-public:
-	ETutorialMsg(GameCore& core, vec2fp pos, std::string msg);
-	EC_Position& ref_pc() override {return phy;}
-};
-
-
-
 class ETutorialDummy final : public Entity
 {
 	EVS_SUBSCR;
@@ -311,6 +301,7 @@ public:
 	ETutorialDummy(GameCore& core, vec2fp pos);
 	EC_Position& ref_pc()  override {return phy;}
 	EC_Health*   get_hlc() override {return &hlc;}
+	size_t get_team() const override {return TEAM_BOTS;}
 };
 
 

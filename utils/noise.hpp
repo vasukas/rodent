@@ -45,6 +45,11 @@ struct RandomGen
 			std::swap(*(begin + i), *(begin + range_index(i)));
 	}
 	
+	template <typename It>
+	void shuffle(It begin, It end) {
+		shuffle(begin, end - begin);
+	}
+	
 	template <typename T, size_t N>
 	const T& random_chance(const std::array<std::pair<T, float>, N>& vs) {
 		float t = range_n();

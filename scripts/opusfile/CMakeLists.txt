@@ -4,7 +4,7 @@ project(opusfile LANGUAGES C)
 add_library(opusfile)
 
 find_package(ogg QUIET)
-if (NOT ${ogg_FOUND})
+if (NOT ogg_FOUND)
 	set(INSTALL_DOCS OFF CACHE BOOL "")
 	set(INSTALL_PKG_CONFIG_MODULE OFF CACHE BOOL "")
 	set(INSTALL_CMAKE_PACKAGE_MODULE OFF CACHE BOOL "")
@@ -19,20 +19,19 @@ if (NOT ${ogg_FOUND})
 endif()
 
 find_package(opus QUIET)
-if (NOT ${opus_FOUND})
+if (NOT opus_FOUND)
 	set(OPUS_INSTALL_PKG_CONFIG_MODULE OFF CACHE BOOL "")
 	set(OPUS_INSTALL_CMAKE_CONFIG_MODULE OFF CACHE BOOL "")
 	
-	message(WARNING "Using hack to bypass configure step failing on try_compile")
-	# ======================================
-	# temporary hack - seems opus\cmake\CFeatureCheck.cmake
-	# should use PROJECT_SOURCE_DIR instead of CMAKE_SOURCE_DIR
-	# ======================================
+	message(WARNING "rodent: opusfile - cmake hacks")
+	# seems opus\cmake\CFeatureCheck.cmake should use PROJECT_SOURCE_DIR instead of CMAKE_SOURCE_DIR
+	# also using older version because of the same stuff in opus\cmake\OpusConfig.cmake
 	set(COMPILE_VLA_SUPPORTED FALSE CACHE BOOL "" FORCE)
 
 	FetchContent_Declare(
-		opus GIT_REPOSITORY https://github.com/xiph/opus.git
-		GIT_SHALLOW 1
+		opus
+		GIT_REPOSITORY  https://github.com/xiph/opus.git
+		GIT_TAG         fc13987b1ad0d55908528598d0f30b364cc62030
 	)
 	FetchContent_MakeAvailable(opus)
 	target_include_directories(opusfile PUBLIC "${opus_SOURCE_DIR}/include")

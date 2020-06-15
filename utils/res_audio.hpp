@@ -16,7 +16,7 @@ public:
 	static Loaded load(const char *filename, int sample_rate);
 	virtual ~AudioSource() = default;
 	
-	virtual int read(int16_t *buffer, int pos, int len) = 0; ///< Returns number of samples read
+	virtual int read(int16_t *buffer, int pos, int len) = 0; ///< Returns number of words (samples*channels) read
 	virtual int length() = 0; ///< May not be exact
 	virtual int num_channels() = 0; ///< Only 1 or 2 are allowed
 	

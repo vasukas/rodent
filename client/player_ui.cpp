@@ -561,7 +561,7 @@ public:
 				
 				if (ammo_t > 0.01)
 				{
-					float t = std::fmod(now.seconds(), 1);
+					float t = fracpart(now.seconds());
 					if (t > 0.5) t = 1 - t;
 					t *= 2;
 					

@@ -126,7 +126,7 @@ void SmoothBlink::trigger()
 {
 	if (time.is_positive())
 	{
-		float t = std::fmod(time / full_period, 1);
+		float t = fracpart(time / full_period);
 		if (t > 0.5) t = 1 - t;
 		time = full_period * t;
 	}
@@ -143,11 +143,11 @@ float SmoothBlink::t_base(bool enabled, float def, callable_ref<float(float)> pr
 	{
 		if (enabled) time += RenderControl::get().get_passed();
 		else {
-			time = full_period * std::fmod(time / full_period, 1);
+			time = full_period * fracpart(time / full_period);
 			time += RenderControl::get().get_passed();
 			if (time > full_period) time = {};
 		}
-		return proc(std::fmod(time / full_period, 1));
+		return proc(fracpart(time / full_period));
 	}
 	return def;
 }

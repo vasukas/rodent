@@ -32,6 +32,8 @@ public:
 	
 	std::vector<BotAssemblerInfo>& get_assembler_list() {return assembler_list;}
 	
+	std::vector<std::pair<vec2fp, std::string>>& get_tut_messages() {return tut_messages;}
+	
 	enum EventType {
 		STAT_DAMAGE_RECEIVED_PLAYER,
 		STAT_DAMAGE_RECEIVED_BOTS,
@@ -51,6 +53,7 @@ private:
 	std::vector<TeleportInfo> teleport_list;
 	std::optional<size_t> teleport_cur;
 	std::vector<BotAssemblerInfo> assembler_list;
+	std::vector<std::pair<vec2fp, std::string>> tut_messages;
 	std::array<float, STAT__TOTAL_COUNT> stat_event_vals = {};
 	
 	friend class GameCore_Impl;

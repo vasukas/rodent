@@ -10,6 +10,7 @@ struct AppSettings
 {
 	std::string path_log; ///< If not set (empty), template name is used
 	std::string path_settings; ///< Config filename
+	std::vector<std::string> overrides;
 	
 	// renderer options
 	vec2i wnd_size;
@@ -28,6 +29,8 @@ struct AppSettings
 	std::string audio_device;
 	int audio_rate;
 	int audio_samples;
+	bool use_portaudio;
+	bool use_audio_reverb;
 	
 	// font options
 	std::string font_path;

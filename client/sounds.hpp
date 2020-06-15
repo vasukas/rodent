@@ -139,7 +139,7 @@ class SoundEngine
 public:
 	bool debug_draw = false;
 	
-	static bool init();
+	static bool init(bool profile_mode = false);
 	static SoundEngine* get();
 	virtual ~SoundEngine();
 	
@@ -171,6 +171,7 @@ public:
 	virtual bool has_music() = 0;
 	
 	enum MusControl {
+		// see SndEngMusic (sounds.cpp) for details
 		MUSC_NO_AUTO, ///< No automatic control (keeps last track playing)
 		MUSC_AMBIENT,
 		MUSC_LIGHT,
@@ -180,7 +181,14 @@ public:
 	virtual void music_control(MusControl state) = 0; ///< Update dynamic music control state
 	
 	virtual void sync(GameCore& core, vec2fp lstr_pos) = 0; ///< Must be called when game logic thread is locked
-	virtual void set_pause(bool is_paused) = 0; ///< Stops music and all non-UI sounds
+	
+	enum UI_Mode {
+		UIM_OFF,
+		UIM_MUSIC_ONLY, ///< Non-UI sounds are silenced
+		UIM_SILENCE ///< Music and non-UI sounds are silenced
+		// UI sounds aren't looped, so no need to silence them
+	};
+	virtual void set_ui_mode(UI_Mode mode) = 0;
 	
 protected:
 	friend SoundObj;

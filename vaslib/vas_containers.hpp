@@ -206,8 +206,8 @@ public:
 		clear();
 	}
 	
-	      T* data() {return static_cast<T*>(static_cast<void*>(mem));}
-	const T* data() const {return static_cast<const T*>(static_cast<const void*>(mem));}
+	      T* data()       {return pointer_cast<T*>      (mem);}
+	const T* data() const {return pointer_cast<const T*>(mem);}
 	
 	T& operator[](size_t i) noexcept {return data()[i];}
 const T& operator[](size_t i) const noexcept {return data()[i];}

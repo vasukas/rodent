@@ -853,6 +853,18 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 		}
 		, ray_width, 1000, shoot_through, ent.index).value_or(p + v);
 		
+		// just for fun
+		if (auto r = ent.core.get_phy().raycast_nearest(conv(p), conv(p + v * 80),
+				{[](Entity& ent, b2Fixture&) {return typeid(ent) == typeid(ElectroBall);}, {}, false});
+		    r && r->distance * r->distance < r_hit.dist_squ(p))
+		{
+			auto& body = r->ent->ref_phobj().body;
+			auto vel = body.GetLinearVelocity();
+			vel += conv(v * 70 * charge_lvl);
+			body.SetLinearVelocity(vel);
+			GamePresenter::get()->effect(FE_HIT_SHIELD, {Transform(conv(r->poi), v.angle() + M_PI), 4, FColor(0.6, 0.85, 1, 2)});
+		}
+		
 		if (!interm_hit.empty()) interm_hit.pop_back();
 		for (auto& p : interm_hit)
 			GamePresenter::get()->effect(FE_HIT_SHIELD, {Transform(p, v.angle() + M_PI),
@@ -974,8 +986,6 @@ void FoamProjectile::freeze(bool is_normal)
 		if (is_normal) destroy();
 		return;
 	}
-	add_new<EC_ParticleEmitter>().effect(FE_FROST_AURA, {{}, 1.5f, FColor(1, 1, 1, 0.07), 0.5},
-	                                     TimeSpan::seconds(rnd_stat().range(0.3, 0.5)), TimeSpan::nearinfinity);
 	
 	left = TimeSpan::seconds(12);
 	frozen = true;
@@ -991,17 +1001,22 @@ void FoamProjectile::freeze(bool is_normal)
 			new FoamProjectile(core, phy.get_pos() + dir, vel_initial, team, src_i, false);
 		}
 	}
-	if (!is_normal)
-		return;
 	
-	hlc.get_hp().renew(80);
+	if (is_normal) {
+		hlc.get_hp().renew(80);
+		team = TEAM_ENVIRON;
+		ref<EC_RenderModel>().clr = FColor(0.95, 1, 1);
+	}
 	
 	phy.body.SetType(b2_staticBody);
 	EVS_SUBSCR_UNSUB_ALL;
 	
-	team = TEAM_ENVIRON;
-	ref<EC_RenderModel>().clr = FColor(0.95, 1, 1);
-	snd.update(*this, SoundPlayParams{SND_WPN_FOAM_AMBIENT}._period({}));
+	static int counter = 0;
+	if ((++counter) % 3 == 0) {
+		snd.update(*this, SoundPlayParams{SND_WPN_FOAM_AMBIENT}._period({}));
+		add_new<EC_ParticleEmitter>().effect(FE_FROST_AURA, {{}, 1.5f, FColor(1, 1, 1, 0.07), 0.5},
+											 TimeSpan::seconds(rnd_stat().range(0.3, 0.5)), TimeSpan::nearinfinity);
+	}
 }
 
 
@@ -1125,7 +1140,7 @@ std::optional<Weapon::ShootResult> WpnFoam::shoot(ShootParams pars)
 	if (pars.alt)
 	{
 		new FoamProjectile(core, p, v * 10, ent.get_team(), ent.index, true);
-		sound(SND_WPN_FOAM_SHOOT, *info->def_delay);
+		sound(SND_WPN_FOAM_SHOOT);
 		return ShootResult{};
 	}
 	if (pars.main)
@@ -1177,7 +1192,7 @@ void GrenadeProjectile::step()
 	core.valid_ent(src_eid);
 	auto& ren = ref<EC_RenderModel>();
 	
-	float k = std::fmod(clr_t, 1);
+	float k = fracpart(clr_t);
 	k = (k < 0.5 ? k : 1 - k) * 2;
 	ren.clr.g = k;
 	ren.clr.b = k * 0.2;

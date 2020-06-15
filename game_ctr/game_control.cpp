@@ -139,8 +139,6 @@ public:
 			
 			while (core->get_step_time() < pars.fastforward_time)
 			{
-				sleep(TimeSpan::ms(0));
-				
 				core->step(t0);
 				if (core->get_step_time() > pars.fastforward_fullworld)
 					core->get_pmg().fastforward = false;
@@ -161,8 +159,6 @@ public:
 			bool is_error = false;
 			while (true)
 			{
-				sleep(TimeSpan::ms(0));
-				
 				auto& pc_ctr = PlayerInput::get();
 				auto ctr_lock = pc_ctr.lock();
 				

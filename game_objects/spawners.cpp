@@ -971,9 +971,9 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 		else if (room_area < 300) room_cdel = 16;
 		else                      room_cdel = 20;
 		
-		size_t num = dl_count * (room_area / room_cdel);
+		int num = dl_count * (room_area / room_cdel);
 		if (!num) continue;
-		num = std::min<size_t>(num, 16);
+		num = std::min(num, 16);
 		
 		std::vector<vec2i> spawn_ps;
 		spawn_ps.reserve( r.area.size().area() );
@@ -985,7 +985,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 		});
 		
 		rnd.shuffle(spawn_ps);
-		num = std::min(num, spawn_ps.size());
+		num = std::min<int>(num, spawn_ps.size());
 		
 		float dl_total = dl_work + dl_drone + dl_camper;
 		dl_work   = (dl_work   / dl_total);
@@ -1058,7 +1058,21 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 			}
 		}
 		
-		for (size_t i=0; i<num; ++i)
+		if (dl_work > 0.5 && num < 12 && rnd.range_n() < 0.125)
+		{
+			int n = num < 4 ? 4 : (num < 10 ? 6 : 8);
+			for (int i=0; i<n; ++i) {
+				vec2fp at = spawn_ps[i];
+				at = at * GameConst::cell_size + vec2fp::one(GameConst::cell_size /2);
+	
+				at.x += core.get_random().range_n2() * 0.5;
+				at.y += core.get_random().range_n2() * 0.5;
+				
+				new EEnemyDrone(core, at, EEnemyDrone::def_fastb(core));
+			}
+		}
+		
+		for (int i=0; i<num; ++i)
 		{
 			vec2fp at = spawn_ps[i];
 			at = at * GameConst::cell_size + vec2fp::one(GameConst::cell_size /2);

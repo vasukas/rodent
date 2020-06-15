@@ -16,7 +16,8 @@ Install binary dependecies:
 	$ sudo apt-get install libfreetype6 libglew libsdl2     # Ubuntu/Debian (only runtime)
 	$ sudo pacman -S --needed freetype2 glew opusfile sdl2  # Arch Linux
 
-Source dependecies (Box2D, fmt, stb) are downloaded automatically by CMake.
+Source dependecies (Box2D, fmt, stb) are downloaded automatically by CMake.  
+If enabled but not installed, opusfile and PortAudio also will be downloaded and built by CMake.
 
 Run `scripts/build.sh` from project root to build with CMake.
 Resulting file will be saved as `build/rodent`.

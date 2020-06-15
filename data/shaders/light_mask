@@ -22,9 +22,11 @@ void main()
 
 uniform sampler2D tex;
 in vec2 tc;
+out vec4 clr;
 
 void main()
 {
+	clr = vec4(0);
 	if (texture(tex, tc).r < 0.5) discard;
 }
 
