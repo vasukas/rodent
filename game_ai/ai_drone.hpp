@@ -40,7 +40,7 @@ public:
 	
 	struct IdleChasePlayer
 	{
-		TimeSpan after = {};
+		std::optional<vec2fp> pos = {};
 		bool has_failed = false;
 	};
 	
@@ -127,6 +127,7 @@ public:
 	void set_idle_state(); ///< Removes all states except idle
 	
 	AI_RotationControl& get_rot_ctl() {return rot_ctl;}
+	IdleChasePlayer* as_scanner() {return std::get_if<IdleChasePlayer>(&std::get<Idle>(state_stack[0]).ist);}
 	
 private:
 	std::shared_ptr<AI_DroneParams> pars;

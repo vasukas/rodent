@@ -317,6 +317,7 @@ public:
 		
 		sh_mask = Shader::load("pp/smoke_mask", {});
 		sh_eff = Shader::load("pp/smoke", {});
+		sh_space_bg = Shader::load("space_bg", {});
 		
 		fbo_eff.em_texs.emplace_back();
 		fbo_mask.em_texs.emplace_back();
@@ -392,11 +393,30 @@ public:
 		s.in_a = i.alpha / s.et;
 		s.dt_a = i.alpha / s.ft;
 	}
+	void draw_space_background(float& alpha, bool enabled)
+	{
+		float passed = RenderControl::get().get_passed().seconds();
+		float tti = 0.05; // time to fully switch, seconds
+		float ttd = 0.3;
+		alpha = enabled ? std::min(1.f, alpha + passed / tti) : std::max(0.f, alpha - passed / ttd);
+		
+		float sk = RenderControl::get_size().xy_ratio();
+		t_val += z_speed * passed;
+		
+		sh_space_bg->bind();
+		sh_space_bg->set4f("ps", 0.6, 1/sk, t_val, alpha);
+		
+		glActiveTexture(GL_TEXTURE0);
+		tex_noi.bind();
+		
+		RenderControl::get().ndc_screen2().bind();
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+	}
 	
 private:
 	GLA_Framebuffer fbo_mask, fbo_eff;
 	GLA_Texture tex_noi, tex_circ;
-	std::unique_ptr<Shader> sh_mask, sh_eff;
+	std::unique_ptr<Shader> sh_mask, sh_eff, sh_space_bg;
 	RAII_Guard rsz_g;
 	
 	std::vector<SmokeData> smokes;
@@ -502,12 +522,15 @@ private:
 class Postproc_Impl : public Postproc
 {
 public:	
+	bool is_ui_mode = true;
+	
 	void ui_mode(bool enable) override
 	{
 		RenAAL::get().draw_grid = !enable;
 		RenLight::get().enabled = !enable;
 		RenParticles::get().enabled = !enable;
 		if (smoke) smoke->enabled = !enable;
+		is_ui_mode = enable;
 	}
 	
 	
@@ -565,6 +588,8 @@ public:
 	
 	
 	PP_Smoke* smoke = nullptr;
+	PPN_InputDraw* space_bg = nullptr;
+	float space_bg_level = 0;
 	
 	void add_smoke(const Smoke& s) override
 	{
@@ -654,6 +679,16 @@ public:
 			new PPN_Chain("post", std::move(fts), {});
 		}
 		
+		if (smoke) {
+			space_bg = new PPN_InputDraw("space_bg", PPN_InputDraw::MID_COLOR, [this](auto)
+			{
+				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+				glBlendEquation(GL_FUNC_ADD);
+				smoke->draw_space_background(space_bg_level, is_ui_mode);
+			},
+			[this] {return is_ui_mode || space_bg_level > 0.f;});
+		}
+		
 		auto& g = PP_Graph::get();
 		
 		g.connect("grid", "smoke", 1);
@@ -668,6 +703,8 @@ public:
 		
 		g.connect("E1", "smoke", 2);
 		g.connect("post", "display", 1);
+		
+		g.connect("space_bg", "display", 0);
 		g.connect("ui", "display", 3);
 		
 		ok = true;

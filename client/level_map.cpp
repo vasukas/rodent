@@ -152,7 +152,7 @@ public:
 		}
 		
 		size_t n_ass = core.get_info().get_assembler_list().size();
-		if (n_ass) draw_text_hud({0, -50}, "Active assembling lines detected", 0xffc0a000 | clr_a);
+		if (n_ass) draw_text_hud({0, -50}, "Active assembling lines detected", 0xff404000 | clr_a);
 		else draw_text_hud({0, -50}, "No active assembling lines found", 0xa0ffa000 | clr_a);
 		
 		return dst;

@@ -280,8 +280,9 @@ void PPN_Chain::draw(bool is_last)
 
 
 
-PPN_InputDraw::PPN_InputDraw(std::string name, Middle_FBO mid_fbo, std::function<void(GLuint fbo)> func)
-    : PP_Node(name, false, true), func(std::move(func))
+PPN_InputDraw::PPN_InputDraw(std::string name, Middle_FBO mid_fbo, std::function<void(GLuint fbo)> func,
+                             std::function<bool()> custom_prepare)
+    : PP_Node(name, false, true), func(std::move(func)), custom_prepare(std::move(custom_prepare))
 {
 	pass = Shader::load("pp/pass", {}, true);
 	if (mid_fbo)

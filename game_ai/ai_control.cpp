@@ -298,6 +298,145 @@ AI_GroupPtr& AI_GroupPtr::operator= (AI_GroupPtr&& p) noexcept
 
 
 
+struct HunterScanner
+{
+	// distance check
+	static constexpr TimeSpan dist_wait = TimeSpan::seconds(2);
+	TimeSpan dist_wait_until;
+	
+	// position check
+	TimeSpan wait_until;
+	std::optional<TimeSpan> failed_until; // for failed searches
+	bool wait_forced = false; // can't reduce wait time
+	TimeSpan wait_next = AI_Const::hunter_scan_max.second;
+	
+	//
+	vec2fp pos; // last 'scanned'  // both positions are inited in ref()
+	vec2fp last_alive;             //   by position of first user
+	bool was_dead = false;
+	std::vector<AI_Drone*> users;
+	
+	// delayed update - don't update all drones in one step, as paths can be extremely long
+	const int per_step = 4;
+	size_t i_delay = 0;
+	int check_was;
+	
+	void delayed_update(bool forced)
+	{
+		size_t n = forced ? users.size() : std::min(users.size(), i_delay + per_step);
+		for (; i_delay < n; ++i_delay) {
+			auto& st = *users[i_delay]->as_scanner();
+			if (check_was == 1 || st.has_failed) {
+				st.pos = pos;
+				st.has_failed = false;
+			}
+		}
+	}
+	void update(GameCore& core, AI_Group* grp)
+	{
+		if (users.empty()) {
+			wait_until = {};
+			wait_forced = false;
+			failed_until = {};
+			was_dead = false;
+			return;
+		}
+		
+		bool alive;
+		if (auto tar = core.get_pmg().get_ent())
+		{
+			if (auto rm = core.get_lc().get_room(tar->get_pos());
+				!rm || rm->type != LevelCtrRoom::T_TRANSIT)
+			{
+				pos = last_alive = tar->get_pos();
+			}
+			alive = true;
+		}
+		else {
+			force_reset(core, AI_Const::hunter_scan_death_delay);
+			alive = false;
+		}
+		
+		TimeSpan now = core.get_step_time();
+		int check = 0;
+		
+		if (failed_until && *failed_until <= now) {
+			failed_until.reset();
+			check = 2;
+		}
+		if (was_dead && alive && !wait_forced) {
+			was_dead = false;
+			wait_until = std::min(wait_until, now + AI_Const::hunter_scan_new_delay);
+		}
+		if (grp && !wait_forced) {
+			wait_until = std::min(wait_until, now + AI_Const::hunter_scan_new_delay);
+		}
+		
+		if (wait_until <= now) {
+			wait_until = now + wait_next;
+			wait_forced = false;
+			check = 1;
+		}
+		else if (dist_wait_until <= now) {
+			dist_wait_until = now + dist_wait;
+			
+			float dist = std::pow(AI_Const::hunter_scan_max.first + 1, 2);
+			for (AI_Drone* d : users) {
+				dist = std::min(dist, d->ent.get_pos().dist_squ(pos));
+			}
+			dist = std::sqrt(dist);
+			
+			float t = inv_lerp(AI_Const::hunter_scan_min.first, AI_Const::hunter_scan_max.first, dist);
+			t = clampf_n(t);
+			wait_next = lerp(AI_Const::hunter_scan_min.second, AI_Const::hunter_scan_max.second, t);
+			
+			if (!wait_forced)
+				wait_until = std::min(wait_until, now + wait_next);
+		}
+		
+		if (check)
+		{
+			if (!alive) {
+				if (check == 2) return;
+				was_dead = true;
+			}
+			failed_until.reset();
+			
+			delayed_update(true);
+			i_delay = 0;
+			check_was = check;
+		}
+		delayed_update(false);
+	}
+	void ref(AI_Drone* d)
+	{
+		if (d->as_scanner()) {
+			if (users.empty()) pos = last_alive = d->ent.get_pos();
+			if (!wait_forced) wait_until = std::min(wait_until, d->ent.core.get_step_time() + AI_Const::hunter_scan_new_delay);
+			users.push_back(d);
+		}
+	}
+	void unref(AI_Drone* d)
+	{
+		if (d->as_scanner()) {
+			erase_if_find(users, d);
+			delayed_update(true);
+		}
+	}
+	void failed(GameCore& core)
+	{
+		if (!failed_until)
+			failed_until = core.get_step_time() + AI_Const::hunter_scan_failed_tmo;
+	}
+	void force_reset(GameCore& core, TimeSpan fixed_wait)
+	{
+		wait_until = core.get_step_time() + fixed_wait;
+		wait_forced = true;
+	}
+};
+
+
+
 class AI_Controller_Impl : public AI_Controller
 {
 public:
@@ -310,10 +449,14 @@ public:
 	std::vector<std::unique_ptr<AI_SimResource>> res_list;
 	
 	std::optional<AI_Group> the_only_group;
+	bool group_was = false;
 	TimeSpan group_check_tmo;
 	
 	std::vector<EntityIndex> hunters;
 	TimeSpan hunter_resp_tmo = TimeSpan::seconds(2*60);
+	HunterScanner scanner;
+	
+	float g_susp = 0;
 	
 	
 	
@@ -325,6 +468,10 @@ public:
 			group_check_tmo = AI_Const::group_update_timeout;
 			the_only_group->update();
 		}
+		
+		if (group_was && !the_only_group) g_susp = 1;
+		else g_susp = std::max(0., g_susp - core.step_len / AI_Const::global_suspect_decr);
+		group_was = !!the_only_group;
 		
 		debug_batle_number = the_only_group ? the_only_group->drones.size() : 0;
 		if (the_only_group && show_aos_debug)
@@ -370,6 +517,8 @@ public:
 			}
 		}
 		
+		// hunters
+		
 		if (hunter_resp_tmo.is_positive()) {
 			hunter_resp_tmo -= core.step_len;
 		}
@@ -382,21 +531,8 @@ public:
 				hunter_resp_tmo = AI_Const::hunter_respawn_tmo;
 			}
 		}
-		for (auto it = hunters.begin(); it != hunters.end(); )
-		{
-			auto ent = core.get_ent(*it);
-			if (!ent) it = hunters.erase(it);
-			else {
-				++it;
-				
-				if (the_only_group)
-				if (auto gst = std::get_if<AI_Drone::Idle>(&ent->ref_ai_drone().get_state()))
-				{
-					auto& st = std::get<AI_Drone::IdleChasePlayer>(gst->ist);
-					st.after = std::min(st.after, TimeSpan::seconds(7));
-				}
-			}
-		}
+		erase_if(hunters, [&](auto& i) {return !core.get_ent(i);});
+		scanner.update(core, the_only_group ? &*the_only_group : nullptr);
 	}
 	AI_GroupPtr get_group(AI_Drone& drone) override
 	{
@@ -458,6 +594,14 @@ public:
 	{
 		return the_only_group && the_only_group->tar_eid == ent.index;
 	}
+	void force_reset_scanner(TimeSpan timeout) override
+	{
+		scanner.force_reset(core, timeout);
+	}
+	float get_global_suspicion() override
+	{
+		return std::min(g_susp, AI_Const::global_suspect_max);
+	}
 	
 	
 	
@@ -468,11 +612,13 @@ public:
 	void ref_drone(AI_Drone* d) override
 	{
 		drs.push_back(d);
+		scanner.ref(d);
 	}
 	void unref_drone(AI_Drone* d) override
 	{
 		auto it = std::find(drs.begin(), drs.end(), d);
 		drs.erase(it);
+		scanner.unref(d);
 	}
 	int ref_resource(Rectfp p, AI_SimResource* r) override
 	{
@@ -493,6 +639,10 @@ public:
 		};
 		Cb cb{ this, &f };
 		res_tree.Query(&cb, {conv(p.lower()), conv(p.upper())});
+	}
+	void mark_scan_failed() override
+	{
+		scanner.failed(core);
 	}
 };
 AI_Controller* AI_Controller::create(GameCore& core) {

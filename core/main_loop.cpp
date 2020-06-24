@@ -100,14 +100,12 @@ public:
 			lines.push_back({"", {}});
 			if (fexist(HARDPATH_REPLAY_SAVEGAME)) lines.push_back({"Continue", {[]{ start_game("--loadlast --savegame"); }}});
 			lines.push_back({"New game", {[]{ start_game("--rndseed --savegame"); }}});
+			lines.push_back({"Survival", {[]{ start_game("--survival --no-ffwd --rndseed"); }}});
 			lines.push_back({"", {}});
 			lines.push_back({"Tutorial", {[]{ start_game("--tutorial"); }}});
-			lines.push_back({"Survival", {[]{ start_game("--survival --no-ffwd --rndseed"); }}});
-			lines.push_back({"Default", {[]{ start_game({}); }}});
 			lines.push_back({"", {}});
 			lines.push_back({"Keybinds", {[]{ create(INIT_KEYBIND); }}});
 			lines.push_back({"Options", {[]{ create(INIT_OPTIONS); }}});
-			lines.push_back({"Controls", {[]{ create(INIT_HELP); }}});
 			lines.push_back({"", {}});
 			lines.push_back({"Exit", [this]{ delete this; }});
 		}
@@ -169,6 +167,11 @@ public:
 		if (Rect{pos, sz, true}.contains(vig_mouse_pos())) RenImm::get().draw_text(pos, "()_^^_()");
 		else if (MainLoop::is_debug_mode) RenImm::get().draw_text(pos, "()_**_()");
 		else RenImm::get().draw_text(pos, "()_.._()");
+		
+#ifdef PROJECT_VERSION_STRING
+		pos = {0, RenderControl::get_size().y - RenImm::get().text_size(PROJECT_VERSION_STRING).y};
+		RenImm::get().draw_text(pos, PROJECT_VERSION_STRING);
+#endif
 	}
 };
 

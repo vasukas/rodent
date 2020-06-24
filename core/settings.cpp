@@ -28,7 +28,7 @@ bool AppSettings::load()
 	}
 	
 	VLOGW("AppSettings::load() using CLI overrides");
-	auto s = readfile(path_settings.c_str()).value();
+	auto s = readfile(path_settings.c_str()).value_or(std::string{});
 	for (auto& v : overrides) {s += '\n'; s += v;}
 	gen_cfg().read_s(s);
 	return true;
@@ -82,7 +82,7 @@ LineCfg AppSettings::gen_cfg()
 #define FONT(NM, DESCR) \
 	cs.emplace_back("font" #NM)\
 	.vstr(font##NM##_path)\
-	.vfloat(font##NM##_pt)\
+	.vfloat(font##NM##_pt, 1000, 4)\
 	.descr(DESCR)
 	
 	FONT(, "primary font - filename and size");
@@ -116,9 +116,9 @@ void AppSettings::init_default()
 	fscreen = FS_Maximized;
 	
 	use_audio = true;
-	audio_volume = 1;
+	audio_volume = 0.9;
 	sfx_volume = 1;
-	music_volume = 0.9;
+	music_volume = 0.75;
 	audio_api = {};
 	audio_device = {};
 	audio_rate = 48000;

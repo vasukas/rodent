@@ -359,6 +359,7 @@ EEnemyDrone::Init EEnemyDrone::def_fastb(GameCore& core)
 
 static AI_Drone::IdleState init_idle(EEnemyDrone::Init& init)
 {
+	if (!std::holds_alternative<AI_Drone::IdlePoint>(init.idle)) return std::move(init.idle);
 	if (init.is_worker) return AI_Drone::IdleResource{{ AI_SimResource::T_ROCK, false, 0, 20 }};
 	if (init.patrol.size() > 1) return AI_Drone::IdlePatrol{ std::move(init.patrol) };
 	return {};

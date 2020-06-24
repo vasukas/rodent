@@ -205,6 +205,12 @@ const float suspect_initial = TimeSpan::seconds(1) / suspect_decr;
 /// Minimal level after receiving damage
 const float suspect_on_damage = suspect_chase_thr;
 
+/// Max affect of global suspicion on local
+const float global_suspect_max = suspect_chase_thr * 0.8;
+
+/// Suspicion decrease time for global counter
+const TimeSpan global_suspect_decr = TimeSpan::seconds(12);
+
 
 
 // Message distances (in rooms)
@@ -246,6 +252,13 @@ const std::pair<float, TimeSpan> hunter_scan_max = {120, TimeSpan::seconds(60)};
 
 /// Retry timeout if can't find path
 const TimeSpan hunter_scan_failed_tmo = TimeSpan::seconds(2);
+
+/// Before forcing scan after new drone is created. 
+/// Same delay used for updating position if player is in combat or in an inaccessible room
+const TimeSpan hunter_scan_new_delay = TimeSpan::seconds(4);
+
+/// Before scanner activated again after target's death
+const TimeSpan hunter_scan_death_delay = TimeSpan::seconds(25);
 
 }
 

@@ -121,6 +121,7 @@ public:
 		std::vector<vec2fp> patrol = {};
 		int hp = 70;
 		std::unique_ptr<DamageFilter> shield = {};
+		AI_Drone::IdleState idle;
 	};
 	
 	static Init def_workr(GameCore& core);

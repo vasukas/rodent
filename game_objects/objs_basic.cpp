@@ -738,7 +738,7 @@ EAssembler::~EAssembler()
 {
 	if (!core.is_freeing()) {
 		auto& list = core.get_info().get_assembler_list();
-		erase_if(list, [&](auto& v) {return v.eid == index;});
+		erase_if_find(list, [&](auto& v) {return v.eid == index;});
 		
 		bool msg = true;
 		for (auto& p : list) {

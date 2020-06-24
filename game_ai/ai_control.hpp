@@ -83,6 +83,11 @@ public:
 	/// Returns true if any group with such target exist
 	virtual bool is_targeted(Entity& ent) = 0;
 	
+	virtual void force_reset_scanner(TimeSpan timeout) = 0;
+	
+	/// Returns global suspicion level, already limited
+	virtual float get_global_suspicion() = 0;
+	
 protected:
 	friend AI_Drone;
 	friend AI_GroupPtr;
@@ -95,6 +100,8 @@ protected:
 	
 	virtual int ref_resource(Rectfp p, AI_SimResource* r) = 0;
 	virtual void find_resource(Rectfp p, callable_ref<void(AI_SimResource&)> f) = 0;
+	
+	virtual void mark_scan_failed() = 0;
 };
 
 #endif // AI_GROUP_HPP

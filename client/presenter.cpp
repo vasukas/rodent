@@ -453,7 +453,7 @@ public:
 	void on_rem(EC_RenderComp& c) override
 	{
 		if (auto p = getreg(c.ent.index))
-			erase_if(p->subs, [&](auto& v){ return v == &c; });
+			erase_if_find(p->subs, [&](auto& v){ return v == &c; });
 	}
 };
 void GamePresenter::effect(PGG_Pointer pgg, const ParticleBatchPars& pars)

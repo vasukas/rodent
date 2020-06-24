@@ -729,10 +729,10 @@ struct WpnElectro_Pars
 	float ai_alt_distance = -1; ///< Squared. If distance to target is smaller, primary replace with alt
 	
 	// primary fire
-	TimeSpan charge_time = TimeSpan::seconds(1.8);
+	TimeSpan charge_time = TimeSpan::seconds(1.6);
 	TimeSpan wait_time = TimeSpan::seconds(3); ///< Wait before auto-discharge when fully charged
 	int max_ammo = 6; ///< At max charge
-	float max_damage = 270;
+	float max_damage = 300;
 	TimeSpan max_cd = TimeSpan::seconds(1); ///< Cooldown at max charge
 };
 static const WpnElectro_Pars& get_wpr(WpnElectro::Type type)

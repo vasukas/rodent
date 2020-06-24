@@ -101,16 +101,18 @@ public:
 	};
 	
 	bool enabled = true;
-	PPN_InputDraw(std::string name, Middle_FBO mid_fbo, std::function<void(GLuint fbo)> func);
+	PPN_InputDraw(std::string name, Middle_FBO mid_fbo, std::function<void(GLuint fbo)> func,
+	              std::function<bool()> custom_prepare = {});
 	
 private:
 	std::unique_ptr<Shader> pass;
 	std::optional<GLA_Framebuffer> fbo;
 	RAII_Guard fbo_g;
 	std::function<void(GLuint)> func;
+	std::function<bool()> custom_prepare;
 	bool alt_blend;
 	
-	bool prepare() override {return enabled;}
+	bool prepare() override {return enabled && (!custom_prepare || custom_prepare());}
 	void proc(GLuint fbo_out) override;
 	GLuint get_input_fbo() override {throw std::logic_error("PPN_InputDraw::get_input_fbo() called");}
 };

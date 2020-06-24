@@ -98,17 +98,40 @@ void append( T& target, const T& from )
 	target.insert( target.end(), from.begin(), from.end() );
 }
 
-/// Combines std::find_if with c.erase. Returns true if erased
-template <typename Cont, typename F>
-bool erase_if(Cont& c, F f)
+/// Removes first element of same value
+template <typename Cont>
+bool erase_if_find(Cont& c, const typename Cont::value_type &f)
 {
 	auto end = std::end(c);
-	auto it = std::find_if( std::begin(c), end, f );
+	auto it = std::find(std::begin(c), end, f);
 	if (it != end) {
 		c.erase(it);
 		return true;
 	}
 	return false;
+}
+
+/// Removes first element meeting the condition
+template <typename Cont, typename F,
+          std::enable_if_t<std::is_invocable_r_v<bool, F, typename Cont::value_type&>, int> = 0>
+bool erase_if_find(Cont& c, F f)
+{
+	auto end = std::end(c);
+	auto it = std::find_if(std::begin(c), end, f);
+	if (it != end) {
+		c.erase(it);
+		return true;
+	}
+	return false;
+}
+
+/// Removes all elements meeting the condition
+template <typename Cont, typename F>
+void erase_if(Cont& c, F f)
+{
+	auto end = std::end(c);
+	auto n_end = std::remove_if(std::begin(c), end, f);
+	c.erase(n_end, end);
 }
 
 /// Fills 'out' container with converted values of 'in'

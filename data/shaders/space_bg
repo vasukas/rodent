@@ -1,0 +1,21 @@
+//@vert vert_pass
+//@frag
+#version 330
+
+uniform sampler3D smoke;
+uniform vec4 ps;
+
+in vec2 tc;
+out vec4 res;
+
+void main() {
+	const vec3 c0 = vec3(0.1, 0.6, 0.2);
+	const vec3 c1 = vec3(0, 0.1, 0.8);
+	const float b_offset = 0.5;
+	const float b_max = 0.6;
+
+	float t = texture(smoke, vec3(tc * ps.xy, ps.z)).r;
+	float b = texture(smoke, vec3(tc * ps.xy, ps.z + b_offset)).r;
+	res = vec4(mix(c0, c1, t) * b * b_max, ps.w);
+}
+

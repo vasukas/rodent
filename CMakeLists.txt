@@ -32,7 +32,7 @@ if ("${CMAKE_BUILD_TYPE}" STREQUAL "")
 	message("rodent: No build type specified - set to ${default_build_type}")
 endif()
 
-set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}" "${CMAKE_SOURCE_DIR}/scripts")
+set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}" "${PROJECT_SOURCE_DIR}/scripts")
 
 
 
@@ -96,6 +96,11 @@ FetchContent_Declare(
 	GIT_REPOSITORY  https://github.com/stegu/perlin-noise
 	GIT_SHALLOW 1
 )
+FetchContent_Declare(
+	portaudio
+	GIT_REPOSITORY  https://git.assembla.com/portaudio.git
+	GIT_SHALLOW 1
+)
 
 find_package(fmt      QUIET)
 find_package(Freetype REQUIRED)
@@ -136,11 +141,6 @@ if (USE_PORTAUDIO)
 	find_package(portaudio QUIET)
 	if (NOT portaudio_FOUND)
 		message("rodent: portaudio not found, building from source")
-		FetchContent_Declare(
-			portaudio
-			GIT_REPOSITORY  https://git.assembla.com/portaudio.git
-			GIT_SHALLOW 1
-		)
 		FetchContent_MakeAvailable(portaudio)
 	endif()
 endif()
@@ -357,7 +357,7 @@ if (PKG_OUTPUT_DIR)
 		foreach(NAME ${DLL_NAMES})
 			list(APPEND LIB_GLOBS "${CMAKE_PREFIX_PATH}/bin/*${NAME}*.dll")
 			list(APPEND LIB_GLOBS "${CMAKE_PREFIX_PATH}/lib/*${NAME}*.dll")
-			list(APPEND LIB_GLOBS "${CMAKE_CURRENT_BINARY_DIR}/_deps/*${NAME}*-build/${CMAKE_BUILD_TYPE}/*${NAME}*.dll")
+			list(APPEND LIB_GLOBS "${PROJECT_BINARY_DIR}/_deps/*${NAME}*-build/${CMAKE_BUILD_TYPE}/*${NAME}*.dll")
 		endforeach()
 		file(GLOB LIBS ${LIB_GLOBS})
 		postbuild_cmd(copy ${LIBS} "${PKG_OUTPUT_DIR}")

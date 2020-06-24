@@ -728,7 +728,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 					
 					// remove - only on successful generation (may fail because of doors)
 					
-					erase_if(bcs[*ni].neis, [&](auto& i) {return i == b.self;});
+					erase_if_find(bcs[*ni].neis, [&](auto& i) {return i == b.self;});
 					ni = b.neis.erase(ni);
 				}
 			}

@@ -118,12 +118,12 @@ void EC_Health::add_filter(std::unique_ptr<DamageFilter> f)
 }
 void EC_Health::rem_phys(DamageFilter* f) noexcept
 {
-	if (erase_if(phys, [&](auto& v){ return v.get() == f; }))
+	if (erase_if_find(phys, [&](auto& v){ return v.get() == f; }))
 		upd_reg();
 }
 void EC_Health::rem_filter(DamageFilter* f) noexcept
 {
-	if (erase_if(fils, [&](auto& v){ return v.get() == f; }))
+	if (erase_if_find(fils, [&](auto& v){ return v.get() == f; }))
 		upd_reg();
 }
 size_t EC_Health::get_phys_index(DamageFilter* f) const

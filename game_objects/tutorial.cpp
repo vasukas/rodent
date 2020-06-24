@@ -11,6 +11,7 @@
 #include "vaslib/vas_log.hpp"
 #include "objs_basic.hpp"
 #include "objs_creature.hpp"
+#include "spawners.hpp"
 #include "weapon_all.hpp"
 
 
@@ -255,7 +256,8 @@ LevelTerrain* tutorial_terrain()
 }
 void tutorial_spawn(GameCore& core, LevelTerrain& lt)
 {
-	new EWall(core, lt.ls_wall);
+	auto wall = new EWall(core, lt.ls_wall);
+	lightmap_spawn(core, HARDPATH_TUTORIAL_LVL_LMAP, *wall);
 	
 	/// Square grid non-diagonal directions (-x, +x, -y, +y)
 	const std::array<vec2i, 4> sg_dirs{{{-1,0}, {1,0}, {0,-1}, {0,1}}};
@@ -450,6 +452,13 @@ void tutorial_spawn(GameCore& core, LevelTerrain& lt)
 			
 		case 0x808080: // storage
 			new EStorageBox(core, pos);
+			for (auto& d : sg_dirs)
+			{
+				if (lt_cref(at + d).is_wall) continue;
+				vec2fp wp = pos + vec2fp(d) * GameConst::cell_size;
+				new AI_SimResource(core, {AI_SimResource::T_ROCK, false, 0, AI_SimResource::max_capacity},
+				                   wp, pos);
+			}
 			break;
 			
 		case 0xc0c0c0: // rock
@@ -468,14 +477,14 @@ void tutorial_spawn(GameCore& core, LevelTerrain& lt)
 	
 	std::unordered_map<int, const char*> ms =
 	{
-	    {1, "Use W,A,S,D keys to move\n"
-			"Aim with mouse\n"
-			"Hold CTRL to look farther"},
+	    {1, "Use W,A,S,D keys to move.\n"
+			"Aim with mouse.\n"
+			"Hold CTRL to look farther."},
 	    
 	    {2, "Use teleporter ring\n"
-			"while standing on it"},
+			"standing close to it."},
 	    
-	    {3, "Hold SPACE to move faster"},
+	    {3, "Hold SPACE to move faster."},
 	    
 	    {4, "Those glowing rays inflict DAMAGE.\n"
 			"You can see your health stats in top left corner.\n"
@@ -492,7 +501,7 @@ void tutorial_spawn(GameCore& core, LevelTerrain& lt)
 			"only front area and slows you down."},
 	    
 	    {7, "Healing stations restore your health and shields\n"
-			"If you're not receiving damage for a few seconds"},
+			"If you're not receiving damage for a few seconds."},
 	    
 	    {8, "Dummy. Displays amount of damage on being hit."},
 	    
@@ -514,11 +523,12 @@ void tutorial_spawn(GameCore& core, LevelTerrain& lt)
 	    
 	    {14, "You can also damage enemies by ramming them.\n"
 			 "It works only on high speeds (with acceleration).\n"
-			 "Successful ramming restores acceleration bar to full."},
+			 "Successful ramming restores acceleration bar to full\n"
+			 "and partially resore shield."},
 	    
 	    {15, "That's automated turret. You can just run past it.\n"
 			 "If you do it while it's looking in opposite direction,\n"
-			 "it won't detect you."},
+			 "it won't see you."},
 	    
 	    {16, "Level map can be viewed by pressing 'M'.\n"
 	         "Hold TAB while looking to highlight visited rooms.\n"
@@ -528,7 +538,7 @@ void tutorial_spawn(GameCore& core, LevelTerrain& lt)
 			 "until you've activated it. To do that,\n"
 	         "simply walk up to it until it lits up."},
 	    
-	    {18, "If you activated both teleports, new area is available"},
+	    {18, "If you activated both teleports, new area is now available."},
 	    
 	    {19, "Weapon test area. Get familiar with weapons, modes and\n"
 	         "their side effects before moving on.\n"
@@ -543,7 +553,7 @@ void tutorial_spawn(GameCore& core, LevelTerrain& lt)
 			 "Your current objective is always written in bottom-left corner."},
 	    
 	    {21, "Most of the time hostile units are busy with their\n"
-	         "designated tasks and not actively searching for you.\n"
+	         "own tasks and do not actively search for you.\n"
 			 "You can use that to sneak past them undetected."},
 	    
 	    {22, "You're close!"},

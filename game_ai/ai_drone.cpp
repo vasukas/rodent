@@ -100,11 +100,7 @@ std::string AI_Drone::get_dbg_state() const
 						s += FMT_FORMAT("  Next {:.0f}x{:.0f}  {}/{}\n",
 						                p.pts[p.at].x, p.pts[p.at].y, p.at, p.pts.size());
 					},
-					[&](const IdleChasePlayer& st) {
-						s += "State: CHASE PLAYER";
-						s += FMT_FORMAT("  timeout: {:.1f}\n", (ent.core.get_step_time()).seconds());
-						s += FMT_FORMAT("  failed: {}\n", st.has_failed);
-					}
+					[&](const IdleChasePlayer&) {s += "State: CHASE PLAYER\n";}
 				}, st.ist);
 			},
 			[&](const Battle& st){
@@ -119,6 +115,7 @@ std::string AI_Drone::get_dbg_state() const
 		                        (st.prio == Suspect::PRIO_HELPCALL? "HELP" : "HELPHIGH"));
 				s += FMT_FORMAT("  pos: {:.0f}x{:.0f}\n", st.pos.x, st.pos.y);
 				s += FMT_FORMAT("  visible: {}\n", st.was_visible);
+				s += FMT_FORMAT("  level: {:1.2f}\n", st.level);
 			},
 			[&](const Search& p) {
 				s += "STATE: SEARCHING\n";
@@ -262,6 +259,7 @@ void AI_Drone::step()
 				float lvl = AI_Const::suspect_initial;
 				if (auto st = std::get_if<Search>(&get_state())) lvl = std::max(lvl, st->susp_level);
 				if (tar->is_damaging) lvl = std::max(lvl, AI_Const::suspect_on_damage);
+				lvl = std::max(lvl, ent.core.get_aic().get_global_suspicion());
 				
 				vec2fp p = ent.core.ent_ref(tar->eid).get_pos();
 				add_state(Suspect{ p, lvl });
@@ -416,7 +414,7 @@ void AI_Drone::step()
 	else if (auto st = std::get_if<Suspect>(&get_state()))
 	{
 		prov.fov_t = clampf_n(st->level);
-		rot_target = st->pos;
+		if (mov || tar_dist) rot_target = st->pos;
 		
 		if (tar_dist)
 		{
@@ -599,27 +597,21 @@ void AI_Drone::step()
 		}
 		else if (auto st = std::get_if<IdleChasePlayer>(&gst.ist))
 		{
-			auto now = ent.core.get_step_time();
-			if (!st->has_failed && mov->has_failed()) {
-				st->after = now + AI_Const::hunter_scan_failed_tmo;
-				st->has_failed = true;
-			}
-			
-			if (now >= st->after)
-			if (auto tar = ent.core.get_pmg().get_ent())
-			if (auto rm = ent.core.get_lc().get_room(tar->get_pos());
-			    !rm || rm->type != LevelCtrRoom::T_TRANSIT)
+			if (!st->has_failed)
 			{
-				mov->hack_allow_unlimited_path = true;
-				mov->set_target(tar->get_pos(), AI_Speed::Patrol);
-				mov->hack_allow_unlimited_path = false;
-
-				float dist = ent.get_pos().dist(tar->get_pos());
-				float t = inv_lerp(AI_Const::hunter_scan_min.first, AI_Const::hunter_scan_max.first, dist);
-				t = clampf_n(t);
-				
-				st->after = now + lerp(AI_Const::hunter_scan_min.second, AI_Const::hunter_scan_max.second, t);
-				st->has_failed = false;
+				if (mov->has_failed())
+				{
+					st->has_failed = true;
+					ent.core.get_aic().mark_scan_failed();
+					mov->set_target({}, AI_Speed::Patrol);
+				}
+				else if (st->pos)
+				{
+					mov->hack_allow_unlimited_path = true;
+					mov->set_target(*st->pos, AI_Speed::Patrol);
+					mov->hack_allow_unlimited_path = false;
+				}
+				else mov->set_target({}, AI_Speed::Patrol);
 			}
 		}
 	}

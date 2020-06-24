@@ -95,6 +95,7 @@ void AI_Movement::on_unreg()
 }
 vec2fp AI_Movement::calc_avoidance()
 {
+	const float force_k = 2;
 	const float ray_width = 1;
 	const float min_tar_dist = ent.ref_pc().get_radius() + 0.5;
 	const float max_ray_dist = min_tar_dist + 5;
@@ -117,7 +118,7 @@ vec2fp AI_Movement::calc_avoidance()
 			return !!ent.get_ai_drone() && &ent != &this->ent && !fix.IsSensor();
 		});
 		
-		if (av.len_squ() > 0.1) av.norm_to(3 * radius);
+		if (av.len_squ() > 0.1) av.norm_to(force_k * radius);
 		av += fwd;
 		if (has_target()) av.limit_to(max_spd);
 		return av;

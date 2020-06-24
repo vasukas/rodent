@@ -9,6 +9,8 @@
 #include "objs_basic.hpp"
 #include "spawners.hpp"
 
+
+
 struct LvlData
 {
 	std::vector<std::pair<vec2fp, uint32_t>> ps;
@@ -62,7 +64,8 @@ LevelTerrain* survival_terrain()
 }
 void survival_spawn(GameCore& core, LevelTerrain& lt)
 {
-	new EWall(core, lt.ls_wall);
+	auto wall = new EWall(core, lt.ls_wall);
+	lightmap_spawn(core, HARDPATH_SURVIVAL_LVL_LMAP, *wall);
 	
 	/// Square grid non-diagonal directions (-x, +x, -y, +y)
 	const std::array<vec2i, 4> sg_dirs{{{-1,0}, {1,0}, {0,-1}, {0,1}}};
@@ -117,4 +120,94 @@ void survival_spawn(GameCore& core, LevelTerrain& lt)
 			THROW_FMTSTR("Survival loader: invalid color at {}:{} (0-based)", cp.x, cp.y);
 		}
 	}	
+}
+
+
+
+const uint32_t clr_light_1 = 0xff00ff;
+const uint32_t clr_light_2 = 0xff70ff; // 112
+const uint32_t clr_light_3 = 0xffaaff; // 170
+
+void lightmap_spawn(GameCore& core, const char *filename, Entity& walls)
+{
+	/// Square grid non-diagonal directions (-x, +x, -y, +y)
+	const std::array<vec2i, 4> sg_dirs{{{-1,0}, {1,0}, {0,-1}, {0,1}}};
+	const float rots[] = {-M_PI, 0, -M_PI_2, M_PI_2};
+	auto& lc = core.get_lc();
+	auto& rnd = core.get_random();
+	
+	ImageInfo img;
+	if (!img.load(filename, ImageInfo::FMT_RGB)) {
+		VLOGE("lightmap_spawn() failed for \"{}\"", filename);
+		return;
+	}
+	if (img.get_size() != lc.get_size()) {
+		VLOGE("lightmap_spawn() failed for \"{}\" - image size doesn't match level size", filename);
+		return;
+	}
+	
+	struct Pt {
+		uint32_t val;
+		vec2i pos, offset;
+	};
+	std::vector<Pt> lps;
+	lps.reserve(1024);
+	
+	for (int y=0; y < img.get_size().y; ++y)
+	for (int x=0; x < img.get_size().x; ++x)
+	{
+		vec2i p = {x, y};
+		uint32_t v = img.get_pixel_fast(p);
+		if (v != 0 && v != 0xfff'fff)
+			lps.push_back({v, p, {}});
+	}
+	
+	for (size_t i=0; i<lps.size(); ++i)
+	for (size_t j=i+1; j<lps.size(); ++j)
+	{
+		if (lps[i].pos.ndg_dist(lps[j].pos) == 1)
+		{
+			lps[i].offset += lps[j].pos - lps[i].pos;
+			lps.erase(lps.begin() + j);
+			--j;
+		}
+	}
+	
+	for (auto& pt : lps)
+	{
+		auto make_light = [&](FColor clr, bool bright = false) {
+			int ok = -1;
+			for (int i=0; i<4; ++i) {
+				if (lc.cref(pt.pos + sg_dirs[i]).is_wall)
+					if (ok == -1 || rnd.flag()) ok = i;
+			}
+			if (ok != -1) {
+				vec2fp pos = lc.to_center_coord(pt.pos) + pt.offset * (GameConst::cell_size/2);
+				pos += vec2fp(GameConst::cell_size/2, 0).fastrotate(rots[ok]);
+				walls.ensure<EC_LightSource>().add(pos, rots[ok], clr, bright ? 15 : 9);
+			}
+		};
+		
+		switch (pt.val)
+		{
+		case 0:
+		case 0xffffff:
+			break;
+			
+		case clr_light_1:
+			make_light(FColor(1, 0.2, 0.2, 0.7));
+			break;
+			
+		case clr_light_2:
+			make_light(FColor(1, 1, 0.65, 0.7));
+			break;
+			
+		case clr_light_3:
+			make_light(FColor(0.8, 1, 1, 0.7), true);
+			break;
+			
+		default:
+			VLOGW("lightmap_spawn() - invalid color at {}:{} (0-based)", pt.pos.x, pt.pos.y);
+		}
+	}
 }

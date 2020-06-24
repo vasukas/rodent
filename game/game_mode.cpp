@@ -387,26 +387,29 @@ public:
 			                              [&](auto& t) {return t.dist_squ(plr_pos) > std::pow(10, 2);});
 			n_spawn = std::min<int>(n_spawn, std::distance(teleps.begin(), tel_end));
 			
+			auto mkst = [](auto st) {
+				st.idle = AI_Drone::IdleChasePlayer{};
+				return st;
+			};
 			auto eff = [&](Entity* ent){
 				GamePresenter::get()->effect(FE_SPAWN, {{ent->ref_pc().get_trans()}, GameConst::hsz_drone_big});
-				auto& d = ent->ref_ai_drone();
-				d.always_online = true;
-				d.replace_state(AI_Drone::Idle{AI_Drone::IdleChasePlayer{}});
-				d.set_battle_state();
+				ent->ref_ai_drone().always_online = true;
 			};
 			
 			auto cs = normalize_chances<std::function<void(vec2fp)>, 4>({{
-				{[&](vec2fp p) {eff(new EEnemyDrone(*core, p, EEnemyDrone::def_workr(*core)));},	10},
-				{[&](vec2fp p) {eff(new EEnemyDrone(*core, p, EEnemyDrone::def_drone(*core)));},	80},
+				{[&](vec2fp p) {eff(new EEnemyDrone(*core, p, mkst(EEnemyDrone::def_workr(*core))));}, 10},
+				{[&](vec2fp p) {eff(new EEnemyDrone(*core, p, mkst(EEnemyDrone::def_drone(*core))));}, 80},
 				{[&](vec2fp p) {
-					if (wave > 2) eff(new EEnemyDrone(*core, p, EEnemyDrone::def_campr(*core)));
-					else eff(new EEnemyDrone(*core, p, EEnemyDrone::def_workr(*core)));},			12},
+					if (wave > 2) eff(new EEnemyDrone(*core, p, mkst(EEnemyDrone::def_campr(*core))));
+					else eff(new EEnemyDrone(*core, p, mkst(EEnemyDrone::def_workr(*core))));},	12},
 				{[&](vec2fp p) {
 					if (wave > 4) eff(new EHunter(*core, p));
-					else eff(new EEnemyDrone(*core, p, EEnemyDrone::def_workr(*core)));},			8}
+					else eff(new EEnemyDrone(*core, p, mkst(EEnemyDrone::def_workr(*core))));}, 8}
 			}});
 			for (int i=0; i<n_spawn; ++i)
 				core->get_random().random_chance(cs)(teleps[i]);
+			
+			core->get_aic().force_reset_scanner({});
 		}
 		
 		wave_alive = 0;
@@ -415,16 +418,10 @@ public:
 			if (AI_Drone* d = e.get_ai_drone())
 			{
 				++wave_alive;
-				
-				if (auto i = std::get_if<AI_Drone::Idle>(&d->get_state())) {
-					std::get<AI_Drone::IdleChasePlayer>(i->ist).after = {};
-				}
-				else if (auto st = std::get_if<AI_Drone::Search>(&d->get_state());
+				if (auto st = std::get_if<AI_Drone::Search>(&d->get_state());
 				         st && st->at != 0)
 				{
 					d->set_idle_state();
-					auto& i = std::get<AI_Drone::Idle>(d->get_state());
-					std::get<AI_Drone::IdleChasePlayer>(i.ist).after = {};
 				}
 			}
 		});
