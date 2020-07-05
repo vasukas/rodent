@@ -654,9 +654,11 @@ public:
 		}
 		else if (!RenderControl::get().is_visible() && !ignore_ren_pause)
 		{
+			if (auto snd = SoundEngine::get()) snd->set_ui_mode(SoundEngine::UIM_SILENCE);
+			is_ren_paused = true;
+			
 			auto lock = gctr.core_lock();
 			gctr.set_pause(true);
-			is_ren_paused = true;
 		}
 		else
 		{
@@ -680,7 +682,8 @@ public:
 			
 			if (auto snd = SoundEngine::get())
 			{
-				snd->set_ui_mode(menu_pause ? SoundEngine::UIM_MUSIC_ONLY : SoundEngine::UIM_OFF);
+				if (is_ren_paused) snd->set_ui_mode(SoundEngine::UIM_SILENCE);
+				else snd->set_ui_mode(menu_pause ? SoundEngine::UIM_MUSIC_ONLY : SoundEngine::UIM_OFF);
 				
 				int num = core.get_aic().debug_batle_number;
 				if (!num) {

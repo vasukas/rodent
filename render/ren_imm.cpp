@@ -633,7 +633,8 @@ public:
 	}
 	void render_pre()
 	{
-		vao.bufs[0]->update( data.size(), data.data() );
+		vao.bufs[0]->update(data.capacity());
+		vao.bufs[0]->update_part(0, data.size(), data.data());
 		if (!clips.empty()) glEnable(GL_SCISSOR_TEST);
 	}
 	void render(CtxIndex cx_id)

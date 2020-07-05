@@ -58,7 +58,7 @@ void MainLoop::show_error_msg(std::string text, std::string title)
 }
 void MainLoop::show_internal_error(std::string text)
 {
-	show_error_msg(FMT_FORMAT("{}.", text), "Internal error");
+	show_error_msg(FMT_FORMAT("{}.\nSee log for details.", text), "Internal error");
 }
 
 

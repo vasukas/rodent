@@ -96,6 +96,8 @@ int main( int argc, char *argv[] )
 	
 	bool cfg_override = false;
 	MainLoop::startup_date = date_time_fn();
+	
+	bool nosleep = false;
 
 	ArgvParse arg;
 	arg.set(argc-1, argv+1);
@@ -121,6 +123,7 @@ Options:
   --sndprof    uses fake audio thread - for profiling etc
 
   --gldbg      create debug OpenGL context and log all GL messages as verbose
+  --nosleep    no delay in main loop, only VSync (doesn't enable it)
   --debugmode  enables various debug options
   --no-fndate  don't save logs and replays to files created using current time
 
@@ -186,6 +189,7 @@ Mode options (--game):
 			else if (arg.is("-v"))  cli_verb = LogLevel::Debug;
 			else if (arg.is("-vv")) cli_verb = LogLevel::Verbose;
 			else if (arg.is("--gldbg")) RenderControl::opt_gldbg = true;
+			else if (arg.is("--nosleep")) nosleep = true;
 			else if (arg.is("--debugmode")) MainLoop::is_debug_mode = true;
 			else if (arg.is("--no-fndate")) MainLoop::startup_date = {};
 			else if (arg.is("--no-sound")) no_sound = true;
@@ -389,7 +393,7 @@ Mode options (--game):
 	}
 	
 	TimeSpan loop_length = TimeSpan::fps( target_fps );
-	bool loop_limit = true;//!RenderControl::get().has_vsync() || target_fps != vsync_fps;
+	bool loop_limit = !nosleep;//!RenderControl::get().has_vsync() || target_fps != vsync_fps;
 	VLOGD("Main loop limiter: {}", loop_limit);
 	
 	log_write_str(LogLevel::Critical, "=== main loop begin ===");
@@ -491,7 +495,7 @@ Mode options (--game):
 		try {MainLoop::current->render( loop_0, passed );}
 		catch (std::exception& e) {
 			VLOGE("MainLoop::render() exception: {}", e.what());
-			MainLoop::show_internal_error("Menu render failed");
+			MainLoop::show_internal_error("Exception in MainLoop::render()");
 			break;
 		}
 		if (!MainLoop::current) break;

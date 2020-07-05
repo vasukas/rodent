@@ -106,7 +106,6 @@ struct EC_PlayerLogic : EComp
 	
 private:
 	EVS_SUBSCR;
-	TimeSpan idle_since = {};
 	
 	const float min_tar_dist = 1.2; // minimal target distance
 	vec2fp prev_tar; // used if current dist < minimal

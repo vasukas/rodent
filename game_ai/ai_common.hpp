@@ -225,7 +225,10 @@ const int msg_helpcall_highprio_dist = 8;
 const int msg_engage_max_bots = 12;
 
 /// Engage message is immediatly stopped if group has more bots
-const int msg_engage_hard_limit = 22;
+const int msg_engage_hard_limit = 18;
+
+/// How many bots sent
+const int msg_helpcall_highprio_bots = 3;
 
 
 

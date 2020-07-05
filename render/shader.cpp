@@ -388,6 +388,7 @@ bool Shader::reload()
 	// update defines
 	
 	auto old_defs = std::move(def_list);
+	def_list.clear();
 	
 	for (auto& i_src : src_ixs)
 	{

@@ -128,6 +128,7 @@ std::vector<std::vector<vec2fp>> calc_search_rings(GameCore& core, vec2fp ctr_po
 	for (int step = 1; step <= ring_dist.back() && !free_nodes.empty(); ++step)
 	{
 		auto nodes = std::move(free_nodes);
+		free_nodes.clear();
 		nodes.reserve( 2 * M_PI * (step + 1) );
 		
 		bool add_ring = false;

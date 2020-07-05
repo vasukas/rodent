@@ -88,6 +88,9 @@ public:
 	/// Returns global suspicion level, already limited
 	virtual float get_global_suspicion() = 0;
 	
+	/// Sets maximum level
+	virtual void trigger_global_suspicion() = 0;
+	
 protected:
 	friend AI_Drone;
 	friend AI_GroupPtr;

@@ -727,6 +727,7 @@ struct WpnElectro_Pars
 {
 	TimeSpan alt_delay = TimeSpan::seconds(0.3); ///< Cooldown for alt fire
 	float ai_alt_distance = -1; ///< Squared. If distance to target is smaller, primary replace with alt
+	bool push_electroball = false;
 	
 	// primary fire
 	TimeSpan charge_time = TimeSpan::seconds(1.6);
@@ -741,6 +742,9 @@ static const WpnElectro_Pars& get_wpr(WpnElectro::Type type)
 	static bool inited = false;
 	if (!inited)
 	{
+		{	auto& t = ts[WpnElectro::T_PLAYER];
+			t.push_electroball = true;
+		}
 		{	auto& t = ts[WpnElectro::T_ONESHOT];
 			t.max_damage = 16000;
 		}
@@ -854,6 +858,7 @@ std::optional<Weapon::ShootResult> WpnElectro::shoot(ShootParams pars)
 		, ray_width, 1000, shoot_through, ent.index).value_or(p + v);
 		
 		// just for fun
+		if (wpr.push_electroball)
 		if (auto r = ent.core.get_phy().raycast_nearest(conv(p), conv(p + v * 80),
 				{[](Entity& ent, b2Fixture&) {return typeid(ent) == typeid(ElectroBall);}, {}, false});
 		    r && r->distance * r->distance < r_hit.dist_squ(p))

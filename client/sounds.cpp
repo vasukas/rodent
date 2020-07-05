@@ -59,7 +59,7 @@ const TimeSpan sound_fadein = TimeSpan::ms(25); // time to fade on entering visi
 const float max_amp_decrease = upd_period_one / sound_stopfade; // max amplitude decrease per update step
 
 const TimeSpan music_crossfade = TimeSpan::seconds(5); // time to switch tracks
-const TimeSpan music_pause_fade = TimeSpan::seconds(3); // time to fully change internal music volume
+const TimeSpan music_pause_fade = TimeSpan::seconds(1.2); // time to fully change internal music volume
 
 const TimeSpan limiter_pause = TimeSpan::seconds(2); // time for which multiplier only increased
 const float limiter_pause_incr = 0.4 / limiter_pause.seconds(); // increment of multiplier when paused
@@ -292,7 +292,12 @@ struct SndEngMusic
 		
 		void shuffle(bool first = false) {
 			if (first) rnd_stat().shuffle(is.begin() + 1, is.end());
-			else rnd_stat().shuffle(is);
+			else {
+				int last = is.back();
+				rnd_stat().shuffle(is);
+				if (is.size() > 1 && is[0] == last)
+					std::swap(is[0], is[rnd_stat().range_index(is.size(), 1)]);
+			}
 		}
 	};
 	
@@ -681,6 +686,7 @@ public:
 	std::unique_ptr<AudioSource> musold_src; // previous track - for crossfade
 	int musold_pos;
 	samplen_t musold_left = 0;
+	samplen_t mus_left_full = 0;
 	
 	float mus_vol_tar = 1, mus_vol_cur = 1; // ui lock fade
 	bool mus_loop;
@@ -914,7 +920,8 @@ public:
 			if (mus_src) {
 				musold_src = std::move(mus_src);
 				musold_pos = mus_pos;
-				musold_left = music_crossfade.seconds() * sample_rate;
+				musold_left = music_pause_fade.seconds() * sample_rate;
+				mus_left_full = musold_left;
 			}
 			mus_src.reset();
 			mus_pos = 0;
@@ -947,6 +954,7 @@ public:
 				musold_src = std::move(mus_src);
 				musold_pos = mus_pos;
 				musold_left = music_crossfade.seconds() * sample_rate;
+				mus_left_full = musold_left;
 			}
 			mus_src.reset(src);
 			mus_pos = 0;
@@ -1176,7 +1184,6 @@ public:
 		
 		if (musold_left)
 		{
-			samplen_t mus_left_full = music_crossfade.seconds() * sample_rate;
 			float t0 = float(musold_left) / mus_left_full;
 			int len = std::min(musold_left, outbuflen/2);
 			musold_left -= len;
@@ -1536,7 +1543,7 @@ public:
 					}
 					int old = vc.subsrc;
 					vc.subsrc = rnd_stat().range_index(vc.p_snd->data.size() - 1, 1);
-					if (vc.subsrc == old) vc.pb_pos -= src->len;
+					if (vc.subsrc == old) vc.pb_pos -= src->len * (int(vc.pb_pos + 0.5) / src->len);
 					else if (!newsub()) return;
 					continue;
 				}

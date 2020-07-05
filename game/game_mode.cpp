@@ -382,7 +382,7 @@ public:
 			++wave;
 			
 			core->get_random().shuffle(teleps);
-			vec2fp plr_pos = core->get_pmg().ref_ent().get_pos();
+			vec2fp plr_pos = core->get_pmg().get_last_pos();
 			auto tel_end = std::partition(teleps.begin(), teleps.end(),
 			                              [&](auto& t) {return t.dist_squ(plr_pos) > std::pow(10, 2);});
 			n_spawn = std::min<int>(n_spawn, std::distance(teleps.begin(), tel_end));

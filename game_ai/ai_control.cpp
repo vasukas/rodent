@@ -132,6 +132,8 @@ bool AI_Group::init_search(GameCore& core, const std::vector<AI_Drone*>& drones,
 }
 void AI_Group::init_search()
 {
+	core.get_aic().trigger_global_suspicion();
+	
 	std::optional<vec2fp> real_tar;
 	if (auto tar = core.get_ent(tar_eid))
 		real_tar = tar->get_pos();
@@ -449,7 +451,6 @@ public:
 	std::vector<std::unique_ptr<AI_SimResource>> res_list;
 	
 	std::optional<AI_Group> the_only_group;
-	bool group_was = false;
 	TimeSpan group_check_tmo;
 	
 	std::vector<EntityIndex> hunters;
@@ -469,9 +470,7 @@ public:
 			the_only_group->update();
 		}
 		
-		if (group_was && !the_only_group) g_susp = 1;
-		else g_susp = std::max(0., g_susp - core.step_len / AI_Const::global_suspect_decr);
-		group_was = !!the_only_group;
+		g_susp = std::max(0., g_susp - core.step_len / AI_Const::global_suspect_decr);
 		
 		debug_batle_number = the_only_group ? the_only_group->drones.size() : 0;
 		if (the_only_group && show_aos_debug)
@@ -542,6 +541,7 @@ public:
 	void help_call(AI_Drone& drone, std::optional<vec2fp> target, bool high_prio) override
 	{
 		int dist = high_prio ? AI_Const::msg_helpcall_highprio_dist : AI_Const::msg_helpcall_dist;
+		int n_limit = high_prio ? AI_Const::msg_helpcall_highprio_bots : 1;
 		vec2fp pos = target ? *target : drone.ent.get_pos();
 		
 		room_radio_flood(core, core.get_lc().to_cell_coord(pos), dist, true, true,
@@ -560,6 +560,7 @@ public:
 				{
 					if (target) st->pos = *target;
 					else if (!st->was_visible) st->pos = pos;
+					if (high_prio) return true;
 					best.reset();
 					return (ret = false);
 				}
@@ -585,7 +586,9 @@ public:
 				st.prio = high_prio ? AI_Drone::Suspect::PRIO_HELPCALL_HIGH : AI_Drone::Suspect::PRIO_HELPCALL;
 				
 				best->first->add_state(std::move(st));
-				return false;
+				
+				--n_limit;
+				return n_limit != 0;
 			}
 			return ret;
 		});
@@ -601,6 +604,10 @@ public:
 	float get_global_suspicion() override
 	{
 		return std::min(g_susp, AI_Const::global_suspect_max);
+	}
+	void trigger_global_suspicion() override
+	{
+		g_susp = 1;
 	}
 	
 	

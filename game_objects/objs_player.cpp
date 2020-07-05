@@ -383,18 +383,6 @@ void EC_PlayerLogic::m_step()
 	{
 		pmov.peace_tmo = std::min(pmov.peace_tmo, pmov.c_peace_tmo_short);
 	}
-	
-	// idle animation
-	
-	bool is_idle = cst.acts.empty() && cst.mov.len_squ() < 0.01 && cst.tar_pos.dist_squ(prev_tar) < 0.01;
-	for (int i=0; is_idle && i<PlayerInput::ACTION_TOTAL_COUNT_INTERNAL; ++i) {
-		if (cst.is[i] && pinp.binds_ref(PlayerInput::CTX_GAME)[i].type != PlayerInput::BT_SWITCH)
-			is_idle = false;
-	}
-	
-	if (!is_idle) idle_since = ent.core.get_step_time();
-	else if (ent.core.get_step_time() - idle_since > TimeSpan::seconds(30))
-		ent.ref_pc().rot_override = self_angle + 2*M_PI * TimeSpan::get_period_t(4);
 }
 
 

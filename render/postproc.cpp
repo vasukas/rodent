@@ -628,27 +628,31 @@ public:
 			RenAAL::get().render_grid(fbo);
 		});
 		
-		new PPN_InputDraw("aal", PPN_InputDraw::MID_COLOR, [](auto)
+		new PPN_InputDraw("aal", PPN_InputDraw::MID_NONE, [](auto fbo)
 		{
+			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 			RenAAL::get().render();
 		});
 		
-		new PPN_InputDraw("parts", PPN_InputDraw::MID_COLOR, [](auto)
+		new PPN_InputDraw("parts", PPN_InputDraw::MID_NONE, [](auto fbo)
 		{
+			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 			glBlendFunc(GL_ONE, GL_ONE);
 			glBlendEquation(GL_FUNC_ADD);
 			RenParticles::get().render();
 		});
 		
-		new PPN_InputDraw("imm", PPN_InputDraw::MID_COLOR, [](auto)
+		new PPN_InputDraw("imm", PPN_InputDraw::MID_NONE, [](auto fbo)
 		{
+			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glBlendEquation(GL_FUNC_ADD);
 			RenImm::get().render(RenImm::DEFCTX_WORLD);
 		});
 		
-		draw_ui = new PPN_InputDraw("ui", PPN_InputDraw::MID_COLOR, [](auto)
+		draw_ui = new PPN_InputDraw("ui", PPN_InputDraw::MID_NONE, [](auto fbo)
 		{
+			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glBlendEquation(GL_FUNC_ADD);
 			RenImm::get().render(RenImm::DEFCTX_UI);
