@@ -15,7 +15,10 @@
 #include "game_ctr/game_ui.hpp"
 #include "game_objects/spawners.hpp"
 #include "game_objects/tutorial.hpp"
+#include "render/camera.hpp"
 #include "render/control.hpp"
+#include "render/postproc.hpp"
+#include "render/ren_aal.hpp"
 #include "render/ren_imm.hpp"
 #include "render/ren_text.hpp"
 #include "utils/line_cfg.hpp"
@@ -63,16 +66,27 @@ void MainLoop::show_internal_error(std::string text)
 
 
 
+static bool has_watched_intro() {
+	return readfile(HARDPATH_WATCHED_INTRO) == PROJECT_VERSION_STRING;
+}
+static void set_watched_intro() {
+	writefile(HARDPATH_WATCHED_INTRO, PROJECT_VERSION_STRING);
+}
+
+
+
 class ML_MainMenu : public MainLoop
 {
 public:
 	struct Line {
 		std::string text;
 		std::function<void()> on_press;
+		bool highlight = false;
 		Rect at = {};
 	};
 	std::vector<Line> lines;
 	vec2i size;
+	TimeSpan highlight_cou;
 	
 	ML_MainMenu() {}
 	void init()
@@ -102,6 +116,7 @@ public:
 			lines.push_back({"New game", {[]{ start_game("--rndseed --savegame"); }}});
 			lines.push_back({"Survival", {[]{ start_game("--survival --no-ffwd --rndseed"); }}});
 			lines.push_back({"", {}});
+			lines.push_back({"Intro", {[]{ create(INIT_INTRO); set_watched_intro(); }}, !has_watched_intro()});
 			lines.push_back({"Tutorial", {[]{ start_game("--tutorial"); }}});
 			lines.push_back({"", {}});
 			lines.push_back({"Keybinds", {[]{ create(INIT_KEYBIND); }}});
@@ -140,14 +155,22 @@ public:
 			lines[i].at.sz  = lc.get({0,i}).size;
 		}
 	}
+	void on_current()
+	{
+		lines.clear();
+		init();
+	}
 	void on_event(const SDL_Event& ev)
 	{
 		if (ml_prev && ev.type == SDL_KEYDOWN && 
 		    ev.key.keysym.scancode == SDL_SCANCODE_ESCAPE)
 				delete this;
 	}
-	void render(TimeSpan, TimeSpan)
+	void render(TimeSpan, TimeSpan passed)
 	{
+		bool hlight = highlight_cou.get_period_t(2) < 0.5;
+		highlight_cou += passed;
+		
 		vec2i off = (RenderControl::get_size() - size) /2;
 		for (auto& l : lines)
 		{
@@ -155,7 +178,7 @@ public:
 				vig_label(l.text, off + l.at.lower(), l.at.size());
 				continue;
 			}
-			if (vig_button(l.text, 0,0,0, off + l.at.lower(), l.at.size())) {
+			if (vig_button(l.text, 0, l.highlight && hlight, false, off + l.at.lower(), l.at.size())) {
 				l.on_press();
 				return;
 			}
@@ -1079,6 +1102,386 @@ public:
 
 
 
+class ML_Intro : public MainLoop
+{
+public:
+	static constexpr int chars_per_line = 40;
+	static constexpr std::pair<float, float> char_pause = {0.06, 0.085}; // min, max seconds (random)
+	static constexpr float fast_mul = 4;
+	
+	enum DrawEvent {
+		DE_NONE,
+		DE_SHIP,
+		DE_FIRE,
+		DE_BOLTER,
+		DE_EXPLODE,
+		DE_ZOOM
+	};
+	struct Command {
+		size_t at;
+		TimeSpan delay; // after
+		DrawEvent evt;
+		std::function<void()> f;
+	};
+	
+	TextRenderInfo textfull, textrd;
+	size_t text_at = 0;
+	
+	std::vector<Command> cmds;
+	size_t cmd_at = 0;
+	
+	bool exitrq = false;
+	TimeSpan pause_tmo;
+	
+	DrawEvent devt = DE_NONE;
+	TimeSpan tm_ship_0, tm_ship_1;
+	TimeSpan tm_zoom_0, tm_zoom_1;
+	
+	
+	
+	~ML_Intro()
+	{
+		Postproc::get().tint_reset();
+		Postproc::get().tint_default(TimeSpan{});
+		Postproc::get().ui_mode(true);
+		
+		if (SoundEngine::get())
+			SoundEngine::get()->music(nullptr);
+	}
+	void init()
+	{
+		if (SoundEngine::get())
+			SoundEngine::get()->music("menu_intro", -1, false);
+		//
+		
+		vec2i charz = RenText::get().mxc_size(FontIndex::Mono).int_ceil();
+		int max_width = std::min(chars_per_line, RenderControl::get_size().x / charz.x - 3);
+		
+		TimeSpan total_time = {};
+		std::string text;
+		size_t text_cw = max_width;
+	
+		auto cmd = [&](TimeSpan delay, DrawEvent evt = {}, std::function<void()> f = []{}) {
+			auto& c = cmds.emplace_back();
+			c.at = text.size();
+			for (auto& s : text) if (s == '\n') --c.at;
+			c.delay = delay;
+			c.evt = evt;
+			c.f = std::move(f);
+			total_time += delay;
+		};
+		auto add = [&](std::string_view str) {
+			auto cvt = wrap_words(str, max_width, &text_cw);
+			text += cvt;
+			total_time += TimeSpan::seconds((char_pause.first + char_pause.second) /2) * cvt.length();
+		};
+		
+		add("Dwarf planet FSC 471 g.\n\n"
+		    "Mining station was built here many years ago, but "
+		    "soon was abandoned. Now AIron, a galaxy-spanning mining corporation, is set to "
+		    "restore and use it. An attempt to remotely activate the station revealed that "
+		    "the its' AI system was online for some time and managed to set up an armed defence.\n\n");
+		
+		cmd(TimeSpan::seconds(1));
+		cmd(TimeSpan::seconds(1), DE_SHIP);
+		tm_ship_0 = total_time;
+		add("To deal with it a team of experienced cybermercenaries was sent, ");
+		//
+		cmd(TimeSpan::seconds(1));
+		add("including you.\n\n");
+		
+		cmd(TimeSpan::seconds(1));
+		cmd(TimeSpan::seconds(0.5), DE_FIRE);
+		add("Station defences turned to be extremely advanced and powerful - unexpectedly so");
+		//
+		cmd({}, DE_BOLTER);
+		add(", because such blueprints couldn't have been stored in the databanks of non-military AI.\n\n");
+		
+		cmd(TimeSpan::seconds(1.5));
+		cmd(TimeSpan::seconds(4.5), DE_EXPLODE);
+		tm_ship_1 = total_time;
+		tm_zoom_0 = total_time;
+		add("You were thrown off the ship by explosion; your exoskeleton suit let "
+		    "you surivive the impact with the station.\n");
+		cmd({}, DE_ZOOM);
+		add("Everyone else is dead. You're left on your own.\n"
+		    "And you have no choice but to carry out "
+		    "the job - if only to have a chance to leave this place alive.\n\n\n");
+		
+		cmd(TimeSpan::seconds(3), {}, []{Postproc::get().tint_seq(TimeSpan::seconds(5), FColor(0,0,0));});
+		tm_zoom_1 = total_time;
+		add("The AI knows you are here and will relentlessly try to hunt you "
+		    "down, while you are trying to reclaim control over the station.");
+		//
+		
+		textfull.str_a = text.c_str();
+		textfull.length = text.length();
+		textfull.build();
+		textrd.cs.reserve(textfull.cs.size());
+		
+		draw_init();
+		Postproc::get().ui_mode(false);
+	}
+	void on_event(const SDL_Event& ev)
+	{
+		if (ev.type == SDL_KEYDOWN && !ev.key.repeat) {
+			if (!exitrq) exitrq = true;
+			else if (ev.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
+				delete this;
+				return;
+			}
+			else if (ev.key.keysym.scancode == SDL_SCANCODE_SPACE)
+				exitrq = false;
+		}
+		else if (ev.type == SDL_MOUSEBUTTONDOWN) {
+			exitrq = true;
+		}
+	}
+	void render(TimeSpan, TimeSpan passed)
+	{
+		if (exitrq) passed *= fast_mul;
+		draw_background(passed.seconds());
+		
+		// advance text
+		
+		bool ended = cmd_at == cmds.size() && text_at == textfull.cs.size();
+		if (ended) exitrq = true;
+		else {
+			pause_tmo -= passed;
+			while (!pause_tmo.is_positive())
+			{
+				if (cmd_at != cmds.size() && cmds[cmd_at].at == text_at) {
+					pause_tmo += cmds[cmd_at].delay;
+					devt = cmds[cmd_at].evt;
+					cmds[cmd_at].f();
+					++cmd_at;
+				}
+				else if (text_at != textfull.cs.size()) {
+					pause_tmo += TimeSpan::seconds(rnd_stat().range(char_pause.first, char_pause.second));
+					textrd.cs.push_back(textfull.cs[text_at]);
+					++text_at;
+				}
+			}
+		}
+		
+		// draw
+		
+		RenImm::get().draw_text(vec2fp::one(10), textrd, RenImm::White);
+		
+		if (exitrq) {
+			float alpha = sine_lut_norm(TimeSpan::current().tmod(TimeSpan::seconds(2)));
+			alpha = 0.7 + 0.3 * alpha;
+			uint32_t base = ended ? 0xff60'4000 : 0xffd0'd000;
+			draw_text_hud({10,-10}, "Press ESCAPE to exit", base | clamp<int>(alpha * 255, 0, 255), false, 2);
+		}
+	}
+	
+	
+	
+	// calculated constants
+	vec2fp screen;
+	float planet_r;
+	vec2fp planet_off;
+	float ship_time; // seconds
+	float planet_scale_speed;
+	vec2fp ship_speed;
+	
+	const float star_max_delay = 40; // seconds
+	const float star_blink_len = 5;
+	//
+	
+	std::vector<std::tuple<vec2fp, FColor, float>> stars;
+	std::vector<vec2fp> planet_lines;
+	std::optional<float> planet_scale;
+	vec2fp ship_pos;
+	bool draw_ship = false;
+	
+	struct Proj {
+		vec2fp orig, pos, spd;
+		float t = -1, td;
+		bool bolter;
+		bool renew = true;
+	};
+	std::vector<Proj> projs;
+	float proj_timeouts[2] = {};
+	
+	std::optional<float> explosion;
+	vec2fp explo_pos;
+	
+	void draw_init()
+	{
+		screen = RenderControl::get_size();
+		
+		auto cdcvt = fit_rect({1366, 718}, screen);
+		auto& cam = RenderControl::get().get_world_camera().mut_state();
+		cam.pos = screen/2;
+		cam.mag = cdcvt.first;
+		float kcd = 1.f / cam.mag;
+		
+		planet_r = screen.y * 0.25;
+		planet_off = {(screen.x - planet_r) / 2, screen.y - planet_r - 20};
+		planet_scale_speed = 0.4 / (tm_zoom_1 - tm_zoom_0).seconds();
+		
+		int segs = 2 * M_PI * planet_r / 25.f;
+		planet_lines.resize(segs);
+		for (int i=0; i<segs; ++i)
+			planet_lines[i] = vec2fp(planet_r, 0).fastrotate(2*M_PI*i/segs) + planet_off;
+		
+		const float star_r = std::pow(planet_r * kcd, 2);
+		stars.reserve(60);
+		for (int i=0; i<60; ++i) {
+			int px, py;
+			for (int tries=0; tries<10; ++tries) {
+				px = screen.x/2 + rnd_stat().range_n2() * screen.x/2 * kcd;
+				py = screen.y/2 + rnd_stat().range_n2() * screen.y/2 * kcd;
+				if (planet_off.dist_squ(vec2fp(px, py)) > star_r)
+					break;
+				px = -100;
+			}
+			FColor clr = FColor(rnd_stat().range_n(), rnd_stat().range(0, 0.3), 1).hsv_to_rgb();
+			clr.a = rnd_stat().range(0.3, 1.2);
+			stars.emplace_back(vec2fp(px, py), clr, star_blink_len + rnd_stat().range_n() * star_max_delay);
+		}
+		
+		const float ship_y0 = 150;
+		ship_time = (tm_ship_1 - tm_ship_0).seconds() * 2;
+		ship_speed = vec2fp(-screen.x / ship_time, (planet_off.y - ship_y0) / ship_time);
+		ship_pos = {screen.x, ship_y0};
+	}
+	void draw_background(float passed)
+	{
+		// draw planet and stars
+		
+		if (devt == DE_ZOOM) planet_scale = 1;
+		if (planet_scale) {
+			*planet_scale -= planet_scale_speed * passed;
+			auto ps = planet_lines;
+			for (auto& p : ps) p = planet_off + (p - planet_off) * *planet_scale;
+			RenAAL::get().draw_chain(ps, true, 0xa0ffc0ff, 3, 30, std::min<float>(1, *planet_scale + 0.1));
+		}
+		else RenAAL::get().draw_chain(planet_lines, true, 0xa0ffc0ff, 3, 30);
+		
+		for (auto& s : stars) {
+			vec2fp pos = std::get<0>(s);
+			FColor clr = std::get<1>(s);
+			float& time = std::get<2>(s);
+			
+			time -= passed;
+			if (time < star_blink_len) {
+				if (time < 0) time = star_blink_len + rnd_stat().range_n() * star_max_delay;
+				else {
+					float t = time / star_blink_len;
+					t = t > 0.5 ? (t - 0.5) * 2 : 1 - t*2;
+					clr.a *= 0.2 + 0.8 * t;
+				}
+			}
+			
+			RenAAL::get().draw_line(pos, pos + vec2fp(0.1, 0), clr.to_px() | 0xff, 1, 9, clr.a);
+		}
+		
+		// draw ship
+		
+		if (devt == DE_SHIP) draw_ship = true;
+		if (draw_ship) {
+			ship_pos += ship_speed * passed;
+			
+			float t = (ship_pos.x - screen.x/2) / (screen.x/2);
+			FColor clr = FColor(lerp(FColor::H_yellow, FColor::H_red0, t), lerp(0.9, 0.6, t), 1).hsv_to_rgb();
+			float awid = lerp(50, 15, t);
+			awid *= 1 + 0.05 * sine_lut_norm(TimeSpan::current().tmod(TimeSpan::seconds(0.5)));
+			RenAAL::get().draw_line(ship_pos, ship_pos + vec2fp(0.5, 0), clr.to_px(), 2, awid, 2);
+		}
+		
+		// draw projectiles
+		
+		const float proj_rad = 0.9;
+		const float proj_dev = deg_to_rad(20);
+		const float proj_off = deg_to_rad(-15);
+		
+		auto add_projs = [&](int n, bool bolter) {
+			for (int i=0; i<n; ++i) {
+				projs.emplace_back().bolter = bolter;
+				projs.back().orig = vec2fp(rnd_stat().range(proj_rad, 1) * planet_r, 0)
+				                    .fastrotate(proj_off + rnd_stat().range_n2() * proj_dev) + planet_off;
+			}
+		};
+		if (devt == DE_FIRE) add_projs(40, false);
+		if (devt == DE_BOLTER) add_projs(3, true);
+		
+		if (!projs.empty()) {for (auto& p : proj_timeouts) p -= passed;}
+		for (auto& p : projs)
+		{
+			if (p.t < 0) {
+				if (!p.renew) continue;
+				if (proj_timeouts[p.bolter] > 0) continue;
+				proj_timeouts[p.bolter] += p.bolter ? 0.7 : 0.2;
+				
+				float bullet_speed = p.bolter ? 500 : 90;
+				float ttr = ship_pos.dist(p.orig) / bullet_speed; // time to reach
+				vec2fp correct = ship_speed * ttr * (1 + 0.1 * rnd_stat().range_n2());
+				
+				p.pos = p.orig;
+				p.spd = (ship_pos + correct - p.pos).norm_to(bullet_speed);
+				p.t = 1;
+				p.td = 1 / (p.bolter ? 1.f : 8.f);
+			}
+			
+			if (p.bolter) {
+				vec2fp b = p.pos + p.spd;
+				RenAAL::get().draw_line(p.pos, b, FColor(0.5, 1, 1).to_px(), 5, 15, 4 * p.t);
+			}
+			else {
+				vec2fp b = p.pos + p.spd * passed;
+				RenAAL::get().draw_line(p.pos, b, FColor(1, 1, 0.3).to_px(), 1, 8, 1.5 * p.t);
+			}
+			
+			p.pos += p.spd * passed;
+			p.t -= p.td * passed;
+		}
+		
+		// BOOM
+		
+		if (devt == DE_EXPLODE)
+		{
+			explo_pos = ship_pos;
+			explosion = 1;
+			
+			for (auto& p : projs) p.renew = false;
+			draw_ship = false;
+			
+			Postproc::get().tint_seq(TimeSpan::seconds(0.7), FColor(1,1,1), FColor(0.3,0.3,0.2,0));
+			Postproc::get().tint_seq(TimeSpan::seconds(2.5), FColor(1,1,1), FColor(0,0,0,0));
+			
+			for (int i=0; i<9; ++i) {
+				auto& p = projs.emplace_back();
+				p.bolter = false;
+				p.renew = false;
+				p.pos = explo_pos;
+				p.spd = vec2fp(35 + 15 * rnd_stat().range_n2(), 0)
+				        .fastrotate((planet_off - explo_pos).angle() + rnd_stat().range_n2() * deg_to_rad(30));
+				p.t = 1;
+				p.td = 1 / rnd_stat().range(3, 7);
+			}
+		}
+		if (explosion)
+		{
+			FColor clr = FColor(1, 1, 0.6, 5) * *explosion;
+			float wid = lerp(8, 20,  *explosion);
+			float aaw = lerp(8, 250, *explosion);
+			RenAAL::get().draw_line(explo_pos, explo_pos + vec2fp(0.5, 0), clr.to_px() | 0xff, wid, aaw, clr.a);
+			
+			*explosion -= passed / 5.;
+			if (*explosion < 0) explosion.reset();
+		}
+		
+		// reset
+		
+		devt = DE_NONE;
+	}
+};
+
+
+
 MainLoop* MainLoop::current;
 
 bool MainLoop::is_in_game() const
@@ -1116,6 +1519,10 @@ void MainLoop::create(InitWhich which, bool do_init)
 			
 		case INIT_OPTIONS:
 			current = new ML_Options;
+			break;
+			
+		case INIT_INTRO:
+			current = new ML_Intro;
 			break;
 		}
 	}

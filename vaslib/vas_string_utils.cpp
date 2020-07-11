@@ -361,3 +361,56 @@ std::string string_escape(std::string_view s, bool escape_quotes)
 	}
 	return r;
 }
+
+
+
+std::string wrap_words(std::string_view s, size_t max_width, size_t* current_width)
+{
+	std::string ret;
+	ret.reserve(s.size() + s.size() / max_width);
+	
+	size_t i = 0;
+	size_t left = current_width ? *current_width : max_width;
+	while (i < s.length())
+	{
+		// no starting whitespaces
+		if (s[i] == ' ' && left == max_width) {
+			++i;
+			continue;
+		}
+		
+		size_t end = s.find_first_of(" \n", i);
+		if (end == std::string::npos) end = s.length();
+		
+		size_t len = end - i;
+		if (len <= left) {
+			ret.append(s.data() + i, len);
+			left -= len;
+		}
+		else if (len <= max_width) {
+			ret.push_back('\n');
+			ret.append(s.data() + i, len);
+			left = max_width - len;
+		}
+		else {
+			int lines = len / max_width;
+			len -= lines * max_width;
+			for (int j=0; j<lines; ++j) {
+				ret.push_back('\n');
+				ret.append(s.data() + i, max_width);
+				i += max_width;
+			}
+			ret.append(s.data() + i, len);
+			left = max_width - len;
+		}
+		
+		if (end != s.length()) {
+			if (left) ret.push_back(s[end]); // don't add whitespaces at EOL
+			if (ret.back() == '\n') left = max_width;
+		}
+		i = end + 1;
+	}
+	
+	if (current_width) *current_width = left;
+	return ret;
+}

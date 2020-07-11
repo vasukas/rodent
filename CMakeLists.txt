@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.11)
 
-project(rodent VERSION 0.1.2
+project(rodent VERSION 0.1.3
                LANGUAGES CXX C)
 
 add_executable(rodent WIN32)

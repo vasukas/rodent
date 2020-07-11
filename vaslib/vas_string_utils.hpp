@@ -68,4 +68,10 @@ size_t string_unescape(std::string& str, std::string& err);
 /// Escapes special characters in UTF-8 string
 std::string string_escape(std::string_view s, bool escape_quotes = true);
 
+
+
+/// Limits max string width, including additional newlines. 
+/// Omits whitespaces at the beginning of new line
+std::string wrap_words(std::string_view s, size_t max_width, size_t* current_width = nullptr);
+
 #endif // VAS_STRING_UTILS_HPP
