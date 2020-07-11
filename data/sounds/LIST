@@ -8,7 +8,6 @@
 #   spdmut - two values, bounds for set speed multiplier
 
 # flags (no values)
-#   ui - not affected by pause
 #   rndvol - allows volume to be slightly randomized
 #   norndvol - disables volume randomization
 
@@ -22,8 +21,8 @@
 
 
 
-SND_VOLUME_TEST_QUIET test_quiet ui
-SND_VOLUME_TEST_LOUD  test_loud  ui
+SND_VOLUME_TEST_QUIET test_quiet
+SND_VOLUME_TEST_LOUD  test_loud
 
 SND_WPN_MINIGUN !
 	rnd 0.7 1.1

@@ -1,4 +1,5 @@
 alias menu_stats "OMS_RFS 49 Loading Menu-Screen Theme"
+alias menu_intro "OMS_RFS 81 Silence Of The Machines"
 
 single "OMS_RFS 21 Into The Unknown" peace ambient @
 single "OMS_RFS 22 Counter-Attack" light heavy epic @
