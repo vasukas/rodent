@@ -83,7 +83,6 @@ struct SoundInfo
 	std::vector<SoundData> data; // begin, {loop variation}, end. Always at least one element
 	bool was_in_config = false; // for error report only
 	
-	bool is_ui = false;
 	bool random_vol = false;
 	bool randomized = false; // speed
 	std::pair<float, float> spd_mut = {1, 1};
@@ -166,7 +165,6 @@ static std::vector<SoundInfo> load_sounds(int sample_rate, std::unordered_set<st
 					in.spd_mut.first  = tkr.num();
 					in.spd_mut.second = tkr.num();
 				}
-				else if (tkr.is("ui")) in.is_ui = true;
 				else if (tkr.is("sub")) subload();
 				else if (tkr.is("rndvol")) in.random_vol = true;
 				else if (tkr.is("norndvol")) in.random_vol = false;
@@ -305,7 +303,7 @@ struct SndEngMusic
 	static constexpr TimeSpan tmo_battle_to_ambient = TimeSpan::seconds(6);
 	static constexpr TimeSpan tmo_longbattle = TimeSpan::seconds(120);
 	static constexpr TimeSpan tmo_escalation = TimeSpan::seconds(120);
-	static constexpr TimeSpan track_switch_max = TimeSpan::seconds(8*60); // 100% to switch
+	static constexpr TimeSpan track_switch_max = TimeSpan::seconds(7*60); // 100% to switch
 	static constexpr TimeSpan track_switch_min = TimeSpan::seconds(3*60); // 0% to switch
 	
 	SoundEngine::MusControl state = SoundEngine::MUSC_NO_AUTO;
@@ -325,7 +323,7 @@ struct SndEngMusic
 	bool long_battle = false;
 	
 	void load();
-	void step(SoundEngine& snd, TimeSpan now);
+	void step(SoundEngine& snd);
 };
 void SndEngMusic::load()
 {
@@ -418,12 +416,13 @@ void SndEngMusic::load()
 		m.shuffle(true);
 	}
 }
-void SndEngMusic::step(SoundEngine& snd, TimeSpan now)
+void SndEngMusic::step(SoundEngine& snd)
 {
 	if (state == SoundEngine::MUSC_NO_AUTO) {
 		cur_music = -1;
 		return;
 	}
+	TimeSpan now = TimeSpan::current();
 	
 	// find what should be played now
 	int sel = cur_music;
@@ -463,6 +462,7 @@ void SndEngMusic::step(SoundEngine& snd, TimeSpan now)
 		group = s.is[s.i];
 		VLOGV("Now playing: {}", groups[s.is[s.i]].ts[sel].fn);
 		track_start = now;
+		switch_at = {};
 		if (++s.i == s.is.size()) {
 			s.i = 0;
 			s.shuffle();
@@ -475,12 +475,6 @@ void SndEngMusic::step(SoundEngine& snd, TimeSpan now)
 	};
 	if (cur_music != sel)
 	{
-		if (sel == SUB_PEACE || sel == SUB_AMBIENT) {
-			if (!switch_at) switch_at = track_start + lerp(track_switch_min, track_switch_max, rnd_stat().range_n());
-			if (now > *switch_at) new_group();
-		}
-		else switch_at = {};
-		
 		if (!groups[group].ts[sel]) // no suitable track in current group
 			new_group();
 		
@@ -492,6 +486,14 @@ void SndEngMusic::step(SoundEngine& snd, TimeSpan now)
 		if (track_start.is_positive()) new_group(); // use default group when first track in current engine run is played
 		play();
 	}
+	else if (sel == SUB_PEACE || sel == SUB_AMBIENT) {
+		if (!switch_at) switch_at = track_start + lerp(track_switch_min, track_switch_max, rnd_stat().range_n());
+		if (now > *switch_at) {
+			new_group();
+			play();
+		}
+	}
+	else switch_at = {};
 }
 int SoundEngine::check_unused_sounds()
 {
@@ -1096,7 +1098,7 @@ public:
 		}
 		
 		if (g_mus_vol > 0.01)
-			musc.step(*this, core.get_step_time());
+			musc.step(*this);
 	}
 	void set_ui_mode(UI_Mode mode) override
 	{
@@ -1297,7 +1299,7 @@ public:
 			if (it->upd_at >= step_1) continue;
 			auto& vc = *it;
 			
-			if (ui_only && !vc.p_snd->is_ui) {
+			if (ui_only && vc.w_pos) {
 				stop_channel(it.index());
 				continue;
 			}

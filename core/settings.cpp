@@ -1,6 +1,4 @@
 #include <filesystem>
-#include <mutex>
-#include <thread>
 #include "core/hard_paths.hpp"
 #include "utils/line_cfg.hpp"
 #include "vaslib/vas_file.hpp"
@@ -141,25 +139,32 @@ void AppSettings::init_default()
 }
 void AppSettings::clear_old() const
 {
-	const size_t n_save = 10; // how many saved
+	std::tuple<std::string, size_t, std::vector<std::pair<int64_t, std::string>>> types[] = {
+	    {".log", 10, {}}, // extension + number of files to be kept
+	    {".ratdemo", 10, {}}
+	};
 	
 	using namespace std::filesystem;
 	try {
-		std::vector<std::pair<int64_t, std::string>> fs[2];
 		for (auto& e : directory_iterator(HARDPATH_USR_PREFIX))
 		{
-			int i;
-			if		(e.path().extension() == ".log")     i = 0;
-			else if (e.path().extension() == ".ratdemo") i = 1;
-			else continue;
-			
-			int64_t mod = e.last_write_time().time_since_epoch().count();
-			fs[i].push_back({ mod, e.path().u8string() });
+			auto ext = e.path().extension();
+			for (auto& t : types)
+			{
+				if (ext == std::get<0>(t))
+				{
+					int64_t mod = e.last_write_time().time_since_epoch().count();
+					std::get<2>(t).emplace_back(std::make_pair(mod, e.path().u8string()));
+					break;
+				}
+			}
 		}
-		for (auto& f : fs)
+		for (auto& t : types)
 		{
+			auto& f = std::get<2>(t);
 			std::sort(f.begin(), f.end(), [](auto& a, auto& b) {return a.first > b.first;});
-			for (size_t i = n_save; i < f.size(); ++i) {
+			
+			for (size_t i = std::get<1>(t); i < f.size(); ++i) {
 				VLOGI("Removing old file... {}", f[i].second);
 				remove(f[i].second);
 			}

@@ -754,6 +754,7 @@ void draw_text_hud (vec2fp at, std::string_view str, uint32_t clr, bool centered
 	tri.build();
 	if (tri.cs.empty()) return;
 	
+	tri.size *= size_k;
 	tri.size += vec2i::one(border * 2);
 	auto sz = RenderControl::get_size();
 	if (at.x < 0) at.x += sz.x - tri.size.x;
@@ -765,6 +766,8 @@ void draw_text_hud (vec2fp at, std::string_view str, uint32_t clr, bool centered
 		ren.draw_rect({at, tri.size, true}, alpha);
 		at += vec2fp::one(border);
 	}
+	
+	tri.size /= size_k;
 	ren.draw_text(at, tri, clr, centered, size_k);
 }
 void draw_text_message (std::string_view str, float k_max, uint32_t clr, vec2fp direct_offset)

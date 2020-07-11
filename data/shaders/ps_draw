@@ -10,15 +10,15 @@ out Data {
 	mat4 mx;
 	vec4 clr;
 	float size;
-};
+} dat;
 
 void main() {
 	mat4 t_par = mat4(1.0);
 	t_par[3].xy = data[0].xy;
 
-	mx = proj * t_par;
-	clr = data[2];
-	size = data[1].y;
+	dat.mx = proj * t_par;
+	dat.clr = data[2];
+	dat.size = data[1].y;
 }
 
 

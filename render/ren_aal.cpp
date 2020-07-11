@@ -142,6 +142,7 @@ public:
 	
 	std::unique_ptr<Shader> sh, sh_inst;
 	uint32_t prev_clr = 0;
+	float prev_clr_mul = 0;
 	
 	GLA_Texture tex;
 	
@@ -225,9 +226,10 @@ public:
 	void add_objs(size_t n, uint32_t clr, float clr_mul)
 	{
 		n *= 6; // vertices per object
-		if (prev_clr == clr) objs.back().count += n;
+		if (prev_clr == clr && aequ(prev_clr_mul, clr_mul, 1.f/255)) objs.back().count += n;
 		else {
 			prev_clr = clr;
+			prev_clr_mul = clr_mul;
 			objs.push_back({ objs_off, n, clr, clr_mul });
 		}
 		objs_off += n;
@@ -348,14 +350,10 @@ public:
 			sh->bind();
 			sh->set4mx("proj", mx);
 			sh->set1f("scrmul", scrmul);
-			prev_clr = 0;
 			
 			for (auto& o : objs)
 			{
-				if (prev_clr != o.clr) {
-					prev_clr = o.clr;
-					sh->set_rgba("clr", o.clr, o.clr_mul);
-				}
+				sh->set_rgba("clr", o.clr, o.clr_mul);
 				glDrawArrays(GL_TRIANGLES, o.off, o.count);
 			}
 			
@@ -363,6 +361,7 @@ public:
 			objs_off = 0;
 			objs.clear();
 			prev_clr = 0;
+			prev_clr_mul = 0;
 		}
 		if (!inst_q.empty())
 		{
@@ -389,6 +388,7 @@ public:
 	{
 		if (!draw_grid) return;
 		if (!fbo_noi.check()) return;
+		if (inst_objs.empty()) return;
 		
 		// draw to buffer
 		

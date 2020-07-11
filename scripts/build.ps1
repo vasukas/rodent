@@ -79,6 +79,6 @@ if ($pack) {
 		Remove-Item "$PackName"
 	}
 	[System.IO.Compression.ZipFile]::CreateFromDirectory(
-		"$PackDir", "$PackName", [System.IO.Compression.CompressionLevel]::Optimal, $false)
+		"$PackDir", "$PackName", [System.IO.Compression.CompressionLevel]::Optimal, $true)
 }
 
