@@ -198,7 +198,7 @@ struct TutData
 			};
 			vec2i p0 = find_marker(0);
 			vec2i p1 = find_marker(p0.y + 1);
-			room.area.set({p0.x - 2, p0.y + 1}, {p1.x + 1, p1.y - 1}, false);
+			room.area = Rect::bounds({p0.x - 2, p0.y + 1}, {p1.x + 1, p1.y - 1});
 
 			room.area.map([&](vec2i p){
 				uint32_t val = img.get_pixel_fast(p);

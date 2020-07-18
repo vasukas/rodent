@@ -535,7 +535,7 @@ Mode options (--game):
 				}
 				
 				float y = i * cz.y;
-				RenImm::get().draw_rect({{0, y}, {ls[i].second.length() * cz.x, cz.y}, true}, i == ptr? 0x00800080 : 0x80);
+				RenImm::get().draw_rect(Rectfp::off_size({0, y}, {ls[i].second.length() * cz.x, cz.y}), i == ptr? 0x00800080 : 0x80);
 				RenImm::get().draw_text({0, y}, ls[i].second, clr, false, loglines_mul, FontIndex::Debug);
 			}
 		}

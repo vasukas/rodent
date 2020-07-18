@@ -484,7 +484,7 @@ public:
 				prev = c.tex.tex;
 			}
 			vec2fp p = c.pos.lower();
-			add_rect({ p * size_k + at, c.pos.size() * size_k, true }, c.tex.tc);
+			add_rect(Rectfp::off_size( p * size_k + at, c.pos.size() * size_k ), c.tex.tc);
 		}
 		
 		add_obj( prev->get_obj(), clr, true );
@@ -548,7 +548,7 @@ public:
 			}
 			
 			vec2fp p = c.pos.lower();
-			add_rect({ p * size_k + at, c.pos.size() * size_k, true }, c.tex.tc);
+			add_rect(Rectfp::off_size( p * size_k + at, c.pos.size() * size_k ), c.tex.tc);
 			++c_cou;
 		}
 		add_obj( prev->get_obj(), strs[clr_i].first.to_px(), true );
@@ -761,9 +761,9 @@ void draw_text_hud (vec2fp at, std::string_view str, uint32_t clr, bool centered
 	if (at.y < 0) at.y += sz.y - tri.size.y;
 	
 	auto& ren = RenImm::get();
-	if (centered) ren.draw_rect({at - tri.size/2, tri.size, true}, alpha);
+	if (centered) ren.draw_rect(Rectfp::off_size(at - tri.size/2, tri.size), alpha);
 	else {
-		ren.draw_rect({at, tri.size, true}, alpha);
+		ren.draw_rect(Rectfp::off_size(at, tri.size), alpha);
 		at += vec2fp::one(border);
 	}
 	

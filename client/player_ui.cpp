@@ -175,16 +175,16 @@ public:
 				if (yn < 0) p.y = el_size.y - strip_ht*-yn - frame_width;
 				else p.y = frame_width + strip_ht*yn;
 				
-				RenImm::get().draw_rect(Rectfp(pos + p, z, true), clr1);
+				RenImm::get().draw_rect(Rectfp::off_size(pos + p, z), clr1);
 				p.x += z.x;
 				z.x = (el_size.x - frame_width*2) - z.x;
-				RenImm::get().draw_rect(Rectfp(pos + p, z, true), clr2);
+				RenImm::get().draw_rect(Rectfp::off_size(pos + p, z), clr2);
 			};
 			std::vector<std::pair<FColor, std::string>> ss;
 			
 			// draw background
 			
-			RenImm::get().draw_rect(Rectfp{pos, el_size, true}, bg_clr);
+			RenImm::get().draw_rect(Rectfp::off_size(pos, el_size), bg_clr);
 			
 			{	vec2fp img_size = ResBase::get().get_size(ri.model).size();
 				float img_k = img_size.x / img_size.y;
@@ -240,7 +240,7 @@ public:
 			
 			//
 			
-			RenImm::get().draw_frame(Rectfp{pos, el_size, true}, frame_clr, frame_width);
+			RenImm::get().draw_frame(Rectfp::off_size(pos, el_size), frame_clr, frame_width);
 			RenImm::get().draw_text(pos + el_off, std::to_string(index + 1));
 			RenImm::get().draw_text(pos + el_off + vec2i(el_size.x, 0), std::move(ss));
 			vig_space_line(el_y_space);
@@ -423,8 +423,8 @@ public:
 					(f.is_big ? clr_big : clr) += c * c.a;
 				}
 				
-				RenImm::get().draw_image({{}, flare_tex->get_size(), true}, flare_tex_big.get(), clr_big.to_px());
-				RenImm::get().draw_image({{}, flare_tex->get_size(), true}, flare_tex.get(), clr.to_px());
+				RenImm::get().draw_image(Rectfp::bounds({}, flare_tex->get_size()), flare_tex_big.get(), clr_big.to_px());
+				RenImm::get().draw_image(Rectfp::bounds({}, flare_tex->get_size()), flare_tex.get(), clr.to_px());
 			}
 			
 			//

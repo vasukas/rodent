@@ -92,7 +92,7 @@ public:
 		sp += offset;
 		
 		Rectfp dst = Rectfp::from_center(sp, sz);
-		RenImm::get().draw_rect({{}, RenderControl::get_size(), false}, 192 * t_alpha);
+		RenImm::get().draw_rect(Rectfp::bounds({}, RenderControl::get_size()), 192 * t_alpha);
 		if (show_visited)
 		{
 			if (upd_visited_flag) upd_visited();

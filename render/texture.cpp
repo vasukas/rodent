@@ -92,12 +92,10 @@ public:
 	}
 	Rectfp to_texcoord( Rect p ) const
 	{
-		return
-		{
+		return Rectfp::bounds(
 			vec2fp( p.lower() ) / size,
-			vec2fp( p.upper() ) / size,
-			false
-		};
+			vec2fp( p.upper() ) / size
+		);
 	}
 	void set_filter( Filter fil )
 	{

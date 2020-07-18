@@ -58,10 +58,10 @@ const float vig_SliderScroll = 0.05;
 /* Rendering functions */
 
 static void vig_draw_rect(vec2i pos, vec2i size, uint32_t clr, uint width = vig_FrameWidth) {
-	RenImm::get().draw_frame({pos, size, true}, clr, width);
+	RenImm::get().draw_frame(Rect::off_size(pos, size), clr, width);
 }
 static void vig_fill_rect(vec2i pos, vec2i size, uint32_t clr) {
-	RenImm::get().draw_rect({pos, size, true}, clr);
+	RenImm::get().draw_rect(Rect::off_size(pos, size), clr);
 }
 static void vig_draw_text(vec2i pos, std::string_view str, uint32_t clr = vig_CLR(Text)) {
 	RenImm::get().draw_text(pos, str, clr);
@@ -77,7 +77,7 @@ static int vig_text_height() {
 	return std::ceil( RenText::get().line_height( FontIndex::Mono ) );
 }
 static void vig_draw_image(vec2i pos, vec2i size, const TextureReg& tex, uint32_t clr = 0xffffffff) {
-	RenImm::get().draw_image({pos, size, true}, tex, clr);
+	RenImm::get().draw_image(Rect::off_size(pos, size), tex, clr);
 }
 
 
@@ -451,7 +451,7 @@ void vig_tooltip(std::string_view text, bool forced) {
 }
 void vig_tooltip(std::string_view text, vec2i pos, vec2i size, bool forced) {
 	if (text.empty() || (ttip_forced && !forced)) return;
-	Rect r{pos, size, true};
+	Rect r = Rect::off_size(pos, size);
 	if (!r.contains( mouse_pos ) && !forced) return;
 	ttip_set_pos = pos;
 	ttip_set_size = size;
@@ -636,7 +636,7 @@ struct Zone {
 		else {
 			el_pos -= *scr_off;
 			
-			Rect is = calc_intersection(Rect{el_pos, el_size, true}, Rect{{}, orig_size, true});
+			Rect is = calc_intersection(Rect::off_size(el_pos, el_size), Rect::off_size({}, orig_size));
 			ret = is.size() != vec2i{};
 			
 			el_pos += pos; // absolute pos
@@ -665,7 +665,7 @@ static std::vector <Zone> lo_stack;
 void vig_lo_reset()
 {
 	while (lo_stack.size() > 1) vig_lo_pop();
-	vig_lo_toplevel({{}, RenderControl::get_size(), {}});
+	vig_lo_toplevel(Rect::off_size({}, RenderControl::get_size()));
 }
 void vig_lo_push(vec2i size, bool fixed)
 {
@@ -697,7 +697,7 @@ void vig_lo_push_scroll(vec2i outer_size, vec2i& inner_offset)
 	z.size = z.max_size = z.orig_size = outer_size;
 	pz.place(z.pos, z.size, true);
 	
-	RenImm::get().clip_push({ z.pos, outer_size, true });
+	RenImm::get().clip_push(Rect::off_size( z.pos, outer_size ));
 	z.max_size.x = z.max_size.y = std::numeric_limits<int>::max();
 	z.scr_off = &inner_offset;
 }
@@ -721,7 +721,7 @@ void vig_lo_pop()
 	if (z.scr_off)
 	{
 		const int sbwd = vig_ScrollbarWidth + vig_FrameWidth*2;
-		const Rect area = {z.pos, z.orig_size, true};
+		const Rect area = Rect::off_size(z.pos, z.orig_size);
 		
 		// vertical
 		if (z.size.y > z.orig_size.y)
@@ -890,7 +890,7 @@ bool vig_button(std::string_view text, int key, bool active, bool repeat, vec2i 
 //	if (!size.x && !size.y) size = vig_element_size( text.data(), text.length() );
 	
 	// check if element hovered by mouse
-	bool hov = Rect(pos, size, true).contains(vig_mouse_press_pos());
+	bool hov = Rect::off_size(pos, size).contains(vig_mouse_press_pos());
 	
 	// draw background
 	if (!active) vig_fill_rect(pos, size, hov? vig_CLR(BackHover) : vig_CLR(Back));
@@ -926,7 +926,7 @@ bool vig_slider_t(std::string_view text, double& t, vec2i pos, vec2i size) {
 //	if (!size.x && !size.y) size = vig_element_size( text.data(), text.length() );
 	
 	// check if element hovered by mouse
-	bool hov = Rect(pos, size, true).contains(vig_mouse_press_pos());
+	bool hov = Rect::off_size(pos, size).contains(vig_mouse_press_pos());
 	
 	// draw background
 	vig_fill_rect(pos, size, hov? vig_CLR(BackHover) : vig_CLR(Back));
@@ -998,8 +998,8 @@ bool vig_slider(std::string_view text, double& value, double min, double max, in
 }
 bool vig_scrollbar(float& offset, float span, bool is_horizontal, vec2i pos, vec2i size, Rect zone) {
 	// check if element hovered by mouse
-	bool press = (vig_mouse_state() & vig_Mouse_PRESS(Left)) && Rect(pos, size, true).contains(vig_mouse_press_pos());
-	bool hov = press || Rect(pos, size, true).contains(vig_mouse_pos());
+	bool press = (vig_mouse_state() & vig_Mouse_PRESS(Left)) && Rect::off_size(pos, size).contains(vig_mouse_press_pos());
+	bool hov = press || Rect::off_size(pos, size).contains(vig_mouse_pos());
 	bool area_hov = zone.contains(vig_mouse_pos());
 	
 	// draw background
@@ -1072,7 +1072,7 @@ bool vig_selector(size_t& index, const std::vector <std::string_view> &vals) {
 	size.x -= b_size.x * 2;
 	
 	// check if element hovered by mouse
-	bool hov = Rect(pos, size, true).contains(vig_mouse_pos());
+	bool hov = Rect::off_size(pos, size).contains(vig_mouse_pos());
 	
 	// draw background
 	vig_fill_rect(pos, size, hov? vig_CLR(BackHover) : vig_CLR(Back));
@@ -1123,7 +1123,7 @@ bool vig_num_selector(size_t& index, size_t num) {
 	size.x -= b_size.x * 2;
 	
 	// check if element hovered by mouse
-	bool hov = Rect(pos, size, true).contains(vig_mouse_pos());
+	bool hov = Rect::off_size(pos, size).contains(vig_mouse_pos());
 	
 	// draw background
 	vig_fill_rect(pos, size, hov? vig_CLR(BackHover) : vig_CLR(Back));
@@ -1245,7 +1245,7 @@ void vigTextbox::draw()
 	const int ftw = RenText::get().width_mode(FontIndex::Mono);
 	
 	// check selection
-	bool hov = Rect(pos, size, true).contains(vig_mouse_pos());
+	bool hov = Rect::off_size(pos, size).contains(vig_mouse_pos());
 	if (vig_mouse_state() & (vig_Mouse_CLICK(Left) | vig_Mouse_CLICK(Right))) {
 		if (hov) textbox_sel = this;
 		else if (textbox_old == this) on_enter(false);		
@@ -1444,7 +1444,7 @@ void vigTableLC::set_size(vec2i new_size)
 }
 vigTableLC::Element& vigTableLC::get(vec2i pos)
 {
-	if (Rect{{}, size, true}.contains_le(pos))
+	if (is_in_bounds(pos, size))
 		return els[pos.y * size.x + pos.x];
 	
 	throw std::runtime_error("vigTableLC::get() out of bounds");

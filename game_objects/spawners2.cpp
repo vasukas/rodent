@@ -53,7 +53,7 @@ LevelTerrain* survival_terrain()
 	
 	auto& rm = lt->rooms.emplace_back();
 	rm.type = LevelTerrain::RM_CONNECT;
-	rm.area = Rect({1,1}, lt->grid_size - vec2i::one(1), false);
+	rm.area = Rect::bounds({1,1}, lt->grid_size - vec2i::one(1));
 	rm.area.map([&](vec2i p){
 		lt_cref(p).room = &rm;
 	});

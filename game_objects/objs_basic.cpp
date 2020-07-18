@@ -724,7 +724,7 @@ EDecorDestructible::EDecorDestructible(GameCore& core, const char *ui_name, int 
 
 
 EAssembler::EAssembler(GameCore& core, vec2i at, float rot)
-    : EDecorDestructible(core, "Assembler", 240, Rect{at, {1,1}, true}, rot, MODEL_ASSEMBLER, FColor(0.8, 0.6, 0.6))
+    : EDecorDestructible(core, "Assembler", 240, Rect::off_size(at, {1,1}), rot, MODEL_ASSEMBLER, FColor(0.8, 0.6, 0.6))
 {
 	hlc.add_filter(std::make_unique<DmgShield>(60, 10, TimeSpan::seconds(15)));
 	

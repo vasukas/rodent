@@ -15,7 +15,7 @@ struct TextureReg
 	Rectfp tc; ///< Texture coordinates, [0-1]
 	
 	TextureReg() = default;
-	TextureReg(Texture* tex): tex(tex), tc(0,0,1,1) {}
+	TextureReg(Texture* tex): tex(tex), tc(Rectfp::bounds({0,0},{1,1})) {}
 	TextureReg(Texture* tex, const Rectfp& tc): tex(tex), tc(tc) {}
 	
 	uint get_obj() const; ///< Returns texture object or 0

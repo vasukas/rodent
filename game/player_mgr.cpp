@@ -164,7 +164,7 @@ public:
 	{
 		if (fastforward) {
 			auto& lc = core.get_lc();
-			Rectfp r {{}, vec2fp(lc.get_size()) * GameConst::cell_size, false};
+			Rectfp r = Rectfp::bounds({}, vec2fp(lc.get_size()) * GameConst::cell_size);
 			return {r, r};
 		}
 		
@@ -177,8 +177,8 @@ public:
 		
 		vec2fp ctr = last_plr_pos;
 		return {
-			{ctr - hsz_on,  ctr + hsz_on,  false},
-			{ctr - hsz_off, ctr + hsz_off, false}
+			Rectfp::from_center(ctr, hsz_on),
+			Rectfp::from_center(ctr, hsz_off)
 		};
 	}
 	void set_pui(std::unique_ptr<PlayerUI> pui) override

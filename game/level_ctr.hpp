@@ -101,7 +101,7 @@ public:
 	~LevelControl();
 	
 	vec2i get_size() const {return size;}
-	bool is_valid(vec2i pos) const {return Rect{{}, size, true}.contains_le(pos);}
+	bool is_valid(vec2i pos) const {return is_in_bounds(pos, size);}
 	
 	Cell& mut_cell(vec2i pos); ///< Updates pathfinding at the end of the step
 	const Cell* cell(vec2i pos) const noexcept;

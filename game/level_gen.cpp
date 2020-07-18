@@ -1759,7 +1759,7 @@ void LevelTerrain::find_corridors()
 	
 	auto ce = [&](vec2i at) -> Cell*
 	{
-		if (Rect{{}, grid_size, true}.contains_le(at))
+		if (is_in_bounds(at, grid_size))
 			return &cs[at.x + at.y * grid_size.x];
 		return nullptr;
 	};
@@ -1971,7 +1971,7 @@ ImageInfo LevelTerrain::draw_grid(bool is_debug) const
 		for (auto& r : rooms)
 		{
 			br.clr = r.dbg_color;
-			fill_rect(img, {r.area.lower() * cz, r.area.size() * cz, true}, br);
+			fill_rect(img, Rect::off_size(r.area.lower() * cz, r.area.size() * cz), br);
 			
 			br.clr = 0;
 			r.area.map([&](auto p)

@@ -250,7 +250,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 		};
 		
 		auto mk_cont = [&](vec2i at, float r) {
-			new EDecor( core, "Box", {at, {1,1}, true}, r, rnd.range_n() < 0.3 ? MODEL_STORAGE_BOX_OPEN : MODEL_STORAGE_BOX );
+			new EDecor( core, "Box", Rect::off_size(at, {1,1}), r, rnd.range_n() < 0.3 ? MODEL_STORAGE_BOX_OPEN : MODEL_STORAGE_BOX );
 			return true;
 		};
 		auto mk_abox = [&](vec2i at, float) {
@@ -265,7 +265,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 			return [&core, name, model, is_ghost, snd](vec2i at, float r) {
 				if (is_ghost) new EDecorGhost( core, Transform(core.get_lc().to_center_coord(at), r), model );
 				else {
-					auto e = new EDecor( core, name, {at, {1,1}, true}, r, model );
+					auto e = new EDecor( core, name, Rect::off_size(at, {1,1}), r, model );
 					if (snd != SND_NONE) e->snd.update({snd, e->get_pos()});
 				}
 				return !is_ghost;
@@ -293,7 +293,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 				}
 				if (dir.empty()) return false;
 				if (do_check) {
-					Rect cr = calc_intersection(Rect{{}, lc.get_size(), true}, Rect::from_center_le(p, vec2i::one(2)));
+					Rect cr = calc_intersection(Rect::off_size({}, lc.get_size()), Rect::from_center_le(p, vec2i::one(2)));
 					if (!cr.map_check([&](vec2i p) {return !lt_cref(p).is_door;}))
 						return false;
 				}
@@ -711,7 +711,7 @@ void level_spawn(GameCore& core, LevelTerrain& lt)
 					{
 						float t = rnd.range_n();
 						if		(t < 0.75) {
-							auto e = new EDecor(core, "Conveyor", {p, {1,1}, true}, rot, MODEL_CONVEYOR);
+							auto e = new EDecor(core, "Conveyor", Rect::off_size(p, {1,1}), rot, MODEL_CONVEYOR);
 							e->snd.update({SND_OBJAMB_CONVEYOR, e->get_pos()});
 						}
 						else if (t < 0.85 && current_assemblers < max_assemblers && [&]{
@@ -1223,7 +1223,7 @@ LevelTerrain* drone_test_terrain()
 	lt->cs.resize(lt->grid_size.area());
 	
 	auto& rm = lt->rooms.emplace_back();
-	rm.area = Rect({1,1}, lt->grid_size - vec2i::one(1), false);
+	rm.area = Rect::bounds({1,1}, lt->grid_size - vec2i::one(1));
 	rm.type = LevelTerrain::RM_CONNECT;
 	
 	rm.area.map([&](vec2i p){

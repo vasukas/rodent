@@ -170,6 +170,10 @@ bool is_in_polygon(vec2i p, const vec2i* ps, size_t pn)
 	}
 	return true;
 }
+bool is_in_bounds(const vec2i& p, const vec2i& size)
+{
+	return 0 <= p.x && size.x > p.x && 0 <= p.y && size.y > p.y;
+}
 
 
 
@@ -286,7 +290,7 @@ std::pair<float, vec2fp> fit_rect(vec2fp size, vec2fp into)
 	
 Rectfp Rect::to_fp(float mul) const
 {
-	return {vec2fp(off) * mul, vec2fp(sz) * mul, true};
+	return Rectfp::off_size(vec2fp(off) * mul, vec2fp(sz) * mul);
 }
 bool Rect::intersects(const Rect& r) const
 {
@@ -305,7 +309,7 @@ bool Rect::contains_le(vec2i p) const
 }
 Rect::operator Rectfp() const
 {
-	return Rectfp( lower(), upper(), false );
+	return Rectfp::off_size(off, sz);
 }
 Rect::operator SDL_Rect() const
 {
@@ -347,7 +351,7 @@ Rect calc_intersection(const Rect& A, const Rect& B)
 {
 	// taken from SDL2
 	
-	if (A.sz == vec2i(0,0) || B.sz == vec2i(0,0)) return {{}, {}, true};
+	if (A.sz == vec2i(0,0) || B.sz == vec2i(0,0)) return Rect::off_size({}, {});
 	
 	int Amin, Amax, Bmin, Bmax;
 	Rect res;
@@ -378,7 +382,7 @@ Rect calc_intersection(const Rect& A, const Rect& B)
 }
 Rect get_bound(const Rect& a, const Rect& b)
 {
-	return {min(a.lower(), b.lower()), max(a.upper(), b.upper()), false};
+	return Rect::bounds(min(a.lower(), b.lower()), max(a.upper(), b.upper()));
 }
 uint min_distance(const Rect& a, const Rect& b)
 {

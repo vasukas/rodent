@@ -615,7 +615,7 @@ public:
 				}
 			}
 			else {
-				RenImm::get().draw_rect({{}, RenderControl::get_size(), false}, 0xa0);
+				RenImm::get().draw_rect(Rectfp::bounds({}, RenderControl::get_size()), 0xa0);
 				
 				if (winrars.empty()) {
 					bool is_win = (st->fs.type == GameModeCtr::FinalState::Won);
@@ -770,7 +770,7 @@ public:
 				if (TimeSpan::since_start() > hide_pause_until)
 				{
 					RenImm::get().set_context(RenImm::DEFCTX_UI);
-					RenImm::get().draw_rect({{}, RenderControl::get_size(), false}, 0xa0);
+					RenImm::get().draw_rect(Rectfp::bounds({}, RenderControl::get_size()), 0xa0);
 					draw_text_message("PAUSED\nPress any key to continue");
 				}
 				return;
@@ -875,7 +875,7 @@ public:
 						const auto cur = &list[*i_cur];
 						auto sel = lmap->draw_transit(g_mpos, cur);
 						
-						vig_lo_toplevel({ {}, RenderControl::get_size(), true });
+						vig_lo_toplevel(Rect::off_size( {}, RenderControl::get_size() ));
 						for (auto& t : list)
 							vig_label_a("{}, status: {}\n", t.room.name, t.discovered ? "Online" : "UNKNOWN");
 						vig_lo_pop();
@@ -1080,8 +1080,8 @@ public:
 							at.y -= ht;
 							clr <<= 8;
 							float x1 = t * wid;
-							RenImm::get().draw_rect({at, {x1, ht}, true}, clr | 0xa0);
-							RenImm::get().draw_rect({{at.x + x1, at.y}, {wid - x1, ht}, true}, clr | 0x60);
+							RenImm::get().draw_rect(Rectfp::off_size(at, {x1, ht}), clr | 0xa0);
+							RenImm::get().draw_rect(Rectfp::off_size({at.x + x1, at.y}, {wid - x1, ht}), clr | 0x60);
 							RenImm::get().draw_text(at, str, 0xffff'ffc0);
 						};
 						
@@ -1118,7 +1118,7 @@ public:
 				{
 					const auto p = inpst.tar_pos;
 					const vec2i gp = core.get_lc().to_cell_coord(p);
-					if (Rect({1,1}, core.get_lc().get_size() - vec2i::one(2), false).contains_le( gp ))
+					if (Rect::off_size({1,1}, core.get_lc().get_size() - vec2i::one(2)).contains_le( gp ))
 						plr_ent->ref_phobj().teleport(p);
 					
 					if (auto rw = gctr.get_replay_writer())

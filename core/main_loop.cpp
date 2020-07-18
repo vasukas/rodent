@@ -187,7 +187,7 @@ public:
 		// I'm bored
 		vec2i sz = RenImm::get().text_size("()_.._()");
 		vec2i pos = RenderControl::get_size() - sz;
-		if (Rect{pos, sz, true}.contains(vig_mouse_pos())) RenImm::get().draw_text(pos, "()_^^_()");
+		if (Rect::off_size(pos, sz).contains(vig_mouse_pos())) RenImm::get().draw_text(pos, "()_^^_()");
 		else if (MainLoop::is_debug_mode) RenImm::get().draw_text(pos, "()_**_()");
 		else RenImm::get().draw_text(pos, "()_.._()");
 		
@@ -255,7 +255,7 @@ public:
 	}
 	void render(TimeSpan, TimeSpan)
 	{
-		RenImm::get().draw_rect({{}, RenderControl::get_size(), false}, 0xff);
+		RenImm::get().draw_rect(Rectfp::bounds({}, RenderControl::get_size()), 0xff);
 		if (conflict_msg) {
 			draw_text_message("Binding conflict!\n\n"
 			                  "Press ESCAPE to resolve   \n"

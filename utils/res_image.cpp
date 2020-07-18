@@ -244,7 +244,7 @@ const uint8_t* ImageInfo::get_pixel_ptr_fast( vec2i pos ) const
 }
 bool ImageInfo::is_in_bounds( vec2i pos ) const
 {
-	return Rect{{}, size, true}.contains_le(pos);
+	return ::is_in_bounds(pos, size);
 }
 void ImageInfo::resize( vec2i new_size )
 {

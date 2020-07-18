@@ -104,7 +104,7 @@ std::vector<std::vector<vec2fp>> calc_search_rings(GameCore& core, vec2fp ctr_po
 	auto& lc = core.get_lc();
 	
 	Rect grid_area = Rect::from_center_le( lc.to_cell_coord(ctr_pos), vec2i::one(ring_dist.back() + 1) );
-	grid_area = calc_intersection(grid_area, Rect{{}, lc.get_size(), true});
+	grid_area = calc_intersection(grid_area, Rect::off_size({}, lc.get_size()));
 	
 	std::vector<uint8_t> cs;
 	cs.resize( grid_area.size().area() );
@@ -265,7 +265,7 @@ public:
 		
 		calc_intersection(
 			Rect::from_center_le( grid_origin, vec2i::one(max_radius / GameConst::cell_size + 2) ),
-			Rect{{}, lc.get_size(), true} )
+			Rect::off_size({}, lc.get_size()) )
 		.map([&](vec2i p){
 			lc.mut_cell(p).tmp = -1;
 		});

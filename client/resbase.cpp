@@ -741,7 +741,7 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 				m1 = max(m1, p);
 			}
 		}
-		return Rectfp{m0, m1, false};
+		return Rectfp::bounds(m0, m1);
 	};
 	
 	for (auto& m : mlns)

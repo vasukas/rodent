@@ -151,6 +151,9 @@ inline bool any_gtr(const vec2i& p, const vec2i& ref) {return p.x > ref.x || p.y
 /// Returns true if point lies in polygon or on it's edge
 bool is_in_polygon(vec2i p, const vec2i* ps, size_t pn);
 
+/// Returns true if point lies inside rectangle ({0,0}, size - {1,1}), including edges
+bool is_in_bounds(const vec2i& p, const vec2i& size);
+
 
 
 /// 2D floating-point vector
@@ -253,9 +256,8 @@ struct Rect {
 	vec2i off, sz;
 	
 	Rect() = default;
-	Rect(int ax, int ay, int bx, int by): off(ax, ay), sz(bx, by) {}
-	Rect    (vec2i p0, vec2i b, bool is_size) {off = p0; sz = is_size? b : b - p0;}
-	void set(vec2i p0, vec2i b, bool is_size) {off = p0; sz = is_size? b : b - p0;}
+	static Rect bounds(vec2i lower, vec2i upper) {return {lower, upper - lower};}
+	static Rect off_size(vec2i offset, vec2i size) {return {offset, size};}
 	void zero() {off.zero(); sz.zero();}
 	
 	const vec2i& lower() const {return off;}
@@ -268,7 +270,7 @@ struct Rect {
 	void upper(vec2i v) {sz = v - off;}
 	void size (vec2i v) {sz = v;}
 	
-	static Rect from_center_le(vec2i ctr, vec2i half_size) {return {ctr - half_size, ctr + half_size + vec2i::one(1), false};}
+	static Rect from_center_le(vec2i ctr, vec2i half_size) {return bounds(ctr - half_size, ctr + half_size + vec2i::one(1));}
 	Rectfp to_fp(float mul) const;
 	
 	void shift(vec2i v) {off += v;}
@@ -301,6 +303,9 @@ struct Rect {
 	/// Maps function over inner border (on lower and -1 from upper). 
 	/// Clockwise, from lower corner
 	void map_inner(callable_ref<void(vec2i p)> f) const;
+	
+private:
+	Rect(vec2i off, vec2i sz): off(off), sz(sz) {}
 };
 
 Rect calc_intersection(const Rect& a, const Rect& b); ///< Returns rectangle representing overlap
@@ -315,9 +320,8 @@ struct Rectfp
 	vec2fp a, b; // lower and upper bounds
 	
 	Rectfp() = default;
-	Rectfp( int ax, int ay, int sz_x, int sz_y ) {a.set( ax, ay ); b.set( ax + sz_x, ay + sz_y );}
-	Rectfp  (vec2fp a, vec2fp b, bool is_size) {this->a = a; this->b = is_size? b + a : b;}
-	void set(vec2fp a, vec2fp b, bool is_size) {this->a = a; this->b = is_size? b + a : b;}
+	static Rectfp bounds(vec2fp lower, vec2fp upper) {return {lower, upper};}
+	static Rectfp off_size(vec2fp offset, vec2fp size) {return {offset, offset + size};}
 	void zero() { a.zero(); b.zero(); }
 	
 	const vec2fp& lower() const {return a;}
@@ -329,7 +333,7 @@ struct Rectfp
 	void upper (vec2fp v) {b = v;}
 	void size  (vec2fp v) {b = v + a;}
 	
-	static Rectfp from_center(vec2fp ctr, vec2fp half_size) {return {ctr - half_size, ctr + half_size, false};}
+	static Rectfp from_center(vec2fp ctr, vec2fp half_size) {return bounds(ctr - half_size, ctr + half_size);}
 	void offset(vec2fp v) {a += v; b += v;}
 	
 	/// Returns points representing same rectangle rotated around center
@@ -344,6 +348,9 @@ struct Rectfp
 	
 	bool contains( vec2fp p ) const; ///< Checks if point is inside, excluding edges
 	bool contains( vec2fp p, float width ) const; ///< Checks if point is inside; edges are shrinked by width
+	
+private:
+	Rectfp(vec2fp a, vec2fp b): a(a), b(b) {}
 };
 
 

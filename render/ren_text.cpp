@@ -159,7 +159,7 @@ public:
 			if (!b.info_only)
 			{
 				auto& c = b.cs.emplace_back();
-				c.pos = {pos + g.off, g.size, true};
+				c.pos = Rectfp::off_size(pos + g.off, g.size);
 				c.tex = g.tex;
 			}
 			
@@ -189,7 +189,7 @@ public:
 		auto& ft = gf(font);
 		auto it = ft.glyphs.find(cp);
 		auto& g = (it != ft.glyphs.end()) ? it->second : ft.miss;
-		return {{g.off, g.size, true}, g.tex};
+		return {Rectfp::off_size(g.off, g.size), g.tex};
 	}
 	
 	
@@ -309,7 +309,7 @@ public:
 			Glyph rg;
 			
 			auto tex = fd->texs[ spr->index ].get();
-			rg.tex = { tex, tex->to_texcoord({ {spr->x, spr->y}, {spr->w, spr->h}, true }) };
+			rg.tex = { tex, tex->to_texcoord(Rect::off_size( {spr->x, spr->y}, {spr->w, spr->h} )) };
 			rg.size = vec2fp(spr->w, spr->h) / ss_k;
 			
 			rg.off = vec2fp(fg.off) / ss_k;
@@ -332,7 +332,7 @@ public:
 			Glyph& rg = fd->white;
 			
 			auto tex = fd->texs[ spr->index ].get();
-			rg.tex = { tex, tex->to_texcoord({ {spr->x, spr->y}, {spr->w, spr->h}, true }) };
+			rg.tex = { tex, tex->to_texcoord(Rect::off_size( {spr->x, spr->y}, {spr->w, spr->h} )) };
 			rg.size = vec2fp(spr->w, spr->h);
 			
 			rg.off = {};
