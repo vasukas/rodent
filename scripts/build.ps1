@@ -68,6 +68,7 @@ if (!($?)) {
 
 &"Cmake" --build . --config MinSizeRel
 if (!($?)) {
+	Write-Host "Build failed"
 	cd ..
 	exit 1
 }

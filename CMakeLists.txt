@@ -79,7 +79,8 @@ include(FetchContent)
 FetchContent_Declare(
 	Box2D
 	GIT_REPOSITORY  https://github.com/erincatto/Box2D.git
-	GIT_SHALLOW 1
+#	GIT_SHALLOW 1
+	GIT_TAG         1025f9a10949b963d6311995910bdd04f72dae6c
 )
 FetchContent_Declare(
 	fmtlib

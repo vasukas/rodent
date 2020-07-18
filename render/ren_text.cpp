@@ -252,7 +252,7 @@ public:
 		
 		abd.pk->bpp = 1;
 		abd.pk->min_size = 4;
-		abd.pk->max_size = std::max( RenderControl::get().get_max_tex(), 32768 );
+		abd.pk->max_size = std::min( RenderControl::get().get_max_tex(), 32768 );
 		abd.pk->space_size = 1;
 		
 		// white pixel image (used for rectangles)
