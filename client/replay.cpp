@@ -7,7 +7,7 @@
 #include "utils/serializer_defs.hpp"
 #include "utils/tcp_net.hpp"
 #include "vaslib/vas_log.hpp"
-#include "replay.hpp"
+#include "replay_ser.hpp"
 
 constexpr char stream_header[] = "ratdemo";
 const uint32_t stream_version = 7; // binary format
@@ -25,13 +25,6 @@ struct Frame {
 };
 
 
-
-SERIALFUNC_PLACEMENT_1(PlayerInput::State,
-	SER_FD(is),
-	SER_FDT(acts, Array32<SerialTag_Enum< PlayerInput::ACTION_TOTAL_COUNT_INTERNAL >>),
-	SER_FD(mov),
-	SER_FD(tar_pos),
-	SER_FD(cursor));
 
 SERIALFUNC_PLACEMENT_1(ReplayInitData,
 	SER_FDT(rnd_init, Array32),

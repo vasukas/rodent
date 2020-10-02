@@ -56,7 +56,7 @@ public:
 	}
 	bool is_player(Entity& ent) const override
 	{
-		return ent.index == plr_eid;
+		return ent.index == plr_eid || ent.index == nethack.value_or(EntityIndex{});
 	}
 	PlayerUI* get_pui() override
 	{
