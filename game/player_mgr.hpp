@@ -17,6 +17,11 @@ public:
 	bool fastforward   = false; ///< see usages
 	bool debug_ai_rect = false;
 	
+	// client: only ent set
+	// server: both set
+	std::optional<EntityIndex> nethack;
+	PlayerInput* nethack_input = nullptr;
+	
 	static PlayerManager* create(GameCore& core);
 	virtual ~PlayerManager() = default;
 	
@@ -38,6 +43,8 @@ public:
 	
 	///
 	virtual vec2fp get_last_pos() = 0;
+	
+	PlayerInput& get_input(EntityIndex ent);
 	
 protected:
 	friend class GameCore_Impl;

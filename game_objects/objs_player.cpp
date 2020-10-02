@@ -291,7 +291,7 @@ void EC_PlayerLogic::on_dmg(const DamageQuant&)
 }
 void EC_PlayerLogic::m_step()
 {
-	auto& pinp = PlayerInput::get();
+	auto& pinp = ent.core.get_pmg().get_input(ent.index);
 	auto& cst = pinp.get_state(PlayerInput::CTX_GAME);
 	auto& eqp = ent.ref_eqp();
 	

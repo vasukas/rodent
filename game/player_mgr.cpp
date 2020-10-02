@@ -8,6 +8,11 @@
 #include "player_mgr.hpp"
 
 
+PlayerInput& get_input(EntityIndex ent) {
+    return nethack_input ? ent == nethack->index : *nethack_input : PlayerInput::get();
+}
+
+
 
 class PlayerManager_Impl : public PlayerManager
 {
@@ -195,6 +200,13 @@ public:
 	
 	void try_spawn_plr()
 	{
+	    if (nethack_input) return;
+	    if (nethack) {
+	        plr_eid = *nethack;
+	        plr_ent = core.get_ent(plr_eid);
+	        return;
+	    }
+	    
 		if (core.get_ent(plr_eid)) return;
 		plr_eid = {};
 		

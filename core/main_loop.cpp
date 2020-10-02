@@ -27,6 +27,7 @@
 #include "vaslib/vas_string_utils.hpp"
 #include "vaslib/vas_log.hpp"
 #include "main_loop.hpp"
+#include "../mptest.hpp"
 
 
 
@@ -773,6 +774,8 @@ public:
 	
 	static bool isok(ReplayInit& v) {return !std::holds_alternative<std::monostate>(v);}
 	
+	MPTEST* mptest = nullptr;
+	
 	
 	
 	ML_Game() = default;
@@ -864,6 +867,12 @@ public:
 			auto p2 = arg.str();
 			auto p3 = arg.flag();
 			replay_init_read = ReplayInit_Net{ std::move(p1), std::move(p2), p3 };
+		}
+		else if (arg.is("--mptest")) {
+			auto p1 = arg.str();
+			auto p2 = arg.str();
+			auto p3 = arg.flag();
+		    mptest = MPTEST::make(p1.c_str(), p2.c_str(), p3);
 		}
 		else if (arg.is("--loadlast")) {
 			replay_loadgame = HARDPATH_REPLAY_SAVEGAME;
@@ -999,7 +1008,12 @@ public:
 			
 			// init
 			
-			if (is_tutorial) {
+			if (mptest) {
+			    gci.mode_ctr.reset(mptest->mode);
+			    gci.terrgen = [this](auto&) {return mptest->terrain();};
+			    gci.spawner = [this](auto& a, auto& b) {mptest->spawn(a, b);};
+            }
+			else if (is_tutorial) {
 				gci.mode_ctr.reset(new GameMode_Tutorial);
 				gci.terrgen = [](auto&) {return tutorial_terrain();};
 				gci.spawner = tutorial_spawn;
