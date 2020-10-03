@@ -96,6 +96,9 @@ void effect_lightning(vec2fp a, vec2fp b, EffectLightning type, TimeSpan length,
 	p->tps = 1 / length.seconds();
 	p->clr = clr;
 	GamePresenter::get()->add_effect(std::unique_ptr<GameRenderEffect>(p));
+	
+	if (auto w = GamePresenter::get()->net_writer)
+		w->on_lightning(a, b, static_cast<int>(type), length, clr);
 }
 
 

@@ -47,6 +47,13 @@ private:
 
 
 
+struct NetworkEffectWriter {
+	virtual void on_lightning(vec2fp a, vec2fp b, int type, TimeSpan length, FColor clr) = 0;
+	virtual void on_pgg(PGG_Pointer ppg, const ParticleBatchPars& pars) = 0;
+};
+
+
+
 // Intended to run in separate thread with external sync
 class GamePresenter
 {
@@ -59,6 +66,8 @@ public:
 	
 	bool playback_hack = false; ///< Disables interpolation
 	bool loadgame_hack = false; ///< Ignore all effect and particle commands
+	
+	NetworkEffectWriter* net_writer = nullptr;
 	
 	static GamePresenter* init(const InitParams& pars); ///< Creates singleton
 	static GamePresenter* get(); ///< Returns singleton

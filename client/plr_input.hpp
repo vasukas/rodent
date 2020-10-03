@@ -156,6 +156,8 @@ public:
 	static const char* get_sys_name(ContextMode v);
 	std::vector<LineCfgOption> gen_cfg_opts(); ///< Call after_load() after successful loading
 	
+	static PlayerInput empty_proxy() {return PlayerInput();}
+	
 	static PlayerInput& get(); ///< Returns singleton. Initializes default binds
 	void set_defaults();
 	void after_load();

@@ -1009,7 +1009,7 @@ public:
 			// init
 			
 			if (mptest) {
-			    gci.mode_ctr.reset(mptest->mode);
+			    gci.mode_ctr.reset(mptest->mode());
 			    gci.terrgen = [this](auto&) {return mptest->terrain();};
 			    gci.spawner = [this](auto& a, auto& b) {mptest->spawn(a, b);};
             }

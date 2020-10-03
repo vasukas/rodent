@@ -8,8 +8,8 @@
 #include "player_mgr.hpp"
 
 
-PlayerInput& get_input(EntityIndex ent) {
-    return nethack_input ? ent == nethack->index : *nethack_input : PlayerInput::get();
+PlayerInput& PlayerManager::get_input(EntityIndex ent) {
+    return nethack_input && ent == *nethack ? *nethack_input : PlayerInput::get();
 }
 
 
@@ -164,6 +164,17 @@ public:
 			}
 			else pui_einter = {};
 		}
+		
+		if (nethack) {
+			if (auto ent = core.valid_ent(*nethack)) {
+				if (nethack_input) {
+					static_cast<PlayerEntity*>(ent)->log.m_step();
+				}
+				else {
+					last_plr_pos = ent->get_pos();
+				}
+			}
+		}
 	}
 	std::pair<Rectfp, Rectfp> get_ai_rects() override
 	{
@@ -200,12 +211,7 @@ public:
 	
 	void try_spawn_plr()
 	{
-	    if (nethack_input) return;
-	    if (nethack) {
-	        plr_eid = *nethack;
-	        plr_ent = core.get_ent(plr_eid);
-	        return;
-	    }
+	    if (nethack && !nethack_input) return;
 	    
 		if (core.get_ent(plr_eid)) return;
 		plr_eid = {};

@@ -3,6 +3,7 @@
 #include "client/sounds.hpp"
 #include "game/game_core.hpp"
 #include "game/game_info_list.hpp"
+#include "game/player_mgr.hpp"
 #include "game_ai/ai_control.hpp"
 #include "vaslib/vas_log.hpp"
 #include "objs_player.hpp"
@@ -290,7 +291,7 @@ void EC_PlayerLogic::on_dmg(const DamageQuant&)
 	pmov.battle_trigger();
 }
 void EC_PlayerLogic::m_step()
-{
+{	
 	auto& pinp = ent.core.get_pmg().get_input(ent.index);
 	auto& cst = pinp.get_state(PlayerInput::CTX_GAME);
 	auto& eqp = ent.ref_eqp();

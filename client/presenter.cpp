@@ -458,7 +458,11 @@ public:
 };
 void GamePresenter::effect(PGG_Pointer pgg, const ParticleBatchPars& pars)
 {
-	if (pgg) add_cmd(PresCmdParticles{ {}, pgg.p, pars });
+	if (pgg) {
+		add_cmd(PresCmdParticles{ {}, pgg.p, pars });
+		if (net_writer)
+			net_writer->on_pgg(pgg, pars);
+	}
 }
 
 

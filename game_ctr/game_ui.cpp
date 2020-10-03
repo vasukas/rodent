@@ -160,7 +160,7 @@ public:
 	
 	// screen
 	
-	bool ignore_ren_pause = false;
+	bool ignore_ren_pause = true;
 	
 	bool is_ren_paused = false; ///< Is paused be window becoming non-visible
 	TimeSpan hide_pause_until; ///< Pause stub is not drawn until after that time

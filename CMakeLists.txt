@@ -207,6 +207,7 @@ list(APPEND SRC_LIST
 	client/plr_input
 	client/presenter
 	client/replay
+	client/replay_ser.hpp
 	client/resbase
 	client/sounds
 
@@ -287,6 +288,8 @@ list(APPEND SRC_LIST
 	vaslib/vas_time
 	vaslib/vas_types.hpp
 	vaslib/wincompat
+
+	mptest
 )
 
 # Add sources to target and source groups

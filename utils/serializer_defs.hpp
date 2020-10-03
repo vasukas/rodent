@@ -352,7 +352,7 @@ template<> struct SerialFunc<TimeSpan, SerialTag_None> {
 };
 
 template<> struct SerialFunc<FColor, SerialTag_None> {
-	using Ser = SerialFunc<FColor, SerialTag_FixedArray<4, float, SerialTag_fp_8_8>>;
+	using Ser = SerialFunc<FColor, SerialTag_FixedArray<4, float>>;
 	static void write(const FColor& p, File& f) {Ser::write(p, f);}
 	static void read (      FColor& p, File& f) {Ser::read (p, f);}
 };

@@ -146,6 +146,9 @@ void EC_ParticleEmitter::render(const EC_RenderPos& p, TimeSpan passed)
 		e.pars.tr = p.get_cur().get_combined(e.tr);
 		e.gen->draw(e.pars);
 		
+		if (auto w = GamePresenter::get()->net_writer)
+			w->on_pgg(e.gen, e.pars);
+		
 		if (!e.left) return false;
 		--e.left;
 		return true;
