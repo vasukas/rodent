@@ -132,14 +132,13 @@ private:
 class PlayerEntity final : public Entity
 {
 public:
-    size_t team = TEAM_PLAYER;
-
 	EC_Physics     phy;
 	EC_Health      hlc;
 	EC_Equipment   eqp;
 	EC_PlayerLogic log;
+	const size_t team;
 	
-	PlayerEntity(GameCore& core, vec2fp pos, bool is_superman);
+	PlayerEntity(GameCore& core, vec2fp pos, bool is_superman, size_t team = TEAM_PLAYER);
 	~PlayerEntity();
 	size_t get_team() const override {return team;}
 

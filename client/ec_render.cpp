@@ -79,6 +79,9 @@ void EC_RenderEquip::attach(AttachType type, Transform at, ModelType model, FCol
 	a.model = model;
 	a.at = at;
 	a.clr = clr;
+	
+	if (auto w = GamePresenter::get()->net_writer)
+		w->on_attach(ent.index, type, at, model, clr);
 }
 void EC_RenderEquip::render(const EC_RenderPos& p, TimeSpan)
 {
@@ -142,12 +145,12 @@ void EC_ParticleEmitter::render(const EC_RenderPos& p, TimeSpan passed)
 			return true;
 		}
 		
+		if (auto w = GamePresenter::get()->net_writer)
+			w->on_pgg(e.gen, e.pars);
+		
 		e.tmo += e.period;
 		e.pars.tr = p.get_cur().get_combined(e.tr);
 		e.gen->draw(e.pars);
-		
-		if (auto w = GamePresenter::get()->net_writer)
-			w->on_pgg(e.gen, e.pars);
 		
 		if (!e.left) return false;
 		--e.left;
@@ -175,7 +178,7 @@ void EC_ParticleEmitter::resource_reinit_hack()
 
 void EC_LaserDesigRay::set_target(vec2fp new_tar)
 {
-	auto cur =ent.ref<EC_RenderPos>().get_cur().pos;
+	auto cur = ent.ref<EC_RenderPos>().get_cur().pos;
 	float ad = (new_tar - cur).angle() - (tar_ray - cur).angle();
 	
 	if (std::fabs(wrap_angle(ad)) < deg_to_rad(25))
@@ -230,6 +233,9 @@ void EC_Uberray::trigger(vec2fp target)
 {
 	left = left_max;
 	b_last = target;
+	
+	if (auto w = GamePresenter::get()->net_writer)
+		w->on_uberray(ent.index, target);
 }
 void EC_Uberray::render(const EC_RenderPos& p, TimeSpan passed)
 {

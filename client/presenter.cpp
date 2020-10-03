@@ -215,24 +215,16 @@ public:
 	void add_cmd(PresCommand c) override
 	{
 		if (loadgame_hack) return;
-		
-		if (net_writer) {
-			if (auto p = std::get_if<PresCmdParticles>(&c)) {
-				if (p->eid) {
-					auto ent = core->get_ent(p->eid);
-					if (ent) {
-						p->pars.tr = ent->ref_pc().get_trans().combine(p->pars.tr);
-					}
-				}
-				net_writer->on_pgg(p->gen, p->pars);
-			}
-		}
-		
 		reserve_more_block(cmds_queue, 256);
 		cmds_queue.emplace_back(std::move(c));
 	}
 	void render(TimeSpan now, TimeSpan passed) override
 	{
+		if (net_writer) {
+			for (auto& d : part_del) {
+				net_writer->on_pgg(d.gen, d.pars);
+			}
+		}
 		for (auto& d : part_del) d.gen->draw(d.pars);
 		part_del.clear();
 		

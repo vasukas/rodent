@@ -23,17 +23,26 @@
 #include "utils/noise.hpp"
 
 
-// client-side
 class EProxy : public Entity {
 public:
+	static_assert(MODEL_TOTAL_COUNT_INTERNAL <= 0x80);
+	
     EC_VirtualBody pc;
+	bool explode;
 
     EProxy(GameCore& core, Transform pos, int model, uint32_t color)
-	    : Entity(core), pc(*this, pos)
+	    : Entity(core), pc(*this, pos), explode(model & 0x80)
     {
+		model &= 0x7f;
 	    add_new<EC_RenderModel>(static_cast<ModelType>(model), color, EC_RenderModel::DEATH_NONE);
-		pc.pos.pos.x = -1000;
+		if (model == MODEL_PC_RAT) {
+			ensure<EC_RenderPos>().immediate_rotation = true;
+			ensure<EC_RenderPos>().disable_culling = true;
+		}
     }
+	~EProxy() {
+		if (explode) effect_explosion_wave(pc.pos.pos);
+	}
     EC_Position& ref_pc() {return pc;}
 };
 
@@ -63,12 +72,30 @@ struct NE_Parts {
 	uint8_t effect;
 };
 
+struct NE_Attach {
+	uint16_t index;
+	uint8_t type;
+	Transform pos;
+	uint8_t model;
+	FColor clr;
+};
+
+struct NE_Ray {
+	uint16_t index;
+	vec2fp at;
+};
+
 struct ServPacket {
     std::vector<EvCreate> created;
     std::vector<EvTransform> trs;
     std::vector<uint16_t> dels;
+	
 	std::vector<NE_Bolt> bolts;
 	std::vector<NE_Parts> parts;
+	std::vector<NE_Attach> atts;
+	
+	std::vector<NE_Ray> rays_desig;
+	std::vector<NE_Ray> rays_uber;
     
     uint16_t plr;
     static constexpr auto invalid = std::numeric_limits<uint16_t>::max();
@@ -107,13 +134,27 @@ SERIALFUNC_PLACEMENT_1(NE_Parts,
 	SER_FD(pars),
 	SER_FD(model),
 	SER_FD(effect));
-	
+
+SERIALFUNC_PLACEMENT_1(NE_Attach,
+	SER_FD(index),
+	SER_FD(type),
+	SER_FD(pos),
+	SER_FD(model),
+	SER_FD(clr));
+
+SERIALFUNC_PLACEMENT_1(NE_Ray,
+	SER_FD(index),
+	SER_FD(at));
+
 SERIALFUNC_PLACEMENT_1(ServPacket,
     SER_FDT(created, Array32),
     SER_FDT(trs, Array32),
     SER_FDT(dels, Array32),
 	SER_FDT(bolts, Array32),
 	SER_FDT(parts, Array32),
+	SER_FDT(atts, Array32),
+	SER_FDT(rays_desig, Array32),
+	SER_FDT(rays_uber, Array32),
     SER_FD(plr));
 
 
@@ -126,7 +167,7 @@ struct Common {
         vec2fp pos;
         TimeSpan timeout;
 		TimeSpan full_timeout;
-		std::function<EntityIndex(GameCore&, vec2fp)> f;
+		std::function<Entity*(GameCore&, vec2fp)> f;
     };
     std::vector<Resp> resps;
     
@@ -180,7 +221,20 @@ struct NetworkEffectWriter_Impl : NetworkEffectWriter {
 		
 		pkt->parts.push_back({ pars, model, effect });
 	}
-	static void apply(ServPacket& pkt) {
+	void on_attach(EntityIndex ent, int type, Transform tr, int model, FColor clr) {
+		auto& ev = pkt->atts.emplace_back();
+		ev.index = ent.to_int();
+		ev.type = type;
+		ev.pos = tr;
+		ev.model = model;
+		ev.clr = clr;
+	}
+	void on_uberray(EntityIndex ent, vec2fp at) {
+		auto& ev = pkt->rays_uber.emplace_back();
+		ev.index = ent.to_int();
+		ev.at = at;
+	}
+	static void apply(ServPacket& pkt, callable_ref<Entity*(uint16_t)> get_ent) {
 		for (auto& ev : pkt.bolts)
 			effect_lightning(ev.a, ev.b, static_cast<EffectLightning>(ev.type), ev.len, ev.clr);
 		
@@ -190,6 +244,13 @@ struct NetworkEffectWriter_Impl : NetworkEffectWriter {
 			}
 			else {
 				GamePresenter::get()->effect({static_cast<ModelType>(ev.model), static_cast<ModelEffect>(ev.effect)}, ev.pars);
+			}
+		}
+		
+		for (auto& ev : pkt.atts) {
+			if (auto ent = get_ent(ev.index)) {
+				ent->ensure<EC_RenderEquip>().attach(static_cast<EC_RenderEquip::AttachType>(ev.type),
+				                                     ev.pos, static_cast<ModelType>(ev.model), ev.clr);
 			}
 		}
 	}
@@ -294,7 +355,9 @@ public:
 						auto& ent = core->ent_ref(EntityIndex::from_int(k));
 						auto& pc = ent.ref_pc();
 						auto& rc = ent.ref<EC_RenderModel>();
-						p.created.push_back({ k, static_cast<uint8_t>(rc.model), rc.clr.to_px(),
+						uint8_t model = rc.model;
+						if (rc.death == EC_RenderModel::DEATH_AND_EXPLOSION) model |= 0x80;
+						p.created.push_back({ k, model, rc.clr.to_px(),
 						                      pc.get_pos().x, pc.get_pos().y, pc.get_angle() });
 					}
 				}
@@ -305,6 +368,17 @@ public:
 				}
 				
 				existing_now.swap(existing_prev);
+				
+				for (size_t i = 0; i < common->plrs.size(); ++i) {
+					auto plr_ent = core->valid_ent(core->get_pmg().nethack_server[i].first);
+					if (plr_ent) {
+						if (auto r = plr_ent->get<EC_LaserDesigRay>(); r && r->enabled) {
+							auto& ev = p.rays_desig.emplace_back();
+							ev.index = plr_ent->index.to_int();
+							ev.at = r->get_target();
+						}
+					}
+				}
 				
 				std::unique_lock lock(mutex);
 				for (size_t i = 0; i < common->plrs.size(); ++i) {
@@ -346,8 +420,9 @@ public:
 								poses.push_back(p.pos);
 							}
 						}
-						auto plr = new PlayerEntity(*core, core->get_random().random_el(poses), false);
-	                    plr->team = 1;
+						vec2fp pos = core->get_random().random_el(poses);
+						
+						auto plr = new PlayerEntity(*core, pos, false, TEAM_PLAYER + i + 1);
 	                    p->resp = TimeSpan::seconds(4);
 	                    eid = plr->index;
 					}
@@ -360,7 +435,10 @@ public:
                         sp.timeout -= core->step_len;
                     }
                     else {
-						sp.f(*core, sp.pos);
+						auto ent = sp.f(*core, sp.pos);
+						GamePresenter::get()->effect(FE_SPAWN, {{ent->ref_pc().get_trans()}, GameConst::hsz_drone_big});
+						
+						sp.ent = ent->index;
                         sp.timeout = sp.full_timeout;
                     }
                 }
@@ -386,6 +464,24 @@ public:
 					pc.pos = Transform{vec2fp(ev.x, ev.y), ev.r};
 					pc.set_vel(Transform{vec2fp(ev.vx, ev.vy)});
 				}
+				
+				fx_net.apply(p, [this](uint16_t index) {
+					return core->get_ent(client_ids.find(index)->second);
+				});
+				
+				core->foreach([](Entity& e) {
+					if (auto p = e.get<EC_LaserDesigRay>()) p->enabled = false;
+				});
+				for (auto& ev : p.rays_desig) {
+					auto ent = static_cast<EProxy*>(core->get_ent(client_ids.find(ev.index)->second));
+					ent->ensure<EC_LaserDesigRay>().enabled = true;
+					ent->ensure<EC_LaserDesigRay>().set_target(ev.at);
+				}
+				for (auto& ev : p.rays_uber) {
+					auto ent = static_cast<EProxy*>(core->get_ent(client_ids.find(ev.index)->second));
+					ent->ensure<EC_Uberray>().trigger(ev.at);
+				}
+				
 				for (auto& ev : p.dels) {
 					auto it = client_ids.find(ev);
 					if (it == client_ids.end()) THROW_FMTSTR("ID CRITICAL");
@@ -393,7 +489,6 @@ public:
 					client_ids.erase(it);
 					ent->destroy();
 				}
-				fx_net.apply(p);
 				
 				if (p.plr == p.invalid) {
 					core->get_pmg().nethack_client->first = EntityIndex{};
@@ -427,7 +522,7 @@ struct MPTEST_Impl : MPTEST {
 	struct RespInfo {
 		vec2i pos;
 		TimeSpan time;
-		std::function<EntityIndex(GameCore&, vec2fp)> f;
+		std::function<Entity*(GameCore&, vec2fp)> f;
 	};
     std::vector<RespInfo> resps;
 
@@ -454,13 +549,13 @@ struct MPTEST_Impl : MPTEST {
             case 0x0000ff: destrs.push_back(p); break;
 				
 			case 0xffff00: resps.push_back({ p, TimeSpan::seconds(8), [](auto& core, auto pos) {
-				                                 return (new EPickable(core, pos, EPickable::rnd_ammo(core)))->index;} });
+				                                 return new EPickable(core, pos, EPickable::rnd_ammo(core));} });
 				        break;
 			case 0x00ff00: resps.push_back({ p, TimeSpan::seconds(20), [](auto& core, auto pos) {
-				                                 return (new EPickable(core, pos, EPickable::ArmorShard{30}))->index;} });
+				                                 return new EPickable(core, pos, EPickable::ArmorShard{30});} });
 				        break;
 			case 0xff00ff: resps.push_back({ p, TimeSpan::seconds(45), [](auto& core, auto pos) {
-				                                 return (new EPickable(core, pos, EPickable::BigPack{}))->index;} });
+				                                 return new EPickable(core, pos, EPickable::BigPack{});} });
 				        break;
             }
         }
@@ -529,4 +624,3 @@ struct MPTEST_Impl : MPTEST {
 MPTEST* MPTEST::make(const char *addr, const char *port, int num_clients) {
     return new MPTEST_Impl(addr, port, num_clients);
 }
-

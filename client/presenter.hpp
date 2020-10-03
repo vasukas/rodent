@@ -50,6 +50,8 @@ private:
 struct NetworkEffectWriter {
 	virtual void on_lightning(vec2fp a, vec2fp b, int type, TimeSpan length, FColor clr) = 0;
 	virtual void on_pgg(PGG_Pointer ppg, const ParticleBatchPars& pars) = 0;
+	virtual void on_attach(EntityIndex ent, int type, Transform tr, int model, FColor clr) = 0;
+	virtual void on_uberray(EntityIndex ent, vec2fp at) = 0;
 };
 
 

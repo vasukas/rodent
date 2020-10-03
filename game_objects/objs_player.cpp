@@ -387,22 +387,31 @@ void EC_PlayerLogic::m_step(PlayerInput& pinp)
 
 
 
-PlayerEntity::PlayerEntity(GameCore& core, vec2fp pos, bool is_superman)
+PlayerEntity::PlayerEntity(GameCore& core, vec2fp pos, bool is_superman, size_t team)
 	:
 	Entity(core),
 	phy(*this, bodydef(pos, true)),
 	hlc(*this, 250),
 	eqp(*this),
-	log(*this)
+	log(*this),
+    team(team)
 {
 	ui_descr = "The Rat";
 	phy.add(FixtureCreate::circle( fixtdef(0.3, 0.4), GameConst::hsz_rat, is_superman ? 1500 : 15 ));
 	
 	// rendering
 	
+	const std::array<FColor, 4> team_clrs = {
+	    FColor(0.4, 0.9, 1),
+	    FColor(1, 0.2, 0.1),
+	    FColor(1, 1, 1, 1.2),
+	    FColor(1, 1, 0)
+	};
+	size_t i_clr = (team - TEAM_PLAYER) % team_clrs.size();
+	
 	ensure<EC_RenderPos>().immediate_rotation = true;
 	ensure<EC_RenderPos>().disable_culling = true;
-	add_new<EC_RenderModel>(MODEL_PC_RAT, FColor(0.4, 0.9, 1, 1), EC_RenderModel::DEATH_AND_EXPLOSION);
+	add_new<EC_RenderModel>(MODEL_PC_RAT, team_clrs[i_clr], EC_RenderModel::DEATH_AND_EXPLOSION);
 	add_new<EC_RenderEquip>();
 	add_new<EC_LaserDesigRay>().clr *= 0.7;
 	

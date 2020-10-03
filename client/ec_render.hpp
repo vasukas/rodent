@@ -173,6 +173,8 @@ struct EC_LaserDesigRay : EC_RenderComp
 	    : EC_RenderComp(ent), clr(clr) {}
 	~EC_LaserDesigRay() {tmp_cull(cull_state, false);}
 	
+	vec2fp get_target() const {return tar_next ? tar_next->second : tar_ray;}
+	
 private:
 	vec2fp tar_ray = {};
 	std::optional<std::pair<vec2fp, vec2fp>> tar_next;

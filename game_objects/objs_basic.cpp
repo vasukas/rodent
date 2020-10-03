@@ -229,11 +229,10 @@ void EPickable::on_cnt(const CollisionEvent& ce)
 				if (auto p = dynamic_cast<DmgShield*>(&f)) {
 					p->get_hp().renew();
 				}
+				if (auto p = dynamic_cast<DmgArmor*>(&f)) {
+					p->get_hp().renew();
+				}
 			});
-			for (int i = static_cast<int>(AmmoType::Bullet); i < static_cast<int>(AmmoType::TOTAL_COUNT); ++i) {
-				auto& ammo = ce.other->ref_eqp().get_ammo(static_cast<AmmoType>(i));
-				if (ammo.value < ammo.max / 3) ammo.value = ammo.max / 3;
-			}
 			return true;
 		}
 	}, val);
