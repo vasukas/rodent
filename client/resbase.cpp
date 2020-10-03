@@ -641,6 +641,7 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 	    
 	    {MODEL_ARMOR, "armor"},
 	    {MODEL_TERMINAL_KEY, "term_key"},
+	    {MODEL_ULTIMATE, "ultimate"},
 	    
 	    {MODEL_DISPENSER, "dispenser"},
 	    {MODEL_TERMINAL, "terminal"},
@@ -762,6 +763,7 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 	    
 		MODEL_ARMOR,
 	    MODEL_TERMINAL_KEY,
+	    MODEL_ULTIMATE,
 	    
 	    MODEL_MINEDRILL_MINI,
 	    
@@ -823,6 +825,7 @@ ResBase_Impl::InitResult ResBase_Impl::init_func()
 	
 	scale_to(MODEL_ARMOR, hsz_supply);
 	scale_to(MODEL_TERMINAL_KEY, hsz_supply_big);
+	scale_to(MODEL_ULTIMATE, hsz_supply_big);
 	
 	scale_to(MODEL_DISPENSER, hsz_interact);
 	scale_to(MODEL_TERMINAL, hsz_interact);

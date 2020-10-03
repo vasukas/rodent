@@ -8,7 +8,7 @@
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    sodipodi:docname="models.svg"
-   inkscape:version="1.0 (4035a4fb49, 2020-05-01)"
+   inkscape:version="1.0.1 (3bc2e813f5, 2020-09-07)"
    id="svg8"
    version="1.1"
    viewBox="0 0 793.70081 1122.5197"
@@ -17,7 +17,7 @@
   <defs
      id="defs2" />
   <sodipodi:namedview
-     inkscape:object-nodes="false"
+     inkscape:object-nodes="true"
      inkscape:snap-others="false"
      inkscape:document-rotation="0"
      inkscape:snap-smooth-nodes="false"
@@ -32,15 +32,18 @@
      showgrid="true"
      inkscape:current-layer="layer1"
      inkscape:document-units="px"
-     inkscape:cy="-106.35396"
-     inkscape:cx="-11.990529"
-     inkscape:zoom="163.83999"
+     inkscape:cy="-111.39014"
+     inkscape:cx="-5.1510368"
+     inkscape:zoom="40.959998"
      inkscape:pageshadow="2"
      inkscape:pageopacity="0.0"
      borderopacity="1.0"
      bordercolor="#666666"
      pagecolor="#ffffff"
-     id="base">
+     id="base"
+     inkscape:object-paths="false"
+     inkscape:snap-midpoints="false"
+     inkscape:snap-bbox="false">
     <inkscape:grid
        empopacity="0.61960784"
        empcolor="#3f3fff"
@@ -930,5 +933,9 @@
        style="opacity:1;fill:#1d00ff;fill-opacity:0.5;fill-rule:nonzero;stroke:none;stroke-width:0.0999997;stroke-linecap:butt;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
        rx="0.12499984"
        ry="0.1250013" />
+    <path
+       style="opacity:1;vector-effect:none;fill:#808080;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:0.1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       d="M -5.0000003,-113 V -112.5 L -4.5000003,-112 -4.0000002,-112.5 V -113 L -4.2500002,-112.75 H -4.7500003 Z"
+       id="ultimate" />
   </g>
 </svg>

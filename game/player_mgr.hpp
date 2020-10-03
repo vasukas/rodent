@@ -6,6 +6,50 @@
 class PlayerInput;
 class PlayerUI;
 
+class File;
+
+
+
+struct PlayerNetworkHUD {
+	uint8_t shlc_state; // ShieldControl::State
+	float shlc_t; // log.shlc.get_ft()->get_hp().t_state()
+	TimeSpan shlc_time;
+	uint16_t shlc_hp, shlc_hpmax;
+	
+	float hlc_t; // hlc.get_hp().t_state()
+	uint16_t hlc_hp, hlc_hpmax;
+	
+	bool t_accel_enabled;
+	float t_accel; // -1 if infinite; log.pmov.get_t_accel()
+	
+	float arm_t;
+	uint16_t arm_hp, arm_hpmax;
+	bool arm_atmax; // arm_t >= log.armor->maxmod_t
+	
+	float pers_t;
+	uint16_t pers_hp, pers_hpmax;
+	bool pers_shld_alive; // log.pers_shld->get_hp().is_alive()
+	
+	struct WpnInfo {
+		uint8_t icon;
+		uint16_t ammo, ammomax;
+	};
+	std::vector<WpnInfo> wpns;
+	uint8_t wpncur;
+	
+	bool wpn_reload_show;
+	float wpn_reload; // -1 if none
+	
+	float wpn_overheat; // -1 if unused
+	bool wpn_overheat_ok;
+	
+	float wpn_charge; // -1 if unused
+	
+	
+	void write(Entity& ent, File& f);
+	void read(File& f);
+};
+
 
 
 class PlayerManager
@@ -17,10 +61,8 @@ public:
 	bool fastforward   = false; ///< see usages
 	bool debug_ai_rect = false;
 	
-	// client: only ent set
-	// server: both set
-	std::optional<EntityIndex> nethack;
-	PlayerInput* nethack_input = nullptr;
+	std::optional<std::pair<EntityIndex, PlayerNetworkHUD>> nethack_client;
+	std::vector<std::pair<EntityIndex, PlayerInput*>> nethack_server;
 	
 	static PlayerManager* create(GameCore& core);
 	virtual ~PlayerManager() = default;
@@ -43,8 +85,6 @@ public:
 	
 	///
 	virtual vec2fp get_last_pos() = 0;
-	
-	PlayerInput& get_input(EntityIndex ent);
 	
 protected:
 	friend class GameCore_Impl;

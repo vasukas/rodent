@@ -124,7 +124,7 @@ private:
 	void on_dmg(const DamageQuant& dq);
 	
 	friend class PlayerManager_Impl;
-	void m_step();
+	void m_step(PlayerInput& pinp);
 };
 
 

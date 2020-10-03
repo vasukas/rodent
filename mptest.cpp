@@ -20,6 +20,7 @@
 #include "mptest.hpp"
 #include "vaslib/vas_log.hpp"
 #include "client/replay_ser.hpp"
+#include "utils/noise.hpp"
 
 
 // client-side
@@ -117,18 +118,28 @@ SERIALFUNC_PLACEMENT_1(ServPacket,
 
 
 struct Common {
-    std::unique_ptr<TCP_Socket> conn;
-    vec2fp spawn_remote;
+    std::unique_ptr<TCP_Socket> ccon; // client-side only
 	Entity* wall;
     
-    struct Ammo {
+    struct Resp {
         EntityIndex ent;
         vec2fp pos;
         TimeSpan timeout;
+		TimeSpan full_timeout;
+		std::function<EntityIndex(GameCore&, vec2fp)> f;
     };
-    std::vector<Ammo> ammos;
+    std::vector<Resp> resps;
     
-    PlayerInput pinp_remote = PlayerInput::empty_proxy();
+	struct Player {
+		std::unique_ptr<TCP_Socket> conn;
+		PlayerInput pinp;
+		TimeSpan resp;
+		
+		Player(): pinp(PlayerInput::empty_proxy()) {
+			pinp.set_context(PlayerInput::CTX_GAME);
+		}
+	};
+	std::vector<std::unique_ptr<Player>> plrs; // same indices as in PlrMgr
 };
 
 struct NetworkEffectWriter_Impl : NetworkEffectWriter {
@@ -190,15 +201,14 @@ public:
     GameCore* core;
     bool is_server;
     
-    TimeSpan remote_resp;
-    
     std::unordered_map<uint16_t, bool> existing_prev;
 	std::unordered_map<uint16_t, bool> existing_now;
     std::unordered_map<uint16_t, EntityIndex> client_ids;
     
-    std::optional<PlayerInput::State> cl_to_sv;
+    std::optional<std::vector<PlayerInput::State>> cl_to_sv;
     std::queue<ServPacket> sv_to_cl;
-    
+	std::optional<PlayerNetworkHUD> cl_hud;
+	
     std::mutex mutex;
     std::thread thr;
 	
@@ -223,16 +233,26 @@ public:
 	    thr = std::thread([this] {
 	        while (true) {
 	            if (is_server) {
-	                PlayerInput::State p;
-	                SERIALFUNC_READ(p, *common->conn);
+					std::vector<PlayerInput::State> ins;
+					ins.resize(common->plrs.size());
+					for (size_t i = 0; i < ins.size(); ++i) {
+						SERIALFUNC_READ(ins[i], *common->plrs[i]->conn);
+					}
+					
 	                std::unique_lock lock(mutex);
-	                cl_to_sv.emplace(std::move(p));
+	                cl_to_sv.emplace(std::move(ins));
 	            }
 	            else {
 	                ServPacket p;
-	                SERIALFUNC_READ(p, *common->conn);
+					PlayerNetworkHUD hud;
+					
+	                SERIALFUNC_READ(p, *common->ccon);
+					bool has_hud = (p.plr != p.invalid);
+					if (has_hud) hud.read(*common->ccon);
+					
 	                std::unique_lock lock(mutex);
-	                sv_to_cl.emplace(std::move(p));
+					sv_to_cl.emplace(std::move(p));
+					if (has_hud) cl_hud.emplace(std::move(hud));
 	            }
 	        }
         });
@@ -286,42 +306,62 @@ public:
 				
 				existing_now.swap(existing_prev);
 				
-				auto plr_ent = core->valid_ent(*core->get_pmg().nethack);
-				p.plr = plr_ent ? plr_ent->index.to_int() : p.invalid;
-				
-				common->pinp_remote.update(PlayerInput::CTX_GAME);
 				std::unique_lock lock(mutex);
-	            if (cl_to_sv) {
-					common->pinp_remote.replay_set(PlayerInput::CTX_GAME, *cl_to_sv);
-	                cl_to_sv.reset();
-	            }
-				SERIALFUNC_WRITE(p, *common->conn);
-				largest_pkt = std::max(largest_pkt,
-				                       p.created.size() * 3
-				                     + p.trs.size() * (2 + 2*3 + 1 + 2*2)
-				                     + p.dels.size() * 2);
+				for (size_t i = 0; i < common->plrs.size(); ++i) {
+					auto plr_ent = core->valid_ent(core->get_pmg().nethack_server[i].first);
+					p.plr = plr_ent ? plr_ent->index.to_int() : p.invalid;
+					SERIALFUNC_WRITE(p, *common->plrs[i]->conn);
+					
+					if (plr_ent) {
+						PlayerNetworkHUD hud;
+						hud.write(*plr_ent, *common->plrs[i]->conn);
+					}
+					
+					if (cl_to_sv) {
+						common->plrs[i]->pinp.replay_set(PlayerInput::CTX_GAME, (*cl_to_sv)[i]);
+					}
+				}
+				cl_to_sv.reset();
+				
+				size_t pkt_size = p.created.size() * 3
+				                + p.trs.size() * (2 + 2*3 + 1 + 2*2)
+			                    + p.dels.size() * 2;
+				if (largest_pkt < pkt_size) {
+					largest_pkt = pkt_size;
+					VLOGD("New largest packet: {} bytes", largest_pkt);
+				}
 				
 				p = ServPacket{};
 	        }
-
-            if (!core->valid_ent(*core->get_pmg().nethack)) {
-                if (remote_resp.is_positive()) remote_resp -= core->step_len;
-                else {
-                    auto plr = new PlayerEntity(*core, common->spawn_remote, false);
-                    plr->team = 1;
-                    remote_resp = TimeSpan::seconds(3);
-                    core->get_pmg().nethack = plr->index;
-                }
-            }
+			
+			for (size_t i = 0; i < common->plrs.size(); ++i) {
+				auto& eid = core->get_pmg().nethack_server[i].first;
+				if (!core->valid_ent(eid)) {
+					auto& p = common->plrs[i];
+					if (p->resp.is_positive()) p->resp -= core->step_len;
+					else {
+						std::vector<vec2fp> poses;
+						for (auto& p : core->get_lc().get_spawns()) {
+							if (p.type == LevelControl::SP_PLAYER) {
+								poses.push_back(p.pos);
+							}
+						}
+						auto plr = new PlayerEntity(*core, core->get_random().random_el(poses), false);
+	                    plr->team = 1;
+	                    p->resp = TimeSpan::seconds(4);
+	                    eid = plr->index;
+					}
+				}
+			}
             
-            for (auto& sp : common->ammos) {
+            for (auto& sp : common->resps) {
                 if (!core->valid_ent(sp.ent)) {
                     if (sp.timeout.is_positive()) {
                         sp.timeout -= core->step_len;
                     }
                     else {
-                        new EPickable(*core, sp.pos, EPickable::rnd_ammo(*core));
-                        sp.timeout = TimeSpan::seconds(3);
+						sp.f(*core, sp.pos);
+                        sp.timeout = sp.full_timeout;
                     }
                 }
             }
@@ -331,7 +371,7 @@ public:
 			PlayerInput::get().replay_fix(PlayerInput::CTX_GAME, state);
 			
 	        std::unique_lock lock(mutex);
-			SERIALFUNC_WRITE(state, *common->conn);
+			SERIALFUNC_WRITE(state, *common->ccon);
 			
 			while (!sv_to_cl.empty()) {
 				auto& p = sv_to_cl.front();
@@ -355,10 +395,18 @@ public:
 				}
 				fx_net.apply(p);
 				
-				if (p.plr == p.invalid) core->get_pmg().nethack = EntityIndex{};
-				else core->get_pmg().nethack = client_ids.find(p.plr)->second;
+				if (p.plr == p.invalid) {
+					core->get_pmg().nethack_client->first = EntityIndex{};
+				}
+				else {
+					core->get_pmg().nethack_client->first = client_ids.find(p.plr)->second;
+				}
 				
 				sv_to_cl.pop();
+			}
+			if (cl_hud) {
+				core->get_pmg().nethack_client->second = std::move(*cl_hud);
+				cl_hud.reset();
 			}
         }
 	}
@@ -372,16 +420,25 @@ struct MPTEST_Impl : MPTEST {
     std::string p_port;
     
     vec2i size;
-    vec2i sp_a, sp_b;
+	std::vector<vec2i> sp_s;
     std::vector<vec2i> destrs;
     std::vector<vec2i> walls;
-    std::vector<vec2i> ammos;
+	
+	struct RespInfo {
+		vec2i pos;
+		TimeSpan time;
+		std::function<EntityIndex(GameCore&, vec2fp)> f;
+	};
+    std::vector<RespInfo> resps;
 
-    MPTEST_Impl(const char *addr, const char *port, bool is_server)
-        : is_server(is_server), p_addr(addr), p_port(port)
+    MPTEST_Impl(const char *addr, const char *port, int num_clients)
+        : is_server(num_clients != 0), p_addr(addr), p_port(port)
     {
         common.reset(new Common);
-		common->pinp_remote.set_context(PlayerInput::CTX_GAME);
+		for (int i=0; i<num_clients; ++i)
+			common->plrs.emplace_back(std::make_unique<Common::Player>());
+		
+		Common::Player plr;
         
         ImageInfo img;
         if (!img.load("data/mptest.png", ImageInfo::FMT_RGB))
@@ -393,10 +450,18 @@ struct MPTEST_Impl : MPTEST {
             vec2i p = {x,y};
             switch (img.get_pixel_fast(p)) {
             case 0xffffff: walls.push_back(p); break;
-            case 0xff0000: sp_a = p; break;
-            case 0x00ff00: sp_b = p; break;
+            case 0xff0000: sp_s.push_back(p); break;
             case 0x0000ff: destrs.push_back(p); break;
-            case 0xffff00: ammos.push_back(p); break;
+				
+			case 0xffff00: resps.push_back({ p, TimeSpan::seconds(8), [](auto& core, auto pos) {
+				                                 return (new EPickable(core, pos, EPickable::rnd_ammo(core)))->index;} });
+				        break;
+			case 0x00ff00: resps.push_back({ p, TimeSpan::seconds(20), [](auto& core, auto pos) {
+				                                 return (new EPickable(core, pos, EPickable::ArmorShard{30}))->index;} });
+				        break;
+			case 0xff00ff: resps.push_back({ p, TimeSpan::seconds(45), [](auto& core, auto pos) {
+				                                 return (new EPickable(core, pos, EPickable::BigPack{}))->index;} });
+				        break;
             }
         }
     }
@@ -404,11 +469,13 @@ struct MPTEST_Impl : MPTEST {
         if (is_server) {
             std::unique_ptr<TCP_Server> serv;
             serv.reset(TCP_Server::create(p_addr.data(), p_port.data()));
-            common->conn = serv->accept();
-            if (!common->conn) THROW_FMTSTR("MPTEST accept failed");
+			for (auto& p : common->plrs) {
+				p->conn = serv->accept();
+				if (!p->conn) THROW_FMTSTR("MPTEST accept failed");
+			}
         }
         else {
-            common->conn.reset(TCP_Socket::connect(p_addr.data(), p_port.data()));
+            common->ccon.reset(TCP_Socket::connect(p_addr.data(), p_port.data()));
         }
     }
     LevelTerrain* terrain() {
@@ -433,26 +500,33 @@ struct MPTEST_Impl : MPTEST {
     void spawn(GameCore& core, LevelTerrain& lt) {
 		common->wall = new EWall(core, lt.ls_wall);
 		
-        core.get_pmg().nethack = EntityIndex{};
-        if (!is_server) return;
-        core.get_pmg().nethack_input = &common->pinp_remote;
+		if (!is_server) {
+			core.get_pmg().nethack_client.emplace();
+			return;
+		}
+		core.get_pmg().nethack_server.resize(common->plrs.size());
+		for (size_t i = 0; i < common->plrs.size(); ++i) {
+			core.get_pmg().nethack_server[i].second = &common->plrs[i]->pinp;
+		}
         
-        core.get_lc().add_spawn({LevelControl::SP_PLAYER, sp_a});
-        common->spawn_remote = LevelControl::to_center_coord(sp_b);
-        
+		for (auto& p : sp_s) {
+			core.get_lc().add_spawn({LevelControl::SP_PLAYER, LevelControl::to_center_coord(p)});
+        }
         for (auto& p : destrs) {
             new EStorageBox(core, LevelControl::to_center_coord(p));
         }
-        
-        for (auto& p : ammos) {
-            common->ammos.emplace_back().pos = LevelControl::to_center_coord(p);
+        for (auto& p : resps) {
+			auto& sp = common->resps.emplace_back();
+			sp.pos = LevelControl::to_center_coord(p.pos);
+			sp.f = std::move(p.f);
+			sp.full_timeout = p.time;
         }
     }
     GameModeCtr* mode() {
         return new GameMode_MPTest(common, is_server);
     }
 };
-MPTEST* MPTEST::make(const char *addr, const char *port, bool is_server) {
-    return new MPTEST_Impl(addr, port, is_server);
+MPTEST* MPTEST::make(const char *addr, const char *port, int num_clients) {
+    return new MPTEST_Impl(addr, port, num_clients);
 }
 

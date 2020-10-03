@@ -215,6 +215,19 @@ public:
 	void add_cmd(PresCommand c) override
 	{
 		if (loadgame_hack) return;
+		
+		if (net_writer) {
+			if (auto p = std::get_if<PresCmdParticles>(&c)) {
+				if (p->eid) {
+					auto ent = core->get_ent(p->eid);
+					if (ent) {
+						p->pars.tr = ent->ref_pc().get_trans().combine(p->pars.tr);
+					}
+				}
+				net_writer->on_pgg(p->gen, p->pars);
+			}
+		}
+		
 		reserve_more_block(cmds_queue, 256);
 		cmds_queue.emplace_back(std::move(c));
 	}
@@ -458,11 +471,7 @@ public:
 };
 void GamePresenter::effect(PGG_Pointer pgg, const ParticleBatchPars& pars)
 {
-	if (pgg) {
-		add_cmd(PresCmdParticles{ {}, pgg.p, pars });
-		if (net_writer)
-			net_writer->on_pgg(pgg, pars);
-	}
+	if (pgg) add_cmd(PresCmdParticles{ {}, pgg.p, pars });
 }
 
 

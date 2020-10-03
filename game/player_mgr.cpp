@@ -4,12 +4,117 @@
 #include "game/level_ctr.hpp"
 #include "game_objects/objs_basic.hpp"
 #include "game_objects/objs_player.hpp"
+#include "utils/serializer_defs.hpp"
 #include "vaslib/vas_log.hpp"
 #include "player_mgr.hpp"
 
 
-PlayerInput& PlayerManager::get_input(EntityIndex ent) {
-    return nethack_input && ent == *nethack ? *nethack_input : PlayerInput::get();
+SERIALFUNC_PLACEMENT_1(PlayerNetworkHUD::WpnInfo,
+	SER_FD(icon),
+	SER_FD(ammo),
+	SER_FD(ammomax));
+
+SERIALFUNC_PLACEMENT_1(PlayerNetworkHUD,
+	SER_FD(shlc_state),
+	SER_FD(shlc_time),
+	SER_FD(shlc_hp),
+	SER_FD(shlc_hpmax),
+	
+	SER_FD(hlc_hp),
+	SER_FD(hlc_hpmax),
+	
+	SER_FD(t_accel_enabled),
+	SER_FDT(t_accel, norm8),
+	
+	SER_FD(arm_hp),
+	SER_FD(arm_hpmax),
+	SER_FD(arm_atmax),
+	
+	SER_FD(pers_hp),
+	SER_FD(pers_hpmax),
+	SER_FD(pers_shld_alive),
+	
+	SER_FDT(wpns, Array32),
+	SER_FD(wpncur),
+	
+	SER_FD(wpn_reload_show),
+	SER_FDT(wpn_reload, norm8),
+	
+	SER_FDT(wpn_overheat, norm8),
+	SER_FD(wpn_overheat_ok),
+	
+	SER_FDT(wpn_charge, norm8)
+);
+
+void PlayerNetworkHUD::write(Entity& p_ent, File& f)
+{
+	PlayerEntity& ent = static_cast<PlayerEntity&>(p_ent);
+	
+	shlc_state = ent.log.shlc.get_state().first;
+	shlc_time = ent.log.shlc.get_state().second;
+	shlc_hp = ent.log.shlc.get_ft()->get_hp().exact().first;
+	shlc_hpmax = ent.log.shlc.get_ft()->get_hp().exact().second;
+	
+	hlc_hp = ent.hlc.get_hp().exact().first;
+	hlc_hpmax = ent.hlc.get_hp().exact().second;
+	
+	t_accel_enabled = ent.log.pmov.get_t_accel().first;
+	t_accel = ent.log.pmov.is_infinite_accel() ? -1 : ent.log.pmov.get_t_accel().second;
+	
+	arm_hp = ent.log.armor->get_hp().exact().first;
+	arm_hpmax = ent.log.armor->get_hp().exact().second;
+	arm_atmax = ent.log.armor->get_hp().t_state() >= ent.log.armor->maxmod_t;
+	
+	pers_hp = ent.log.pers_shld->get_hp().exact().first;
+	pers_hpmax = ent.log.pers_shld->get_hp().exact().second;
+	pers_shld_alive = ent.log.pers_shld->get_hp().is_alive();
+	
+	auto& raw = ent.eqp.raw_wpns();
+	wpns.reserve(raw.size());
+	wpns.clear();
+	for (auto& src : raw) {
+		auto& wpn = wpns.emplace_back();
+		wpn.icon = src->info->model;
+		wpn.ammo = ent.eqp.get_ammo(src->info->ammo).value;
+		wpn.ammomax = ent.eqp.get_ammo(src->info->ammo).max;
+	}
+	
+	auto& cur = ent.eqp.get_wpn();
+	wpncur = ent.eqp.wpn_index();
+	
+	if (auto m = cur.info->def_delay; m && *m > TimeSpan::seconds(0.5)) {
+		wpn_reload_show = true;
+		wpn_reload = cur.get_reload_timeout().value_or(TimeSpan::seconds(-1)) / *m;
+	}
+	else {
+		wpn_reload_show = false;
+	}
+	
+	if (auto& m = cur.overheat; m && m->value > 0) {
+		wpn_overheat = m->value;
+		wpn_overheat_ok = m->is_ok();
+	}
+	else {
+		wpn_overheat = -1;
+	}
+	
+	if (auto m = cur.get_ui_info(); m && m->charge_t) {
+		wpn_charge = *m->charge_t;
+	}
+	else {
+		wpn_charge = -1;
+	}
+	
+	SERIALFUNC_WRITE(*this, f);
+}
+void PlayerNetworkHUD::read(File& f)
+{
+	SERIALFUNC_READ(*this, f);
+	
+	shlc_t = clampf_n(float(shlc_hp) / shlc_hpmax);
+	hlc_t = clampf_n(float(hlc_hp) / hlc_hpmax);
+	arm_t = clampf_n(float(arm_hp) / arm_hpmax);
+	pers_t = clampf_n(float(pers_hp) / pers_hpmax);
 }
 
 
@@ -56,7 +161,12 @@ public:
 	}
 	bool is_player(Entity& ent) const override
 	{
-		return ent.index == plr_eid || ent.index == nethack.value_or(EntityIndex{});
+		for (auto& e : nethack_server) {
+			if (e.first == ent.index) {
+				return true;
+			}
+		}
+		return ent.index == plr_eid;
 	}
 	PlayerUI* get_pui() override
 	{
@@ -68,6 +178,10 @@ public:
 	void render(TimeSpan passed, vec2i cursor_pos) override
 	{
 		if (!pui) return;
+		if (nethack_client) {
+			pui->render(nethack_client->second, !!nethack_client->first, passed, cursor_pos);
+			return;
+		}
 		
 		PlayerUI::DrawState uis;
 		uis.resp_left = plr_resp;
@@ -110,7 +224,7 @@ public:
 		if (plr_ent)
 		{
 			auto& pcst = PlayerInput::get().get_state(PlayerInput::CTX_GAME);
-			plr_ent->log.m_step();
+			plr_ent->log.m_step(PlayerInput::get());
 			
 			// update lookat string
 			
@@ -165,14 +279,14 @@ public:
 			else pui_einter = {};
 		}
 		
-		if (nethack) {
-			if (auto ent = core.valid_ent(*nethack)) {
-				if (nethack_input) {
-					static_cast<PlayerEntity*>(ent)->log.m_step();
-				}
-				else {
-					last_plr_pos = ent->get_pos();
-				}
+		for (auto& hack : nethack_server) {
+			if (auto ent = core.valid_ent(hack.first)) {
+				static_cast<PlayerEntity*>(ent)->log.m_step(*hack.second);
+			}
+		}
+		if (nethack_client) {
+			if (auto ent = core.valid_ent(nethack_client->first)) {
+				last_plr_pos = ent->get_pos();
 			}
 		}
 	}
@@ -211,8 +325,7 @@ public:
 	
 	void try_spawn_plr()
 	{
-	    if (nethack && !nethack_input) return;
-	    
+	    if (nethack_client) return;
 		if (core.get_ent(plr_eid)) return;
 		plr_eid = {};
 		

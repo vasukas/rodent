@@ -8,6 +8,8 @@ class  PlayerManager;
 class  EInteractive;
 struct WeaponMsgReport;
 
+struct PlayerNetworkHUD;
+
 
 class PlayerUI
 {
@@ -33,7 +35,8 @@ protected:
 	
 	/// May not be called each cycle
 	virtual void render(PlayerManager& mgr, const DrawState& dst, TimeSpan passed, vec2i cursor_pos) = 0;
-
+	virtual void render(const PlayerNetworkHUD& dst, bool dst_exists, TimeSpan passed, vec2i cursor_pos) = 0;
+	
 	virtual WeaponMsgReport& get_wpnrep() = 0;
 };
 

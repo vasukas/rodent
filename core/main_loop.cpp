@@ -871,7 +871,7 @@ public:
 		else if (arg.is("--mptest")) {
 			auto p1 = arg.str();
 			auto p2 = arg.str();
-			auto p3 = arg.flag();
+			auto p3 = arg.i32();
 		    mptest = MPTEST::make(p1.c_str(), p2.c_str(), p3);
 		}
 		else if (arg.is("--loadlast")) {

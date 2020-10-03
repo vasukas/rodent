@@ -245,6 +245,143 @@ public:
 			RenImm::get().draw_text(pos + el_off + vec2i(el_size.x, 0), std::move(ss));
 			vig_space_line(el_y_space);
 		}
+		void draw(const PlayerNetworkHUD& wpnlist, size_t index, bool& trigger_low_ammo)
+		{
+			const TimeSpan label_period = TimeSpan::seconds(2);
+			const vec2i el_size = {60, 60};
+			const vec2i el_off = vec2i::one(4);
+			const int el_y_space = 4;
+			
+			const int frame_width = 2;
+			const int strip_ht = 12;
+			
+			vec2i pos, size = el_size;
+			vig_lo_place(pos, size);
+			
+			// prepare stats
+			
+			auto& wpn = wpnlist.wpns[index];
+			bool is_cur_now = (index == wpnlist.wpncur);
+			if (is_cur_now && !is_cur) t_label = label_period;
+			is_cur = is_cur_now;
+			
+			auto ri_model = static_cast<ModelType>(wpn.icon);
+			EC_Equipment::Ammo* ammo;
+			if (!wpn.ammomax) ammo = nullptr;
+			else {
+				static EC_Equipment::Ammo hack;
+				hack.value = wpn.ammo;
+				hack.max = wpn.ammomax;
+				ammo = &hack;
+			}
+			
+			// draw helpers
+			
+			uint32_t frame_clr = [&]{
+				return is_cur ? 0x00ff00ffu : 0xff0000ffu;
+			}();
+			uint32_t bg_clr = [&]
+			{
+				const float a = 0.7;
+				if (ammo) {
+					if (!ammo->value) {
+		// hack to hide strip
+						ammo = nullptr;
+						blink.force_reset();
+						return FColor(0.7, 0, 0, a).to_px();
+					}
+					if (ammo_prev < ammo->value) {
+						blink.trigger();
+						last_flash_clr = FColor(1, 1, 0, a);
+					}
+					else if (ammo_prev > ammo->value && float(ammo->value) / ammo->max < critical) {
+						blink.trigger();
+						last_flash_clr = FColor(1, 1, 1, a);
+						trigger_low_ammo = true;
+					}
+					ammo_prev = ammo->value;
+					return (last_flash_clr * blink.get_blink()).to_px();
+				}
+				return uint32_t(a * 255);
+			}();
+			auto draw_strip = [&](float t, uint32_t clr1, uint32_t clr2, int yn)
+			{
+				t = clampf_n(t);
+				
+				vec2i p (frame_width, 0);
+				vec2i z ((el_size.x - frame_width*2) * t, strip_ht);
+				
+				if (yn < 0) p.y = el_size.y - strip_ht*-yn - frame_width;
+				else p.y = frame_width + strip_ht*yn;
+				
+				RenImm::get().draw_rect(Rectfp::off_size(pos + p, z), clr1);
+				p.x += z.x;
+				z.x = (el_size.x - frame_width*2) - z.x;
+				RenImm::get().draw_rect(Rectfp::off_size(pos + p, z), clr2);
+			};
+			std::vector<std::pair<FColor, std::string>> ss;
+			
+			// draw background
+			
+			RenImm::get().draw_rect(Rectfp::off_size(pos, el_size), bg_clr);
+			
+			{	vec2fp img_size = ResBase::get().get_size(ri_model).size();
+				float img_k = img_size.x / img_size.y;
+				
+				if (img_k > 1) img_size = {1, 1 / img_k};
+				else           img_size = {img_k, 1};
+				img_size *= el_size/2 - el_off;
+			
+				RenImm::get().draw_image(Rectfp::from_center( pos + el_size/2, img_size ),
+				                         ResBase::get().get_image(ri_model));
+			}
+			
+			// status
+			
+			if (t_label.is_positive())
+			{
+				float a = t_label / label_period;
+				ss.emplace_back(FColor(1,1,1,a).to_px(), "PROXY");
+				t_label -= RenderControl::get().get_passed();
+			}
+			ss.emplace_back(FColor{}, "\n");
+			
+			if (ammo)
+			{
+				if (!ammo->value) draw_strip(1, 0xff0000ff, 0, -1);
+				else draw_strip(float(ammo->value)/ammo->max, 0xc0e0e0ff, 0, -1);
+			}
+			
+			if (is_cur_now && wpnlist.wpn_overheat > 0)
+			{
+				if (!wpnlist.wpn_overheat_ok) {
+					ss.emplace_back(FColor(1, 0.8, 0.5), "COOLDOWN");
+					draw_strip(wpnlist.wpn_overheat, 0xff4040ff, 0, 0);
+				}
+				else {
+					if (wpnlist.wpn_overheat > 0.5) ss.emplace_back(FColor(1, 1, 0), "Overheat");
+					draw_strip(wpnlist.wpn_overheat, 0xc0c000ff, 0, 0);
+				}
+				ss.emplace_back(FColor{}, "\n");
+			}
+			if (is_cur_now && wpnlist.wpn_reload_show)
+			{
+				if (wpnlist.wpn_reload > 0)
+					ss.emplace_back(FColor(0,1,0), "Reload");
+			}
+			if (is_cur_now && wpnlist.wpn_charge > 0)
+			{
+				ss.emplace_back(FColor(0.5, 1, 1), FMT_FORMAT("Charge: {:3}%", int_round(wpnlist.wpn_charge * 100)));
+				draw_strip(wpnlist.wpn_charge, 0xc0c0ffff, 0xff000080, wpnlist.wpn_overheat > 0 ? 1 : 0);
+			}
+			
+			//
+			
+			RenImm::get().draw_frame(Rectfp::off_size(pos, el_size), frame_clr, frame_width);
+			RenImm::get().draw_text(pos + el_off, std::to_string(index + 1));
+			RenImm::get().draw_text(pos + el_off + vec2i(el_size.x, 0), std::move(ss));
+			vig_space_line(el_y_space);
+		}
 	};
 	
 	enum IndStat {
@@ -704,6 +841,244 @@ public:
 			RenImm::get().draw_frame(ai_on,  0x00ff0060, 0.5);
 			RenImm::get().draw_frame(ai_off, 0xff000060, 0.5);
 			RenImm::get().set_context(RenImm::DEFCTX_UI);
+		}
+	}
+	void render(const PlayerNetworkHUD& dst, bool dst_exists, TimeSpan passed, vec2i mou_pos)
+	{
+		if (!dst_exists)
+		{
+			for (auto& i : ind_stat) {
+				i.blink.force_reset();
+				i.blink_upd.force_reset();
+			}
+			ind_wpns.clear();
+			
+			for (auto& f : flares)
+				f.reset();
+		}
+		
+		if (dst_exists)
+		{
+			// flares
+			if (AppSettings::get().plr_status_flare)
+			{
+				auto pst_first = static_cast<ShieldControl::State>(dst.shlc_state);
+				switch (pst_first) {
+					case ShieldControl::ST_DEAD:
+					case ShieldControl::ST_DISABLED:
+						break;
+					case ShieldControl::ST_SWITCHING:
+						flares[FLARE_SHIELD].trigger(0.3);
+						break;
+					case ShieldControl::ST_ACTIVE: {
+							float t = dst.shlc_t;
+							flares[FLARE_SHIELD].trigger(lerp(1, 0.5, t));
+						}
+						break;
+				}
+				
+				if (dst.hlc_t < 0.95) {
+					if (flares[FLARE_HEALTH].level < 0.1) flares[FLARE_HEALTH].trigger();
+					else flares[FLARE_HEALTH].trigger(1 - dst.hlc_t/2);
+				}
+				else if (!dst.pers_shld_alive) {
+					flares[FLARE_NO_SHIELD].trigger(0.6);
+				}
+				
+				FColor clr = {0,0,0,0};
+				FColor clr_big = {0,0,0,0};
+				for (auto& f : flares) {
+					FColor c = f.clr;
+					c.a = f.update(passed.seconds());
+					(f.is_big ? clr_big : clr) += c * c.a;
+				}
+				
+				RenImm::get().draw_image(Rectfp::bounds({}, flare_tex->get_size()), flare_tex_big.get(), clr_big.to_px());
+				RenImm::get().draw_image(Rectfp::bounds({}, flare_tex->get_size()), flare_tex.get(), clr.to_px());
+			}
+			
+			//
+			
+			// Health
+			{
+				ind_stat[INDST_HEALTH].draw(FMT_FORMAT("Health {:3}/{}", dst.hlc_hp, dst.hlc_hpmax), dst.hlc_t);
+			}
+			vig_lo_next();
+			
+			// Accelartion
+			if (dst.t_accel < 0) {
+				ind_stat[INDST_ACCEL].draw("Accel INFINITE", 1, true);
+			}
+			else {
+				ind_stat[INDST_ACCEL].draw(FMT_FORMAT("Accel {}", dst.t_accel_enabled? "OK      " : "charge  "),
+									       dst.t_accel, !dst.t_accel_enabled);
+			}
+			vig_lo_next();
+			
+			// Armor
+			{
+				auto& ind = ind_stat[INDST_ARMOR];
+				if (dst.arm_t > ind.prev_value) ind.blink_upd.trigger();
+				ind.draw(FMT_FORMAT("Armor  {:3}/{}", dst.arm_hp, dst.arm_hpmax),
+				         dst.arm_t, dst.arm_atmax);
+			}
+			vig_lo_next();
+			
+			// Shield
+			{
+				ind_stat[INDST_PERS_SHIELD].draw(FMT_FORMAT("P.shld {:3}/{}", dst.pers_hp, dst.pers_hpmax), dst.pers_t);
+			}
+			vig_lo_next();
+			
+			// Projected shield
+			{
+				auto& i_alive = ind_stat[INDST_PROJ_SHIELD];
+				auto& i_regen = ind_stat[INDST_PROJ_SHIELD_REGEN];
+				
+				switch (dst.shlc_state)
+				{
+				case ShieldControl::ST_DEAD: {
+						proj_shld_was_dead = true;
+						i_regen.draw("Regenerating...", dst.shlc_time / ShieldControl::dead_time);
+					}
+					break;
+					
+				case ShieldControl::ST_DISABLED: {
+						if (std::exchange(proj_shld_was_dead, false)) {
+							i_alive.blink.force_reset();
+							i_alive.blink.trigger();
+							SoundEngine::once(SND_UI_SHIELD_READY, {});
+						}
+						i_alive.draw("Shield - ready", 0, true);
+					}
+					break;
+					
+				case ShieldControl::ST_SWITCHING: {
+						i_regen.draw("Shield        ", 1, true);
+					}
+					break;
+					
+				case ShieldControl::ST_ACTIVE: {
+						i_alive.draw(FMT_FORMAT("Shield {:3}/{}", dst.shlc_hp, dst.shlc_hpmax), dst.shlc_t);
+					}
+					break;
+				}
+			}
+			vig_lo_next();
+			
+			auto& cur_wpn = dst.wpns[dst.wpncur];
+			{
+				vig_label_a("{}\nAmmo: {} / {}\n", "PROXY", cur_wpn.ammo, cur_wpn.ammomax);
+			}
+			{
+				ind_wpns.resize( dst.wpns.size() );
+				
+				bool trigger_low_ammo = false;
+				for (size_t i=0; i < dst.wpns.size(); ++i)
+					ind_wpns[i].draw( dst, i, trigger_low_ammo );
+				
+				if (trigger_low_ammo)
+					wpn_ring_lowammo.trigger();
+			}
+			
+			const TimeSpan wmr_max = TimeSpan::seconds(1.5);
+			TimeSpan wmr_passed = TimeSpan::current() - wpn_msgrep.time;
+			if (wmr_passed < wmr_max)
+			{
+				uint32_t clr = 0xffffff00 | lerp(0, 255, 1 - wmr_passed / wmr_max);
+				RenImm::get().draw_text(vec2fp(mou_pos.x, mou_pos.y + 30), wpn_msgrep.str, clr, true);
+			}
+			if (!cur_wpn.ammo) {
+				RenImm::get().draw_text(vec2fp(mou_pos.x, mou_pos.y - 30), "Ammo: 0", 0xffff'ffc0, true);
+			}
+			if (float t = wpn_ring_lowammo.get_blink(); t > 0.01) {
+				int left = cur_wpn.ammo;
+				RenImm::get().draw_text(vec2fp(mou_pos.x, mou_pos.y + 30), FMT_FORMAT("LOW AMMO ({})", left), 0xffff'ffc0, true);
+			}
+			
+			// Cursor
+			
+//			int cursor_rings_x = 0;
+			if (AppSettings::get().cursor_info_flags & 1)
+			{
+				const float base_radius = 20;
+				float radius = base_radius;
+				const float width = 6;
+				const int alpha = 0xc0;
+				
+				const TimeSpan hide = TimeSpan::seconds(2);
+				const TimeSpan fade = TimeSpan::seconds(0.4);
+				TimeSpan now = TimeSpan::since_start();
+				
+				//
+				
+				auto& ammo_tcou = wpn_msgrep.no_ammo_tcou;
+				if (!cur_wpn.ammo) ammo_tcou.trigger();
+				float ammo_t = ammo_tcou.get_blink();
+				
+				if (ammo_t > 0.01)
+				{
+					float t = fracpart(now.seconds());
+					if (t > 0.5) t = 1 - t;
+					t *= 2;
+					
+					uint32_t clr = 0xff000000 | int(alpha * ammo_t);
+					clr += lerp<int>(64, 220, t) << 16;
+					clr += lerp<int>(64, 220, t) << 8;
+					
+					RenImm::get().mouse_cursor_hack();
+					draw_progress_ring({}, 1, clr, radius, width);
+					radius += width;
+				}
+				else
+				{
+					if (dst.wpn_reload_show)
+					{
+						uint32_t clr = alpha; float t;
+						if (dst.wpn_reload > 0) {
+							clr |= 0xc0ff4000;
+							t = 1 - dst.wpn_reload;
+							wpn_ring_reload = now;
+						}
+						else {
+							auto diff = now - wpn_ring_reload;
+							if (diff > hide) clr = alpha * clampf_n(1. - (diff - hide) / fade);
+							clr |= 0x40ff4000;
+							t = 1;
+						}
+						RenImm::get().mouse_cursor_hack();
+						draw_progress_ring({}, t, clr, radius, width);
+						radius += width;
+					}
+					if (dst.wpn_overheat > 0)
+					{
+						uint32_t clr = !dst.wpn_overheat_ok ? 0xff606000 : 0xffff0000;
+						RenImm::get().mouse_cursor_hack();
+						draw_progress_ring({}, dst.wpn_overheat, clr | alpha, radius, width);
+						radius += width;
+					}
+					if (dst.wpn_charge > 0)
+					{
+						if (true)
+						{
+							uint32_t clr = alpha;
+							if (dst.wpn_charge > 0.99) {
+								auto diff = now - wpn_ring_charge;
+								if (diff > hide) clr = alpha * clampf_n(1. - (diff - hide) / fade);
+								clr |= 0xe0ffff00;
+							}
+							else {
+								clr |= 0x40c0ff00;
+								wpn_ring_charge = now;
+							}
+							RenImm::get().mouse_cursor_hack();
+							draw_progress_ring({}, dst.wpn_charge, clr, radius, width);
+						}
+						radius += width;
+					}
+				}
+//				cursor_rings_x = radius;
+			}
 		}
 	}
 	WeaponMsgReport& get_wpnrep()

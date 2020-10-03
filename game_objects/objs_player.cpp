@@ -290,9 +290,8 @@ void EC_PlayerLogic::on_dmg(const DamageQuant&)
 {
 	pmov.battle_trigger();
 }
-void EC_PlayerLogic::m_step()
+void EC_PlayerLogic::m_step(PlayerInput& pinp)
 {	
-	auto& pinp = ent.core.get_pmg().get_input(ent.index);
 	auto& cst = pinp.get_state(PlayerInput::CTX_GAME);
 	auto& eqp = ent.ref_eqp();
 	

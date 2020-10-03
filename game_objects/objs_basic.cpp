@@ -169,6 +169,12 @@ EPickable::EPickable(GameCore& core, vec2fp pos, Value val)
 			ren.model = MODEL_TERMINAL_KEY;
 			ren.clr = FColor(1, 0.8, 0.4);
 			ui_descr = "Security token";
+		},
+		[&](const BigPack&)
+		{
+			ren.model = MODEL_ULTIMATE;
+			ren.clr = FColor(1, 0.3, 1);
+			ui_descr = "Ultimate";
 		}
 	}, val);
 }
@@ -213,6 +219,21 @@ void EPickable::on_cnt(const CollisionEvent& ce)
 		{
 			SoundEngine::once(SND_UI_PICKUP_POWER, {});
 			dynamic_cast<GameMode_Normal&>(core.get_gmc()).inc_objective();
+			return true;
+		},
+		[&](BigPack&)
+		{
+			SoundEngine::once(SND_UI_PICKUP_POWER, {});
+			ce.other->ref_hlc().get_hp().renew(); 
+			ce.other->ref_hlc().foreach_filter([&](DamageFilter& f) {
+				if (auto p = dynamic_cast<DmgShield*>(&f)) {
+					p->get_hp().renew();
+				}
+			});
+			for (int i = static_cast<int>(AmmoType::Bullet); i < static_cast<int>(AmmoType::TOTAL_COUNT); ++i) {
+				auto& ammo = ce.other->ref_eqp().get_ammo(static_cast<AmmoType>(i));
+				if (ammo.value < ammo.max / 3) ammo.value = ammo.max / 3;
+			}
 			return true;
 		}
 	}, val);

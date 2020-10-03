@@ -51,7 +51,9 @@ public:
 	
 	struct SecurityKey {};
 	
-	using Value = std::variant<AmmoPack, ArmorShard, SecurityKey>;
+	struct BigPack {};
+	
+	using Value = std::variant<AmmoPack, ArmorShard, SecurityKey, BigPack>;
 	
 	
 	

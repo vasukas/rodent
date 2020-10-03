@@ -285,6 +285,7 @@ struct SerialFunc<SerialType_Void, SerialTag_Signature<S>> {
 struct SerialTag_8rad {}; ///< [0; 2*pi] mapped to 8 bits
 struct SerialTag_fp_8_8 {}; ///< Fixed-point 8.8
 struct SerialTag_fp_16_8 {}; ///< Fixed-point 16.8
+struct SerialTag_norm8 {}; ///< Float with support for values [0; 1] + [-1]
 
 template<> struct SerialFunc<float, SerialTag_8rad> {
 	static void write(float p, File& f) {f.w8( wrap_angle_2(p) * 255 / (2*M_PI) );}
@@ -299,6 +300,16 @@ template<> struct SerialFunc<float, SerialTag_fp_8_8> {
 template<> struct SerialFunc<float, SerialTag_fp_16_8> {
 	static void write(float p, File& f) {f.w16L(p); f.w8(int(p) << 8 & 0xff);}
 	static void read(float& p, File& f) {p = f.r16L(); p += f.r8() / 256.f;}
+};
+
+template<> struct SerialFunc<float, SerialTag_norm8> {
+	static void write(float p, File& f) {
+		f.w8(p < 0 ? 255 : clamp<int>(p * 254, 0, 254));
+	}
+	static void read(float& p, File& f) {
+		uint8_t x = f.r8();
+		p = (x == 255) ? -1.f : x / 254.f;
+	}
 };
 
 template <typename Tag>
