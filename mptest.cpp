@@ -266,6 +266,7 @@ public:
 	
 	size_t largest_pkt = 0;
 	NetworkEffectWriter_Impl fx_net;
+	bool wait_hud = false;
 	
 	ServPacket p_shared;
 
@@ -422,12 +423,23 @@ public:
 			conn.flush_packet();
 			
 			std::optional<PlayerNetworkHUD> hud;
-			while (conn.has_packets()) {
+			if (wait_hud && conn.has_packets()) {
+				hud.emplace();
+				hud->read(conn);
+				wait_hud = false;
+			}
+			
+			while (conn.has_packets() && !wait_hud) {
 				ServPacket p;
 				SERIALFUNC_READ(p, conn);
 				if (p.plr != p.invalid) {
-					hud.emplace();
-					hud->read(conn);
+					if (!conn.has_packets()) {
+						wait_hud = true;
+					}
+					else {
+						hud.emplace();
+						hud->read(conn);
+					}
 				}
 				
 				for (auto& ev : p.created) {
