@@ -1,26 +1,23 @@
 // --mptest ADDR PORT ISSERV
 
-#include <mutex>
-#include <thread>
-#include <queue>
 #include <unordered_map>
-#include "game/game_mode.hpp"
-#include "utils/tcp_net.hpp"
 #include "client/effects.hpp"
 #include "client/presenter.hpp"
 #include "client/plr_input.hpp"
+#include "client/replay_ser.hpp"
 #include "game/game_core.hpp"
-#include "game/player_mgr.hpp"
+#include "game/game_mode.hpp"
 #include "game/level_gen.hpp"
+#include "game/level_ctr.hpp"
+#include "game/player_mgr.hpp"
 #include "game_objects/objs_basic.hpp"
 #include "game_objects/objs_player.hpp"
-#include "game/level_ctr.hpp"
+#include "utils/enet_wrap.hpp"
 #include "utils/image_utils.hpp"
-#include "utils/serializer_defs.hpp"
-#include "mptest.hpp"
-#include "vaslib/vas_log.hpp"
-#include "client/replay_ser.hpp"
 #include "utils/noise.hpp"
+#include "utils/serializer_defs.hpp"
+#include "vaslib/vas_log.hpp"
+#include "mptest.hpp"
 
 
 class EProxy : public Entity {
@@ -159,7 +156,8 @@ SERIALFUNC_PLACEMENT_1(ServPacket,
 
 
 struct Common {
-    std::unique_ptr<TCP_Socket> ccon; // client-side only
+	std::unique_ptr<ENet_Server> serv;
+    std::unique_ptr<ENet_Socket> ccon; // client-side only
 	Entity* wall;
     
     struct Resp {
@@ -172,7 +170,7 @@ struct Common {
     std::vector<Resp> resps;
     
 	struct Player {
-		std::unique_ptr<TCP_Socket> conn;
+		std::unique_ptr<ENet_Socket> conn;
 		PlayerInput pinp;
 		TimeSpan resp;
 		
@@ -265,13 +263,6 @@ public:
     std::unordered_map<uint16_t, bool> existing_prev;
 	std::unordered_map<uint16_t, bool> existing_now;
     std::unordered_map<uint16_t, EntityIndex> client_ids;
-    
-    std::optional<std::vector<PlayerInput::State>> cl_to_sv;
-    std::queue<ServPacket> sv_to_cl;
-	std::optional<PlayerNetworkHUD> cl_hud;
-	
-    std::mutex mutex;
-    std::thread thr;
 	
 	size_t largest_pkt = 0;
 	NetworkEffectWriter_Impl fx_net;
@@ -280,43 +271,12 @@ public:
 
     GameMode_MPTest(std::shared_ptr<Common> common, bool is_server)
         : common(common), is_server(is_server) {}
-	~GameMode_MPTest() {
-		VLOGI("Largest packet: {}", largest_pkt);
-	}
 	void init(GameCore& p_core) {
 		if (is_server) {
 			GamePresenter::get()->net_writer = &fx_net;
 			fx_net.pkt = &p_shared;
 		}
-		
 	    core = &p_core;
-	    
-	    thr = std::thread([this] {
-	        while (true) {
-	            if (is_server) {
-					std::vector<PlayerInput::State> ins;
-					ins.resize(common->plrs.size());
-					for (size_t i = 0; i < ins.size(); ++i) {
-						SERIALFUNC_READ(ins[i], *common->plrs[i]->conn);
-					}
-					
-	                std::unique_lock lock(mutex);
-	                cl_to_sv.emplace(std::move(ins));
-	            }
-	            else {
-	                ServPacket p;
-					PlayerNetworkHUD hud;
-					
-	                SERIALFUNC_READ(p, *common->ccon);
-					bool has_hud = (p.plr != p.invalid);
-					if (has_hud) hud.read(*common->ccon);
-					
-	                std::unique_lock lock(mutex);
-					sv_to_cl.emplace(std::move(p));
-					if (has_hud) cl_hud.emplace(std::move(hud));
-	            }
-	        }
-        });
 	}
 	void step() {
 	    if (is_server) {
@@ -380,22 +340,30 @@ public:
 					}
 				}
 				
-				std::unique_lock lock(mutex);
+				common->serv->update();
 				for (size_t i = 0; i < common->plrs.size(); ++i) {
+					auto& conn = *common->plrs[i]->conn;
+					
 					auto plr_ent = core->valid_ent(core->get_pmg().nethack_server[i].first);
 					p.plr = plr_ent ? plr_ent->index.to_int() : p.invalid;
-					SERIALFUNC_WRITE(p, *common->plrs[i]->conn);
+					SERIALFUNC_WRITE(p, conn);
+					conn.flush_packet();
 					
 					if (plr_ent) {
 						PlayerNetworkHUD hud;
-						hud.write(*plr_ent, *common->plrs[i]->conn);
+						hud.write(*plr_ent, conn);
+						conn.flush_packet();
 					}
 					
-					if (cl_to_sv) {
-						common->plrs[i]->pinp.replay_set(PlayerInput::CTX_GAME, (*cl_to_sv)[i]);
+					std::optional<PlayerInput::State> state;
+					while (conn.has_packets()) {
+						state.emplace();
+						SERIALFUNC_READ(*state, conn);
+					}
+					if (state) {
+						common->plrs[i]->pinp.replay_set(PlayerInput::CTX_GAME, *state);
 					}
 				}
-				cl_to_sv.reset();
 				
 				size_t pkt_size = p.created.size() * 3
 				                + p.trs.size() * (2 + 2*3 + 1 + 2*2)
@@ -445,14 +413,22 @@ public:
             }
 	    }
 	    else {
+			auto& conn = *common->ccon;
+			conn.update();
+			
 			auto state = PlayerInput::get().get_state(PlayerInput::CTX_GAME);
 			PlayerInput::get().replay_fix(PlayerInput::CTX_GAME, state);
+			SERIALFUNC_WRITE(state, conn);
+			conn.flush_packet();
 			
-	        std::unique_lock lock(mutex);
-			SERIALFUNC_WRITE(state, *common->ccon);
-			
-			while (!sv_to_cl.empty()) {
-				auto& p = sv_to_cl.front();
+			std::optional<PlayerNetworkHUD> hud;
+			while (conn.has_packets()) {
+				ServPacket p;
+				SERIALFUNC_READ(p, conn);
+				if (p.plr != p.invalid) {
+					hud.emplace();
+					hud->read(conn);
+				}
 				
 				for (auto& ev : p.created) {
 					auto ent = new EProxy(*core, Transform{vec2fp(ev.x, ev.y), ev.r}, ev.model, ev.color);
@@ -496,12 +472,9 @@ public:
 				else {
 					core->get_pmg().nethack_client->first = client_ids.find(p.plr)->second;
 				}
-				
-				sv_to_cl.pop();
 			}
-			if (cl_hud) {
-				core->get_pmg().nethack_client->second = std::move(*cl_hud);
-				cl_hud.reset();
+			if (hud) {
+				core->get_pmg().nethack_client->second = std::move(*hud);
 			}
         }
 	}
@@ -562,15 +535,12 @@ struct MPTEST_Impl : MPTEST {
     }
     void connect() {
         if (is_server) {
-            std::unique_ptr<TCP_Server> serv;
-            serv.reset(TCP_Server::create(p_addr.data(), p_port.data()));
-			for (auto& p : common->plrs) {
-				p->conn = serv->accept();
-				if (!p->conn) THROW_FMTSTR("MPTEST accept failed");
-			}
+			common->serv.reset(ENet_Server::create(p_addr.data(), p_port.data()));
+			for (auto& p : common->plrs)
+				p->conn = common->serv->accept();
         }
         else {
-            common->ccon.reset(TCP_Socket::connect(p_addr.data(), p_port.data()));
+            common->ccon.reset(ENet_Socket::connect(p_addr.data(), p_port.data()));
         }
     }
     LevelTerrain* terrain() {

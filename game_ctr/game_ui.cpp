@@ -518,6 +518,11 @@ public:
 	{
 		auto gstate = gctr.get_state();
 		if (!gctr_inited && !std::holds_alternative<GameControl::CS_Init>(gstate)) {
+			if (auto st = std::get_if<GameControl::CS_End>(&gstate)) {
+				if (!st->err_msg.empty()) {
+					throw std::runtime_error(st->err_msg);
+				}
+			}
 			gctr_inited = true;
 			init();
 		}

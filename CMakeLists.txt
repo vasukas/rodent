@@ -110,6 +110,8 @@ find_package(OpenGL   REQUIRED)
 find_package(SDL2     REQUIRED)
 find_package(Threads  REQUIRED)
 
+find_package(ENet  REQUIRED)
+
 set(BOX2D_BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
 set(BOX2D_BUILD_TESTBED    OFF CACHE BOOL "" FORCE)
 set(BOX2D_BUILD_DOCS       OFF CACHE BOOL "" FORCE)
@@ -163,6 +165,7 @@ list(APPEND DLL_NAMES
 	ogg opus opusfile
 	portaudio
 	SDL2
+	enet
 )
 
 if (USE_OPUSFILE)
@@ -180,6 +183,9 @@ endif()
 if (WIN32)
 	target_link_libraries(${TARGET} PRIVATE ws2_32)
 endif()
+
+target_include_directories(${TARGET} PRIVATE "${ENET_INCLUDE_DIRS}")
+target_link_libraries(${TARGET} PRIVATE ${ENET_LIBRARIES})
 
 
 
