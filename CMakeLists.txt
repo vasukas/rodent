@@ -267,6 +267,7 @@ list(APPEND SRC_LIST
 	render/texture
 
 	utils/color_manip
+	utils/enet_wrap
 	utils/ev_signal.hpp
 	utils/image_utils
 	utils/line_cfg
