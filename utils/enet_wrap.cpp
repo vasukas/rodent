@@ -72,7 +72,7 @@ public:
 		return buf_size;
 	}
 	void flush_packet() override {
-		enet_peer_send(peer, 0, enet_packet_create(buf_write.data(), buf_write.size(), host ? 0 : ENET_PACKET_FLAG_RELIABLE));
+		enet_peer_send(peer, 0, enet_packet_create(buf_write.data(), buf_write.size(), ENET_PACKET_FLAG_RELIABLE));
 		buf_write.clear();
 	}
 	bool has_packets() override {

@@ -1,4 +1,4 @@
-// --mptest ADDR PORT ISSERV
+// --mptest ADDR PORT PLRCNT
 
 #include <unordered_map>
 #include "client/effects.hpp"
@@ -12,6 +12,7 @@
 #include "game/player_mgr.hpp"
 #include "game_objects/objs_basic.hpp"
 #include "game_objects/objs_player.hpp"
+#include "game_objects/weapon_all.hpp"
 #include "utils/enet_wrap.hpp"
 #include "utils/image_utils.hpp"
 #include "utils/noise.hpp"
@@ -27,8 +28,8 @@ public:
     EC_VirtualBody pc;
 	bool explode;
 
-    EProxy(GameCore& core, Transform pos, int model, uint32_t color)
-	    : Entity(core), pc(*this, pos), explode(model & 0x80)
+    EProxy(GameCore& core, Transform pos, vec2fp vel, int model, uint32_t color)
+	    : Entity(core), pc(*this, pos, Transform{vel}), explode(model & 0x80)
     {
 		model &= 0x7f;
 	    add_new<EC_RenderModel>(static_cast<ModelType>(model), color, EC_RenderModel::DEATH_NONE);
@@ -48,12 +49,13 @@ struct EvCreate {
     uint16_t index;
     uint8_t model;
 	uint32_t color;
-	float x, y, r;
+	Transform pos;
+	vec2fp vel;
 };
 struct EvTransform {
     uint16_t index;
-    float x, y, r;
-    float vx, vy;
+	Transform pos;
+	vec2fp vel;
 };
 
 struct NE_Bolt {
@@ -102,17 +104,13 @@ SERIALFUNC_PLACEMENT_1(EvCreate,
 	SER_FD(index),
 	SER_FD(model),
 	SER_FD(color),
-	SER_FD(x),
-	SER_FD(y),
-	SER_FD(r));
+	SER_FD(pos),
+	SER_FD(vel));
 	
 SERIALFUNC_PLACEMENT_1(EvTransform,
 	SER_FD(index),
-	SER_FD(x),
-	SER_FD(y),
-	SER_FD(r),
-	SER_FD(vx),
-	SER_FD(vy));
+	SER_FD(pos),
+	SER_FD(vel));
 
 SERIALFUNC_PLACEMENT_1(NE_Bolt,
 	SER_FD(a),
@@ -294,14 +292,14 @@ public:
 					
 					existing_now.emplace(ent.index.to_int(), true);
 					
+					if (typeid(ent) == typeid(EPickable) ||
+					    typeid(ent) == typeid(ProjectileEntity)) return;
+					
 					auto& pc = ent.ref_pc();
 					auto& tr = p.trs.emplace_back();
 					tr.index = ent.index.to_int();
-					tr.x = pc.get_pos().x;
-					tr.y = pc.get_pos().y;
-					tr.r = pc.get_angle();
-					tr.vx = pc.get_vel().x;
-					tr.vy = pc.get_vel().y;
+					tr.pos = pc.get_trans();
+					tr.vel = pc.get_vel();
 				});
 				
 				for (auto& [_, v] : existing_prev) {
@@ -319,7 +317,7 @@ public:
 						uint8_t model = rc.model;
 						if (rc.death == EC_RenderModel::DEATH_AND_EXPLOSION) model |= 0x80;
 						p.created.push_back({ k, model, rc.clr.to_px(),
-						                      pc.get_pos().x, pc.get_pos().y, pc.get_angle() });
+						                      pc.get_trans(), pc.get_vel() });
 					}
 				}
 				for (auto& [k, v] : existing_prev) {
@@ -443,14 +441,14 @@ public:
 				}
 				
 				for (auto& ev : p.created) {
-					auto ent = new EProxy(*core, Transform{vec2fp(ev.x, ev.y), ev.r}, ev.model, ev.color);
+					auto ent = new EProxy(*core, ev.pos, ev.vel, ev.model, ev.color);
 					client_ids.emplace(ev.index, ent->index);
 				}
 				for (auto& ev : p.trs) {
 					auto ent = static_cast<EProxy*>(core->get_ent(client_ids.find(ev.index)->second));
 					auto& pc = ent->pc;
-					pc.pos = Transform{vec2fp(ev.x, ev.y), ev.r};
-					pc.set_vel(Transform{vec2fp(ev.vx, ev.vy)});
+					pc.pos = ev.pos;
+					pc.set_vel(Transform{ev.vel});
 				}
 				
 				fx_net.apply(p, [this](uint16_t index) {
