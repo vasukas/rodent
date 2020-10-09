@@ -44,6 +44,19 @@ public:
     EC_Position& ref_pc() {return pc;}
 };
 
+class EProxyPlayer : public EProxy {
+public:
+    EProxyPlayer(Entity& src)
+        : EProxy(src.core, src.ref_pc().get_trans(), src.ref_pc().get_vel(), static_cast<int>(src.ref<EC_RenderModel>().model) | 0x80, src.ref<EC_RenderModel>().color)
+    {
+        reg_this();
+    }
+    void step() override {
+#error Copy move logic, but use VB instead of phy
+#error (Re-)create using plrindex from packet
+    }
+};
+
 
 struct EvCreate {
     uint16_t index;
