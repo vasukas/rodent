@@ -168,7 +168,7 @@ extern thread_local fmt::memory_buffer log_fmt_buffer; ///< (Internal usage)
 #define VLOG_(LEVEL, FORMAT, ...) \
 	(log_test_level(LEVEL)?  \
 	 (log_fmt_buffer.clear(), \
-	 fmt::format_to(log_fmt_buffer, FREAK_MACRO_EXPAND( FMT_STRING(FORMAT) ), ##__VA_ARGS__), \
+	 fmt::format_to(std::back_inserter(log_fmt_buffer), FREAK_MACRO_EXPAND( FMT_STRING(FORMAT) ), ##__VA_ARGS__), \
 	 log_write_str(LEVEL, log_fmt_buffer.data(), log_fmt_buffer.size())) : void() )
 
 #endif // VAS_LOG_HPP

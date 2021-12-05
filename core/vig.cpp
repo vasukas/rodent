@@ -830,7 +830,7 @@ void vig_space_line(int height) {
 
 static fmt::memory_buffer fmtstr_buf;
 #define fmtstr(Format, ...)\
-	(fmtstr_buf.clear(), fmt::format_to(fmtstr_buf, FMT_STRING(Format), ##__VA_ARGS__),\
+	(fmtstr_buf.clear(), fmt::format_to(std::back_inserter(fmtstr_buf), FMT_STRING(Format), ##__VA_ARGS__),\
 	 std::string_view(fmtstr_buf.data(), fmtstr_buf.size()))
 
 void vig_label(std::string_view text, vec2i pos, vec2i size) {
