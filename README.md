@@ -4,7 +4,7 @@ Simple 2D top-down shooter with "neon wireframe"-style graphics using SDL2, Open
 
 ### Screenshots
 
-![](../screenshots/1.gif?raw=true)
+![](../screenshots/1.gif)
 
 <table frame="void">
   <tr><td><img src="../screenshots/1.png?raw=true" /></td>
