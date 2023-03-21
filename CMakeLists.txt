@@ -14,6 +14,9 @@ option(USE_SANITIZERS "Compile with all sanitizers (GCC/clang only)" OFF)
 option(USE_SDL_MAIN "Use SDL_main() instead of just main()" OFF)
 option(DOWNLOAD_SOUNDS "Download sounds and music from github branch" ON)
 
+option(DOWNLOAD_FMTLIB "Force download fmtlib even if package is available" ON)
+option(DOWNLOAD_OPUSFILE "Force download opusfile even if package is available" OFF)
+
 # pass 'PKG_OUTPUT_DIR' with path to copy all runtime files to after compilation
 
 if (USE_OPUSFILE)
@@ -79,31 +82,30 @@ include(FetchContent)
 FetchContent_Declare(
 	Box2D
 	GIT_REPOSITORY  https://github.com/erincatto/Box2D.git
-#	GIT_SHALLOW 1
 	GIT_TAG         1025f9a10949b963d6311995910bdd04f72dae6c
 )
 FetchContent_Declare(
 	fmtlib
 	GIT_REPOSITORY  https://github.com/fmtlib/fmt.git
-	GIT_SHALLOW 1
+	GIT_TAG         b6f4ceaed0a0a24ccf575fab6c56dd50ccf6f1a9
 )
 FetchContent_Declare(
 	stb
 	GIT_REPOSITORY  https://github.com/nothings/stb.git
-	GIT_SHALLOW 1
+	GIT_TAG         5736b15f7ea0ffb08dd38af21067c314d6a3aae9
 )
 FetchContent_Declare(
 	pnoise
 	GIT_REPOSITORY  https://github.com/stegu/perlin-noise
-	GIT_SHALLOW 1
+	GIT_TAG         a624f5a18395c0ebc04738191efddf1dbd2cad9d
 )
+# TODO: it's not available anymore?
 FetchContent_Declare(
 	portaudio
 	GIT_REPOSITORY  https://git.assembla.com/portaudio.git
-	GIT_SHALLOW 1
+	GIT_SHALLOW     1
 )
 
-find_package(fmt      QUIET)
 find_package(Freetype REQUIRED)
 find_package(GLEW     REQUIRED)
 find_package(OpenGL   REQUIRED)
@@ -124,6 +126,9 @@ FetchContent_Populate(pnoise)
 target_include_directories(${TARGET} PRIVATE "${pnoise_SOURCE_DIR}/src")
 target_sources(${TARGET} PRIVATE "${pnoise_SOURCE_DIR}/src/noise1234.c")
 
+if (NOT DOWNLOAD_FMTLIB)
+	find_package(fmt QUIET)
+endif()
 if (NOT fmt_FOUND)
 	message("rodent: fmt not found, building from source")
 	FetchContent_MakeAvailable(fmtlib)
@@ -131,7 +136,9 @@ if (NOT fmt_FOUND)
 endif()
 
 if (USE_OPUSFILE)
-	find_package(opusfile QUIET)
+	if (NOT DOWNLOAD_OPUSFILE)
+		find_package(opusfile QUIET)
+	endif()
 	if (NOT opusfile_FOUND)
 		message("rodent: opusfile not found, building from source")
 		add_subdirectory(scripts/opusfile)

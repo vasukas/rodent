@@ -3,6 +3,7 @@
 #include "vaslib/vas_log.hpp"
 #include "res_audio.hpp"
 
+#include <algorithm>
 
 
 class AudioFile {

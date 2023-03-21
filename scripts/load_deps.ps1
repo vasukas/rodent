@@ -74,10 +74,10 @@ dlzip "https://github.com/nigels-com/glew/releases/download/glew-2.1.0/glew-2.1.
 	("glew*/lib/Release/Win32/glew32.lib", "glew*/bin/Release/Win32/glew32.dll") `
 	("glew*/lib/Release/x64/glew32.lib", "glew*/bin/Release/x64/glew32.dll")
 
-dlzip "https://github.com/ubawurinna/freetype-windows-binaries/archive/master.zip" `
+dlzip "https://github.com/ubawurinna/freetype-windows-binaries/refs/tags/v2.13.0.zip" `
 	("freetype*/include/freetype", "freetype*/include/*.h") `
-	"freetype*/win32/*.*" `
-	"freetype*/win64/*.*"
+	"freetype*/release dll/win32/*.*" `
+	"freetype*/release dll/win64/*.*"
 
 dlzip "https://www.libsdl.org/release/SDL2-devel-2.0.12-VC.zip" `
 	"SDL2*/include" `

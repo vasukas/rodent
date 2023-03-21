@@ -1,6 +1,8 @@
 #include "vaslib/vas_log.hpp"
 #include "color_manip.hpp"
 
+#include <algorithm>
+
 FColor::FColor( uint32_t rgba, float mul )
 {
 	r = mul * ( rgba >> 24)        / 255.f;

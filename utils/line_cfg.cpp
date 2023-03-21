@@ -3,6 +3,8 @@
 #include "vaslib/vas_string_utils.hpp"
 #include "line_cfg.hpp"
 
+#include <algorithm>
+
 #undef is_space
 #define is_space linecfg_is_space
 
